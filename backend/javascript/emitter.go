@@ -12,13 +12,14 @@ import (
 )
 
 type emitter struct {
-	receiver     string
-	scopes       []map[string]bool
-	buf          bytes.Buffer
-	indent       int
-	needsRuntime bool
-	resultCount  int
-	analysis     *gotypes.Result
+	receiver         string
+	scopes           []map[string]bool
+	buf              bytes.Buffer
+	indent           int
+	needsRuntime     bool
+	resultCount      int
+	analysis         *gotypes.Result
+	currentSignature *gotypesstd.Signature
 }
 
 func Emit(file *ast.File, analysis *gotypes.Result) (string, error) {
@@ -65,6 +66,17 @@ func Emit(file *ast.File, analysis *gotypes.Result) (string, error) {
 func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 	e.receiver = ""
 	e.resultCount = e.functionResultCount(fn)
+	e.currentSignature = nil
+
+	if e.analysis != nil && fn.Name != nil {
+		if object := e.analysis.Defs[fn.Name]; object != nil {
+			if function, ok := object.(*gotypesstd.Func); ok {
+				if signature, ok := function.Type().(*gotypesstd.Signature); ok {
+					e.currentSignature = signature
+				}
+			}
+		}
+	}
 	if fn.Recv != nil {
 		if len(fn.Recv.List) != 1 {
 			return fmt.Errorf("unsupported method receiver")
@@ -158,13 +170,13 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 					if i > 0 {
 						e.write(", ")
 					}
-					if err := e.emitExpr(result); err != nil {
+					if err := e.emitReturnExpr(result, i); err != nil {
 						return err
 					}
 				}
 				e.write("]")
 			} else {
-				if err := e.emitExpr(s.Results[0]); err != nil {
+				if err := e.emitReturnExpr(s.Results[0], 0); err != nil {
 					return err
 				}
 			}
@@ -286,7 +298,14 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 				e.write(", ")
 			}
 
-			if err := e.emitExpr(rhs); err != nil {
+			var target gotypesstd.Type
+			if i < len(s.Lhs) {
+				if ident, ok := s.Lhs[i].(*ast.Ident); ok {
+					target = e.variableType(ident)
+				}
+			}
+
+			if err := e.emitInterfaceValue(rhs, target); err != nil {
 				return err
 			}
 		}
@@ -598,7 +617,8 @@ func (e *emitter) emitValueDecl(decl *ast.GenDecl) error {
 			if i < len(valueSpec.Values) {
 				e.write(" = ")
 
-				if err := e.emitExpr(valueSpec.Values[i]); err != nil {
+				target := e.variableType(name)
+				if err := e.emitInterfaceValue(valueSpec.Values[i], target); err != nil {
 					return err
 				}
 			}
@@ -615,6 +635,15 @@ func (e *emitter) emitValueDecl(decl *ast.GenDecl) error {
 
 func (e *emitter) emitType(spec *ast.TypeSpec) error {
 	switch t := spec.Type.(type) {
+	case *ast.InterfaceType:
+		e.writeIndent()
+		e.write("class ")
+		e.write(spec.Name.Name)
+		e.write(" {}")
+		e.newline()
+		e.newline()
+		return nil
+
 	case *ast.StructType:
 		e.writeIndent()
 		e.write("class ")
@@ -712,6 +741,24 @@ func (e *emitter) declare(name string) {
 		return
 	}
 	e.scopes[len(e.scopes)-1][name] = true
+}
+
+func (e *emitter) variableType(ident *ast.Ident) gotypesstd.Type {
+	if e.analysis == nil || ident == nil {
+		return nil
+	}
+
+	object := e.analysis.Defs[ident]
+	if object == nil {
+		object = e.analysis.Uses[ident]
+	}
+
+	variable, ok := object.(*gotypesstd.Var)
+	if !ok {
+		return nil
+	}
+
+	return variable.Type()
 }
 
 func (e *emitter) emitConversion(call *ast.CallExpr) error {
