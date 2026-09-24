@@ -132,9 +132,9 @@ map len: 2
 map range: 70
 make map: 123
 division: 3
-float division: 3.5
+float division: +3.500000e+000
 int conversion: 7
-float conversion: 12
+float conversion: +1.200000e+001
 struct: alice 25`)
 
 	if strings.TrimSpace(string(result)) != expected {

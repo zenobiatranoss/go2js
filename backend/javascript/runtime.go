@@ -2,6 +2,256 @@ package javascript
 
 func runtimeSource() string {
 	return `
+
+function go2jsFloat(value) {
+	if (Number.isNaN(value)) {
+		return "NaN";
+	}
+
+	if (value === Infinity) {
+		return "+Inf";
+	}
+
+	if (value === -Infinity) {
+		return "-Inf";
+	}
+
+	const text = Math.abs(value).toExponential(6);
+	const match = text.match(/^([0-9]\.[0-9]{6})e([+-])([0-9]+)$/);
+
+	if (!match) {
+		return (value < 0 ? "-" : "+") + text;
+	}
+
+	return (value < 0 ? "-" : "+") + match[1] + "e" + match[2] + match[3].padStart(3, "0");
+}
+
+function go2jsCloneValue(value) {
+    if (value === null || value === undefined) {
+        return value;
+    }
+
+    if (Array.isArray(value)) {
+        return value.slice();
+    }
+
+    if (value instanceof Map) {
+        return new Map(value);
+    }
+
+    if (typeof value !== "object") {
+        return value;
+    }
+
+    const embedded = value.__go2js_embedded;
+    const cloned = Object.assign(
+        Object.create(Object.getPrototypeOf(value)),
+        value
+    );
+
+    if (Array.isArray(embedded)) {
+        for (const name of embedded) {
+            const current = value[name];
+            if (current === null || current === undefined) {
+                continue;
+            }
+
+            if (current.__go2js_pointer === true || current.__go2js_interface === true) {
+                cloned[name] = current;
+            } else {
+                cloned[name] = go2jsCloneValue(current);
+            }
+        }
+
+        return go2jsEmbedProxy(cloned, embedded.slice());
+    }
+
+    return cloned;
+}
+
+function go2jsMethodValue(receiver, method, copyReceiver) {
+	if (receiver === null || receiver === undefined) {
+		throw new TypeError("method value on nil receiver");
+	}
+
+	if (receiver.__go2js_interface === true) {
+		let target = receiver.value;
+
+		if (target === null || target === undefined) {
+			throw new TypeError("method value on nil interface");
+		}
+
+		if (target.__go2js_pointer === true) {
+			target = target.get();
+
+			if (target === null || target === undefined) {
+				throw new TypeError("method value on nil pointer");
+			}
+		}
+
+		const captured = copyReceiver ? go2jsCloneValue(target) : target;
+		const fn = captured[method];
+
+		if (typeof fn !== "function") {
+			throw new TypeError("method " + method + " is not implemented");
+		}
+
+		return (...args) => fn.apply(captured, args);
+	}
+
+	let target = receiver;
+
+	if (target.__go2js_pointer === true) {
+		target = target.get();
+
+		if (target === null || target === undefined) {
+			throw new TypeError("method value on nil pointer");
+		}
+	}
+
+	const captured = copyReceiver ? go2jsCloneValue(target) : target;
+	const fn = captured[method];
+
+	if (typeof fn !== "function") {
+		throw new TypeError("method " + method + " is not implemented");
+	}
+
+	return (...args) => fn.apply(captured, args);
+}
+
+function go2jsMethodExpression(method, copyReceiver) {
+	return (receiver, ...args) => {
+		if (receiver === null || receiver === undefined) {
+			throw new TypeError("method expression on nil receiver");
+		}
+
+		if (receiver.__go2js_interface === true) {
+			return go2jsMethodValue(receiver, method, copyReceiver)(...args);
+		}
+
+		let target = receiver;
+
+		if (copyReceiver && target.__go2js_pointer === true) {
+			target = target.get();
+		}
+
+		if (copyReceiver) {
+			target = go2jsCloneValue(target);
+		}
+
+		return go2jsInvokeMethod(target, method, args);
+	};
+}
+
+function go2jsInvokeMethod(receiver, method, args) {
+	if (receiver === null || receiver === undefined) {
+		throw new TypeError("method call on nil receiver");
+	}
+
+	if (receiver.__go2js_interface === true) {
+		return go2jsInterfaceCall(receiver, method, ...args);
+	}
+
+	if (receiver.__go2js_pointer === true) {
+		const target = receiver.get();
+
+		if (target === null || target === undefined) {
+			throw new TypeError("method call on nil pointer");
+		}
+	}
+
+	const fn = receiver[method];
+
+	if (typeof fn !== "function") {
+		throw new TypeError("method " + method + " is not implemented");
+	}
+
+	return fn.apply(receiver, args);
+}
+
+function go2jsEmbedProxy(target, embedded) {
+    return new Proxy(target, {
+        get(target, property, receiver) {
+            if (property === "__go2js_embedded") {
+                return embedded;
+            }
+
+            if (Reflect.has(target, property)) {
+                return Reflect.get(target, property, receiver);
+            }
+
+            for (const entry of embedded) {
+                const current = typeof entry === "string" ? target[entry] : entry;
+
+                if (current === null || current === undefined) {
+                    continue;
+                }
+
+                const value = current[property];
+
+                if (value !== undefined) {
+                    if (typeof value === "function") {
+                        return value.bind(current);
+                    }
+
+                    return value;
+                }
+            }
+
+            return undefined;
+        },
+
+        set(target, property, value, receiver) {
+            if (property === "__go2js_embedded") {
+                return false;
+            }
+
+            if (Reflect.has(target, property)) {
+                return Reflect.set(target, property, value, receiver);
+            }
+
+            for (const entry of embedded) {
+                const current = typeof entry === "string" ? target[entry] : entry;
+
+                if (
+                    current !== null &&
+                    current !== undefined &&
+                    property in Object(current)
+                ) {
+                    current[property] = value;
+                    return true;
+                }
+            }
+
+            return Reflect.set(target, property, value, receiver);
+        },
+
+        has(target, property) {
+            if (property === "__go2js_embedded") {
+                return true;
+            }
+
+            if (Reflect.has(target, property)) {
+                return true;
+            }
+
+            for (const entry of embedded) {
+                const current = typeof entry === "string" ? target[entry] : entry;
+
+                if (
+                    current !== null &&
+                    current !== undefined &&
+                    property in Object(current)
+                ) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    });
+}
+
 function go2jsPtr(get, set) {
 	const pointer = {
 		get,
@@ -12,6 +262,10 @@ function go2jsPtr(get, set) {
 		get(target, property, receiver) {
 			if (property === "get" || property === "set") {
 				return Reflect.get(target, property, receiver);
+			}
+
+			if (property === "__go2js_pointer") {
+				return true;
 			}
 
 			const value = target.get();
@@ -505,6 +759,10 @@ function go2jsZeroValue(type) {
 
 function go2jsPanic(value) {
 	throw value instanceof Error ? value : new Error(go2jsStringify(value));
+}
+
+function go2jsRecover() {
+	return undefined;
 }
 
 function go2jsStringify(value) {

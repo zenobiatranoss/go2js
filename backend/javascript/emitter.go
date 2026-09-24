@@ -13,15 +13,20 @@ import (
 )
 
 type emitter struct {
-	receiver         string
-	scopes           []map[string]bool
-	buf              bytes.Buffer
-	indent           int
-	needsRuntime     bool
-	resultCount      int
-	analysis         *gotypes.Result
-	semantic         *semantic.Context
-	currentSignature *gotypesstd.Signature
+	receiver            string
+	scopes              []map[string]bool
+	buf                 bytes.Buffer
+	indent              int
+	needsRuntime        bool
+	resultCount         int
+	analysis            *gotypes.Result
+	semantic            *semantic.Context
+	currentSignature    *gotypesstd.Signature
+	currentFunction     *ast.FuncDecl
+	functionBodyPending bool
+	tempID              int
+
+	functionBody *ast.BlockStmt
 }
 
 func Emit(file *ast.File, analysis *gotypes.Result) (string, error) {
@@ -67,7 +72,7 @@ func EmitWithContext(file *ast.File, analysis *gotypes.Result, context *semantic
 
 	prefix := ""
 	if e.needsRuntime {
-		prefix = runtimeSource() + "\n"
+		prefix = runtimeSource() + "\n" + collectionRuntimeSource() + "\n" + rangeRuntimeSource() + "\n"
 	}
 
 	return prefix + e.buf.String(), nil
@@ -75,8 +80,20 @@ func EmitWithContext(file *ast.File, analysis *gotypes.Result, context *semantic
 
 func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 	e.receiver = ""
+	e.currentFunction = fn
+	e.functionBodyPending = true
+	defer func() {
+		e.currentFunction = nil
+		e.functionBodyPending = false
+	}()
 	e.resultCount = e.functionResultCount(fn)
 	e.currentSignature = nil
+	e.functionBody = fn.Body
+
+	defer func() {
+		e.functionBody = nil
+		e.currentSignature = nil
+	}()
 
 	if fn.Name != nil {
 		var object gotypesstd.Object
@@ -132,20 +149,7 @@ func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 		e.write("(")
 	}
 
-	if fn.Type.Params != nil {
-		first := true
-
-		for _, field := range fn.Type.Params.List {
-			for _, name := range field.Names {
-				if !first {
-					e.write(", ")
-				}
-
-				e.write(name.Name)
-				first = false
-			}
-		}
-	}
+	e.emitFunctionParameters(fn)
 
 	e.write(") ")
 	return e.emitFuncBody(fn.Body)
@@ -157,6 +161,14 @@ func (e *emitter) emitBlock(block *ast.BlockStmt) error {
 
 	e.scopes = append(e.scopes, map[string]bool{})
 	e.indent++
+
+	if block == e.functionBody {
+		if err := e.emitNamedResults(); err != nil {
+			e.indent--
+			e.scopes = e.scopes[:len(e.scopes)-1]
+			return err
+		}
+	}
 
 	for _, stmt := range block.List {
 		if err := e.emitStmt(stmt); err != nil {
@@ -229,7 +241,25 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 	case *ast.ReturnStmt:
 		e.writeIndent()
 		e.write("return")
-		if len(s.Results) > 0 {
+
+		if len(s.Results) == 0 {
+			if e.canUseNamedReturn() {
+				names := e.namedResultNames()
+				if len(names) == 1 {
+					e.write(" ")
+					e.write(names[0])
+				} else if len(names) > 1 {
+					e.write(" [")
+					for i, name := range names {
+						if i > 0 {
+							e.write(", ")
+						}
+						e.write(name)
+					}
+					e.write("]")
+				}
+			}
+		} else {
 			e.write(" ")
 			if e.resultCount > 1 {
 				e.write("[")
@@ -264,6 +294,12 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 	case *ast.AssignStmt:
 		if handled, err := e.emitTypeAssertAssignment(s); handled {
 			return err
+		}
+
+		if len(s.Lhs) > 1 && len(s.Rhs) == len(s.Lhs) {
+			if handled, err := e.emitParallelAssignment(s); handled {
+				return err
+			}
 		}
 
 		if len(s.Lhs) > 1 && len(s.Rhs) == 1 && e.isMultiReturnCall(s.Rhs[0]) {
@@ -471,33 +507,7 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 		}
 
 	case *ast.RangeStmt:
-		e.writeIndent()
-		e.write("for (const [")
-
-		if s.Key != nil {
-			if err := e.emitExpr(s.Key); err != nil {
-				return err
-			}
-		}
-
-		if s.Value != nil {
-			e.write(", ")
-			if err := e.emitExpr(s.Value); err != nil {
-				return err
-			}
-		}
-
-		e.write("] of ")
-
-		if err := e.emitExpr(s.X); err != nil {
-			return err
-		}
-
-		e.write(".entries()) ")
-
-		if err := e.emitBlock(s.Body); err != nil {
-			return err
-		}
+		return e.emitRangeStmt(s)
 
 	case *ast.IncDecStmt:
 		e.writeIndent()
@@ -520,11 +530,11 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 	case *ast.DeferStmt:
 		return e.emitDeferStmt(s)
 
+	case *ast.LabeledStmt:
+		return e.emitLabeledStmt(s)
+
 	case *ast.BranchStmt:
-		e.writeIndent()
-		e.write(s.Tok.String())
-		e.write(";")
-		e.newline()
+		return e.emitBranchStmt(s)
 
 	case *ast.SwitchStmt:
 		e.writeIndent()
@@ -534,6 +544,8 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 			if err := e.emitExpr(s.Tag); err != nil {
 				return err
 			}
+		} else {
+			e.write("true")
 		}
 
 		e.write(") {")
@@ -542,7 +554,10 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 		e.indent++
 
 		for _, item := range s.Body.List {
-			clause := item.(*ast.CaseClause)
+			clause, ok := item.(*ast.CaseClause)
+			if !ok {
+				return fmt.Errorf("unsupported switch clause: %T", item)
+			}
 
 			if clause.List == nil {
 				e.writeIndent()
@@ -564,10 +579,26 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 
 			e.indent++
 
-			for _, bodyStmt := range clause.Body {
-				if err := e.emitStmt(bodyStmt); err != nil {
+			didFallthrough := false
+			bodyCount := len(clause.Body)
+
+			if bodyCount > 0 {
+				if branch, ok := clause.Body[bodyCount-1].(*ast.BranchStmt); ok && branch.Tok == token.FALLTHROUGH {
+					didFallthrough = true
+					bodyCount--
+				}
+			}
+
+			for i := 0; i < bodyCount; i++ {
+				if err := e.emitStmt(clause.Body[i]); err != nil {
 					return err
 				}
+			}
+
+			if !didFallthrough {
+				e.writeIndent()
+				e.write("break;")
+				e.newline()
 			}
 
 			e.indent--
@@ -588,6 +619,12 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 func (e *emitter) emitInlineStmt(stmt ast.Stmt) error {
 	switch s := stmt.(type) {
 	case *ast.AssignStmt:
+		if len(s.Lhs) > 1 && len(s.Rhs) == len(s.Lhs) {
+			if handled, err := e.emitParallelAssignmentInline(s); handled {
+				return err
+			}
+		}
+
 		if s.Tok == token.DEFINE {
 			e.write("let ")
 		}
@@ -665,13 +702,12 @@ func (e *emitter) emitGenDecl(decl *ast.GenDecl) error {
 }
 
 func (e *emitter) emitValueDecl(decl *ast.GenDecl) error {
-	e.writeIndent()
-
 	if decl.Tok == token.CONST {
-		e.write("const ")
-	} else {
-		e.write("let ")
+		return e.emitConstDecl(decl)
 	}
+
+	e.writeIndent()
+	e.write("let ")
 
 	first := true
 
@@ -743,8 +779,52 @@ func (e *emitter) emitType(spec *ast.TypeSpec) error {
 		e.newline()
 		e.indent++
 
+		embedded := make([]string, 0)
+
 		if t.Fields != nil {
 			for _, field := range t.Fields.List {
+				if len(field.Names) == 0 {
+					name := ""
+					switch value := field.Type.(type) {
+					case *ast.Ident:
+						name = value.Name
+					case *ast.StarExpr:
+						if ident, ok := value.X.(*ast.Ident); ok {
+							name = ident.Name
+						}
+					}
+
+					if name != "" {
+						e.writeIndent()
+						e.write("this.")
+						e.write(name)
+						e.write(" = ")
+
+						switch value := field.Type.(type) {
+						case *ast.Ident:
+							e.write("new ")
+							e.write(value.Name)
+							e.write("()")
+						case *ast.StarExpr:
+							if ident, ok := value.X.(*ast.Ident); ok {
+								e.needsRuntime = true
+								e.write("go2jsPtr(new ")
+								e.write(ident.Name)
+								e.write("())")
+							} else {
+								e.write("null")
+							}
+						default:
+							e.write(structZeroValue(field.Type))
+						}
+
+						e.write(";")
+						e.newline()
+						embedded = append(embedded, name)
+					}
+					continue
+				}
+
 				for _, name := range field.Names {
 					e.writeIndent()
 					e.write("this.")
@@ -755,6 +835,111 @@ func (e *emitter) emitType(spec *ast.TypeSpec) error {
 					e.newline()
 				}
 			}
+		}
+		if t.Fields != nil {
+			for _, field := range t.Fields.List {
+				if len(field.Names) == 0 {
+					name := ""
+					switch value := field.Type.(type) {
+					case *ast.Ident:
+						name = value.Name
+					case *ast.StarExpr:
+						if ident, ok := value.X.(*ast.Ident); ok {
+							name = ident.Name
+						}
+					}
+
+					if name != "" {
+						e.writeIndent()
+						e.write("this.")
+						e.write(name)
+						e.write(" = ")
+
+						switch value := field.Type.(type) {
+						case *ast.Ident:
+							e.write("new ")
+							e.write(value.Name)
+							e.write("()")
+						case *ast.StarExpr:
+							if ident, ok := value.X.(*ast.Ident); ok {
+								e.needsRuntime = true
+								e.write("go2jsPtr(new ")
+								e.write(ident.Name)
+								e.write("())")
+							} else {
+								e.write("null")
+							}
+						default:
+							e.write(structZeroValue(field.Type))
+						}
+
+						e.write(";")
+						e.newline()
+						embedded = append(embedded, name)
+					}
+					continue
+				}
+
+				for _, name := range field.Names {
+					e.writeIndent()
+					e.write("this.")
+					e.write(name.Name)
+					e.write(" = ")
+					e.write(structZeroValue(field.Type))
+					e.write(";")
+					e.newline()
+				}
+			}
+		}
+		if t.Fields != nil {
+			for _, field := range t.Fields.List {
+				for _, name := range field.Names {
+					e.writeIndent()
+					e.write("this.")
+					e.write(name.Name)
+					e.write(" = ")
+
+					if len(field.Names) == 0 {
+						embedded = append(embedded, name.Name)
+
+						switch value := field.Type.(type) {
+						case *ast.Ident:
+							e.write("new ")
+							e.write(value.Name)
+							e.write("()")
+						case *ast.StarExpr:
+							if ident, ok := value.X.(*ast.Ident); ok {
+								e.write("new ")
+								e.write(ident.Name)
+								e.write("()")
+							} else {
+								e.write("null")
+							}
+						default:
+							e.write(structZeroValue(field.Type))
+						}
+					} else {
+						e.write(structZeroValue(field.Type))
+					}
+
+					e.write(";")
+					e.newline()
+				}
+			}
+		}
+
+		if len(embedded) > 0 {
+			e.needsRuntime = true
+			e.writeIndent()
+			e.write("return go2jsEmbedProxy(this, [")
+			for i, name := range embedded {
+				if i > 0 {
+					e.write(", ")
+				}
+				e.write("\"" + name + "\"")
+			}
+			e.write("]);")
+			e.newline()
 		}
 
 		e.indent--
@@ -769,7 +954,7 @@ func (e *emitter) emitType(spec *ast.TypeSpec) error {
 		e.newline()
 
 	default:
-		return fmt.Errorf("unsupported type: %T", spec.Type)
+		return nil
 	}
 
 	return nil

@@ -212,18 +212,20 @@ func (e *emitter) resultNeedsTuple(fn *ast.FuncDecl) bool {
 
 func (e *emitter) emitFunctionParameters(fn *ast.FuncDecl) {
 	first := true
+	parameters := e.functionParameters(fn)
+	variadic := e.functionIsVariadic(fn)
 
-	for _, name := range e.functionParameters(fn) {
+	for i, name := range parameters {
 		if !first {
 			e.write(", ")
 		}
 
+		if variadic && i == len(parameters)-1 {
+			e.write("...")
+		}
+
 		e.write(name)
 		first = false
-	}
-
-	if e.functionIsVariadic(fn) && !first {
-		return
 	}
 }
 

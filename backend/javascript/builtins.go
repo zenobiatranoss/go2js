@@ -28,8 +28,12 @@ func builtinName(call *ast.CallExpr) (string, bool) {
 			return "go2jsMake", true
 		case "delete":
 			return "go2jsMapDelete", true
+		case "copy":
+			return "go2jsSliceCopy", true
 		case "panic":
 			return "go2jsPanic", true
+		case "recover":
+			return "go2jsRecover", true
 		}
 
 	case *ast.SelectorExpr:
@@ -44,6 +48,8 @@ func builtinName(call *ast.CallExpr) (string, bool) {
 				return "console.log", true
 			case "Print":
 				return "process.stdout.write", true
+			case "Sprintf":
+				return "go2jsSprintf", true
 			}
 		}
 

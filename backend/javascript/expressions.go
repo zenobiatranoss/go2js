@@ -6,7 +6,6 @@ import (
 	"go/token"
 	gotypes "go/types"
 	"strconv"
-	"strings"
 )
 
 func (e *emitter) emitExpr(expr ast.Expr) error {
@@ -112,6 +111,11 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			e.write(")")
 			e.needsRuntime = true
 			return nil
+		case token.XOR:
+			e.write("~")
+			if err := e.emitExpr(x.X); err != nil {
+				return err
+			}
 		default:
 			e.write(x.Op.String())
 			if err := e.emitExpr(x.X); err != nil {
@@ -129,103 +133,68 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		e.write(")")
 
 	case *ast.CallExpr:
-		if ident, ok := x.Fun.(*ast.Ident); ok && ident.Name == "recover" && len(x.Args) == 0 {
-			e.write("(go2jsPanicValue !== undefined && !go2jsRecovered ? (go2jsRecovered = true, go2jsPanicValue) : null)")
-			return nil
-		}
-
-		if isFormatCall(x) {
+		if name, ok := formatFuncName(x); ok && name != "" {
 			return e.emitFormatCall(x)
 		}
 
-		if selector, ok := x.Fun.(*ast.SelectorExpr); ok && e.isInterfaceMethod(selector) {
-			return e.emitInterfaceCall(x, selector)
-		}
-
-		if ident, ok := x.Fun.(*ast.Ident); ok && ident.Name == "new" && len(x.Args) == 1 {
-			if e.analysis != nil {
-				if info, ok := e.analysis.Types[x.Args[0]]; ok && info.Type != nil {
-					if _, ok := info.Type.Underlying().(*gotypes.Struct); ok {
-						e.write("go2jsNew(new ")
-						if err := e.emitExpr(x.Args[0]); err != nil {
-							return err
-						}
-						e.write("())")
-						e.needsRuntime = true
-						return nil
-					}
-
-					if basic, ok := info.Type.Underlying().(*gotypes.Basic); ok {
-						zero := "null"
-
-						switch basic.Kind() {
-						case gotypes.Bool:
-							zero = "false"
-						case gotypes.String:
-							zero = `""`
-						case gotypes.Int, gotypes.Int8, gotypes.Int16, gotypes.Int32, gotypes.Int64,
-							gotypes.Uint, gotypes.Uint8, gotypes.Uint16, gotypes.Uint32, gotypes.Uint64, gotypes.Uintptr,
-							gotypes.Float32, gotypes.Float64, gotypes.Complex64, gotypes.Complex128:
-							zero = "0"
-						}
-
-						e.write("go2jsNew(")
-						e.write(zero)
-						e.write(")")
-						e.needsRuntime = true
-						return nil
-					}
-				}
+		if ident, ok := x.Fun.(*ast.Ident); ok && ident.Name == "new" {
+			if len(x.Args) != 1 {
+				return fmt.Errorf("invalid new argument count")
 			}
 
-			e.write("go2jsNew(null)")
+			t := e.analyzedType(x.Args[0])
+			if t == nil {
+				return fmt.Errorf("cannot determine new type")
+			}
+
 			e.needsRuntime = true
+			e.write("go2jsNew(")
+			e.write(collectionZeroValue(t))
+			e.write(")")
 			return nil
 		}
-		if len(x.Args) == 1 && e.isTypeConversion(x) {
+
+		if e.isTypeConversion(x) {
 			return e.emitConversion(x)
 		}
-		if len(x.Args) > 0 {
 
-			switch x.Args[0].(type) {
+		if handled, err := e.emitCollectionBuiltinCall(x); handled {
+			return err
+		}
 
-			case *ast.MapType:
-
-				e.write("go2jsMakeMap()")
-
-				e.needsRuntime = true
-
-				return nil
-
-			case *ast.ArrayType:
-
-				e.write("go2jsMakeSlice(")
-
-				if len(x.Args) > 1 {
-
-					if err := e.emitExpr(x.Args[1]); err != nil {
-
-						return err
-
-					}
-
-				}
-
-				e.write(")")
-
-				e.needsRuntime = true
-
-				return nil
-
+		if selector, ok := x.Fun.(*ast.SelectorExpr); ok {
+			if e.isInterfaceMethod(selector) {
+				return e.emitInterfaceCall(x, selector)
 			}
-
+			if e.isDirectMethodCall(selector) {
+				if err := e.emitExpr(selector.X); err != nil {
+					return err
+				}
+				e.write(".")
+				e.write(selector.Sel.Name)
+				e.write("(")
+				for i, arg := range x.Args {
+					if i > 0 {
+						e.write(", ")
+					}
+					if err := e.emitCallArgument(x, i, arg); err != nil {
+						return err
+					}
+				}
+				e.write(")")
+				return nil
+			}
 		}
 
 		if name, ok := builtinName(x); ok {
 			e.write(name)
-
-			if strings.HasPrefix(name, "go2js") {
+			if name == "go2jsLen" || name == "go2jsCap" || name == "go2jsAppend" || name == "go2jsMake" || name == "go2jsMakeMap" || name == "go2jsMapDelete" || name == "go2jsSprintf" || name == "go2jsPanic" || name == "go2jsRecover" {
 				e.needsRuntime = true
+			}
+
+			if name == "go2jsMakeMap" {
+				e.write("()")
+				return nil
 			}
 		} else {
 			if err := e.emitExpr(x.Fun); err != nil {
@@ -234,20 +203,52 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		}
 
 		e.write("(")
-
 		for i, arg := range x.Args {
 			if i > 0 {
 				e.write(", ")
 			}
-
+			if ident, ok := x.Fun.(*ast.Ident); ok && ident.Name == "println" && e.isFloatExpr(arg) {
+				e.needsRuntime = true
+				e.write("go2jsFloat(")
+				if err := e.emitExpr(arg); err != nil {
+					return err
+				}
+				e.write(")")
+				continue
+			}
 			if err := e.emitCallArgument(x, i, arg); err != nil {
 				return err
 			}
 		}
-
 		e.write(")")
 
 	case *ast.SelectorExpr:
+		if method, signature, kind, ok := e.selectorMethod(x); ok {
+			e.needsRuntime = true
+
+			switch kind {
+			case gotypes.MethodVal:
+				e.write("go2jsMethodValue(")
+				if err := e.emitExpr(x.X); err != nil {
+					return err
+				}
+				e.write(", ")
+				e.write(strconv.Quote(method.Name()))
+				e.write(", ")
+				e.write(strconv.FormatBool(e.methodValueCopiesReceiver(signature)))
+				e.write(")")
+				return nil
+
+			case gotypes.MethodExpr:
+				e.write("go2jsMethodExpression(")
+				e.write(strconv.Quote(method.Name()))
+				e.write(", ")
+				e.write(strconv.FormatBool(e.methodValueCopiesReceiver(signature)))
+				e.write(")")
+				return nil
+			}
+		}
+
 		if err := e.emitExpr(x.X); err != nil {
 			return err
 		}
@@ -283,6 +284,10 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		e.write("]")
 
 	case *ast.SliceExpr:
+		if e.isArrayOrSliceExpr(x.X) {
+			return e.emitSliceExpression(x)
+		}
+
 		if err := e.emitExpr(x.X); err != nil {
 			return err
 		}
@@ -309,6 +314,13 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		return e.emitTypeAssert(x)
 
 	case *ast.CompositeLit:
+		if ok, err := e.emitNamedCollectionCompositeLit(x); ok {
+			return err
+		}
+		if emitted, err := e.emitCollectionCompositeLit(x); emitted || err != nil {
+			return err
+		}
+
 		if _, ok := x.Type.(*ast.MapType); ok {
 			e.needsRuntime = true
 			e.write("go2jsMap([")

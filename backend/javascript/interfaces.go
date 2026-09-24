@@ -76,6 +76,18 @@ func (e *emitter) emitInterfaceValue(expr ast.Expr, target gotypes.Type) error {
 		return nil
 	}
 
+	if target != nil && isArrayType(target) && e.analysis != nil {
+		if info, ok := e.analysis.Types[expr]; ok && info.Type != nil && isArrayType(info.Type) {
+			e.needsRuntime = true
+			e.write("go2jsArrayCopy(")
+			if err := e.emitExpr(expr); err != nil {
+				return err
+			}
+			e.write(")")
+			return nil
+		}
+	}
+
 	if isInterfaceGoType(target) {
 		if e.isInterfaceExpr(expr) {
 			return e.emitExpr(expr)
@@ -134,6 +146,10 @@ func (e *emitter) callSignature(call *ast.CallExpr) *gotypes.Signature {
 }
 
 func (e *emitter) emitCallArgument(call *ast.CallExpr, index int, expr ast.Expr) error {
+	if call != nil && call.Ellipsis.IsValid() && index == len(call.Args)-1 {
+		e.write("...")
+	}
+
 	signature := e.callSignature(call)
 	if signature == nil {
 		return e.emitExpr(expr)

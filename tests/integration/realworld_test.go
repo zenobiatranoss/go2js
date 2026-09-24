@@ -76,6 +76,28 @@ func compileSource(t *testing.T, dir, source string) string {
 	return output
 }
 
+func runCompiledProgram(t *testing.T, source string) (string, string) {
+	t.Helper()
+
+	dir := t.TempDir()
+	input := filepath.Join(dir, "main.go")
+	output := filepath.Join(dir, "main.js")
+
+	if err := os.WriteFile(input, []byte(source), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	want := runGoProgram(t, dir, "main.go")
+	js := compileSource(t, dir, source)
+
+	if err := os.WriteFile(output, []byte(js), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	got := runJavaScript(t, dir, "main.js")
+	return got, want
+}
+
 func TestRealWorldPrograms(t *testing.T) {
 	cases := []realWorldCase{
 		{

@@ -49,6 +49,24 @@ func (e *emitter) emitFuncBody(body *ast.BlockStmt) error {
 	e.newline()
 	e.writeIndent()
 	e.write("let go2jsRecovered = false;")
+
+	e.writeIndent()
+	e.write("const go2jsRecover = () => {")
+	e.newline()
+	e.indent++
+	e.writeIndent()
+	e.write("if (go2jsPanicValue === undefined || go2jsRecovered) return undefined;")
+	e.newline()
+	e.writeIndent()
+	e.write("go2jsRecovered = true;")
+	e.newline()
+	e.writeIndent()
+	e.write("return go2jsPanicValue;")
+	e.newline()
+	e.indent--
+	e.writeIndent()
+	e.write("};")
+	e.newline()
 	e.newline()
 
 	e.writeIndent()

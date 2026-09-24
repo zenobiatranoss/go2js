@@ -18,6 +18,19 @@ func isIntegerType(t types.Type) bool {
 	return basic.Info()&types.IsInteger != 0
 }
 
+func isFloatType(t types.Type) bool {
+	if t == nil {
+		return false
+	}
+
+	basic, ok := t.Underlying().(*types.Basic)
+	if !ok {
+		return false
+	}
+
+	return basic.Info()&types.IsFloat != 0
+}
+
 func isNumericType(t types.Type) bool {
 	if t == nil {
 		return false
@@ -71,6 +84,10 @@ func (e *emitter) analyzedType(expr ast.Expr) types.Type {
 
 func (e *emitter) isIntegerExpr(expr ast.Expr) bool {
 	return isIntegerType(e.analyzedType(expr))
+}
+
+func (e *emitter) isFloatExpr(expr ast.Expr) bool {
+	return isFloatType(e.analyzedType(expr))
 }
 
 func (e *emitter) isMapExprType(expr ast.Expr) bool {
