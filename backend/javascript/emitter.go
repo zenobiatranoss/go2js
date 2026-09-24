@@ -216,6 +216,21 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 		}
 
 		if s.Tok == token.ASSIGN && len(s.Lhs) == 1 && len(s.Rhs) == 1 {
+			if star, ok := s.Lhs[0].(*ast.StarExpr); ok {
+				e.writeIndent()
+				e.needsRuntime = true
+				e.write("go2jsStorePtr(")
+				if err := e.emitExpr(star.X); err != nil {
+					return err
+				}
+				e.write(", ")
+				if err := e.emitExpr(s.Rhs[0]); err != nil {
+					return err
+				}
+				e.write(");")
+				e.newline()
+				return nil
+			}
 			if index, ok := s.Lhs[0].(*ast.IndexExpr); ok && e.isMapExpr(index.X) {
 				e.writeIndent()
 				e.write("go2jsMapSet(")

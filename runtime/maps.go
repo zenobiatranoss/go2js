@@ -2,17 +2,21 @@ package runtime
 
 func MapKeys[K comparable, V any](values map[K]V) []K {
 	result := make([]K, 0, len(values))
+
 	for key := range values {
 		result = append(result, key)
 	}
+
 	return result
 }
 
 func MapValues[K comparable, V any](values map[K]V) []V {
 	result := make([]V, 0, len(values))
+
 	for _, value := range values {
 		result = append(result, value)
 	}
+
 	return result
 }
 
@@ -25,10 +29,13 @@ func MapClone[K comparable, V any](values map[K]V) map[K]V {
 	if values == nil {
 		return nil
 	}
+
 	result := make(map[K]V, len(values))
+
 	for key, value := range values {
 		result[key] = value
 	}
+
 	return result
 }
 
@@ -36,4 +43,17 @@ func MapClear[K comparable, V any](values map[K]V) {
 	for key := range values {
 		delete(values, key)
 	}
+}
+
+func MapGet[K comparable, V any](values map[K]V, key K) (V, bool) {
+	value, ok := values[key]
+	return value, ok
+}
+
+func MapSet[K comparable, V any](values map[K]V, key K, value V) {
+	values[key] = value
+}
+
+func MapDelete[K comparable, V any](values map[K]V, key K) {
+	delete(values, key)
 }

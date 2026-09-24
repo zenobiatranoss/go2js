@@ -67,11 +67,41 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			return err
 		}
 
-	case *ast.UnaryExpr:
-		e.write(x.Op.String())
-
+	case *ast.StarExpr:
+		e.write("go2jsDeref(")
 		if err := e.emitExpr(x.X); err != nil {
 			return err
+		}
+		e.write(")")
+		e.needsRuntime = true
+
+	case *ast.UnaryExpr:
+		switch x.Op {
+		case token.AND:
+			e.write("go2jsPtr(() => ")
+			if err := e.emitExpr(x.X); err != nil {
+				return err
+			}
+			e.write(", value => ")
+			if err := e.emitExpr(x.X); err != nil {
+				return err
+			}
+			e.write(" = value)")
+			e.needsRuntime = true
+			return nil
+		case token.MUL:
+			e.write("go2jsDeref(")
+			if err := e.emitExpr(x.X); err != nil {
+				return err
+			}
+			e.write(")")
+			e.needsRuntime = true
+			return nil
+		default:
+			e.write(x.Op.String())
+			if err := e.emitExpr(x.X); err != nil {
+				return err
+			}
 		}
 
 	case *ast.ParenExpr:
@@ -84,6 +114,34 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		e.write(")")
 
 	case *ast.CallExpr:
+		if ident, ok := x.Fun.(*ast.Ident); ok && ident.Name == "new" && len(x.Args) == 1 {
+			zero := "null"
+
+			if e.analysis != nil {
+				if info, ok := e.analysis.Types[x.Args[0]]; ok && info.Type != nil {
+					t := info.Type
+					if basic, ok := t.Underlying().(*gotypes.Basic); ok {
+						switch basic.Kind() {
+						case gotypes.Bool:
+							zero = "false"
+						case gotypes.String:
+							zero = `""`
+						case gotypes.Int, gotypes.Int8, gotypes.Int16, gotypes.Int32, gotypes.Int64,
+							gotypes.Uint, gotypes.Uint8, gotypes.Uint16, gotypes.Uint32, gotypes.Uint64, gotypes.Uintptr,
+							gotypes.Float32, gotypes.Float64, gotypes.Complex64, gotypes.Complex128:
+							zero = "0"
+						}
+					}
+				}
+			}
+
+			e.write("go2jsNew(")
+			e.write(zero)
+			e.write(")")
+			e.needsRuntime = true
+			return nil
+		}
+
 		if len(x.Args) == 1 && e.isTypeConversion(x) {
 			return e.emitConversion(x)
 		}
@@ -240,6 +298,10 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			return nil
 		}
 
+		if emitted, err := e.emitStructCompositeLit(x); emitted || err != nil {
+			return err
+		}
+
 		if x.Type != nil {
 			if _, ok := x.Type.(*ast.ArrayType); ok {
 				e.write("[")
@@ -308,6 +370,61 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 	}
 
 	return nil
+}
+
+func (e *emitter) emitStructCompositeLit(x *ast.CompositeLit) (bool, error) {
+	if e.analysis == nil {
+		return false, nil
+	}
+
+	info, ok := e.analysis.Types[x]
+	if !ok || info.Type == nil {
+		return false, nil
+	}
+
+	named, ok := info.Type.(*gotypes.Named)
+	if !ok {
+		return false, nil
+	}
+
+	structType, ok := named.Underlying().(*gotypes.Struct)
+	if !ok {
+		return false, nil
+	}
+
+	e.write("Object.assign(new ")
+	e.write(named.Obj().Name())
+	e.write("(), {")
+
+	for i, elt := range x.Elts {
+		if i > 0 {
+			e.write(", ")
+		}
+
+		if kv, ok := elt.(*ast.KeyValueExpr); ok {
+			if err := e.emitExpr(kv.Key); err != nil {
+				return true, err
+			}
+			e.write(": ")
+			if err := e.emitExpr(kv.Value); err != nil {
+				return true, err
+			}
+			continue
+		}
+
+		if i >= structType.NumFields() {
+			return true, fmt.Errorf("too many values in struct literal %s", named.Obj().Name())
+		}
+
+		e.write(structType.Field(i).Name())
+		e.write(": ")
+		if err := e.emitExpr(elt); err != nil {
+			return true, err
+		}
+	}
+
+	e.write("})")
+	return true, nil
 }
 
 func (e *emitter) functionResultCount(fn *ast.FuncDecl) int {

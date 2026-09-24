@@ -1,7 +1,46 @@
 package javascript
 
 func runtimeSource() string {
-	return `function go2jsLen(value) {
+	return `
+function go2jsPtr(get, set) {
+	return {
+		get,
+		set
+	};
+}
+
+function go2jsDeref(ptr) {
+	if (ptr === null || ptr === undefined) {
+		throw new TypeError("invalid pointer dereference");
+	}
+	if (typeof ptr.get !== "function") {
+		throw new TypeError("value is not a pointer");
+	}
+	return ptr.get();
+}
+
+function go2jsStorePtr(ptr, value) {
+	if (ptr === null || ptr === undefined) {
+		throw new TypeError("invalid pointer assignment");
+	}
+	if (typeof ptr.set !== "function") {
+		throw new TypeError("value is not a pointer");
+	}
+	ptr.set(value);
+}
+
+function go2jsNew(value) {
+	return {
+		get: function() {
+			return value;
+		},
+		set: function(next) {
+			value = next;
+		}
+	};
+}
+
+function go2jsLen(value) {
 	if (value === null || value === undefined) {
 		return 0;
 	}
@@ -31,13 +70,31 @@ function go2jsCap(value) {
 }
 
 function go2jsAppend(value, ...items) {
-	if (value === null || value === undefined) {
-		return [...items];
-	}
-	if (!Array.isArray(value)) {
-		throw new TypeError("go2jsAppend expects an array");
-	}
-	return value.concat(items);
+		if (value === null || value === undefined) {
+			const result = [...items];
+			Object.defineProperty(result, "__go2js_cap", {
+				value: result.length,
+				writable: true,
+				configurable: true
+			});
+			return result;
+		}
+		if (!Array.isArray(value)) {
+			throw new TypeError("go2jsAppend expects an array");
+		}
+
+		const result = value.concat(items);
+		const required = result.length;
+		const previousCap = value.__go2js_cap ?? value.length;
+		const capacity = required <= previousCap ? previousCap : required;
+
+		Object.defineProperty(result, "__go2js_cap", {
+			value: capacity,
+			writable: true,
+			configurable: true
+		});
+
+		return result;
 }
 
 function go2jsMake(type, size, capacity) {
@@ -53,17 +110,20 @@ function go2jsMake(type, size, capacity) {
 }
 
 function go2jsMakeSlice(size, capacity) {
-	if (typeof size !== "number") {
-		return [];
-	}
+		if (typeof size !== "number") {
+			return [];
+		}
 
-	if (typeof capacity === "number" && capacity > size) {
-		const value = new Array(capacity);
-		value.length = size;
+		const actualCapacity = typeof capacity === "number" ? capacity : size;
+		const value = new Array(size);
+
+		Object.defineProperty(value, "__go2js_cap", {
+			value: actualCapacity,
+			writable: true,
+			configurable: true
+		});
+
 		return value;
-	}
-
-	return new Array(size);
 }
 
 function go2jsMakeMap() {
