@@ -6,6 +6,7 @@ import (
 	"go/token"
 	gotypes "go/types"
 	"strconv"
+	"strings"
 )
 
 func (e *emitter) emitExpr(expr ast.Expr) error {
@@ -42,6 +43,10 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		}
 
 	case *ast.BinaryExpr:
+		if handled, err := e.emitInterfaceComparison(x); handled {
+			return err
+		}
+
 		if x.Op == token.QUO && e.isIntegerExpr(x.X) && e.isIntegerExpr(x.Y) {
 			e.write("Math.trunc((")
 			if err := e.emitExpr(x.X); err != nil {
@@ -124,6 +129,19 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		e.write(")")
 
 	case *ast.CallExpr:
+		if ident, ok := x.Fun.(*ast.Ident); ok && ident.Name == "recover" && len(x.Args) == 0 {
+			e.write("(go2jsPanicValue !== undefined && !go2jsRecovered ? (go2jsRecovered = true, go2jsPanicValue) : null)")
+			return nil
+		}
+
+		if isFormatCall(x) {
+			return e.emitFormatCall(x)
+		}
+
+		if selector, ok := x.Fun.(*ast.SelectorExpr); ok && e.isInterfaceMethod(selector) {
+			return e.emitInterfaceCall(x, selector)
+		}
+
 		if ident, ok := x.Fun.(*ast.Ident); ok && ident.Name == "new" && len(x.Args) == 1 {
 			if e.analysis != nil {
 				if info, ok := e.analysis.Types[x.Args[0]]; ok && info.Type != nil {
@@ -206,10 +224,7 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		if name, ok := builtinName(x); ok {
 			e.write(name)
 
-			if name == "go2jsLen" ||
-				name == "go2jsCap" ||
-				name == "go2jsAppend" ||
-				name == "go2jsMake" {
+			if strings.HasPrefix(name, "go2js") {
 				e.needsRuntime = true
 			}
 		} else {
@@ -225,7 +240,7 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				e.write(", ")
 			}
 
-			if err := e.emitExpr(arg); err != nil {
+			if err := e.emitCallArgument(x, i, arg); err != nil {
 				return err
 			}
 		}
@@ -289,6 +304,9 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		}
 
 		e.write(")")
+
+	case *ast.TypeAssertExpr:
+		return e.emitTypeAssert(x)
 
 	case *ast.CompositeLit:
 		if _, ok := x.Type.(*ast.MapType); ok {
@@ -383,7 +401,7 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 
 		e.write(") ")
 
-		if err := e.emitBlock(x.Body); err != nil {
+		if err := e.emitFuncBody(x.Body); err != nil {
 			return err
 		}
 
@@ -467,6 +485,13 @@ func (e *emitter) functionResultCount(fn *ast.FuncDecl) int {
 func (e *emitter) isMultiReturnCall(expr ast.Expr) bool {
 	call, ok := expr.(*ast.CallExpr)
 	if !ok || e.analysis == nil {
+		return false
+	}
+
+	if selector, ok := call.Fun.(*ast.SelectorExpr); ok {
+		if pkg, ok := selector.X.(*ast.Ident); ok {
+			return multiReturnStdlibFuncs[pkg.Name+"."+selector.Sel.Name]
+		}
 		return false
 	}
 

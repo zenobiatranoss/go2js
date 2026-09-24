@@ -59,7 +59,7 @@ func concreteTypeName(t gotypes.Type) string {
 	case *gotypes.Named:
 		return value.Obj().Name()
 	case *gotypes.Pointer:
-		return concreteTypeName(value.Elem())
+		return "*" + concreteTypeName(value.Elem())
 	default:
 		return t.String()
 	}
@@ -71,12 +71,14 @@ func (e *emitter) emitInterfaceValue(expr ast.Expr, target gotypes.Type) error {
 		return nil
 	}
 
+	if ident, ok := expr.(*ast.Ident); ok && ident.Name == "nil" {
+		e.write("null")
+		return nil
+	}
+
 	if isInterfaceGoType(target) {
 		if e.isInterfaceExpr(expr) {
-			if err := e.emitExpr(expr); err != nil {
-				return err
-			}
-			return nil
+			return e.emitExpr(expr)
 		}
 
 		e.needsRuntime = true
@@ -85,7 +87,9 @@ func (e *emitter) emitInterfaceValue(expr ast.Expr, target gotypes.Type) error {
 			return err
 		}
 		e.write(`, "`)
-		e.write(concreteTypeName(e.analysis.Types[expr].Type))
+		if info, ok := e.analysis.Types[expr]; ok && info.Type != nil {
+			e.write(concreteTypeName(info.Type))
+		}
 		e.write(`")`)
 		return nil
 	}
@@ -196,8 +200,30 @@ func (e *emitter) emitInterfaceCall(call *ast.CallExpr, sel *ast.SelectorExpr) e
 	e.write(sel.Sel.Name)
 	e.write(`"`)
 
-	for _, arg := range call.Args {
+	selection := e.analysis.Selections[sel]
+	var signature *gotypes.Signature
+	if selection != nil {
+		if method, ok := selection.Obj().(*gotypes.Func); ok {
+			signature, _ = method.Type().(*gotypes.Signature)
+		}
+	}
+
+	for i, arg := range call.Args {
 		e.write(", ")
+
+		if signature != nil && i < signature.Params().Len() {
+			target := signature.Params().At(i).Type()
+			if signature.Variadic() && i >= signature.Params().Len()-1 {
+				if slice, ok := target.(*gotypes.Slice); ok {
+					target = slice.Elem()
+				}
+			}
+			if err := e.emitInterfaceValue(arg, target); err != nil {
+				return err
+			}
+			continue
+		}
+
 		if err := e.emitExpr(arg); err != nil {
 			return err
 		}

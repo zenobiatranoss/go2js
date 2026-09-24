@@ -27,12 +27,20 @@ func NewResultContext(result *typesresult.Result, fset *token.FileSet) *Context 
 		return NewContext(nil, nil, fset)
 	}
 
+	if result.Info != nil {
+		return NewContext(result.Info, result.Package, fset)
+	}
+
 	info := &types.Info{
-		Types:      result.Types,
-		Defs:       result.Defs,
-		Uses:       result.Uses,
-		Selections: result.Selections,
-		Scopes:     result.Scopes,
+		Types:        result.Types,
+		Defs:         result.Defs,
+		Uses:         result.Uses,
+		Implicits:    result.Implicits,
+		Instances:    result.Instances,
+		Selections:   result.Selections,
+		Scopes:       result.Scopes,
+		InitOrder:    result.InitOrder,
+		FileVersions: result.FileVersions,
 	}
 
 	return NewContext(info, result.Package, fset)

@@ -148,7 +148,7 @@ func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 	}
 
 	e.write(") ")
-	return e.emitBlock(fn.Body)
+	return e.emitFuncBody(fn.Body)
 }
 
 func (e *emitter) emitBlock(block *ast.BlockStmt) error {
@@ -516,6 +516,9 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 		if err := e.emitBlock(s); err != nil {
 			return err
 		}
+
+	case *ast.DeferStmt:
+		return e.emitDeferStmt(s)
 
 	case *ast.BranchStmt:
 		e.writeIndent()

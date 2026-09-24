@@ -28,6 +28,8 @@ func builtinName(call *ast.CallExpr) (string, bool) {
 			return "go2jsMake", true
 		case "delete":
 			return "go2jsMapDelete", true
+		case "panic":
+			return "go2jsPanic", true
 		}
 
 	case *ast.SelectorExpr:
@@ -42,9 +44,11 @@ func builtinName(call *ast.CallExpr) (string, bool) {
 				return "console.log", true
 			case "Print":
 				return "process.stdout.write", true
-			case "Printf":
-				return "console.log", true
 			}
+		}
+
+		if jsName, ok := stdlibFuncName(pkg.Name, fn.Sel.Name); ok {
+			return jsName, true
 		}
 	}
 

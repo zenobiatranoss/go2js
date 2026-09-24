@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"path/filepath"
@@ -11,10 +12,13 @@ import (
 type Package struct {
 	Name  string
 	Files []*ParsedFile
+	fset  *token.FileSet
 }
 
 func NewPackage(name string) *Package {
-	return &Package{Name: strings.TrimSpace(name)}
+	return &Package{
+		Name: strings.TrimSpace(name),
+	}
 }
 
 func (p *Package) Add(file *ParsedFile) {
@@ -26,6 +30,10 @@ func (p *Package) Add(file *ParsedFile) {
 		p.Name = file.PackageName()
 	}
 
+	if p.fset == nil {
+		p.fset = file.Fset
+	}
+
 	p.Files = append(p.Files, file)
 }
 
@@ -33,6 +41,14 @@ func (p *Package) AddFiles(files ...*ParsedFile) {
 	for _, file := range files {
 		p.Add(file)
 	}
+}
+
+func (p *Package) SetFileSet(fset *token.FileSet) {
+	if p == nil {
+		return
+	}
+
+	p.fset = fset
 }
 
 func (p *Package) Len() int {
@@ -47,6 +63,47 @@ func (p *Package) Sort() {
 	sort.SliceStable(p.Files, func(i, j int) bool {
 		return p.Files[i].Path < p.Files[j].Path
 	})
+}
+
+func (p *Package) Validate() error {
+	if p == nil {
+		return fmt.Errorf("compiler: nil package")
+	}
+
+	if len(p.Files) == 0 {
+		return fmt.Errorf("compiler: empty package")
+	}
+
+	if strings.TrimSpace(p.Name) == "" {
+		return fmt.Errorf("compiler: package has no name")
+	}
+
+	seen := make(map[string]struct{}, len(p.Files))
+
+	for _, file := range p.Files {
+		if file == nil || !file.Valid() {
+			return fmt.Errorf("compiler: package contains invalid file")
+		}
+
+		if file.PackageName() != p.Name {
+			return fmt.Errorf(
+				"compiler: file %q belongs to package %q, expected %q",
+				file.Path,
+				file.PackageName(),
+				p.Name,
+			)
+		}
+
+		path := filepath.Clean(file.Path)
+		if path != "." {
+			if _, exists := seen[path]; exists {
+				return fmt.Errorf("compiler: duplicate package file %q", path)
+			}
+			seen[path] = struct{}{}
+		}
+	}
+
+	return nil
 }
 
 func (p *Package) Paths() []string {
@@ -99,7 +156,7 @@ func (p *Package) Types() []*ast.TypeSpec {
 
 		for _, decl := range file.File.Decls {
 			gen, ok := decl.(*ast.GenDecl)
-			if !ok || gen.Tok.String() != "type" {
+			if !ok || gen.Tok != token.TYPE {
 				continue
 			}
 
@@ -161,6 +218,10 @@ func (p *Package) HasMain() bool {
 }
 
 func (p *Package) FileSet() *token.FileSet {
+	if p != nil && p.fset != nil {
+		return p.fset
+	}
+
 	for _, file := range p.Files {
 		if file != nil && file.Fset != nil {
 			return file.Fset
@@ -168,6 +229,20 @@ func (p *Package) FileSet() *token.FileSet {
 	}
 
 	return token.NewFileSet()
+}
+
+func (p *Package) ASTFiles() []*ast.File {
+	result := make([]*ast.File, 0, len(p.Files))
+
+	for _, file := range p.Files {
+		if file == nil || file.File == nil {
+			continue
+		}
+
+		result = append(result, file.File)
+	}
+
+	return result
 }
 
 func (p *Package) Position(pos token.Pos) token.Position {

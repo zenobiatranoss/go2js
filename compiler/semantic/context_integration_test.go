@@ -83,3 +83,35 @@ func TestNewResultContext(t *testing.T) {
 		t.Fatal("fileset was not preserved")
 	}
 }
+
+func TestNewResultContextPreservesCompleteInfo(t *testing.T) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "generic.go", `
+package sample
+
+func Identity[T any](value T) T {
+	return value
+}
+
+var result = Identity(42)
+`, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	checked, err := typesresult.Check(fset, file)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	context := NewResultContext(checked, fset)
+	if context.Info != checked.Info {
+		t.Fatal("semantic context should reuse the complete go/types info")
+	}
+	if len(context.Info.Instances) == 0 {
+		t.Fatal("generic instance information was lost")
+	}
+	if context.Package != checked.Package {
+		t.Fatal("semantic context should preserve the checked package")
+	}
+}
