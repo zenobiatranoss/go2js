@@ -8,6 +8,7 @@ import (
 	gotypesstd "go/types"
 	"strings"
 
+	"github.com/zenobiatranoss/go2js/compiler/semantic"
 	gotypes "github.com/zenobiatranoss/go2js/types"
 )
 
@@ -19,14 +20,23 @@ type emitter struct {
 	needsRuntime     bool
 	resultCount      int
 	analysis         *gotypes.Result
+	semantic         *semantic.Context
 	currentSignature *gotypesstd.Signature
 }
 
 func Emit(file *ast.File, analysis *gotypes.Result) (string, error) {
-	e := &emitter{
-		analysis: analysis,
+	return EmitWithContext(file, analysis, nil)
+}
+
+func EmitWithContext(file *ast.File, analysis *gotypes.Result, context *semantic.Context) (string, error) {
+	if context == nil && analysis != nil {
+		context = semantic.NewResultContext(analysis, nil)
 	}
 
+	e := &emitter{
+		analysis: analysis,
+		semantic: context,
+	}
 	for _, decl := range file.Decls {
 		switch d := decl.(type) {
 		case *ast.FuncDecl:
@@ -68,12 +78,19 @@ func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 	e.resultCount = e.functionResultCount(fn)
 	e.currentSignature = nil
 
-	if e.analysis != nil && fn.Name != nil {
-		if object := e.analysis.Defs[fn.Name]; object != nil {
-			if function, ok := object.(*gotypesstd.Func); ok {
-				if signature, ok := function.Type().(*gotypesstd.Signature); ok {
-					e.currentSignature = signature
-				}
+	if fn.Name != nil {
+		var object gotypesstd.Object
+		if e.semantic != nil {
+			object = e.semantic.Object(fn.Name)
+		} else if e.analysis != nil {
+			object = e.analysis.Defs[fn.Name]
+			if object == nil {
+				object = e.analysis.Uses[fn.Name]
+			}
+		}
+		if function, ok := object.(*gotypesstd.Func); ok {
+			if signature, ok := function.Type().(*gotypesstd.Signature); ok {
+				e.currentSignature = signature
 			}
 		}
 	}
@@ -83,7 +100,7 @@ func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 		}
 
 		receiver := fn.Recv.List[0]
-		if len(receiver.Names) != 1 {
+		if len(receiver.Names) > 1 {
 			return fmt.Errorf("unsupported method receiver")
 		}
 
@@ -157,7 +174,57 @@ func (e *emitter) emitBlock(block *ast.BlockStmt) error {
 	return nil
 }
 
+func (e *emitter) emitTypeAssertAssignment(stmt *ast.AssignStmt) (bool, error) {
+	if stmt == nil || len(stmt.Rhs) != 1 || len(stmt.Lhs) != 2 {
+		return false, nil
+	}
+
+	assert, ok := stmt.Rhs[0].(*ast.TypeAssertExpr)
+	if !ok || assert.Type == nil {
+		return false, nil
+	}
+
+	e.needsRuntime = true
+	e.writeIndent()
+
+	if stmt.Tok == token.DEFINE {
+		e.write("let ")
+	}
+
+	e.write("[")
+	for i, lhs := range stmt.Lhs {
+		if i > 0 {
+			e.write(", ")
+		}
+
+		if ident, ok := lhs.(*ast.Ident); ok && stmt.Tok == token.DEFINE {
+			e.declare(ident.Name)
+		}
+
+		if err := e.emitExpr(lhs); err != nil {
+			return true, err
+		}
+	}
+	e.write("] = go2jsAssertOK(")
+
+	if err := e.emitExpr(assert.X); err != nil {
+		return true, err
+	}
+
+	e.write(`, "`)
+	e.write(goTypeNameFromExpr(assert.Type))
+	e.write(`")`)
+	e.write(";")
+	e.newline()
+
+	return true, nil
+}
+
 func (e *emitter) emitStmt(stmt ast.Stmt) error {
+	if typeSwitch, ok := stmt.(*ast.TypeSwitchStmt); ok {
+		return e.emitTypeSwitch(typeSwitch)
+	}
+
 	switch s := stmt.(type) {
 	case *ast.ReturnStmt:
 		e.writeIndent()
@@ -195,6 +262,10 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 		e.newline()
 
 	case *ast.AssignStmt:
+		if handled, err := e.emitTypeAssertAssignment(s); handled {
+			return err
+		}
+
 		if len(s.Lhs) > 1 && len(s.Rhs) == 1 && e.isMultiReturnCall(s.Rhs[0]) {
 			e.writeIndent()
 
@@ -744,13 +815,18 @@ func (e *emitter) declare(name string) {
 }
 
 func (e *emitter) variableType(ident *ast.Ident) gotypesstd.Type {
-	if e.analysis == nil || ident == nil {
+	if ident == nil {
 		return nil
 	}
 
-	object := e.analysis.Defs[ident]
-	if object == nil {
-		object = e.analysis.Uses[ident]
+	var object gotypesstd.Object
+	if e.semantic != nil {
+		object = e.semantic.Object(ident)
+	} else if e.analysis != nil {
+		object = e.analysis.Defs[ident]
+		if object == nil {
+			object = e.analysis.Uses[ident]
+		}
 	}
 
 	variable, ok := object.(*gotypesstd.Var)
@@ -767,9 +843,14 @@ func (e *emitter) emitConversion(call *ast.CallExpr) error {
 		return fmt.Errorf("unsupported conversion")
 	}
 
-	object := e.analysis.Uses[ident]
-	if object == nil {
-		object = e.analysis.Defs[ident]
+	var object gotypesstd.Object
+	if e.semantic != nil {
+		object = e.semantic.Object(ident)
+	} else {
+		object = e.analysis.Uses[ident]
+		if object == nil {
+			object = e.analysis.Defs[ident]
+		}
 	}
 
 	typeName, ok := object.(*gotypesstd.TypeName)

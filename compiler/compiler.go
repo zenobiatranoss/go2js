@@ -3,6 +3,8 @@ package compiler
 import (
 	"fmt"
 	"go/ast"
+	"os"
+	"path/filepath"
 
 	"github.com/zenobiatranoss/go2js/backend/javascript"
 )
@@ -12,8 +14,13 @@ type Program struct {
 	Analysis *Analysis
 }
 
-func CompileFile(filename string) (string, error) {
-	parsed, err := ParseFile(filename)
+type PackageProgram struct {
+	Package  *Package
+	Analysis *PackageAnalysis
+}
+
+func CompileFile(path string) (string, error) {
+	parsed, err := ParseFile(path)
 	if err != nil {
 		return "", err
 	}
@@ -23,26 +30,66 @@ func CompileFile(filename string) (string, error) {
 		return "", err
 	}
 
-	program := &Program{
-		File:     parsed.File,
-		Analysis: analysis,
-	}
-
-	return Compile(program)
+	return javascript.EmitWithContext(parsed.File, analysis.Types, analysis.Semantic)
 }
 
-func Compile(program *Program) (string, error) {
-	if program == nil {
-		return "", fmt.Errorf("compiler: nil program")
+func CompilePackage(pkg *Package) (string, error) {
+	analysis, err := AnalyzePackage(pkg)
+	if err != nil {
+		return "", err
 	}
 
-	if program.File == nil {
-		return "", fmt.Errorf("compiler: missing AST")
+	var output string
+
+	for _, parsed := range pkg.Files {
+		if parsed == nil || parsed.File == nil {
+			return "", fmt.Errorf("package contains invalid file")
+		}
+
+		if output != "" {
+			output += "\n"
+		}
+
+		code, err := javascript.EmitWithContext(parsed.File, analysis.Types, analysis.Semantic)
+		if err != nil {
+			return "", err
+		}
+
+		output += code
 	}
 
-	if program.Analysis == nil || program.Analysis.Types == nil {
-		return "", fmt.Errorf("compiler: missing analysis")
+	return output, nil
+}
+
+func CompileDirectory(dir string) (string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", err
 	}
 
-	return javascript.Emit(program.File, program.Analysis.Types)
+	pkg := NewPackage(filepath.Base(dir))
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		if filepath.Ext(entry.Name()) != ".go" {
+			continue
+		}
+
+		path := filepath.Join(dir, entry.Name())
+		parsed, err := ParseFile(path)
+		if err != nil {
+			return "", err
+		}
+
+		pkg.Add(parsed)
+	}
+
+	if pkg.Empty() {
+		return "", fmt.Errorf("no Go files found in %s", dir)
+	}
+
+	return CompilePackage(pkg)
 }
