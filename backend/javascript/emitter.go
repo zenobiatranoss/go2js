@@ -347,6 +347,58 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 		e.write(";")
 		e.newline()
 
+	case *ast.SwitchStmt:
+		e.writeIndent()
+		e.write("switch (")
+
+		if s.Tag != nil {
+			if err := e.emitExpr(s.Tag); err != nil {
+				return err
+			}
+		}
+
+		e.write(") {")
+		e.newline()
+
+		e.indent++
+
+		for _, item := range s.Body.List {
+			clause := item.(*ast.CaseClause)
+
+			if clause.List == nil {
+				e.writeIndent()
+				e.write("default:")
+				e.newline()
+			} else {
+				for _, expr := range clause.List {
+					e.writeIndent()
+					e.write("case ")
+
+					if err := e.emitExpr(expr); err != nil {
+						return err
+					}
+
+					e.write(":")
+					e.newline()
+				}
+			}
+
+			e.indent++
+
+			for _, bodyStmt := range clause.Body {
+				if err := e.emitStmt(bodyStmt); err != nil {
+					return err
+				}
+			}
+
+			e.indent--
+		}
+
+		e.indent--
+		e.writeIndent()
+		e.write("}")
+		e.newline()
+
 	default:
 		return fmt.Errorf("unsupported statement: %T", stmt)
 	}

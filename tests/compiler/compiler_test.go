@@ -2,6 +2,7 @@ package compiler_test
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -110,4 +111,46 @@ func writeSource(t *testing.T, source string) string {
 	}
 
 	return file
+}
+
+func TestCompileSwitch(t *testing.T) {
+	dir := t.TempDir()
+	filename := filepath.Join(dir, "main.go")
+
+	source := `package main
+
+func main() {
+	value := 2
+
+	switch value {
+	case 1:
+		println("one")
+	case 2:
+		println("two")
+	default:
+		println("other")
+	}
+}
+`
+
+	if err := os.WriteFile(filename, []byte(source), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	output, err := compiler.CompileFile(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{
+		"switch (value) {",
+		"case 1:",
+		"case 2:",
+		"default:",
+		`console.log("two");`,
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("generated JavaScript missing %q:\n%s", want, output)
+		}
+	}
 }
