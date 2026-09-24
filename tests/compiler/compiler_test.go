@@ -188,8 +188,10 @@ func main() {
 	for _, want := range []string{
 		"User.prototype.Greet = function()",
 		"User.prototype.SetAge = function(age)",
-		"return u.Name;",
-		"u.Age = age;",
+		"return this.Name;",
+		"this.Age = age;",
+		"user.Greet();",
+		"user.SetAge(30);",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("generated JavaScript missing %q:\n%s", want, output)
@@ -198,5 +200,36 @@ func main() {
 
 	if strings.Contains(output, "function User.prototype.") {
 		t.Fatalf("generated invalid JavaScript method syntax:\n%s", output)
+	}
+}
+
+func TestCompileMethodReceiverShadowing(t *testing.T) {
+	source := `package main
+
+type User struct {
+	Name string
+}
+
+func (u User) Test() string {
+	{
+		u := "local"
+		return u
+	}
+}
+`
+
+	file := writeSource(t, source)
+
+	output, err := compiler.CompileFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(output, `let u = "local";`) {
+		t.Fatalf("local receiver shadow was incorrectly rewritten:\n%s", output)
+	}
+
+	if !strings.Contains(output, "return u;") {
+		t.Fatalf("local receiver shadow return was incorrectly rewritten:\n%s", output)
 	}
 }
