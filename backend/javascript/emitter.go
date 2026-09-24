@@ -124,15 +124,18 @@ func (e *emitter) emitBlock(block *ast.BlockStmt) error {
 	e.write("{")
 	e.newline()
 
+	e.scopes = append(e.scopes, map[string]bool{})
 	e.indent++
 
 	for _, stmt := range block.List {
 		if err := e.emitStmt(stmt); err != nil {
+			e.scopes = e.scopes[:len(e.scopes)-1]
 			return err
 		}
 	}
 
 	e.indent--
+	e.scopes = e.scopes[:len(e.scopes)-1]
 	e.writeIndent()
 	e.write("}")
 	e.newline()
@@ -178,6 +181,11 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 
 		if s.Tok == token.DEFINE {
 			e.write("let ")
+		}
+		for _, lhs := range s.Lhs {
+			if ident, ok := lhs.(*ast.Ident); ok {
+				e.declare(ident.Name)
+			}
 		}
 
 		for i, lhs := range s.Lhs {
@@ -572,10 +580,32 @@ func (e *emitter) emitType(spec *ast.TypeSpec) error {
 	return nil
 }
 
+func (e *emitter) isShadowed(name string) bool {
+	for i := len(e.scopes) - 1; i >= 0; i-- {
+		if e.scopes[i][name] {
+			return true
+		}
+	}
+	return false
+}
+
+func (e *emitter) declare(name string) {
+	if len(e.scopes) == 0 {
+		return
+	}
+	e.scopes[len(e.scopes)-1][name] = true
+}
+
 func (e *emitter) emitExpr(expr ast.Expr) error {
 	switch x := expr.(type) {
 	case *ast.Ident:
-		e.write(x.Name)
+		if x.Name == "nil" {
+			e.write("null")
+		} else if x.Name == e.receiver && !e.isShadowed(x.Name) {
+			e.write("this")
+		} else {
+			e.write(x.Name)
+		}
 
 	case *ast.BasicLit:
 		switch x.Kind {
