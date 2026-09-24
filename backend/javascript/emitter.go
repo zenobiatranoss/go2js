@@ -7,16 +7,23 @@ import (
 	"go/token"
 	"strconv"
 	"strings"
+
+	gotypes "github.com/zenobiatranoss/go2js/types"
 )
 
 type emitter struct {
+	receiver     string
+	scopes       []map[string]bool
 	buf          bytes.Buffer
 	indent       int
 	needsRuntime bool
+	analysis     *gotypes.Result
 }
 
-func Emit(file *ast.File) (string, error) {
-	e := &emitter{}
+func Emit(file *ast.File, analysis *gotypes.Result) (string, error) {
+	e := &emitter{
+		analysis: analysis,
+	}
 
 	for _, decl := range file.Decls {
 		switch d := decl.(type) {
@@ -55,6 +62,7 @@ func Emit(file *ast.File) (string, error) {
 }
 
 func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
+	e.receiver = ""
 	if fn.Recv != nil {
 		if len(fn.Recv.List) != 1 {
 			return fmt.Errorf("unsupported method receiver")
@@ -78,6 +86,9 @@ func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 			receiverType = ident.Name
 		default:
 			return fmt.Errorf("unsupported receiver type: %T", receiver.Type)
+		}
+		if len(receiver.Names) > 0 {
+			e.receiver = receiver.Names[0].Name
 		}
 
 		e.write(receiverType)
