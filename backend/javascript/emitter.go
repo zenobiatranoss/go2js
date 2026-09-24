@@ -55,42 +55,40 @@ func Emit(file *ast.File) (string, error) {
 }
 
 func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
-	e.write("function ")
-
 	if fn.Recv != nil {
 		if len(fn.Recv.List) != 1 {
 			return fmt.Errorf("unsupported method receiver")
 		}
 
 		receiver := fn.Recv.List[0]
-		name := receiver.Names[0].Name
+		if len(receiver.Names) != 1 {
+			return fmt.Errorf("unsupported method receiver")
+		}
+
+		var receiverType string
 
 		switch t := receiver.Type.(type) {
 		case *ast.Ident:
-			e.write(t.Name)
-			e.write(".prototype.")
-			e.write(fn.Name.Name)
-
+			receiverType = t.Name
 		case *ast.StarExpr:
 			ident, ok := t.X.(*ast.Ident)
 			if !ok {
 				return fmt.Errorf("unsupported receiver type")
 			}
-
-			e.write(ident.Name)
-			e.write(".prototype.")
-			e.write(fn.Name.Name)
-
+			receiverType = ident.Name
 		default:
 			return fmt.Errorf("unsupported receiver type: %T", receiver.Type)
 		}
 
-		_ = name
-	} else {
+		e.write(receiverType)
+		e.write(".prototype.")
 		e.write(fn.Name.Name)
+		e.write(" = function(")
+	} else {
+		e.write("function ")
+		e.write(fn.Name.Name)
+		e.write("(")
 	}
-
-	e.write("(")
 
 	if fn.Type.Params != nil {
 		first := true

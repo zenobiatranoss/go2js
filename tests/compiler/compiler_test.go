@@ -154,3 +154,49 @@ func main() {
 		}
 	}
 }
+
+func TestCompileMethod(t *testing.T) {
+	source := `package main
+
+type User struct {
+	Name string
+	Age  int
+}
+
+func (u User) Greet() string {
+	return u.Name
+}
+
+func (u *User) SetAge(age int) {
+	u.Age = age
+}
+
+func main() {
+	user := User{Name: "alice", Age: 20}
+	user.Greet()
+	user.SetAge(30)
+}
+`
+
+	file := writeSource(t, source)
+
+	output, err := compiler.CompileFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{
+		"User.prototype.Greet = function()",
+		"User.prototype.SetAge = function(age)",
+		"return u.Name;",
+		"u.Age = age;",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("generated JavaScript missing %q:\n%s", want, output)
+		}
+	}
+
+	if strings.Contains(output, "function User.prototype.") {
+		t.Fatalf("generated invalid JavaScript method syntax:\n%s", output)
+	}
+}
