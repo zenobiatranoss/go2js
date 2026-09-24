@@ -619,8 +619,7 @@ func (e *emitter) emitType(spec *ast.TypeSpec) error {
 		e.writeIndent()
 		e.write("class ")
 		e.write(spec.Name.Name)
-		e.write(" ")
-		e.write("{")
+		e.write(" {")
 		e.newline()
 
 		e.indent++
@@ -636,6 +635,30 @@ func (e *emitter) emitType(spec *ast.TypeSpec) error {
 			}
 		}
 
+		e.writeIndent()
+		e.write("constructor() {")
+		e.newline()
+		e.indent++
+
+		if t.Fields != nil {
+			for _, field := range t.Fields.List {
+				for _, name := range field.Names {
+					e.writeIndent()
+					e.write("this.")
+					e.write(name.Name)
+					e.write(" = ")
+					e.write(structZeroValue(field.Type))
+					e.write(";")
+					e.newline()
+				}
+			}
+		}
+
+		e.indent--
+		e.writeIndent()
+		e.write("}")
+		e.newline()
+
 		e.indent--
 		e.writeIndent()
 		e.write("}")
@@ -647,6 +670,32 @@ func (e *emitter) emitType(spec *ast.TypeSpec) error {
 	}
 
 	return nil
+}
+
+func structZeroValue(expr ast.Expr) string {
+	switch t := expr.(type) {
+	case *ast.Ident:
+		switch t.Name {
+		case "bool":
+			return "false"
+		case "string":
+			return `""`
+		case "int", "int8", "int16", "int32", "int64",
+			"uint", "uint8", "uint16", "uint32", "uint64", "uintptr",
+			"float32", "float64", "complex64", "complex128":
+			return "0"
+		}
+	case *ast.StarExpr:
+		return "null"
+	case *ast.InterfaceType:
+		return "null"
+	case *ast.MapType:
+		return "null"
+	case *ast.ChanType:
+		return "null"
+	}
+
+	return "null"
 }
 
 func (e *emitter) isShadowed(name string) bool {

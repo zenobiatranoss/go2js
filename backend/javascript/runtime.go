@@ -3,10 +3,39 @@ package javascript
 func runtimeSource() string {
 	return `
 function go2jsPtr(get, set) {
-	return {
+	const pointer = {
 		get,
 		set
 	};
+
+	return new Proxy(pointer, {
+		get(target, property, receiver) {
+			if (property === "get" || property === "set") {
+				return Reflect.get(target, property, receiver);
+			}
+
+			const value = target.get();
+			if (value === null || value === undefined) {
+				return undefined;
+			}
+
+			return Reflect.get(value, property, value);
+		},
+
+		set(target, property, value) {
+			const current = target.get();
+			if (current === null || current === undefined) {
+				throw new TypeError("cannot assign through nil pointer");
+			}
+
+			return Reflect.set(current, property, value);
+		},
+
+		has(target, property) {
+			const value = target.get();
+			return value !== null && value !== undefined && property in Object(value);
+		}
+	});
 }
 
 function go2jsDeref(ptr) {
@@ -30,14 +59,14 @@ function go2jsStorePtr(ptr, value) {
 }
 
 function go2jsNew(value) {
-	return {
-		get: function() {
+	return go2jsPtr(
+		function() {
 			return value;
 		},
-		set: function(next) {
+		function(next) {
 			value = next;
 		}
-	};
+	);
 }
 
 function go2jsLen(value) {

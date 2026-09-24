@@ -78,6 +78,17 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 	case *ast.UnaryExpr:
 		switch x.Op {
 		case token.AND:
+			e.needsRuntime = true
+
+			if lit, ok := x.X.(*ast.CompositeLit); ok {
+				e.write("go2jsNew(")
+				if err := e.emitExpr(lit); err != nil {
+					return err
+				}
+				e.write(")")
+				return nil
+			}
+
 			e.write("go2jsPtr(() => ")
 			if err := e.emitExpr(x.X); err != nil {
 				return err
@@ -87,7 +98,6 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				return err
 			}
 			e.write(" = value)")
-			e.needsRuntime = true
 			return nil
 		case token.MUL:
 			e.write("go2jsDeref(")
@@ -115,12 +125,21 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 
 	case *ast.CallExpr:
 		if ident, ok := x.Fun.(*ast.Ident); ok && ident.Name == "new" && len(x.Args) == 1 {
-			zero := "null"
-
 			if e.analysis != nil {
 				if info, ok := e.analysis.Types[x.Args[0]]; ok && info.Type != nil {
-					t := info.Type
-					if basic, ok := t.Underlying().(*gotypes.Basic); ok {
+					if _, ok := info.Type.Underlying().(*gotypes.Struct); ok {
+						e.write("go2jsNew(new ")
+						if err := e.emitExpr(x.Args[0]); err != nil {
+							return err
+						}
+						e.write("())")
+						e.needsRuntime = true
+						return nil
+					}
+
+					if basic, ok := info.Type.Underlying().(*gotypes.Basic); ok {
+						zero := "null"
+
 						switch basic.Kind() {
 						case gotypes.Bool:
 							zero = "false"
@@ -131,17 +150,20 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 							gotypes.Float32, gotypes.Float64, gotypes.Complex64, gotypes.Complex128:
 							zero = "0"
 						}
+
+						e.write("go2jsNew(")
+						e.write(zero)
+						e.write(")")
+						e.needsRuntime = true
+						return nil
 					}
 				}
 			}
 
-			e.write("go2jsNew(")
-			e.write(zero)
-			e.write(")")
+			e.write("go2jsNew(null)")
 			e.needsRuntime = true
 			return nil
 		}
-
 		if len(x.Args) == 1 && e.isTypeConversion(x) {
 			return e.emitConversion(x)
 		}
