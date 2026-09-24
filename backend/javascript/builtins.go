@@ -20,7 +20,14 @@ func builtinName(call *ast.CallExpr) (string, bool) {
 		case "append":
 			return "go2jsAppend", true
 		case "make":
+			if len(call.Args) > 0 {
+				if _, ok := call.Args[0].(*ast.MapType); ok {
+					return "go2jsMakeMap", true
+				}
+			}
 			return "go2jsMake", true
+		case "delete":
+			return "go2jsMapDelete", true
 		}
 
 	case *ast.SelectorExpr:

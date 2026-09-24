@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	gotypesstd "go/types"
 	"strconv"
 	"strings"
 
@@ -177,6 +178,28 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 		e.newline()
 
 	case *ast.AssignStmt:
+		if s.Tok == token.ASSIGN && len(s.Lhs) == 1 && len(s.Rhs) == 1 {
+			if index, ok := s.Lhs[0].(*ast.IndexExpr); ok && e.isMapExpr(index.X) {
+				e.writeIndent()
+				e.write("go2jsMapSet(")
+				if err := e.emitExpr(index.X); err != nil {
+					return err
+				}
+				e.write(", ")
+				if err := e.emitExpr(index.Index); err != nil {
+					return err
+				}
+				e.write(", ")
+				if err := e.emitExpr(s.Rhs[0]); err != nil {
+					return err
+				}
+				e.write(");")
+				e.newline()
+				e.needsRuntime = true
+				return nil
+			}
+		}
+
 		e.writeIndent()
 
 		if s.Tok == token.DEFINE {
@@ -307,18 +330,12 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 
 	case *ast.RangeStmt:
 		e.writeIndent()
+		e.write("for (const [")
 
-		switch s.Tok {
-		case token.DEFINE:
-			e.write("for (let ")
-		case token.ASSIGN:
-			e.write("for (")
-		default:
-			return fmt.Errorf("unsupported range token: %s", s.Tok)
-		}
-
-		if err := e.emitExpr(s.Key); err != nil {
-			return err
+		if s.Key != nil {
+			if err := e.emitExpr(s.Key); err != nil {
+				return err
+			}
 		}
 
 		if s.Value != nil {
@@ -328,13 +345,13 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 			}
 		}
 
-		e.write(" of ")
+		e.write("] of ")
 
 		if err := e.emitExpr(s.X); err != nil {
 			return err
 		}
 
-		e.write(") ")
+		e.write(".entries()) ")
 
 		if err := e.emitBlock(s.Body); err != nil {
 			return err
@@ -630,6 +647,19 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		}
 
 	case *ast.BinaryExpr:
+		if x.Op == token.QUO && e.isIntegerExpr(x.X) && e.isIntegerExpr(x.Y) {
+			e.write("Math.trunc((")
+			if err := e.emitExpr(x.X); err != nil {
+				return err
+			}
+			e.write(" / ")
+			if err := e.emitExpr(x.Y); err != nil {
+				return err
+			}
+			e.write("))")
+			return nil
+		}
+
 		if err := e.emitExpr(x.X); err != nil {
 			return err
 		}
@@ -659,6 +689,17 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		e.write(")")
 
 	case *ast.CallExpr:
+		if len(x.Args) == 1 && e.isTypeConversion(x) {
+			return e.emitConversion(x)
+		}
+		if len(x.Args) > 0 {
+			if _, ok := x.Args[0].(*ast.MapType); ok {
+				e.write("go2jsMakeMap()")
+				e.needsRuntime = true
+				return nil
+			}
+		}
+
 		if name, ok := builtinName(x); ok {
 			e.write(name)
 
@@ -697,6 +738,20 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		e.write(x.Sel.Name)
 
 	case *ast.IndexExpr:
+		if e.isMapExpr(x.X) {
+			e.needsRuntime = true
+			e.write("go2jsMapGet(")
+			if err := e.emitExpr(x.X); err != nil {
+				return err
+			}
+			e.write(", ")
+			if err := e.emitExpr(x.Index); err != nil {
+				return err
+			}
+			e.write(")")
+			return nil
+		}
+
 		if err := e.emitExpr(x.X); err != nil {
 			return err
 		}
@@ -733,6 +788,35 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		e.write(")")
 
 	case *ast.CompositeLit:
+		if _, ok := x.Type.(*ast.MapType); ok {
+			e.needsRuntime = true
+			e.write("go2jsMap([")
+
+			for i, elt := range x.Elts {
+				if i > 0 {
+					e.write(", ")
+				}
+
+				kv, ok := elt.(*ast.KeyValueExpr)
+				if !ok {
+					return fmt.Errorf("unsupported map literal element: %T", elt)
+				}
+
+				e.write("[")
+				if err := e.emitExpr(kv.Key); err != nil {
+					return err
+				}
+				e.write(", ")
+				if err := e.emitExpr(kv.Value); err != nil {
+					return err
+				}
+				e.write("]")
+			}
+
+			e.write("])")
+			return nil
+		}
+
 		if x.Type != nil {
 			if _, ok := x.Type.(*ast.ArrayType); ok {
 				e.write("[")
@@ -803,6 +887,38 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 	return nil
 }
 
+func (e *emitter) emitConversion(call *ast.CallExpr) error {
+	ident, ok := call.Fun.(*ast.Ident)
+	if !ok {
+		return fmt.Errorf("unsupported conversion")
+	}
+
+	object := e.analysis.Uses[ident]
+	if object == nil {
+		object = e.analysis.Defs[ident]
+	}
+
+	typeName, ok := object.(*gotypesstd.TypeName)
+	if !ok {
+		return fmt.Errorf("unsupported conversion")
+	}
+
+	name := conversionName(typeName.Type())
+	if name == "" {
+		return fmt.Errorf("unsupported conversion to %s", typeName.Name())
+	}
+
+	e.write(name)
+	e.write("(")
+
+	if err := e.emitExpr(call.Args[0]); err != nil {
+		return err
+	}
+
+	e.write(")")
+	return nil
+}
+
 func (e *emitter) write(value string) {
 	e.buf.WriteString(value)
 }
@@ -817,23 +933,50 @@ func (e *emitter) writeIndent() {
 
 func runtimeSource() string {
 	return `function go2jsLen(value) {
-    return value.length;
+	if (value instanceof Map) {
+		return value.size;
+	}
+	return value.length;
 }
 
 function go2jsCap(value) {
-    return value.length;
+	return value.length;
 }
 
 function go2jsAppend(value, ...items) {
-    return value.concat(items);
+	return value.concat(items);
 }
 
 function go2jsMake(type, size) {
-    if (typeof size === "number") {
-        return new Array(size);
-    }
+	if (typeof size === "number") {
+		return new Array(size);
+	}
 
-    return [];
+	return [];
+}
+
+function go2jsMakeMap() {
+	return new Map();
+}
+
+function go2jsMap(entries) {
+	const map = new Map();
+	for (const entry of entries) {
+		map.set(entry[0], entry[1]);
+	}
+	return map;
+}
+
+function go2jsMapGet(map, key) {
+	return map.get(key);
+}
+
+function go2jsMapSet(map, key, value) {
+	map.set(key, value);
+}
+
+function go2jsMapDelete(map, key) {
+	map.delete(key);
 }
 `
 }

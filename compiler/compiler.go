@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"fmt"
 	"go/ast"
 
 	"github.com/zenobiatranoss/go2js/backend/javascript"
@@ -27,5 +28,21 @@ func CompileFile(filename string) (string, error) {
 		Analysis: analysis,
 	}
 
-	return javascript.Emit(program.File)
+	return Compile(program)
+}
+
+func Compile(program *Program) (string, error) {
+	if program == nil {
+		return "", fmt.Errorf("compiler: nil program")
+	}
+
+	if program.File == nil {
+		return "", fmt.Errorf("compiler: missing AST")
+	}
+
+	if program.Analysis == nil || program.Analysis.Types == nil {
+		return "", fmt.Errorf("compiler: missing analysis")
+	}
+
+	return javascript.Emit(program.File, program.Analysis.Types)
 }

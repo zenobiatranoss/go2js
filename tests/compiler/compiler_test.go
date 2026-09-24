@@ -155,6 +155,240 @@ func main() {
 	}
 }
 
+func TestCompileMapLiteral(t *testing.T) {
+	source := `package main
+
+func main() {
+	values := map[string]int{
+		"alice": 10,
+		"bob": 20,
+	}
+
+	println(values["alice"])
+	values["bob"] = 30
+	println(len(values))
+}
+`
+
+	file := writeSource(t, source)
+
+	output, err := compiler.CompileFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{
+		"let values = go2jsMap([",
+		`["alice", 10]`,
+		`["bob", 20]`,
+		`console.log(go2jsMapGet(values, "alice"));`,
+		`go2jsMapSet(values, "bob", 30);`,
+		"go2jsLen(values)",
+		"function go2jsMap(entries)",
+		"const map = new Map();",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("generated JavaScript missing %q:\n%s", want, output)
+		}
+	}
+}
+
+func TestCompileMapMake(t *testing.T) {
+	source := `package main
+
+func main() {
+	values := make(map[string]int)
+	values["alice"] = 10
+	println(values["alice"])
+	delete(values, "alice")
+	println(len(values))
+}
+`
+
+	file := writeSource(t, source)
+
+	output, err := compiler.CompileFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{
+		"let values = go2jsMakeMap();",
+		"go2jsMapSet(values, \"alice\", 10);",
+		"go2jsMapGet(values, \"alice\")",
+		"go2jsMapDelete(values, \"alice\")",
+		"go2jsLen(values)",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("generated JavaScript missing %q:\n%s", want, output)
+		}
+	}
+}
+
+func TestCompileMapRange(t *testing.T) {
+	source := `package main
+
+func main() {
+	values := map[string]int{
+		"alice": 10,
+		"bob": 20,
+	}
+
+	for key, value := range values {
+		println(key)
+		println(value)
+	}
+}
+`
+
+	file := writeSource(t, source)
+
+	output, err := compiler.CompileFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{
+		"for (const [key, value] of values.entries())",
+		"console.log(key);",
+		"console.log(value);",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("generated JavaScript missing %q:\n%s", want, output)
+		}
+	}
+}
+
+func TestCompileSliceRange(t *testing.T) {
+	source := `package main
+
+func main() {
+	values := []int{10, 20, 30}
+
+	for index, value := range values {
+		println(index)
+		println(value)
+	}
+}
+`
+
+	file := writeSource(t, source)
+	output, err := compiler.CompileFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(output, "for (const [index, value] of values.entries())") {
+		t.Fatalf("generated JavaScript missing slice range:\n%s", output)
+	}
+}
+
+func TestCompileIntegerDivision(t *testing.T) {
+	source := `package main
+
+func main() {
+	value := 7 / 2
+	println(value)
+}
+`
+
+	file := writeSource(t, source)
+
+	output, err := compiler.CompileFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(output, "Math.trunc((7 / 2))") {
+		t.Fatalf("integer division was not lowered correctly:\n%s", output)
+	}
+}
+
+func TestCompileFloatDivision(t *testing.T) {
+	source := `package main
+
+func main() {
+	value := 7.0 / 2.0
+	println(value)
+}
+`
+
+	file := writeSource(t, source)
+
+	output, err := compiler.CompileFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.Contains(output, "Math.trunc((7.0 / 2.0))") {
+		t.Fatalf("float division was incorrectly treated as integer division:\n%s", output)
+	}
+
+	if !strings.Contains(output, "7.0 / 2.0") {
+		t.Fatalf("float division missing:\n%s", output)
+	}
+}
+
+func TestCompileConversions(t *testing.T) {
+	source := `package main
+
+func main() {
+	input := 4.8
+	value := int(input)
+	text := string(65)
+	println(value)
+	println(text)
+}
+`
+
+	file := writeSource(t, source)
+
+	output, err := compiler.CompileFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{
+		"Math.trunc(input)",
+		"String(65)",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("generated JavaScript missing %q:\n%s", want, output)
+		}
+	}
+}
+
+func TestCompileParameterScope(t *testing.T) {
+	source := `package main
+
+type User struct {
+	Name string
+}
+
+func (u User) Test(name string) string {
+	{
+		u := name
+		return u
+	}
+}
+`
+
+	file := writeSource(t, source)
+
+	output, err := compiler.CompileFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(output, "let u = name;") {
+		t.Fatalf("local variable was not emitted correctly:\n%s", output)
+	}
+
+	if !strings.Contains(output, "return u;") {
+		t.Fatalf("local variable was incorrectly treated as receiver:\n%s", output)
+	}
+}
+
 func TestCompileMethod(t *testing.T) {
 	source := `package main
 
