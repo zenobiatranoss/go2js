@@ -262,6 +262,10 @@ func (e *emitter) emitTypeAssertAssignment(stmt *ast.AssignStmt) (bool, error) {
 			e.write(", ")
 		}
 
+		if ident, ok := lhs.(*ast.Ident); ok && ident.Name == "_" {
+			continue
+		}
+
 		if ident, ok := lhs.(*ast.Ident); ok && stmt.Tok == token.DEFINE {
 			e.declare(ident.Name)
 		}
@@ -365,7 +369,7 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 			if s.Tok == token.DEFINE {
 				e.write(e.emitDeclarationKeyword())
 				for _, lhs := range s.Lhs {
-					if ident, ok := lhs.(*ast.Ident); ok {
+					if ident, ok := lhs.(*ast.Ident); ok && ident.Name != "_" {
 						e.declare(ident.Name)
 					}
 				}
@@ -375,6 +379,9 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 			for i, lhs := range s.Lhs {
 				if i > 0 {
 					e.write(", ")
+				}
+				if ident, ok := lhs.(*ast.Ident); ok && ident.Name == "_" {
+					continue
 				}
 				if err := e.emitExpr(lhs); err != nil {
 					return err

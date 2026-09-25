@@ -73,19 +73,23 @@ func (o Options) WithTarget(target string) Options {
 }
 
 func (o Options) Normalize() Options {
-	if o.Module == "" {
+	if strings.TrimSpace(o.Module) == "" {
 		o.Module = "esm"
 	}
-	if o.Target == "" {
+	if strings.TrimSpace(o.Target) == "" {
 		o.Target = "es2022"
 	}
+
 	o.Module = normalizeModule(o.Module)
+	o.Target = strings.ToLower(strings.TrimSpace(o.Target))
+
 	if o.Minify {
 		o.Pretty = false
 	}
 	if !o.Minify && !o.Pretty {
 		o.Pretty = true
 	}
+
 	return o
 }
 
@@ -119,6 +123,8 @@ func (o Options) Validate() error {
 }
 
 func normalizeModule(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+
 	switch value {
 	case "common-js", "commonjs", "cjs":
 		return "commonjs"

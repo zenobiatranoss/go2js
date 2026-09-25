@@ -22,7 +22,7 @@ func (e *emitter) emitParallelAssignment(stmt *ast.AssignStmt) (bool, error) {
 		e.write(e.emitDeclarationKeyword())
 
 		for _, lhs := range stmt.Lhs {
-			if ident, ok := lhs.(*ast.Ident); ok {
+			if ident, ok := lhs.(*ast.Ident); ok && ident.Name != "_" {
 				e.declare(ident.Name)
 			}
 		}
@@ -34,19 +34,16 @@ func (e *emitter) emitParallelAssignment(stmt *ast.AssignStmt) (bool, error) {
 			e.write(", ")
 		}
 
+		if ident, ok := lhs.(*ast.Ident); ok && ident.Name == "_" {
+			continue
+		}
+
 		if err := e.emitExpr(lhs); err != nil {
 			return true, err
 		}
 	}
-	e.write("]")
+	e.write("] = [")
 
-	if stmt.Tok == token.DEFINE {
-		e.write(" = ")
-	} else {
-		e.write(" = ")
-	}
-
-	e.write("[")
 	for i, rhs := range stmt.Rhs {
 		if i > 0 {
 			e.write(", ")
@@ -68,6 +65,7 @@ func (e *emitter) emitParallelAssignment(stmt *ast.AssignStmt) (bool, error) {
 			}
 		}
 	}
+
 	e.write("];")
 	e.newline()
 
@@ -89,7 +87,7 @@ func (e *emitter) emitParallelAssignmentInline(stmt *ast.AssignStmt) (bool, erro
 		e.write(e.emitDeclarationKeyword())
 
 		for _, lhs := range stmt.Lhs {
-			if ident, ok := lhs.(*ast.Ident); ok {
+			if ident, ok := lhs.(*ast.Ident); ok && ident.Name != "_" {
 				e.declare(ident.Name)
 			}
 		}
@@ -99,6 +97,10 @@ func (e *emitter) emitParallelAssignmentInline(stmt *ast.AssignStmt) (bool, erro
 	for i, lhs := range stmt.Lhs {
 		if i > 0 {
 			e.write(", ")
+		}
+
+		if ident, ok := lhs.(*ast.Ident); ok && ident.Name == "_" {
+			continue
 		}
 
 		if err := e.emitExpr(lhs); err != nil {
