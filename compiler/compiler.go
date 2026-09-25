@@ -3,8 +3,6 @@ package compiler
 import (
 	"fmt"
 	"go/ast"
-	"os"
-	"path/filepath"
 
 	"github.com/zenobiatranoss/go2js/backend/javascript"
 )
@@ -62,33 +60,13 @@ func CompilePackage(pkg *Package) (string, error) {
 }
 
 func CompileDirectory(dir string) (string, error) {
-	entries, err := os.ReadDir(dir)
+	if _, _, err := findModuleRoot(dir); err == nil {
+		return CompileProject(dir)
+	}
+
+	pkg, err := ParsePackageDir(dir)
 	if err != nil {
 		return "", err
-	}
-
-	pkg := NewPackage(filepath.Base(dir))
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-
-		if filepath.Ext(entry.Name()) != ".go" {
-			continue
-		}
-
-		path := filepath.Join(dir, entry.Name())
-		parsed, err := ParseFile(path)
-		if err != nil {
-			return "", err
-		}
-
-		pkg.Add(parsed)
-	}
-
-	if pkg.Empty() {
-		return "", fmt.Errorf("no Go files found in %s", dir)
 	}
 
 	return CompilePackage(pkg)

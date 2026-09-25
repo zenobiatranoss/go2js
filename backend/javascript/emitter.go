@@ -743,9 +743,40 @@ func (e *emitter) emitValueDecl(decl *ast.GenDecl) error {
 	return nil
 }
 
+func isTypeSetInterface(t *ast.InterfaceType) bool {
+	if t == nil || t.Methods == nil {
+		return false
+	}
+
+	var hasTypeSet func(ast.Expr) bool
+	hasTypeSet = func(expr ast.Expr) bool {
+		switch x := expr.(type) {
+		case *ast.BinaryExpr:
+			return x.Op.String() == "|" || hasTypeSet(x.X) || hasTypeSet(x.Y)
+		case *ast.UnaryExpr:
+			return x.Op.String() == "~" || hasTypeSet(x.X)
+		case *ast.ParenExpr:
+			return hasTypeSet(x.X)
+		default:
+			return false
+		}
+	}
+
+	for _, field := range t.Methods.List {
+		if hasTypeSet(field.Type) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (e *emitter) emitType(spec *ast.TypeSpec) error {
 	switch t := spec.Type.(type) {
 	case *ast.InterfaceType:
+		if isTypeSetInterface(t) {
+			return nil
+		}
 		e.writeIndent()
 		e.write("class ")
 		e.write(spec.Name.Name)
