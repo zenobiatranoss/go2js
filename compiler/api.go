@@ -43,10 +43,11 @@ func (c *Compiler) CompileFile(path string) (string, error) {
 		return "", err
 	}
 
-	output, err := javascript.EmitWithContext(
+	output, err := javascript.EmitWithContextOptions(
 		parsed.File,
 		analysis.Types,
 		analysis.Semantic,
+		c.Options.Runtime,
 	)
 	if err != nil {
 		return "", err
@@ -74,10 +75,11 @@ func (c *Compiler) CompilePackage(pkg *Package) (string, error) {
 			return "", fmt.Errorf("package contains invalid file")
 		}
 
-		code, err := javascript.EmitWithContext(
+		code, err := javascript.EmitWithContextOptions(
 			parsed.File,
 			analysis.Types,
 			analysis.Semantic,
+			c.Options.Runtime,
 		)
 		if err != nil {
 			return "", err
@@ -100,7 +102,7 @@ func (c *Compiler) CompileDirectory(dir string) (string, error) {
 	}
 
 	if _, _, err := findModuleRoot(dir); err == nil {
-		output, err := CompileProject(dir)
+		output, err := compileProjectWithOptions(dir, c.Options)
 		if err != nil {
 			return "", err
 		}
@@ -159,5 +161,5 @@ func (c *Compiler) wrap(source string) string {
 		output = `"use strict";\n` + output
 	}
 
-	return output
+	return javascript.FormatJavaScript(output, c.Options.Minify)
 }

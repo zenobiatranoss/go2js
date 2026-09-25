@@ -27,6 +27,7 @@ type projectPackage struct {
 type project struct {
 	root     string
 	module   string
+	options  Options
 	packages map[string]*projectPackage
 	active   map[string]bool
 	importer *projectImporter
@@ -49,7 +50,7 @@ func (i *projectImporter) Import(path string) (*types.Package, error) {
 	return i.fallback.Import(path)
 }
 
-func CompileProject(dir string) (string, error) {
+func compileProjectWithOptions(dir string, options Options) (string, error) {
 	root, module, err := findModuleRoot(dir)
 	if err != nil {
 		return "", err
@@ -66,6 +67,7 @@ func CompileProject(dir string) (string, error) {
 	}
 
 	p := &project{
+		options:  options.Normalize(),
 		root:     root,
 		module:   module,
 		packages: make(map[string]*projectPackage),
@@ -315,10 +317,11 @@ func (p *project) emitFiles(pkg *projectPackage) (string, error) {
 			return "", fmt.Errorf("compiler: package %q contains invalid file", pkg.path)
 		}
 
-		code, err := javascript.EmitWithContext(
+		code, err := javascript.EmitWithContextOptions(
 			file.File,
 			pkg.analysis.Types,
 			pkg.analysis.Semantic,
+			p.options.Runtime,
 		)
 		if err != nil {
 			return "", err
@@ -524,4 +527,8 @@ func renameInitFunctions(pkg *Package, code string) (string, string) {
 		}
 	}
 	return code, calls.String()
+}
+
+func CompileProject(dir string) (string, error) {
+	return compileProjectWithOptions(dir, DefaultOptions())
 }
