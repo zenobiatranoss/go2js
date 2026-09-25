@@ -151,3 +151,94 @@ func TestNilCompiler(t *testing.T) {
 		t.Fatal("expected nil compiler error")
 	}
 }
+
+func TestOptionsNormalization(t *testing.T) {
+	options := (Options{}).
+		WithModule(" CJS ").
+		WithTarget(" ES2023 ").
+		WithMinify(true)
+
+	options = options.Normalize()
+
+	if options.Module != "commonjs" {
+		t.Fatalf("expected commonjs, got %q", options.Module)
+	}
+	if options.Target != "es2023" {
+		t.Fatalf("expected es2023, got %q", options.Target)
+	}
+	if !options.Minify {
+		t.Fatal("expected minify enabled")
+	}
+	if options.Pretty {
+		t.Fatal("expected pretty disabled when minify is enabled")
+	}
+}
+
+func TestOptionsPrettyAndMinifyAreMutuallyExclusive(t *testing.T) {
+	options := DefaultOptions().WithMinify(true).WithPretty(true)
+
+	if options.Minify {
+		t.Fatal("expected pretty to disable minify")
+	}
+	if !options.Pretty {
+		t.Fatal("expected pretty enabled")
+	}
+
+	options = DefaultOptions().WithPretty(false).Normalize()
+
+	if !options.Pretty {
+		t.Fatal("expected Normalize to restore pretty output")
+	}
+}
+
+func TestOptionsTargetValidation(t *testing.T) {
+	for _, target := range []string{
+		"es2019",
+		"es2020",
+		"es2021",
+		"es2022",
+		"es2023",
+		"es2024",
+		"esnext",
+	} {
+		if err := DefaultOptions().WithTarget(target).Validate(); err != nil {
+			t.Fatalf("target %q rejected: %v", target, err)
+		}
+	}
+
+	if err := DefaultOptions().WithTarget("es2018").Validate(); err == nil {
+		t.Fatal("expected unsupported target error")
+	}
+}
+
+func TestOptionsModuleNormalization(t *testing.T) {
+	tests := map[string]string{
+		"esm":       "esm",
+		"module":    "esm",
+		"modules":   "esm",
+		"cjs":       "commonjs",
+		"common-js": "commonjs",
+		"commonjs":  "commonjs",
+		"iife":      "iife",
+		"self":      "iife",
+	}
+
+	for input, expected := range tests {
+		options := DefaultOptions().WithModule(input).Normalize()
+		if options.Module != expected {
+			t.Fatalf("module %q: expected %q, got %q", input, expected, options.Module)
+		}
+	}
+}
+
+func TestOptionsRuntime(t *testing.T) {
+	enabled := DefaultOptions().WithRuntime(true)
+	if !enabled.Runtime {
+		t.Fatal("expected runtime enabled")
+	}
+
+	disabled := DefaultOptions().WithRuntime(false)
+	if disabled.Runtime {
+		t.Fatal("expected runtime disabled")
+	}
+}
