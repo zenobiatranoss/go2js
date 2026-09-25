@@ -8,6 +8,30 @@ import (
 	"strconv"
 )
 
+func (e *emitter) isGenericInstantiation(expr ast.Expr) bool {
+	if e.analysis == nil {
+		return false
+	}
+
+	var ident *ast.Ident
+
+	switch x := expr.(type) {
+	case *ast.IndexExpr:
+		ident, _ = x.X.(*ast.Ident)
+	case *ast.IndexListExpr:
+		ident, _ = x.X.(*ast.Ident)
+	case *ast.Ident:
+		ident = x
+	}
+
+	if ident == nil {
+		return false
+	}
+
+	_, ok := e.analysis.Instances[ident]
+	return ok
+}
+
 func (e *emitter) emitExpr(expr ast.Expr) error {
 	switch x := expr.(type) {
 	case *ast.Ident:
@@ -257,6 +281,10 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		e.write(x.Sel.Name)
 
 	case *ast.IndexExpr:
+		if e.isGenericInstantiation(x) {
+			return e.emitExpr(x.X)
+		}
+
 		if e.isMapExpr(x.X) {
 			e.needsRuntime = true
 			e.write("go2jsMapGet(")
@@ -282,6 +310,12 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		}
 
 		e.write("]")
+
+	case *ast.IndexListExpr:
+		if e.isGenericInstantiation(x) {
+			return e.emitExpr(x.X)
+		}
+		return fmt.Errorf("unsupported generic index list expression")
 
 	case *ast.SliceExpr:
 		if e.isArrayOrSliceExpr(x.X) {

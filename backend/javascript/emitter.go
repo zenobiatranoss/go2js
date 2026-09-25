@@ -90,10 +90,10 @@ func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 		e.currentFunction = nil
 		e.functionBodyPending = false
 	}()
+
 	e.resultCount = e.functionResultCount(fn)
 	e.currentSignature = nil
 	e.functionBody = fn.Body
-
 	defer func() {
 		e.functionBody = nil
 		e.currentSignature = nil
@@ -115,6 +115,7 @@ func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 			}
 		}
 	}
+
 	if fn.Recv != nil {
 		if len(fn.Recv.List) != 1 {
 			return fmt.Errorf("unsupported method receiver")
@@ -130,15 +131,48 @@ func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 		switch t := receiver.Type.(type) {
 		case *ast.Ident:
 			receiverType = t.Name
-		case *ast.StarExpr:
+
+		case *ast.IndexExpr:
 			ident, ok := t.X.(*ast.Ident)
 			if !ok {
-				return fmt.Errorf("unsupported receiver type")
+				return fmt.Errorf("unsupported generic receiver type")
 			}
 			receiverType = ident.Name
+
+		case *ast.IndexListExpr:
+			ident, ok := t.X.(*ast.Ident)
+			if !ok {
+				return fmt.Errorf("unsupported generic receiver type")
+			}
+			receiverType = ident.Name
+
+		case *ast.StarExpr:
+			switch x := t.X.(type) {
+			case *ast.Ident:
+				receiverType = x.Name
+
+			case *ast.IndexExpr:
+				ident, ok := x.X.(*ast.Ident)
+				if !ok {
+					return fmt.Errorf("unsupported generic pointer receiver type")
+				}
+				receiverType = ident.Name
+
+			case *ast.IndexListExpr:
+				ident, ok := x.X.(*ast.Ident)
+				if !ok {
+					return fmt.Errorf("unsupported generic pointer receiver type")
+				}
+				receiverType = ident.Name
+
+			default:
+				return fmt.Errorf("unsupported receiver type")
+			}
+
 		default:
 			return fmt.Errorf("unsupported receiver type: %T", receiver.Type)
 		}
+
 		if len(receiver.Names) > 0 {
 			e.receiver = receiver.Names[0].Name
 		}
@@ -154,8 +188,8 @@ func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 	}
 
 	e.emitFunctionParameters(fn)
-
 	e.write(") ")
+
 	return e.emitFuncBody(fn.Body)
 }
 
