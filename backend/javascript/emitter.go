@@ -39,6 +39,10 @@ func Emit(file *ast.File, analysis *gotypes.Result) (string, error) {
 }
 
 func EmitWithContext(file *ast.File, analysis *gotypes.Result, context *semantic.Context) (string, error) {
+	return EmitWithContextOptions(file, analysis, context, true)
+}
+
+func EmitWithContextOptions(file *ast.File, analysis *gotypes.Result, context *semantic.Context, includeRuntime bool) (string, error) {
 	if context == nil && analysis != nil {
 		context = semantic.NewResultContext(analysis, nil)
 	}
@@ -76,8 +80,11 @@ func EmitWithContext(file *ast.File, analysis *gotypes.Result, context *semantic
 	}
 
 	prefix := ""
-	if e.needsRuntime {
-		prefix = runtimeSource() + "\n" + collectionRuntimeSource() + "\n" + rangeRuntimeSource() + "\n" + genericRuntimeSource() + "\n"
+	if includeRuntime && e.needsRuntime {
+		prefix = runtimeSource() + "\n" +
+			collectionRuntimeSource() + "\n" +
+			rangeRuntimeSource() + "\n" +
+			genericRuntimeSource() + "\n"
 	}
 
 	return prefix + e.buf.String(), nil
