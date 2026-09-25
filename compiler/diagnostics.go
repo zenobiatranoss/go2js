@@ -1,166 +1,188 @@
 package compiler
 
 import (
+	"errors"
 	"fmt"
-	"go/token"
-	"strings"
+	"go/scanner"
+	gotypes "go/types"
+
+	"github.com/zenobiatranoss/go2js/backend/javascript"
 )
 
-type DiagnosticSeverity uint8
+type DiagnosticSeverity string
 
 const (
-	SeverityError DiagnosticSeverity = iota
-	SeverityWarning
-	SeverityInfo
+	DiagnosticError   DiagnosticSeverity = "error"
+	DiagnosticWarning DiagnosticSeverity = "warning"
 )
 
 type Diagnostic struct {
-	Message  string
-	Position token.Position
 	Severity DiagnosticSeverity
+	Phase    string
+	Message  string
+	Filename string
+	Line     int
+	Column   int
 }
 
 type Diagnostics struct {
 	Items []Diagnostic
 }
 
-func (d *Diagnostics) Add(message string) {
-	d.AddAt(token.Position{}, SeverityError, message)
-}
-
-func (d *Diagnostics) AddAt(position token.Position, severity DiagnosticSeverity, message string) {
-	if strings.TrimSpace(message) == "" {
+func (d *Diagnostics) Add(diagnostic Diagnostic) {
+	if diagnostic.Message == "" {
 		return
 	}
-
-	d.Items = append(d.Items, Diagnostic{
-		Message:  message,
-		Position: position,
-		Severity: severity,
-	})
+	d.Items = append(d.Items, diagnostic)
 }
 
-func (d *Diagnostics) ErrorAt(position token.Position, message string) {
-	d.AddAt(position, SeverityError, message)
-}
-
-func (d *Diagnostics) WarningAt(position token.Position, message string) {
-	d.AddAt(position, SeverityWarning, message)
-}
-
-func (d *Diagnostics) InfoAt(position token.Position, message string) {
-	d.AddAt(position, SeverityInfo, message)
-}
-
-func (d *Diagnostics) Empty() bool {
+func (d Diagnostics) Empty() bool {
 	return len(d.Items) == 0
 }
 
-func (d *Diagnostics) Len() int {
-	return len(d.Items)
-}
-
-func (d *Diagnostics) Errors() int {
-	count := 0
-
-	for _, item := range d.Items {
-		if item.Severity == SeverityError {
-			count++
-		}
-	}
-
-	return count
-}
-
-func (d *Diagnostics) Warnings() int {
-	count := 0
-
-	for _, item := range d.Items {
-		if item.Severity == SeverityWarning {
-			count++
-		}
-	}
-
-	return count
-}
-
-func (d *Diagnostics) HasErrors() bool {
-	return d.Errors() > 0
-}
-
-func (d *Diagnostics) First() *Diagnostic {
-	if len(d.Items) == 0 {
-		return nil
-	}
-
-	return &d.Items[0]
-}
-
-func (d *Diagnostics) Last() *Diagnostic {
-	if len(d.Items) == 0 {
-		return nil
-	}
-
-	return &d.Items[len(d.Items)-1]
-}
-
-func (d *Diagnostics) Reset() {
-	d.Items = d.Items[:0]
-}
-
-func (d *Diagnostics) Error() error {
+func (d Diagnostics) Error() error {
 	if d.Empty() {
 		return nil
 	}
 
-	if len(d.Items) == 1 {
-		return fmt.Errorf("%s", formatDiagnostic(d.Items[0]))
-	}
-
-	return fmt.Errorf("%s", d.String())
+	return errors.New(d.Items[0].String())
 }
 
-func (d *Diagnostics) String() string {
-	if d.Empty() {
-		return ""
-	}
+func (d Diagnostic) String() string {
+	location := ""
 
-	var builder strings.Builder
+	if d.Filename != "" {
+		location = d.Filename
 
-	for i, item := range d.Items {
-		if i > 0 {
-			builder.WriteByte('\n')
+		if d.Line > 0 {
+			location += fmt.Sprintf(":%d", d.Line)
+
+			if d.Column > 0 {
+				location += fmt.Sprintf(":%d", d.Column)
+			}
 		}
 
-		builder.WriteString(formatDiagnostic(item))
+		location += ": "
 	}
 
-	return builder.String()
+	if d.Phase != "" {
+		return fmt.Sprintf("%s: %s%s", d.Phase, location, d.Message)
+	}
+
+	return location + d.Message
 }
 
-func formatDiagnostic(d Diagnostic) string {
-	prefix := severityName(d.Severity)
-
-	if d.Position.IsValid() {
-		return fmt.Sprintf("%s:%d:%d: %s: %s",
-			d.Position.Filename,
-			d.Position.Line,
-			d.Position.Column,
-			prefix,
-			d.Message,
-		)
+func DiagnosticFromError(err error, phase, filename string) Diagnostic {
+	result := Diagnostic{
+		Severity: DiagnosticError,
+		Phase:    phase,
+		Message:  err.Error(),
+		Filename: filename,
 	}
 
-	return fmt.Sprintf("%s: %s", prefix, d.Message)
+	var scanErrors scanner.ErrorList
+	if errors.As(err, &scanErrors) && len(scanErrors) > 0 {
+		pos := scanErrors[0].Pos
+		result.Filename = pos.Filename
+		result.Line = pos.Line
+		result.Column = pos.Column
+		result.Message = scanErrors[0].Msg
+		return result
+	}
+
+	var typeError *gotypes.Error
+	if errors.As(err, &typeError) && typeError != nil {
+		pos := typeError.Fset.Position(typeError.Pos)
+		result.Filename = pos.Filename
+		result.Line = pos.Line
+		result.Column = pos.Column
+		result.Message = typeError.Msg
+		return result
+	}
+
+	return result
 }
 
-func severityName(severity DiagnosticSeverity) string {
-	switch severity {
-	case SeverityWarning:
-		return "warning"
-	case SeverityInfo:
-		return "info"
-	default:
-		return "error"
+type CompileResult struct {
+	Code        string
+	Diagnostics Diagnostics
+}
+
+func (r CompileResult) Err() error {
+	return r.Diagnostics.Error()
+}
+
+func (c *Compiler) CompileFileDetailed(path string) CompileResult {
+	result := CompileResult{}
+
+	if c == nil {
+		result.Diagnostics.Add(Diagnostic{
+			Severity: DiagnosticError,
+			Phase:    "compiler",
+			Message:  "nil compiler",
+			Filename: path,
+		})
+		return result
 	}
+
+	if path == "" {
+		result.Diagnostics.Add(Diagnostic{
+			Severity: DiagnosticError,
+			Phase:    "input",
+			Message:  "empty source path",
+		})
+		return result
+	}
+
+	parsed, err := ParseFile(path)
+	if err != nil {
+		result.Diagnostics.Add(DiagnosticFromError(err, "parse", path))
+		return result
+	}
+
+	analysis, err := Analyze(parsed)
+	if err != nil {
+		result.Diagnostics.Add(DiagnosticFromError(err, "typecheck", path))
+		return result
+	}
+
+	code, err := javascriptEmitDetailed(c, parsed, analysis)
+	if err != nil {
+		result.Diagnostics.Add(DiagnosticFromError(err, "emit", path))
+		return result
+	}
+
+	result.Code = code
+	return result
+}
+
+func javascriptEmitDetailed(c *Compiler, parsed *ParsedFile, analysis *Analysis) (string, error) {
+	return c.compileParsedFile(parsed, analysis)
+}
+
+func (c *Compiler) compileParsedFile(parsed *ParsedFile, analysis *Analysis) (string, error) {
+	if c == nil {
+		return "", fmt.Errorf("nil compiler")
+	}
+
+	if parsed == nil || parsed.File == nil {
+		return "", fmt.Errorf("invalid parsed file")
+	}
+
+	if analysis == nil || analysis.Types == nil {
+		return "", fmt.Errorf("missing analysis")
+	}
+
+	output, err := javascript.EmitWithContextOptionsTarget(
+		parsed.File,
+		analysis.Types,
+		analysis.Semantic,
+		c.Options.Runtime,
+		c.Options.Target,
+	)
+	if err != nil {
+		return "", err
+	}
+
+	return c.wrap(output), nil
 }

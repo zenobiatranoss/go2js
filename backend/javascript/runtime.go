@@ -1137,5 +1137,516 @@ function go2jsMathIsInf(value, sign) {
 	return value === Infinity || value === -Infinity;
 }
 
+
+function go2jsUnicodeRune(r) {
+	if (!Number.isInteger(r) || r < 0 || r > 0x10ffff) {
+		return "";
+	}
+	return String.fromCodePoint(r);
+}
+
+function go2jsUnicodeIsControl(r) {
+	const ch = go2jsUnicodeRune(r);
+	return ch !== "" && /^\p{Cc}$/u.test(ch);
+}
+
+function go2jsUnicodeIsDigit(r) {
+	const ch = go2jsUnicodeRune(r);
+	return ch !== "" && /^\p{Nd}$/u.test(ch);
+}
+
+function go2jsUnicodeIsGraphic(r) {
+	const ch = go2jsUnicodeRune(r);
+	return ch !== "" && (/^[\p{L}\p{M}\p{N}\p{P}\p{S}\p{Zs}]$/u.test(ch));
+}
+
+function go2jsUnicodeIsLetter(r) {
+	const ch = go2jsUnicodeRune(r);
+	return ch !== "" && /^\p{L}$/u.test(ch);
+}
+
+function go2jsUnicodeIsLower(r) {
+	const ch = go2jsUnicodeRune(r);
+	return ch !== "" && /^\p{Ll}$/u.test(ch);
+}
+
+function go2jsUnicodeIsMark(r) {
+	const ch = go2jsUnicodeRune(r);
+	return ch !== "" && /^\p{M}$/u.test(ch);
+}
+
+function go2jsUnicodeIsNumber(r) {
+	const ch = go2jsUnicodeRune(r);
+	return ch !== "" && /^\p{N}$/u.test(ch);
+}
+
+function go2jsUnicodeIsPrint(r) {
+	const ch = go2jsUnicodeRune(r);
+	return ch !== "" && (r === 0x20 || /^[\p{L}\p{M}\p{N}\p{P}\p{S}]$/u.test(ch));
+}
+
+function go2jsUnicodeIsPunct(r) {
+	const ch = go2jsUnicodeRune(r);
+	return ch !== "" && /^\p{P}$/u.test(ch);
+}
+
+function go2jsUnicodeIsSpace(r) {
+	const ch = go2jsUnicodeRune(r);
+	return ch !== "" && /^\p{White_Space}$/u.test(ch);
+}
+
+function go2jsUnicodeIsSymbol(r) {
+	const ch = go2jsUnicodeRune(r);
+	return ch !== "" && /^\p{S}$/u.test(ch);
+}
+
+function go2jsUnicodeIsTitle(r) {
+	const ch = go2jsUnicodeRune(r);
+	return ch !== "" && /^\p{Lt}$/u.test(ch);
+}
+
+function go2jsUnicodeIsUpper(r) {
+	const ch = go2jsUnicodeRune(r);
+	return ch !== "" && /^\p{Lu}$/u.test(ch);
+}
+
+function go2jsUnicodeMapCase(r, mode) {
+	const ch = go2jsUnicodeRune(r);
+	if (ch === "") {
+		return r;
+	}
+
+	let mapped;
+	switch (mode) {
+	case "lower":
+		mapped = ch.toLowerCase();
+	case "title":
+		mapped = ch.toUpperCase();
+	default:
+		mapped = ch.toUpperCase();
+	}
+
+	const runes = Array.from(mapped);
+	if (runes.length !== 1) {
+		return r;
+	}
+
+	return runes[0].codePointAt(0);
+}
+
+function go2jsUnicodeToLower(r) {
+	return go2jsUnicodeMapCase(r, "lower");
+}
+
+function go2jsUnicodeToTitle(r) {
+	return go2jsUnicodeMapCase(r, "title");
+}
+
+function go2jsUnicodeToUpper(r) {
+	return go2jsUnicodeMapCase(r, "upper");
+}
+
+function go2jsUTF8Byte(value, index) {
+	return Number(value[index]) & 0xff;
+}
+
+function go2jsUTF8Continuation(value) {
+	return (value & 0xc0) === 0x80;
+}
+
+function go2jsUTF8Width(bytes, index) {
+	const length = bytes.length;
+	if (index >= length) {
+		return 0;
+	}
+
+	const b0 = go2jsUTF8Byte(bytes, index);
+
+	if (b0 <= 0x7f) {
+		return 1;
+	}
+
+	if (b0 >= 0xc2 && b0 <= 0xdf) {
+		if (index + 1 >= length) {
+			return 0;
+		}
+		const b1 = go2jsUTF8Byte(bytes, index + 1);
+		return go2jsUTF8Continuation(b1) ? 2 : 0;
+	}
+
+	if (b0 >= 0xe0 && b0 <= 0xef) {
+		if (index + 2 >= length) {
+			return 0;
+		}
+
+		const b1 = go2jsUTF8Byte(bytes, index + 1);
+		const b2 = go2jsUTF8Byte(bytes, index + 2)
+
+		if (!go2jsUTF8Continuation(b1) || !go2jsUTF8Continuation(b2)) {
+			return 0;
+		}
+
+		if (b0 === 0xe0 && b1 < 0xa0) {
+			return 0;
+		}
+
+		if (b0 === 0xed && b1 >= 0xa0) {
+			return 0;
+		}
+
+		return 3;
+	}
+
+	if (b0 >= 0xf0 && b0 <= 0xf4) {
+		if (index + 3 >= length) {
+			return 0;
+		}
+
+		const b1 = go2jsUTF8Byte(bytes, index + 1);
+		const b2 = go2jsUTF8Byte(bytes, index + 2);
+		const b3 = go2jsUTF8Byte(bytes, index + 3);
+
+		if (!go2jsUTF8Continuation(b1) ||
+			!go2jsUTF8Continuation(b2) ||
+			!go2jsUTF8Continuation(b3)) {
+			return 0;
+		}
+
+		if (b0 === 0xf0 && b1 < 0x90) {
+			return 0;
+		}
+
+		if (b0 === 0xf4 && b1 > 0x8f) {
+			return 0;
+		}
+
+		return 4;
+	}
+
+	return 0;
+}
+
+function go2jsUTF8RuneCount(value) {
+	const bytes = Array.from(value);
+	let count = 0;
+	let index = 0;
+
+	while (index < bytes.length) {
+		const width = go2jsUTF8Width(bytes, index);
+		if (width > 0) {
+			index += width;
+		} else {
+			index++;
+		}
+		count++;
+	}
+
+	return count;
+}
+
+function go2jsUTF8RuneCountInString(s) {
+	return Array.from(s).length;
+}
+
+function go2jsUTF8RuneLen(r) {
+	if (!Number.isInteger(r) || r < 0 || r > 0x10ffff || (r >= 0xd800 && r <= 0xdfff)) {
+		return -1;
+	}
+
+	if (r <= 0x7f) {
+		return 1;
+	}
+
+	if (r <= 0x7ff) {
+		return 2;
+	}
+
+	if (r <= 0xffff) {
+		return 3;
+	}
+
+	return 4;
+}
+
+function go2jsUTF8RuneStart(b) {
+	return (Number(b) & 0xc0) !== 0x80;
+}
+
+function go2jsUTF8Valid(value) {
+	const bytes = Array.from(value);
+	let index = 0;
+
+	while (index < bytes.length) {
+		const width = go2jsUTF8Width(bytes, index);
+		if (width === 0) {
+			return false;
+		}
+		index += width;
+	}
+
+	return true;
+}
+
+function go2jsUTF8ValidRune(r) {
+	return Number.isInteger(r) &&
+		r >= 0 &&
+		r <= 0x10ffff &&
+		!(r >= 0xd800 && r <= 0xdfff);
+}
+
+function go2jsUTF8ValidString(s) {
+	for (let i = 0; i < s.length; i++) {
+		const value = s.charCodeAt(i);
+
+		if (value >= 0xd800 && value <= 0xdbff) {
+			if (i + 1 >= s.length) {
+				return false;
+			}
+
+			const next = s.charCodeAt(i + 1);
+			if (next < 0xdc00 || next > 0xdfff) {
+				return false;
+			}
+
+			i++;
+			continue;
+		}
+
+		if (value >= 0xdc00 && value <= 0xdfff) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+function go2jsUTF8FullRune(value) {
+	const bytes = Array.from(value);
+	if (bytes.length === 0) {
+		return false;
+	}
+
+	const b0 = go2jsUTF8Byte(bytes, 0);
+
+	if (b0 <= 0x7f) {
+		return true;
+	}
+
+	if (b0 >= 0xc2 && b0 <= 0xdf) {
+		return bytes.length >= 2;
+	}
+
+	if (b0 >= 0xe0 && b0 <= 0xef) {
+		return bytes.length >= 3;
+	}
+
+	if (b0 >= 0xf0 && b0 <= 0xf4) {
+		return bytes.length >= 4;
+	}
+
+	return true;
+}
+
+function go2jsUTF8FullRuneInString(s) {
+	return s.length > 0;
+}
+
+
+function go2jsUnicodeCodePoint(value) {
+	if (typeof value === "string") {
+		const runes = Array.from(value);
+		return runes.length === 0 ? -1 : runes[0].codePointAt(0);
+	}
+
+	if (!Number.isInteger(value)) {
+		return -1;
+	}
+
+	return value;
+}
+
+function go2jsUnicodeRune(value) {
+	const r = go2jsUnicodeCodePoint(value);
+
+	if (r < 0 || r > 0x10ffff || (r >= 0xd800 && r <= 0xdfff)) {
+		return "";
+	}
+
+	return String.fromCodePoint(r);
+}
+
+function go2jsUnicodeIsControl(value) {
+	const ch = go2jsUnicodeRune(value);
+	return ch !== "" && /^\p{Cc}$/u.test(ch);
+}
+
+function go2jsUnicodeIsDigit(value) {
+	const ch = go2jsUnicodeRune(value);
+	return ch !== "" && /^\p{Nd}$/u.test(ch);
+}
+
+function go2jsUnicodeIsGraphic(value) {
+	const ch = go2jsUnicodeRune(value);
+	return ch !== "" && /^[\p{L}\p{M}\p{N}\p{P}\p{S}\p{Zs}]$/u.test(ch);
+}
+
+function go2jsUnicodeIsLetter(value) {
+	const ch = go2jsUnicodeRune(value);
+	return ch !== "" && /^\p{L}$/u.test(ch);
+}
+
+function go2jsUnicodeIsLower(value) {
+	const ch = go2jsUnicodeRune(value);
+	return ch !== "" && /^\p{Ll}$/u.test(ch);
+}
+
+function go2jsUnicodeIsMark(value) {
+	const ch = go2jsUnicodeRune(value);
+	return ch !== "" && /^\p{M}$/u.test(ch);
+}
+
+function go2jsUnicodeIsNumber(value) {
+	const ch = go2jsUnicodeRune(value);
+	return ch !== "" && /^\p{N}$/u.test(ch);
+}
+
+function go2jsUnicodeIsPrint(value) {
+	const ch = go2jsUnicodeRune(value);
+	return ch !== "" && (value === 0x20 || /^[\p{L}\p{M}\p{N}\p{P}\p{S}]$/u.test(ch));
+}
+
+function go2jsUnicodeIsPunct(value) {
+	const ch = go2jsUnicodeRune(value);
+	return ch !== "" && /^\p{P}$/u.test(ch);
+}
+
+function go2jsUnicodeIsSpace(value) {
+	const ch = go2jsUnicodeRune(value);
+	return ch !== "" && /^\p{White_Space}$/u.test(ch);
+}
+
+function go2jsUnicodeIsSymbol(value) {
+	const ch = go2jsUnicodeRune(value);
+	return ch !== "" && /^\p{S}$/u.test(ch);
+}
+
+function go2jsUnicodeIsTitle(value) {
+	const ch = go2jsUnicodeRune(value);
+	return ch !== "" && /^\p{Lt}$/u.test(ch);
+}
+
+function go2jsUnicodeIsUpper(value) {
+	const ch = go2jsUnicodeRune(value);
+	return ch !== "" && /^\p{Lu}$/u.test(ch);
+}
+
+function go2jsUnicodeMapCase(value, mode) {
+	const r = go2jsUnicodeCodePoint(value);
+	const ch = go2jsUnicodeRune(value);
+
+	if (ch === "") {
+		return r;
+	}
+
+	let mapped;
+
+	switch (mode) {
+	case "lower":
+		mapped = ch.toLowerCase();
+		break;
+	case "title":
+		mapped = ch.toUpperCase();
+		break;
+	default:
+		mapped = ch.toUpperCase();
+		break;
+	}
+
+	const runes = Array.from(mapped);
+
+	if (runes.length !== 1) {
+		return r;
+	}
+
+	return runes[0].codePointAt(0);
+}
+
+function go2jsUnicodeToLower(value) {
+	return go2jsUnicodeMapCase(value, "lower");
+}
+
+function go2jsUnicodeToTitle(value) {
+	return go2jsUnicodeMapCase(value, "title");
+}
+
+function go2jsUnicodeToUpper(value) {
+	return go2jsUnicodeMapCase(value, "upper");
+}
+
+function go2jsUTF8RuneCountInString(s) {
+	return Array.from(s).length;
+}
+
+function go2jsUTF8RuneLen(value) {
+	const r = go2jsUnicodeCodePoint(value);
+
+	if (r < 0 || r > 0x10ffff || (r >= 0xd800 && r <= 0xdfff)) {
+		return -1;
+	}
+
+	if (r <= 0x7f) {
+		return 1;
+	}
+
+	if (r <= 0x7ff) {
+		return 2;
+	}
+
+	if (r <= 0xffff) {
+		return 3;
+	}
+
+	return 4;
+}
+
+function go2jsUTF8RuneStart(value) {
+	return (Number(value) & 0xc0) !== 0x80;
+}
+
+function go2jsUTF8ValidRune(value) {
+	const r = go2jsUnicodeCodePoint(value);
+	return r >= 0 &&
+		r <= 0x10ffff &&
+		!(r >= 0xd800 && r <= 0xdfff);
+}
+
+function go2jsUTF8ValidString(s) {
+	for (let i = 0; i < s.length; i++) {
+		const value = s.charCodeAt(i);
+
+		if (value >= 0xd800 && value <= 0xdbff) {
+			if (i + 1 >= s.length) {
+				return false;
+			}
+
+			const next = s.charCodeAt(i + 1);
+
+			if (next < 0xdc00 || next > 0xdfff) {
+				return false;
+			}
+
+			i++;
+			continue;
+		}
+
+		if (value >= 0xdc00 && value <= 0xdfff) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+
 `
 }

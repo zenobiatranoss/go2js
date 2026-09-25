@@ -1,11 +1,15 @@
 package javascript
 
 import (
+	"fmt"
 	"go/ast"
 	"strconv"
 )
 
 func hasDefer(body *ast.BlockStmt) bool {
+	if body == nil {
+		return false
+	}
 	found := false
 
 	ast.Inspect(body, func(n ast.Node) bool {
@@ -29,6 +33,9 @@ func hasDefer(body *ast.BlockStmt) bool {
 }
 
 func (e *emitter) emitFuncBody(body *ast.BlockStmt) error {
+	if body == nil {
+		return fmt.Errorf("function body is nil")
+	}
 	if hasGoto(body) {
 		return e.emitGotoBody(body)
 	}

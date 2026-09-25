@@ -43,17 +43,31 @@ func (c *Compiler) CompileFile(path string) (string, error) {
 		return "", err
 	}
 
-	output, err := javascript.EmitWithContextOptions(
+	output, err := javascript.EmitWithContextOptionsTarget(
 		parsed.File,
 		analysis.Types,
 		analysis.Semantic,
 		c.Options.Runtime,
+		c.Options.Target,
 	)
 	if err != nil {
 		return "", err
 	}
 
-	return c.wrap(output), nil
+	var sources []javascript.SourceMapSource
+	if c.Options.SourceMap {
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return "", readErr
+		}
+
+		sources = []javascript.SourceMapSource{{
+			Name:    filepath.Base(path),
+			Content: string(data),
+		}}
+	}
+
+	return c.wrapWithSources(output, sources), nil
 }
 
 func (c *Compiler) CompilePackage(pkg *Package) (string, error) {
@@ -75,11 +89,12 @@ func (c *Compiler) CompilePackage(pkg *Package) (string, error) {
 			return "", fmt.Errorf("package contains invalid file")
 		}
 
-		code, err := javascript.EmitWithContextOptions(
+		code, err := javascript.EmitWithContextOptionsTarget(
 			parsed.File,
 			analysis.Types,
 			analysis.Semantic,
 			c.Options.Runtime,
+			c.Options.Target,
 		)
 		if err != nil {
 			return "", err
@@ -88,7 +103,12 @@ func (c *Compiler) CompilePackage(pkg *Package) (string, error) {
 		parts = append(parts, code)
 	}
 
-	return c.wrap(strings.Join(parts, "\n")), nil
+	var sources []javascript.SourceMapSource
+	if c.Options.SourceMap {
+		sources = packageSourceMapSources(pkg)
+	}
+
+	return c.wrapWithSources(strings.Join(parts, "\n"), sources), nil
 }
 
 func (c *Compiler) CompileDirectory(dir string) (string, error) {
@@ -172,6 +192,10 @@ func (c *Compiler) CompileProject(dir string) (string, error) {
 }
 
 func (c *Compiler) wrap(source string) string {
+	return c.wrapWithSources(source, nil)
+}
+
+func (c *Compiler) wrapWithSources(source string, sources []javascript.SourceMapSource) string {
 	options := javascript.ModuleOptions{
 		Format: javascript.ModuleFormat(c.Options.Module),
 		Strict: c.Options.Strict,
@@ -183,5 +207,43 @@ func (c *Compiler) wrap(source string) string {
 		output = `"use strict";\n` + output
 	}
 
-	return javascript.FormatJavaScript(output, c.Options.Minify)
+	output = javascript.FormatJavaScript(output, c.Options.Minify)
+	if c.Options.SourceMap {
+		output = javascript.AppendInlineSourceMap(output, sources)
+	}
+	return output
+}
+
+func packageSourceMapSources(pkg *Package) []javascript.SourceMapSource {
+	if pkg == nil {
+		return nil
+	}
+
+	fset := pkg.FileSet()
+	sources := make([]javascript.SourceMapSource, 0, len(pkg.Files))
+	seen := make(map[string]bool)
+
+	for _, parsed := range pkg.Files {
+		if parsed == nil || parsed.File == nil {
+			continue
+		}
+
+		filename := fset.Position(parsed.File.Pos()).Filename
+		if filename == "" || seen[filename] {
+			continue
+		}
+
+		data, err := os.ReadFile(filename)
+		if err != nil {
+			continue
+		}
+
+		seen[filename] = true
+		sources = append(sources, javascript.SourceMapSource{
+			Name:    filepath.Base(filename),
+			Content: string(data),
+		})
+	}
+
+	return sources
 }

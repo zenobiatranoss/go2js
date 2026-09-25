@@ -14,6 +14,7 @@ import (
 
 type emitter struct {
 	receiver            string
+	target              string
 	scopes              []map[string]bool
 	buf                 bytes.Buffer
 	indent              int
@@ -43,6 +44,10 @@ func EmitWithContext(file *ast.File, analysis *gotypes.Result, context *semantic
 }
 
 func EmitWithContextOptions(file *ast.File, analysis *gotypes.Result, context *semantic.Context, includeRuntime bool) (string, error) {
+	return EmitWithContextOptionsTarget(file, analysis, context, includeRuntime, "es2022")
+}
+
+func EmitWithContextOptionsTarget(file *ast.File, analysis *gotypes.Result, context *semantic.Context, includeRuntime bool, target string) (string, error) {
 	if context == nil && analysis != nil {
 		context = semantic.NewResultContext(analysis, nil)
 	}
@@ -50,6 +55,7 @@ func EmitWithContextOptions(file *ast.File, analysis *gotypes.Result, context *s
 	e := &emitter{
 		analysis: analysis,
 		semantic: context,
+		target:   normalizeTarget(target),
 	}
 	for _, decl := range file.Decls {
 		switch d := decl.(type) {
@@ -88,6 +94,7 @@ func EmitWithContextOptions(file *ast.File, analysis *gotypes.Result, context *s
 			rangeRuntimeSource(),
 			genericRuntimeSource(),
 		)
+		prefix = lowerJavaScriptTarget(prefix, e.target)
 		if prefix != "" {
 			prefix += "\n"
 		}

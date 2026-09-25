@@ -231,6 +231,24 @@ func (p *project) emitNamespace(pkg *projectPackage) (string, error) {
 			continue
 		}
 
+		if p.isDotImport(pkg.pkg, imported) {
+			names, err := p.dotImportNames(imported)
+			if err != nil {
+				return "", err
+			}
+
+			for _, name := range names {
+				out.WriteString("let ")
+				out.WriteString(name)
+				out.WriteString(" = ")
+				out.WriteString(p.namespace(imported))
+				out.WriteString(".")
+				out.WriteString(name)
+				out.WriteString(";\n")
+			}
+			continue
+		}
+
 		alias, err := p.alias(pkg.pkg, imported)
 		if err != nil {
 			return "", err
@@ -286,6 +304,24 @@ func (p *project) emitImports(out *strings.Builder, pkg *Package) error {
 			continue
 		}
 
+		if p.isDotImport(pkg, imported) {
+			names, err := p.dotImportNames(imported)
+			if err != nil {
+				return err
+			}
+
+			for _, name := range names {
+				out.WriteString("let ")
+				out.WriteString(name)
+				out.WriteString(" = ")
+				out.WriteString(p.namespace(imported))
+				out.WriteString(".")
+				out.WriteString(name)
+				out.WriteString(";\n")
+			}
+			continue
+		}
+
 		alias, err := p.alias(pkg, imported)
 		if err != nil {
 			return err
@@ -317,11 +353,12 @@ func (p *project) emitFiles(pkg *projectPackage) (string, error) {
 			return "", fmt.Errorf("compiler: package %q contains invalid file", pkg.path)
 		}
 
-		code, err := javascript.EmitWithContextOptions(
+		code, err := javascript.EmitWithContextOptionsTarget(
 			file.File,
 			pkg.analysis.Types,
 			pkg.analysis.Semantic,
 			p.options.Runtime,
+			p.options.Target,
 		)
 		if err != nil {
 			return "", err
@@ -362,7 +399,7 @@ func (p *project) alias(pkg *Package, path string) (string, error) {
 				case "_":
 					return "", nil
 				case ".":
-					return "", fmt.Errorf("compiler: dot imports are not supported yet: %q", path)
+					return "", nil
 				default:
 					return spec.Name.Name, nil
 				}
@@ -378,6 +415,44 @@ func (p *project) alias(pkg *Package, path string) (string, error) {
 	}
 
 	return "", fmt.Errorf("compiler: import %q not found", path)
+}
+
+func (p *project) isDotImport(pkg *Package, path string) bool {
+	if pkg == nil {
+		return false
+	}
+
+	for _, file := range pkg.Files {
+		if file == nil || file.File == nil {
+			continue
+		}
+
+		for _, spec := range file.File.Imports {
+			if spec.Path == nil {
+				continue
+			}
+
+			value, err := strconv.Unquote(spec.Path.Value)
+			if err != nil || value != path || spec.Name == nil {
+				continue
+			}
+
+			return spec.Name.Name == "."
+		}
+	}
+
+	return false
+}
+
+func (p *project) dotImportNames(path string) ([]string, error) {
+	loaded, err := p.load(path)
+	if err != nil {
+		return nil, err
+	}
+
+	names := exportedNames(loaded.pkg)
+	sort.Strings(names)
+	return names, nil
 }
 
 func (p *project) isLocal(path string) bool {

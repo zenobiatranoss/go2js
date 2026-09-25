@@ -18,6 +18,14 @@ func stdlibFuncName(pkg, name string) (string, bool) {
 		if jsName, ok := sortFuncs[name]; ok {
 			return jsName, true
 		}
+	case "unicode":
+		if jsName, ok := unicodeFuncs[name]; ok {
+			return jsName, true
+		}
+	case "utf8":
+		if jsName, ok := utf8Funcs[name]; ok {
+			return jsName, true
+		}
 	}
 
 	return "", false
@@ -103,6 +111,35 @@ var sortFuncs = map[string]string{
 	"Ints":     "go2jsSortInts",
 	"Strings":  "go2jsSortStrings",
 	"Float64s": "go2jsSortFloat64s",
+}
+
+var unicodeFuncs = map[string]string{
+	"IsControl": "go2jsUnicodeIsControl",
+	"IsDigit":   "go2jsUnicodeIsDigit",
+	"IsGraphic": "go2jsUnicodeIsGraphic",
+	"IsLetter":  "go2jsUnicodeIsLetter",
+	"IsLower":   "go2jsUnicodeIsLower",
+	"IsMark":    "go2jsUnicodeIsMark",
+	"IsNumber":  "go2jsUnicodeIsNumber",
+	"IsPrint":   "go2jsUnicodeIsPrint",
+	"IsPunct":   "go2jsUnicodeIsPunct",
+	"IsSpace":   "go2jsUnicodeIsSpace",
+	"IsSymbol":  "go2jsUnicodeIsSymbol",
+	"IsTitle":   "go2jsUnicodeIsTitle",
+	"IsUpper":   "go2jsUnicodeIsUpper",
+	"ToLower":   "go2jsUnicodeToLower",
+	"ToTitle":   "go2jsUnicodeToTitle",
+	"ToUpper":   "go2jsUnicodeToUpper",
+}
+
+var utf8Funcs = map[string]string{
+	"RuneCount":         "go2jsUTF8RuneCount",
+	"RuneCountInString": "go2jsUTF8RuneCountInString",
+	"RuneLen":           "go2jsUTF8RuneLen",
+	"RuneStart":         "go2jsUTF8RuneStart",
+	"Valid":             "go2jsUTF8Valid",
+	"ValidRune":         "go2jsUTF8ValidRune",
+	"ValidString":       "go2jsUTF8ValidString",
 }
 
 var multiReturnStdlibFuncs = map[string]bool{
