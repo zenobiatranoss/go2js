@@ -228,12 +228,40 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				return nil
 			}
 		} else {
-			if err := e.emitExpr(x.Fun); err != nil {
-				return err
+			if _, ok := e.genericInstance(x.Fun); ok {
+				switch fun := x.Fun.(type) {
+				case *ast.IndexExpr:
+					if err := e.emitExpr(fun.X); err != nil {
+						return err
+					}
+				case *ast.IndexListExpr:
+					if err := e.emitExpr(fun.X); err != nil {
+						return err
+					}
+				default:
+					if err := e.emitExpr(x.Fun); err != nil {
+						return err
+					}
+				}
+			} else {
+				if err := e.emitExpr(x.Fun); err != nil {
+					return err
+				}
 			}
 		}
 
 		e.write("(")
+
+		if _, ok := e.genericInstance(x.Fun); ok {
+			if err := e.emitGenericDescriptors(x.Fun); err != nil {
+				return err
+			}
+
+			if len(x.Args) > 0 {
+				e.write(", ")
+			}
+		}
+
 		for i, arg := range x.Args {
 			if i > 0 {
 				e.write(", ")
@@ -289,7 +317,7 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 
 	case *ast.IndexExpr:
 		if e.isGenericInstantiation(x) {
-			return e.emitExpr(x.X)
+			return e.emitGenericFunctionValue(x)
 		}
 
 		if e.isMapExpr(x.X) {
@@ -320,7 +348,7 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 
 	case *ast.IndexListExpr:
 		if e.isGenericInstantiation(x) {
-			return e.emitExpr(x.X)
+			return e.emitGenericFunctionValue(x)
 		}
 		return fmt.Errorf("unsupported generic index list expression")
 
