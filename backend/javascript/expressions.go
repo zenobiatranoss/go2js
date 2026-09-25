@@ -13,23 +13,30 @@ func (e *emitter) isGenericInstantiation(expr ast.Expr) bool {
 		return false
 	}
 
-	var ident *ast.Ident
+	var base ast.Expr
 
 	switch x := expr.(type) {
 	case *ast.IndexExpr:
-		ident, _ = x.X.(*ast.Ident)
+		base = x.X
 	case *ast.IndexListExpr:
-		ident, _ = x.X.(*ast.Ident)
-	case *ast.Ident:
-		ident = x
-	}
-
-	if ident == nil {
+		base = x.X
+	case *ast.Ident, *ast.SelectorExpr:
+		base = x
+	default:
 		return false
 	}
 
-	_, ok := e.analysis.Instances[ident]
-	return ok
+	switch x := base.(type) {
+	case *ast.Ident:
+		instance, ok := e.analysis.Instances[x]
+		return ok && instance.TypeArgs != nil && instance.TypeArgs.Len() > 0
+
+	case *ast.SelectorExpr:
+		instance, ok := e.analysis.Instances[x.Sel]
+		return ok && instance.TypeArgs != nil && instance.TypeArgs.Len() > 0
+	}
+
+	return false
 }
 
 func (e *emitter) emitExpr(expr ast.Expr) error {

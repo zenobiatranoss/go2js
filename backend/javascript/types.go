@@ -90,6 +90,28 @@ func (e *emitter) isFloatExpr(expr ast.Expr) bool {
 	return isFloatType(e.analyzedType(expr))
 }
 
+func (e *emitter) genericInstantiationBase(expr ast.Expr) (ast.Expr, bool) {
+	if e.analysis == nil {
+		return nil, false
+	}
+	switch x := expr.(type) {
+	case *ast.Ident:
+		instance, ok := e.analysis.Instances[x]
+		if !ok || instance.TypeArgs == nil || instance.TypeArgs.Len() == 0 {
+			return nil, false
+		}
+		return x, true
+	case *ast.SelectorExpr:
+		instance, ok := e.analysis.Instances[x.Sel]
+		if !ok || instance.TypeArgs == nil || instance.TypeArgs.Len() == 0 {
+			return nil, false
+		}
+		return x, true
+	default:
+		return nil, false
+	}
+}
+
 func (e *emitter) isMapExprType(expr ast.Expr) bool {
 	return isMapType(e.analyzedType(expr))
 }
