@@ -59,7 +59,7 @@ func (e *emitter) emitNamedResults() error {
 		e.declare(name)
 
 		e.writeIndent()
-		e.write("let ")
+		e.write(e.emitDeclarationKeyword())
 		e.write(name)
 		e.write(" = ")
 		e.write(zeroValueForGoType(result.Type()))

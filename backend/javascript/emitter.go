@@ -26,7 +26,11 @@ type emitter struct {
 	functionBodyPending bool
 	tempID              int
 
-	functionBody *ast.BlockStmt
+	functionBody   *ast.BlockStmt
+	gotoMode       bool
+	gotoLabels     map[string]int
+	gotoDispatcher string
+	gotoStmtDepth  int
 }
 
 func Emit(file *ast.File, analysis *gotypes.Result) (string, error) {
@@ -200,7 +204,7 @@ func (e *emitter) emitTypeAssertAssignment(stmt *ast.AssignStmt) (bool, error) {
 	e.writeIndent()
 
 	if stmt.Tok == token.DEFINE {
-		e.write("let ")
+		e.write(e.emitDeclarationKeyword())
 	}
 
 	e.write("[")
@@ -233,6 +237,10 @@ func (e *emitter) emitTypeAssertAssignment(stmt *ast.AssignStmt) (bool, error) {
 }
 
 func (e *emitter) emitStmt(stmt ast.Stmt) error {
+	if e.gotoMode {
+		e.gotoStmtDepth++
+		defer func() { e.gotoStmtDepth-- }()
+	}
 	if typeSwitch, ok := stmt.(*ast.TypeSwitchStmt); ok {
 		return e.emitTypeSwitch(typeSwitch)
 	}
@@ -306,7 +314,7 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 			e.writeIndent()
 
 			if s.Tok == token.DEFINE {
-				e.write("let ")
+				e.write(e.emitDeclarationKeyword())
 				for _, lhs := range s.Lhs {
 					if ident, ok := lhs.(*ast.Ident); ok {
 						e.declare(ident.Name)
@@ -374,7 +382,7 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 		e.writeIndent()
 
 		if s.Tok == token.DEFINE {
-			e.write("let ")
+			e.write(e.emitDeclarationKeyword())
 		}
 		for _, lhs := range s.Lhs {
 			if ident, ok := lhs.(*ast.Ident); ok {
@@ -626,7 +634,7 @@ func (e *emitter) emitInlineStmt(stmt ast.Stmt) error {
 		}
 
 		if s.Tok == token.DEFINE {
-			e.write("let ")
+			e.write(e.emitDeclarationKeyword())
 		}
 
 		for i, lhs := range s.Lhs {
@@ -707,7 +715,7 @@ func (e *emitter) emitValueDecl(decl *ast.GenDecl) error {
 	}
 
 	e.writeIndent()
-	e.write("let ")
+	e.write(e.emitDeclarationKeyword())
 
 	first := true
 

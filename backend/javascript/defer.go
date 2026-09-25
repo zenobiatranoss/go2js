@@ -29,6 +29,10 @@ func hasDefer(body *ast.BlockStmt) bool {
 }
 
 func (e *emitter) emitFuncBody(body *ast.BlockStmt) error {
+	if hasGoto(body) {
+		return e.emitGotoBody(body)
+	}
+
 	if !hasDefer(body) {
 		return e.emitBlock(body)
 	}

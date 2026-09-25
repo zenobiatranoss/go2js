@@ -19,7 +19,7 @@ func (e *emitter) emitParallelAssignment(stmt *ast.AssignStmt) (bool, error) {
 	e.writeIndent()
 
 	if stmt.Tok == token.DEFINE {
-		e.write("let ")
+		e.write(e.emitDeclarationKeyword())
 
 		for _, lhs := range stmt.Lhs {
 			if ident, ok := lhs.(*ast.Ident); ok {
@@ -86,7 +86,7 @@ func (e *emitter) emitParallelAssignmentInline(stmt *ast.AssignStmt) (bool, erro
 	}
 
 	if stmt.Tok == token.DEFINE {
-		e.write("let ")
+		e.write(e.emitDeclarationKeyword())
 
 		for _, lhs := range stmt.Lhs {
 			if ident, ok := lhs.(*ast.Ident); ok {

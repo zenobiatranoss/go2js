@@ -25,7 +25,22 @@ func (e *emitter) emitBranchStmt(stmt *ast.BranchStmt) error {
 	}
 
 	if stmt.Tok == token.GOTO {
-		return fmt.Errorf("goto is not supported by the JavaScript backend")
+		if !e.gotoMode || stmt.Label == nil {
+			return fmt.Errorf("goto is not supported by the JavaScript backend")
+		}
+		target, ok := e.gotoLabels[stmt.Label.Name]
+		if !ok {
+			return fmt.Errorf("goto target %q is not supported", stmt.Label.Name)
+		}
+		e.writeIndent()
+		e.write(fmt.Sprintf("go2jsPC = %d;", target))
+		e.newline()
+		e.writeIndent()
+		e.write("continue ")
+		e.write(e.gotoDispatcher)
+		e.write(";")
+		e.newline()
+		return nil
 	}
 
 	if stmt.Tok == token.FALLTHROUGH {

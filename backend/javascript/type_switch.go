@@ -112,7 +112,7 @@ func (e *emitter) emitTypeSwitchClause(clause *ast.CaseClause, value ast.Expr, n
 
 	if name != "" && len(clause.List) > 0 {
 		e.writeIndent()
-		e.write("let ")
+		e.write(e.emitDeclarationKeyword())
 		e.write(name)
 		e.write(" = go2jsInterfaceValue(")
 		if err := e.emitExpr(value); err != nil {

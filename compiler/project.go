@@ -113,6 +113,8 @@ func CompileProject(dir string) (string, error) {
 		return "", err
 	}
 
+	mainCode, initCalls := renameInitFunctions(target.pkg, mainCode)
+	mainCode = strings.Replace(mainCode, "main();", initCalls+"main();", 1)
 	out.WriteString(mainCode)
 	return out.String(), nil
 }
@@ -252,7 +254,9 @@ func (p *project) emitNamespace(pkg *projectPackage) (string, error) {
 		return "", err
 	}
 
+	code, initCalls := renameInitFunctions(pkg.pkg, code)
 	out.WriteString(code)
+	out.WriteString(initCalls)
 	out.WriteString("\nreturn {")
 
 	names := exportedNames(pkg.pkg)
@@ -500,4 +504,24 @@ func exportedNames(pkg *Package) []string {
 	}
 
 	return names
+}
+func renameInitFunctions(pkg *Package, code string) (string, string) {
+	calls := strings.Builder{}
+	index := 0
+	for _, file := range pkg.Files {
+		if file == nil || file.File == nil {
+			continue
+		}
+		for _, decl := range file.File.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Recv != nil || fn.Name == nil || fn.Name.Name != "init" {
+				continue
+			}
+			name := fmt.Sprintf("go2js_init_%d", index)
+			code = strings.Replace(code, "function init(", "function "+name+"(", 1)
+			calls.WriteString(name + "();\n")
+			index++
+		}
+	}
+	return code, calls.String()
 }
