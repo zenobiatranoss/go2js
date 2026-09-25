@@ -25,6 +25,7 @@ type emitter struct {
 	currentFunction     *ast.FuncDecl
 	functionBodyPending bool
 	tempID              int
+	genericParams       map[*gotypesstd.TypeParam]string
 
 	functionBody   *ast.BlockStmt
 	gotoMode       bool
@@ -76,7 +77,7 @@ func EmitWithContext(file *ast.File, analysis *gotypes.Result, context *semantic
 
 	prefix := ""
 	if e.needsRuntime {
-		prefix = runtimeSource() + "\n" + collectionRuntimeSource() + "\n" + rangeRuntimeSource() + "\n"
+		prefix = runtimeSource() + "\n" + collectionRuntimeSource() + "\n" + rangeRuntimeSource() + "\n" + genericRuntimeSource() + "\n"
 	}
 
 	return prefix + e.buf.String(), nil
@@ -115,6 +116,20 @@ func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 			}
 		}
 	}
+
+	e.genericParams = nil
+	if e.currentSignature != nil {
+		params := genericTypeParams(e.currentSignature)
+		if len(params) > 0 {
+			e.genericParams = make(map[*gotypesstd.TypeParam]string, len(params))
+			for i, param := range params {
+				e.genericParams[param] = genericTypeDescriptorName(i)
+			}
+		}
+	}
+	defer func() {
+		e.genericParams = nil
+	}()
 
 	if fn.Recv != nil {
 		if len(fn.Recv.List) != 1 {
@@ -773,6 +788,14 @@ func (e *emitter) emitValueDecl(decl *ast.GenDecl) error {
 				if err := e.emitInterfaceValue(valueSpec.Values[i], target); err != nil {
 					return err
 				}
+			} else {
+				target := e.variableType(name)
+				if _, ok := target.(*gotypesstd.TypeParam); ok {
+					e.needsRuntime = true
+					e.write(" = go2jsZero(")
+					e.write(e.genericDescriptorForType(target))
+					e.write(")")
+				}
 			}
 
 			first = false
@@ -1119,7 +1142,28 @@ func (e *emitter) emitConversion(call *ast.CallExpr) error {
 		return fmt.Errorf("unsupported conversion")
 	}
 
-	name := conversionName(typeName.Type())
+	target := typeName.Type()
+
+	if param, ok := target.(*gotypesstd.TypeParam); ok {
+		descriptor, found := e.currentGenericTypeDescriptor(param)
+		if !found {
+			return fmt.Errorf("generic type parameter %s is not active", param.Obj().Name())
+		}
+
+		e.needsRuntime = true
+		e.write("go2jsConvert(")
+		e.write(descriptor)
+		e.write(", ")
+
+		if err := e.emitExpr(call.Args[0]); err != nil {
+			return err
+		}
+
+		e.write(")")
+		return nil
+	}
+
+	name := conversionName(target)
 	if name == "" {
 		return fmt.Errorf("unsupported conversion to %s", typeName.Name())
 	}

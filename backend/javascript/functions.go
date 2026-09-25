@@ -212,6 +212,18 @@ func (e *emitter) resultNeedsTuple(fn *ast.FuncDecl) bool {
 
 func (e *emitter) emitFunctionParameters(fn *ast.FuncDecl) {
 	first := true
+
+	if e.currentSignature != nil {
+		params := genericTypeParams(e.currentSignature)
+		for i := range params {
+			if !first {
+				e.write(", ")
+			}
+			e.write(genericTypeDescriptorName(i))
+			first = false
+		}
+	}
+
 	parameters := e.functionParameters(fn)
 	variadic := e.functionIsVariadic(fn)
 
