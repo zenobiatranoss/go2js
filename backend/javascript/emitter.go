@@ -81,10 +81,16 @@ func EmitWithContextOptions(file *ast.File, analysis *gotypes.Result, context *s
 
 	prefix := ""
 	if includeRuntime && e.needsRuntime {
-		prefix = runtimeSource() + "\n" +
-			collectionRuntimeSource() + "\n" +
-			rangeRuntimeSource() + "\n" +
-			genericRuntimeSource() + "\n"
+		prefix = runtimeBundle(
+			e.buf.String(),
+			runtimeSource(),
+			collectionRuntimeSource(),
+			rangeRuntimeSource(),
+			genericRuntimeSource(),
+		)
+		if prefix != "" {
+			prefix += "\n"
+		}
 	}
 
 	return prefix + e.buf.String(), nil

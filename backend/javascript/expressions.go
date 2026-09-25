@@ -194,6 +194,26 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		}
 
 		if selector, ok := x.Fun.(*ast.SelectorExpr); ok {
+			if pkg, ok := selector.X.(*ast.Ident); ok {
+				if name, ok := stdlibFuncName(pkg.Name, selector.Sel.Name); ok {
+					e.write(name)
+					if pkg.Name != "math" || selector.Sel.Name == "Signbit" || selector.Sel.Name == "IsInf" {
+						e.needsRuntime = true
+					}
+					e.write("(")
+					for i, arg := range x.Args {
+						if i > 0 {
+							e.write(", ")
+						}
+						if err := e.emitCallArgument(x, i, arg); err != nil {
+							return err
+						}
+					}
+					e.write(")")
+					return nil
+				}
+			}
+
 			if e.isInterfaceMethod(selector) {
 				return e.emitInterfaceCall(x, selector)
 			}

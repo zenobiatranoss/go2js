@@ -530,5 +530,19 @@ func renameInitFunctions(pkg *Package, code string) (string, string) {
 }
 
 func CompileProject(dir string) (string, error) {
-	return compileProjectWithOptions(dir, DefaultOptions())
+	return CompileProjectWithOptions(dir, DefaultOptions())
+}
+
+func CompileProjectWithOptions(dir string, options Options) (string, error) {
+	options = options.Normalize()
+	if err := options.Validate(); err != nil {
+		return "", err
+	}
+
+	output, err := compileProjectWithOptions(dir, options)
+	if err != nil {
+		return "", err
+	}
+
+	return javascript.FormatJavaScript(output, options.Minify), nil
 }

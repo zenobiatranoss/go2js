@@ -939,6 +939,60 @@ function go2jsStringsFields(s) {
 	return s.split(/\s+/).filter((part) => part.length > 0);
 }
 
+function go2jsStringsTrimPrefix(s, prefix) {
+	if (s.startsWith(prefix)) {
+		return s.slice(prefix.length);
+	}
+	return s;
+}
+
+function go2jsStringsTrimSuffix(s, suffix) {
+	if (s.endsWith(suffix)) {
+		return s.slice(0, -suffix.length);
+	}
+	return s;
+}
+
+function go2jsStringsCut(s, sep) {
+	const index = s.indexOf(sep);
+	if (index < 0) {
+		return [s, "", false];
+	}
+	return [s.slice(0, index), s.slice(index + sep.length), true];
+}
+
+function go2jsStringsCutPrefix(s, prefix) {
+	if (!s.startsWith(prefix)) {
+		return [s, false];
+	}
+	return [s.slice(prefix.length), true];
+}
+
+function go2jsStringsCutSuffix(s, suffix) {
+	if (!s.endsWith(suffix)) {
+		return [s, false];
+	}
+	return [s.slice(0, -suffix.length), true];
+}
+
+function go2jsStringsEqualFold(a, b) {
+	return a.toLowerCase() === b.toLowerCase();
+}
+
+function go2jsStringsCompare(a, b) {
+	if (a < b) {
+		return -1;
+	}
+	if (a > b) {
+		return 1;
+	}
+	return 0;
+}
+
+function go2jsStringsToValidUTF8(s) {
+	return s;
+}
+
 function go2jsStringsCount(s, substr) {
 	if (substr === "") {
 		return s.length + 1;
@@ -992,6 +1046,71 @@ function go2jsStrconvQuote(s) {
 	return JSON.stringify(s);
 }
 
+function go2jsStrconvUnquote(s) {
+	try {
+		if (s.length >= 2 && s[0] === String.fromCharCode(96) && s[s.length - 1] === String.fromCharCode(96)) {
+			return [s.slice(1, -1), null];
+		}
+		return [JSON.parse(s), null];
+	} catch (err) {
+		return ["", new Error("strconv.Unquote: invalid syntax")];
+	}
+}
+
+function go2jsStrconvFormatFloat(value, format, precision, bitSize) {
+	const number = Number(value);
+
+	if (Number.isNaN(number)) {
+		return "NaN";
+	}
+
+	if (!Number.isFinite(number)) {
+		return number < 0 ? "-Inf" : "+Inf";
+	}
+
+	switch (format) {
+	case "f":
+		return precision >= 0 ? number.toFixed(precision) : String(number);
+	case "e":
+		return number.toExponential(Math.max(0, precision)).replace("E", "e");
+	case "E":
+		return number.toExponential(Math.max(0, precision)).replace("e", "E");
+	case "g":
+	case "G":
+		return String(number);
+	default:
+		return String(number);
+	}
+}
+
+function go2jsStrconvFormatBool(value) {
+	return value ? "true" : "false";
+}
+
+function go2jsStrconvAppendInt(dst, value, base) {
+	const text = Math.trunc(value).toString(base || 10);
+	if (Array.isArray(dst)) {
+		return dst.concat(Array.from(text, (ch) => ch.charCodeAt(0)));
+	}
+	return String(dst) + text;
+}
+
+function go2jsStrconvAppendFloat(dst, value, format, precision, bitSize) {
+	const text = go2jsStrconvFormatFloat(value, format, precision, bitSize);
+	if (Array.isArray(dst)) {
+		return dst.concat(Array.from(text, (ch) => ch.charCodeAt(0)));
+	}
+	return String(dst) + text;
+}
+
+function go2jsStrconvAppendBool(dst, value) {
+	const text = value ? "true" : "false";
+	if (Array.isArray(dst)) {
+		return dst.concat(Array.from(text, (ch) => ch.charCodeAt(0)));
+	}
+	return String(dst) + text;
+}
+
 function go2jsSortInts(values) {
 	values.sort((a, b) => a - b);
 }
@@ -1003,5 +1122,20 @@ function go2jsSortFloat64s(values) {
 function go2jsSortStrings(values) {
 	values.sort();
 }
+
+function go2jsMathSignbit(value) {
+	return Object.is(value, -0) || value < 0 || value === -Infinity;
+}
+
+function go2jsMathIsInf(value, sign) {
+	if (sign > 0) {
+		return value === Infinity;
+	}
+	if (sign < 0) {
+		return value === -Infinity;
+	}
+	return value === Infinity || value === -Infinity;
+}
+
 `
 }

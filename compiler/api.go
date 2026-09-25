@@ -149,6 +149,28 @@ func (c *Compiler) CompileSourceFile(filename, source string) (string, error) {
 	return c.CompileFile(path)
 }
 
+func (c *Compiler) CompileProject(dir string) (string, error) {
+	if c == nil {
+		return "", fmt.Errorf("nil compiler")
+	}
+
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return "", fmt.Errorf("empty project directory")
+	}
+
+	if _, _, err := findModuleRoot(dir); err != nil {
+		return "", err
+	}
+
+	output, err := CompileProjectWithOptions(dir, c.Options)
+	if err != nil {
+		return "", err
+	}
+
+	return c.wrap(output), nil
+}
+
 func (c *Compiler) wrap(source string) string {
 	options := javascript.ModuleOptions{
 		Format: javascript.ModuleFormat(c.Options.Module),
