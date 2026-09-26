@@ -1213,8 +1213,6 @@ func extendedStdlibFuncs() {
 		"TeeReader":   "go2jsIOTeeReader",
 		"Copy":        "go2jsIOCopy",
 		"ReadAll":     "go2jsIOReadAll",
-		"EOF":         "go2jsIOEOF",
-		"Discard":     "go2jsIODiscard",
 	})
 
 	extend(errorsFuncs, map[string]string{
@@ -2435,6 +2433,9 @@ function go2jsOSFileMethods() {
 		go2jsRegisterMethod(name + ".Name", go2jsOSFileName);
 		go2jsRegisterMethod(name + ".Close", close);
 	}
+
+	go2jsRegisterMethod("*strings.Builder.Write", go2jsStringsBuilder.prototype.Write);
+	go2jsRegisterMethod("strings.Builder.Write", go2jsStringsBuilder.prototype.Write);
 }
 
 function go2jsOSStdin() {
