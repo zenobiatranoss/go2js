@@ -72,7 +72,7 @@ func (e *emitter) emitFuncBody(body *ast.BlockStmt) error {
 	e.write("go2jsRecovered = true;")
 	e.newline()
 	e.writeIndent()
-	e.write("return go2jsPanicValue;")
+	e.write("return go2jsPanicPayload(go2jsPanicValue);")
 	e.newline()
 	e.indent--
 	e.writeIndent()

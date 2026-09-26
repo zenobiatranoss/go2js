@@ -1,6 +1,9 @@
 package javascript
 
-import "go/ast"
+import (
+	"fmt"
+	"go/ast"
+)
 
 func isFormatCall(call *ast.CallExpr) bool {
 	name, ok := formatFuncName(call)
@@ -49,12 +52,7 @@ func (e *emitter) emitFormatCall(call *ast.CallExpr) error {
 		return nil
 
 	case "Errorf":
-		e.write("new Error(")
-		if err := e.emitSprintfCall(call.Args); err != nil {
-			return err
-		}
-		e.write(")")
-		return nil
+		return e.emitErrorfCall(call)
 
 	case "errors.New":
 		e.write("new Error(")
@@ -67,6 +65,30 @@ func (e *emitter) emitFormatCall(call *ast.CallExpr) error {
 		return nil
 	}
 
+	return nil
+}
+
+func (e *emitter) emitErrorfCall(call *ast.CallExpr) error {
+	e.needsRuntime = true
+	e.write("go2jsWrapError(")
+
+	if len(call.Args) == 0 {
+		return fmt.Errorf("Errorf requires a format argument")
+	}
+
+	if err := e.emitExpr(call.Args[0]); err != nil {
+		return err
+	}
+
+	for _, arg := range call.Args[1:] {
+		e.write(", ")
+
+		if err := e.emitExpr(arg); err != nil {
+			return err
+		}
+	}
+
+	e.write(")")
 	return nil
 }
 

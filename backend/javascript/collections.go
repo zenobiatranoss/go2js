@@ -228,6 +228,10 @@ func (e *emitter) emitCollectionBuiltinCall(call *ast.CallExpr) (bool, error) {
 			return false, nil
 		}
 
+		if handled, err := e.emitMakeChannel(call); handled {
+			return true, err
+		}
+
 		arrayType, ok := call.Args[0].(*ast.ArrayType)
 		if !ok || arrayType.Len != nil {
 			return false, nil
@@ -270,6 +274,10 @@ func (e *emitter) emitCollectionBuiltinCall(call *ast.CallExpr) (bool, error) {
 		return true, nil
 
 	case "cap":
+		if handled, err := e.emitChannelLenCall(call); handled {
+			return true, err
+		}
+
 		if len(call.Args) != 1 {
 			return false, nil
 		}

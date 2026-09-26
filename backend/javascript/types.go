@@ -130,6 +130,8 @@ func conversionName(t types.Type) string {
 		return "String"
 	case "bool":
 		return "Boolean"
+	case "chan":
+		return "go2jsChannelConvert"
 	default:
 		return ""
 	}

@@ -1324,7 +1324,21 @@ function go2jsZeroValue(type) {
 }
 
 function go2jsPanic(value) {
-	throw value instanceof Error ? value : new Error(go2jsStringify(value));
+	const error = value instanceof Error ? value : new Error(go2jsStringify(value));
+
+	if (error.__go2js_panic_value === undefined) {
+		error.__go2js_panic_value = value;
+	}
+
+	throw error;
+}
+
+function go2jsPanicPayload(value) {
+	if (value !== null && value !== undefined && value.__go2js_panic_value !== undefined) {
+		return value.__go2js_panic_value;
+	}
+
+	return value;
 }
 
 function go2jsRecover() {
@@ -1338,6 +1352,9 @@ function go2jsStringify(value) {
 	if (value instanceof Error) {
 		return value.message;
 	}
+	if (value.__go2js_interface === true) {
+		return go2jsStringify(value.value);
+	}
 	if (value instanceof Map) {
 		const parts = [];
 		for (const [key, val] of value) {
@@ -1346,7 +1363,13 @@ function go2jsStringify(value) {
 		return "map[" + parts.join(" ") + "]";
 	}
 	if (Array.isArray(value)) {
-		return "[" + value.map(go2jsStringify).join(" ") + "]";
+		const parts = [];
+
+		for (let i = 0; i < value.length; i++) {
+			parts.push(go2jsStringify(value[i]));
+		}
+
+		return "[" + parts.join(" ") + "]";
 	}
 	if (typeof value === "object") {
 		const parts = [];
@@ -1356,6 +1379,76 @@ function go2jsStringify(value) {
 		return "{" + parts.join(" ") + "}";
 	}
 	return String(value);
+}
+
+function go2jsFormat(value) {
+	if (value === null || value === undefined) {
+		return "<nil>";
+	}
+
+	if (value instanceof Error) {
+		return value.message;
+	}
+
+	if (value.__go2js_interface === true) {
+		return go2jsFormat(value.value);
+	}
+
+	if (value.__go2js_pointer === true) {
+		return "&" + go2jsFormat(go2jsDeref(value));
+	}
+
+	if (value instanceof Map) {
+		const parts = [];
+
+		for (const [key, item] of value) {
+			parts.push(go2jsFormat(key) + ":" + go2jsFormat(item));
+		}
+
+		return "map[" + parts.join(" ") + "]";
+	}
+
+	if (Array.isArray(value)) {
+		const parts = [];
+
+		for (let i = 0; i < value.length; i++) {
+			parts.push(go2jsFormat(value[i]));
+		}
+
+		return "[" + parts.join(" ") + "]";
+	}
+
+	switch (typeof value) {
+	case "string":
+		return value;
+	case "number":
+	case "boolean":
+		return String(value);
+	}
+
+	if (typeof value.String === "function") {
+		return value.String();
+	}
+
+	if (typeof value.Error === "function") {
+		return value.Error();
+	}
+
+	const parts = [];
+
+	for (const key of Object.keys(value)) {
+		parts.push(go2jsFormat(value[key]));
+	}
+
+	return "{" + parts.join(" ") + "}";
+}
+
+function go2jsPrintln(...values) {
+	process.stdout.write(values.map(go2jsFormat).join(" ") + "\n");
+}
+
+function go2jsPrint(...values) {
+	process.stdout.write(values.map(go2jsFormat).join(" "));
 }
 
 function go2jsSprintf(format, ...args) {
@@ -1407,9 +1500,9 @@ function go2jsFormatValue(verb, spec, value) {
 		case "X":
 			return Math.trunc(value).toString(16).toUpperCase();
 		case "s":
-			return go2jsStringify(value);
+			return go2jsFormat(value);
 		case "v":
-			return go2jsStringify(value);
+			return go2jsFormat(value);
 		case "q":
 			return JSON.stringify(go2jsStringify(value));
 		case "t":
@@ -1704,114 +1797,6 @@ function go2jsMathIsInf(value, sign) {
 }
 
 
-function go2jsUnicodeRune(r) {
-	if (!Number.isInteger(r) || r < 0 || r > 0x10ffff) {
-		return "";
-	}
-	return String.fromCodePoint(r);
-}
-
-function go2jsUnicodeIsControl(r) {
-	const ch = go2jsUnicodeRune(r);
-	return ch !== "" && /^\p{Cc}$/u.test(ch);
-}
-
-function go2jsUnicodeIsDigit(r) {
-	const ch = go2jsUnicodeRune(r);
-	return ch !== "" && /^\p{Nd}$/u.test(ch);
-}
-
-function go2jsUnicodeIsGraphic(r) {
-	const ch = go2jsUnicodeRune(r);
-	return ch !== "" && (/^[\p{L}\p{M}\p{N}\p{P}\p{S}\p{Zs}]$/u.test(ch));
-}
-
-function go2jsUnicodeIsLetter(r) {
-	const ch = go2jsUnicodeRune(r);
-	return ch !== "" && /^\p{L}$/u.test(ch);
-}
-
-function go2jsUnicodeIsLower(r) {
-	const ch = go2jsUnicodeRune(r);
-	return ch !== "" && /^\p{Ll}$/u.test(ch);
-}
-
-function go2jsUnicodeIsMark(r) {
-	const ch = go2jsUnicodeRune(r);
-	return ch !== "" && /^\p{M}$/u.test(ch);
-}
-
-function go2jsUnicodeIsNumber(r) {
-	const ch = go2jsUnicodeRune(r);
-	return ch !== "" && /^\p{N}$/u.test(ch);
-}
-
-function go2jsUnicodeIsPrint(r) {
-	const ch = go2jsUnicodeRune(r);
-	return ch !== "" && (r === 0x20 || /^[\p{L}\p{M}\p{N}\p{P}\p{S}]$/u.test(ch));
-}
-
-function go2jsUnicodeIsPunct(r) {
-	const ch = go2jsUnicodeRune(r);
-	return ch !== "" && /^\p{P}$/u.test(ch);
-}
-
-function go2jsUnicodeIsSpace(r) {
-	const ch = go2jsUnicodeRune(r);
-	return ch !== "" && /^\p{White_Space}$/u.test(ch);
-}
-
-function go2jsUnicodeIsSymbol(r) {
-	const ch = go2jsUnicodeRune(r);
-	return ch !== "" && /^\p{S}$/u.test(ch);
-}
-
-function go2jsUnicodeIsTitle(r) {
-	const ch = go2jsUnicodeRune(r);
-	return ch !== "" && /^\p{Lt}$/u.test(ch);
-}
-
-function go2jsUnicodeIsUpper(r) {
-	const ch = go2jsUnicodeRune(r);
-	return ch !== "" && /^\p{Lu}$/u.test(ch);
-}
-
-function go2jsUnicodeMapCase(r, mode) {
-	const ch = go2jsUnicodeRune(r);
-	if (ch === "") {
-		return r;
-	}
-
-	let mapped;
-	switch (mode) {
-	case "lower":
-		mapped = ch.toLowerCase();
-	case "title":
-		mapped = ch.toUpperCase();
-	default:
-		mapped = ch.toUpperCase();
-	}
-
-	const runes = Array.from(mapped);
-	if (runes.length !== 1) {
-		return r;
-	}
-
-	return runes[0].codePointAt(0);
-}
-
-function go2jsUnicodeToLower(r) {
-	return go2jsUnicodeMapCase(r, "lower");
-}
-
-function go2jsUnicodeToTitle(r) {
-	return go2jsUnicodeMapCase(r, "title");
-}
-
-function go2jsUnicodeToUpper(r) {
-	return go2jsUnicodeMapCase(r, "upper");
-}
-
 function go2jsUTF8Byte(value, index) {
 	return Number(value[index]) & 0xff;
 }
@@ -1910,34 +1895,6 @@ function go2jsUTF8RuneCount(value) {
 	return count;
 }
 
-function go2jsUTF8RuneCountInString(s) {
-	return Array.from(s).length;
-}
-
-function go2jsUTF8RuneLen(r) {
-	if (!Number.isInteger(r) || r < 0 || r > 0x10ffff || (r >= 0xd800 && r <= 0xdfff)) {
-		return -1;
-	}
-
-	if (r <= 0x7f) {
-		return 1;
-	}
-
-	if (r <= 0x7ff) {
-		return 2;
-	}
-
-	if (r <= 0xffff) {
-		return 3;
-	}
-
-	return 4;
-}
-
-function go2jsUTF8RuneStart(b) {
-	return (Number(b) & 0xc0) !== 0x80;
-}
-
 function go2jsUTF8Valid(value) {
 	const bytes = Array.from(value);
 	let index = 0;
@@ -1948,39 +1905,6 @@ function go2jsUTF8Valid(value) {
 			return false;
 		}
 		index += width;
-	}
-
-	return true;
-}
-
-function go2jsUTF8ValidRune(r) {
-	return Number.isInteger(r) &&
-		r >= 0 &&
-		r <= 0x10ffff &&
-		!(r >= 0xd800 && r <= 0xdfff);
-}
-
-function go2jsUTF8ValidString(s) {
-	for (let i = 0; i < s.length; i++) {
-		const value = s.charCodeAt(i);
-
-		if (value >= 0xd800 && value <= 0xdbff) {
-			if (i + 1 >= s.length) {
-				return false;
-			}
-
-			const next = s.charCodeAt(i + 1);
-			if (next < 0xdc00 || next > 0xdfff) {
-				return false;
-			}
-
-			i++;
-			continue;
-		}
-
-		if (value >= 0xdc00 && value <= 0xdfff) {
-			return false;
-		}
 	}
 
 	return true;

@@ -14,6 +14,8 @@ import (
 
 type emitter struct {
 	receiver            string
+	channelPairTarget   bool
+	scalarReceiver      string
 	target              string
 	scopes              []map[string]bool
 	buf                 bytes.Buffer
@@ -33,6 +35,7 @@ type emitter struct {
 	gotoLabels     map[string]int
 	gotoDispatcher string
 	gotoStmtDepth  int
+	inlineMode     bool
 }
 
 func Emit(file *ast.File, analysis *gotypes.Result) (string, error) {
@@ -93,6 +96,7 @@ func EmitWithContextOptionsTarget(file *ast.File, analysis *gotypes.Result, cont
 			collectionRuntimeSource(),
 			rangeRuntimeSource(),
 			genericRuntimeSource(),
+			concurrencyRuntimeSource(),
 		)
 		prefix = lowerJavaScriptTarget(prefix, e.target)
 		if prefix != "" {
@@ -105,6 +109,8 @@ func EmitWithContextOptionsTarget(file *ast.File, analysis *gotypes.Result, cont
 
 func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 	e.receiver = ""
+	e.channelPairTarget = false
+	e.scalarReceiver = ""
 	e.currentFunction = fn
 	e.functionBodyPending = true
 	defer func() {
@@ -154,6 +160,10 @@ func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 	if fn.Recv != nil {
 		if len(fn.Recv.List) != 1 {
 			return fmt.Errorf("unsupported method receiver")
+		}
+
+		if handled, err := e.emitScalarNamedFuncDecl(fn); handled {
+			return err
 		}
 
 		receiver := fn.Recv.List[0]
@@ -318,6 +328,10 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 		return e.emitTypeSwitch(typeSwitch)
 	}
 
+	if send, ok := stmt.(*ast.SendStmt); ok {
+		return e.emitChannelSend(send)
+	}
+
 	switch s := stmt.(type) {
 	case *ast.ReturnStmt:
 		e.writeIndent()
@@ -373,17 +387,15 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 		e.newline()
 
 	case *ast.GoStmt:
-		e.writeIndent()
-		e.write("queueMicrotask(() => ")
-		if err := e.emitExpr(s.Call); err != nil {
-			return err
-		}
-		e.write(");")
-		e.newline()
+		return e.emitGoStmt(s)
 
 	case *ast.AssignStmt:
 		if handled, err := e.emitTypeAssertAssignment(s); handled {
 			return err
+		}
+
+		if e.hasBlankTarget(s.Lhs) {
+			return e.emitBlankAssignment(s)
 		}
 
 		if len(s.Lhs) > 1 && len(s.Rhs) == len(s.Lhs) {
@@ -418,7 +430,7 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 			}
 			e.write("] = ")
 
-			if err := e.emitExpr(s.Rhs[0]); err != nil {
+			if err := e.emitMultiReturnExpr(s.Rhs[0]); err != nil {
 				return err
 			}
 
@@ -432,7 +444,7 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 				e.writeIndent()
 				e.needsRuntime = true
 				e.write("go2jsStorePtr(")
-				if err := e.emitExpr(star.X); err != nil {
+				if err := e.emitPointerOperand(star.X); err != nil {
 					return err
 				}
 				e.write(", ")
@@ -712,6 +724,12 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 func (e *emitter) emitInlineStmt(stmt ast.Stmt) error {
 	switch s := stmt.(type) {
 	case *ast.AssignStmt:
+		if e.hasBlankTarget(s.Lhs) {
+			e.inlineMode = true
+			defer func() { e.inlineMode = false }()
+			return e.emitBlankAssignment(s)
+		}
+
 		if len(s.Lhs) > 1 && len(s.Rhs) == len(s.Lhs) {
 			if handled, err := e.emitParallelAssignmentInline(s); handled {
 				return err
@@ -780,6 +798,13 @@ func (e *emitter) emitGenDecl(decl *ast.GenDecl) error {
 			typeSpec, ok := spec.(*ast.TypeSpec)
 			if !ok {
 				return fmt.Errorf("unsupported type specification: %T", spec)
+			}
+
+			if handled, err := e.emitSyncTypeDecl(typeSpec); handled {
+				if err != nil {
+					return err
+				}
+				continue
 			}
 
 			if err := e.emitType(typeSpec); err != nil {
@@ -1225,6 +1250,10 @@ func (e *emitter) emitConversion(call *ast.CallExpr) error {
 				}
 			}
 		}
+	}
+
+	if named, ok := namedUnderlying(target); ok {
+		return e.emitNamedConversion(call, named, typeName)
 	}
 
 	name := conversionName(target)

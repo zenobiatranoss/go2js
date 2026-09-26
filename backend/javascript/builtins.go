@@ -51,9 +51,9 @@ func builtinName(call *ast.CallExpr) (string, bool) {
 		if pkg.Name == "fmt" {
 			switch fn.Sel.Name {
 			case "Println":
-				return "console.log", true
+				return "go2jsPrintln", true
 			case "Print":
-				return "process.stdout.write", true
+				return "go2jsPrint", true
 			case "Sprintf":
 				return "go2jsSprintf", true
 			}

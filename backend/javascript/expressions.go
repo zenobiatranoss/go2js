@@ -44,8 +44,15 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 	case *ast.Ident:
 		if x.Name == "nil" {
 			e.write("null")
+		} else if x.Name == "_" {
+			e.writeBlankIdentifier(x)
 		} else if x.Name == e.receiver && !e.isShadowed(x.Name) {
 			e.write("this")
+		} else if x.Name == e.scalarReceiver && !e.isShadowed(x.Name) {
+			e.needsRuntime = true
+			e.write("go2jsDeref(")
+			e.write(x.Name)
+			e.write(")")
 		} else {
 			e.write(x.Name)
 		}
@@ -122,6 +129,12 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		e.needsRuntime = true
 
 	case *ast.UnaryExpr:
+		if x.Op == token.MUL && e.isScalarReceiverIdent(x.X) {
+			e.needsRuntime = true
+			e.write(e.scalarReceiver)
+			return nil
+		}
+
 		if e.isComplexExpr(x) {
 			switch x.Op {
 			case token.ADD:
@@ -154,9 +167,21 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			}
 			e.write(" = value)")
 			return nil
+		case token.ARROW:
+			if e.isChannelExpr(x.X) {
+				return e.emitChannelRecv(x.X)
+			}
+
+			e.write("go2jsDeref(")
+			if err := e.emitPointerOperand(x.X); err != nil {
+				return err
+			}
+			e.write(")")
+			e.needsRuntime = true
+			return nil
 		case token.MUL:
 			e.write("go2jsDeref(")
-			if err := e.emitExpr(x.X); err != nil {
+			if err := e.emitPointerOperand(x.X); err != nil {
 				return err
 			}
 			e.write(")")
@@ -213,7 +238,23 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			return err
 		}
 
+		if handled, err := e.emitChannelBuiltinCall(x); handled {
+			return err
+		}
+
 		if selector, ok := x.Fun.(*ast.SelectorExpr); ok {
+			if handled, err := e.emitFileCall(x, selector); handled {
+				return err
+			}
+
+			if handled, err := e.emitPackageCall(x, selector); handled {
+				return err
+			}
+
+			if handled, err := e.emitSyncMethodCall(x, selector); handled {
+				return err
+			}
+
 			if pkg, ok := selector.X.(*ast.Ident); ok {
 				if name, ok := stdlibFuncName(pkg.Name, selector.Sel.Name); ok {
 					e.write(name)
@@ -238,6 +279,10 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				return e.emitInterfaceCall(x, selector)
 			}
 			if e.isDirectMethodCall(selector) {
+				if handled, err := e.emitScalarNamedMethodCall(x, selector); handled {
+					return err
+				}
+
 				if err := e.emitExpr(selector.X); err != nil {
 					return err
 				}
@@ -259,7 +304,7 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 
 		if name, ok := builtinName(x); ok {
 			e.write(name)
-			if name == "go2jsLen" || name == "go2jsCap" || name == "go2jsAppend" || name == "go2jsMake" || name == "go2jsMakeMap" || name == "go2jsMapDelete" || name == "go2jsSprintf" || name == "go2jsPanic" || name == "go2jsRecover" || name == "go2jsComplex" || name == "go2jsReal" || name == "go2jsImag" {
+			if name == "go2jsLen" || name == "go2jsCap" || name == "go2jsAppend" || name == "go2jsMake" || name == "go2jsMakeMap" || name == "go2jsMapDelete" || name == "go2jsSprintf" || name == "go2jsPrintln" || name == "go2jsPrint" || name == "go2jsPanic" || name == "go2jsRecover" || name == "go2jsComplex" || name == "go2jsReal" || name == "go2jsImag" {
 				e.needsRuntime = true
 			}
 
@@ -315,6 +360,15 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				e.write(")")
 				continue
 			}
+			if e.isPrintCall(x) && (e.isErrorExpr(arg) || e.isErrorInterfaceExpr(arg)) {
+				e.needsRuntime = true
+				e.write("go2jsErrorString(")
+				if err := e.emitExpr(arg); err != nil {
+					return err
+				}
+				e.write(")")
+				continue
+			}
 			if err := e.emitCallArgument(x, i, arg); err != nil {
 				return err
 			}
@@ -322,6 +376,10 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		e.write(")")
 
 	case *ast.SelectorExpr:
+		if handled, err := e.emitPackageValue(x); handled {
+			return err
+		}
+
 		if pkg, ok := x.X.(*ast.Ident); ok && pkg.Name == "time" {
 			switch x.Sel.Name {
 			case "January":
@@ -393,6 +451,12 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		}
 
 		if method, signature, kind, ok := e.selectorMethod(x); ok {
+			if kind == gotypes.MethodVal {
+				if handled, err := e.emitScalarNamedMethodValue(x); handled {
+					return err
+				}
+			}
+
 			e.needsRuntime = true
 
 			switch kind {
@@ -690,10 +754,23 @@ func (e *emitter) isMultiReturnCall(expr ast.Expr) bool {
 		return false
 	}
 
+	if e.isChannelRecvExpr(expr) {
+		return true
+	}
+
 	if selector, ok := call.Fun.(*ast.SelectorExpr); ok {
+		if selection := e.analysis.Selections[selector]; selection != nil {
+			if method, ok := selection.Obj().(*gotypes.Func); ok {
+				if signature, ok := method.Type().(*gotypes.Signature); ok {
+					return signature.Results() != nil && signature.Results().Len() > 1
+				}
+			}
+		}
+
 		if pkg, ok := selector.X.(*ast.Ident); ok {
 			return multiReturnStdlibFuncs[pkg.Name+"."+selector.Sel.Name]
 		}
+
 		return false
 	}
 

@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/token"
 	gotypesstd "go/types"
+	"strings"
 )
 
 func (e *emitter) nextTemp(prefix string) string {
@@ -15,6 +16,10 @@ func (e *emitter) nextTemp(prefix string) string {
 func (e *emitter) emitRangeStmt(stmt *ast.RangeStmt) error {
 	if stmt == nil || stmt.X == nil {
 		return fmt.Errorf("invalid range statement")
+	}
+
+	if handled, err := e.emitChannelRange(stmt); handled {
+		return err
 	}
 
 	if e.rangeUsesEntries(stmt) {
@@ -69,6 +74,101 @@ func (e *emitter) emitRangeStmt(stmt *ast.RangeStmt) error {
 	return nil
 }
 
+type rangeIterationKind int
+
+const (
+	rangeSkip rangeIterationKind = iota
+	rangeValues
+	rangeKeys
+	rangeEntries
+	rangeMapValues
+)
+
+type rangeIteration struct {
+	kind rangeIterationKind
+	name string
+}
+
+func (e *emitter) rangeEntryMode(stmt *ast.RangeStmt) rangeIteration {
+	targets := rangeTargetNames(stmt)
+
+	used := 0
+	for _, expr := range targets {
+		if !isBlankIdent(expr) {
+			used++
+		}
+	}
+
+	isMap := e.rangeSubjectIsMap(stmt)
+
+	if used == 0 {
+		return rangeIteration{kind: rangeSkip, name: e.nextTemp("item")}
+	}
+
+	if len(targets) == 2 {
+		if used == 2 {
+			names := make([]string, len(targets))
+			for i, expr := range targets {
+				names[i] = e.identName(expr)
+			}
+			return rangeIteration{
+				kind: rangeEntries,
+				name: strings.Join(names, ", "),
+			}
+		}
+
+		if stmt.Value != nil && (stmt.Key == nil || isBlankIdent(stmt.Key)) {
+			if isMap {
+				return rangeIteration{kind: rangeMapValues, name: e.identName(stmt.Value)}
+			}
+			return rangeIteration{kind: rangeValues, name: e.identName(stmt.Value)}
+		}
+
+		if isMap {
+			return rangeIteration{kind: rangeKeys, name: e.identName(stmt.Key)}
+		}
+
+		return rangeIteration{kind: rangeKeys, name: e.identName(stmt.Key)}
+	}
+
+	name := e.identName(targets[0])
+
+	if stmt.Value != nil {
+		return rangeIteration{kind: rangeValues, name: name}
+	}
+
+	if isMap {
+		return rangeIteration{kind: rangeKeys, name: name}
+	}
+
+	return rangeIteration{kind: rangeKeys, name: name}
+}
+
+func (e *emitter) rangeSubjectIsMap(stmt *ast.RangeStmt) bool {
+	if e.analysis == nil || stmt == nil || stmt.X == nil {
+		return false
+	}
+
+	t := e.analysis.TypeOf(stmt.X)
+	if t == nil {
+		return false
+	}
+
+	_, ok := t.Underlying().(*gotypesstd.Map)
+	return ok
+}
+
+func rangeTargetNames(stmt *ast.RangeStmt) []ast.Expr {
+	targets := make([]ast.Expr, 0, 2)
+	if stmt.Key != nil {
+		targets = append(targets, stmt.Key)
+	}
+	if stmt.Value != nil {
+		targets = append(targets, stmt.Value)
+	}
+	return targets
+}
+
 func (e *emitter) rangeUsesEntries(stmt *ast.RangeStmt) bool {
 	if e.analysis == nil || stmt == nil || stmt.X == nil {
 		return false
@@ -90,29 +190,64 @@ func (e *emitter) rangeUsesEntries(stmt *ast.RangeStmt) bool {
 func (e *emitter) emitEntriesRangeStmt(stmt *ast.RangeStmt) error {
 	e.needsRuntime = true
 
+	mode := e.rangeEntryMode(stmt)
+
+	binding := "const "
+
+	if stmt.Tok == token.ASSIGN {
+		binding = ""
+
+		switch mode.kind {
+		case rangeEntries:
+			for _, name := range strings.Split(mode.name, ", ") {
+				e.declare(name)
+			}
+		default:
+			e.declare(mode.name)
+		}
+	}
+
 	e.writeIndent()
-	e.write("for (const [")
+	e.write("for (")
 
-	if stmt.Key != nil {
-		if err := e.emitExpr(stmt.Key); err != nil {
-			return err
-		}
+	switch mode.kind {
+	case rangeSkip:
+		e.write(binding)
+		e.write(mode.name)
+		e.write(" of ")
+	case rangeValues:
+		e.write(binding)
+		e.write(mode.name)
+		e.write(" of ")
+	case rangeKeys:
+		e.write(binding)
+		e.write(mode.name)
+		e.write(" of ")
+	case rangeMapValues:
+		e.write(binding)
+		e.write(mode.name)
+		e.write(" of ")
+	case rangeEntries:
+		e.write(binding)
+		e.write("[")
+		e.write(mode.name)
+		e.write("] of ")
 	}
-
-	if stmt.Value != nil {
-		e.write(", ")
-		if err := e.emitExpr(stmt.Value); err != nil {
-			return err
-		}
-	}
-
-	e.write("] of ")
 
 	if err := e.emitExpr(stmt.X); err != nil {
 		return err
 	}
 
-	e.write(".entries()) ")
+	switch mode.kind {
+	case rangeKeys:
+		e.write(".keys()) ")
+	case rangeMapValues:
+		e.write(".values()) ")
+	case rangeEntries:
+		e.write(".entries()) ")
+	default:
+		e.write(") ")
+	}
 
 	return e.emitBlock(stmt.Body)
 }

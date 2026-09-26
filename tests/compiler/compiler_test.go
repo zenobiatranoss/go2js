@@ -72,7 +72,7 @@ func main() {
 		t.Fatal(err)
 	}
 
-	if !strings.Contains(output, `console.log("hello");`) {
+	if !strings.Contains(output, `go2jsPrintln("hello");`) {
 		t.Fatalf("unexpected output:\n%s", output)
 	}
 }
