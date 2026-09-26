@@ -671,6 +671,46 @@ function go2jsArrayLiteral(length, zeroFactory, entries) {
 	return data;
 }
 
+function go2jsStructCopy(value) {
+	if (value === null || value === undefined || typeof value !== "object") {
+		return value;
+	}
+
+	if (value.__go2js_pointer === true) {
+		return value;
+	}
+
+	const embedded = typeof value.__go2js_embedded === "undefined"
+		? null
+		: value.__go2js_embedded;
+
+	const copy = Object.create(Object.getPrototypeOf(value));
+
+	for (const key of Object.keys(value)) {
+		copy[key] = value[key];
+	}
+
+	if (embedded !== null) {
+		return go2jsEmbedProxy(copy, embedded);
+	}
+
+	return copy;
+}
+
+function go2jsMaterializeValue(value) {
+	if (value === null || value === undefined) {
+		return value;
+	}
+
+	if (typeof value === "object" && go2jsSliceMeta.has(value)) {
+		const state = go2jsSliceState(value);
+
+		return state.data.slice(state.offset, state.offset + state.length);
+	}
+
+	return value;
+}
+
 function go2jsArrayCopy(value) {
 	if (!Array.isArray(value)) {
 		throw new TypeError("array copy expects an array");

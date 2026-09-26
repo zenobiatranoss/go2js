@@ -3,6 +3,7 @@ package javascript
 import (
 	"go/ast"
 	gotypesstd "go/types"
+	"strconv"
 	"strings"
 )
 
@@ -203,8 +204,7 @@ func (e *emitter) emitPackageValue(selector *ast.SelectorExpr) (bool, error) {
 
 	if value, ok := packageVarValues[key]; ok {
 		e.needsRuntime = true
-		e.write(value)
-		e.write("()")
+		e.write(packageVarValueExpression(value))
 
 		return true, nil
 	}
@@ -512,6 +512,10 @@ func (e *emitter) emitPackageCall(call *ast.CallExpr, selector *ast.SelectorExpr
 	}
 
 	switch pkg.Name {
+	case "sort":
+		if handled, err := e.emitSortCall(call, selector); handled {
+			return handled, err
+		}
 	case "json":
 		if handled, err := e.emitJSONCall(call, selector); handled {
 			return handled, err
@@ -617,8 +621,7 @@ func (e *emitter) emitPackageVarCall(call *ast.CallExpr, selector *ast.SelectorE
 	e.write("(")
 
 	if value, ok := packageVarValues[pkg.Name+"."+inner.Sel.Name]; ok {
-		e.write(value)
-		e.write("()")
+		e.write(packageVarValueExpression(value))
 	} else {
 		if err := e.emitExpr(inner); err != nil {
 			return false, err
@@ -635,4 +638,18 @@ func (e *emitter) emitPackageVarCall(call *ast.CallExpr, selector *ast.SelectorE
 	e.write(")")
 
 	return true, nil
+}
+
+func packageVarValueExpression(value string) string {
+	trimmed := strings.TrimSpace(value)
+
+	if _, err := strconv.Atoi(trimmed); err == nil {
+		return trimmed
+	}
+
+	if strings.HasPrefix(trimmed, "go2js") || strings.HasPrefix(trimmed, "new ") {
+		return trimmed + "()"
+	}
+
+	return trimmed
 }

@@ -285,3 +285,77 @@ func (e *emitter) resultName(fn *ast.FuncDecl, index int) string {
 
 	return ""
 }
+
+func (e *emitter) needsEmptyVariadicArgument(call *ast.CallExpr) bool {
+	if call == nil || call.Ellipsis.IsValid() {
+		return false
+	}
+
+	if e.calleeTakesRestParameter(call) {
+		return false
+	}
+
+	signature := e.callSignature(call)
+	if signature == nil || !signature.Variadic() {
+		return false
+	}
+
+	params := signature.Params()
+	if params.Len() == 0 {
+		return false
+	}
+
+	last := params.At(params.Len() - 1).Type()
+
+	slice, ok := last.(*gotypes.Slice)
+	if !ok {
+		return false
+	}
+
+	if _, isInterface := slice.Elem().Underlying().(*gotypes.Interface); isInterface {
+		return false
+	}
+
+	return len(call.Args) < params.Len()
+}
+
+func (e *emitter) calleeTakesRestParameter(call *ast.CallExpr) bool {
+	switch fn := call.Fun.(type) {
+	case *ast.FuncLit:
+		return funcLitIsVariadic(fn)
+
+	case *ast.Ident:
+		if e.analysis == nil {
+			return false
+		}
+
+		object := e.analysis.Uses[fn]
+		if object == nil {
+			object = e.analysis.Defs[fn]
+		}
+
+		if function, ok := object.(*gotypes.Func); ok {
+			signature, _ := function.Type().(*gotypes.Signature)
+			return signature != nil && signature.Variadic()
+		}
+
+		return false
+	}
+
+	return false
+}
+
+func funcLitIsVariadic(lit *ast.FuncLit) bool {
+	if lit == nil || lit.Type == nil || lit.Type.Params == nil {
+		return false
+	}
+
+	fields := lit.Type.Params.List
+	if len(fields) == 0 {
+		return false
+	}
+
+	_, variadic := fields[len(fields)-1].Type.(*ast.Ellipsis)
+
+	return variadic
+}

@@ -107,15 +107,31 @@ var packageVarValues = map[string]string{
 	"syscall.EACCES": `go2jsSentinelError("permission denied")`,
 	"syscall.EPERM":  `go2jsSentinelError("operation not permitted")`,
 	"syscall.EINVAL": `go2jsSentinelError("invalid argument")`,
+
+	"filepath.Separator":     `47`,
+	"path.Separator":         `47`,
+	"os.PathSeparator":       `47`,
+	"os.PathListSeparator":   `58`,
+	"filepath.ListSeparator": `58`,
 }
 
 func extendedRuntimeSource() string {
 	return `
 function go2jsSlicesSort(a) {
-	const sorted = a.slice().sort(go2jsCompareValues);
-	a.length = 0;
-	for (const value of sorted) {
-		a.push(value);
+	if (a === null || a === undefined) {
+		return;
+	}
+
+	const items = [];
+
+	for (let i = 0; i < go2jsLen(a); i++) {
+		items.push(a[i]);
+	}
+
+	items.sort(go2jsCompareValues);
+
+	for (let i = 0; i < items.length; i++) {
+		a[i] = items[i];
 	}
 }
 
@@ -525,7 +541,7 @@ function go2jsMapsEqual(a, b) {
 		return true;
 	}
 
-	if (!(a instanceof Map) || !(b instanceof Map)) {
+	if (!(a instanceof go2jsNativeMap) || !(b instanceof go2jsNativeMap)) {
 		return false;
 	}
 
@@ -551,7 +567,7 @@ function go2jsMapsEqualFunc(a, b, equals) {
 		return true;
 	}
 
-	if (!(a instanceof Map) || !(b instanceof Map)) {
+	if (!(a instanceof go2jsNativeMap) || !(b instanceof go2jsNativeMap)) {
 		return false;
 	}
 
@@ -1035,6 +1051,12 @@ var packageVarTypes = map[string]string{
 	"context.DeadlineExceeded": "error",
 	"io.EOF":                   "error",
 	"io.ErrUnexpectedEOF":      "error",
+
+	"filepath.Separator":     "uint8",
+	"path.Separator":         "uint8",
+	"os.PathSeparator":       "uint8",
+	"filepath.ListSeparator": "uint8",
+	"os.PathListSeparator":   "uint8",
 
 	"os.ErrNotExist":   "error",
 	"os.ErrExist":      "error",
@@ -2439,8 +2461,36 @@ function go2jsTimeParse(layout, value) {
 	return [go2jsTimeValue(new Date(String(value))), null];
 }
 
+go2jsRegisterMethod("error.Error", function(value) {
+	const inner = value !== null && value !== undefined && value.value !== undefined
+		? value.value
+		: value;
+
+	return inner instanceof Error ? inner.message : String(inner);
+});
+
+go2jsRegisterMethod("error.Unwrap", function() {
+	return null;
+});
+
+function go2jsTimeAdd(base, duration) {
+	const date = go2jsTimeDateOf(base);
+
+	return go2jsTimeValue(new Date(date.getTime() + go2jsDurationNanos(duration) / 1000000));
+}
+
+function go2jsTimeSub(left, right) {
+	return go2jsDuration(
+		(go2jsTimeDateOf(left).getTime() - go2jsTimeDateOf(right).getTime()) * 1000000
+	);
+}
+
 function go2jsTimeAfter(d) {
-	return go2jsTimeAdd(go2jsTimeNow(), d);
+	const channel = go2jsChannel(1);
+
+	go2jsChanSend(channel, go2jsTimeAdd(go2jsTimeNow(), d));
+
+	return channel;
 }
 
 function go2jsTimeTick(d) {
@@ -2476,7 +2526,16 @@ function go2jsRegexpFindAllString(pattern, value, limit) {
 }
 
 function go2jsRegexpReplaceAllString(pattern, value, replacement) {
-	return go2jsStringify(value).replace(new RegExp(go2jsStringify(pattern), "g"), go2jsStringify(replacement));
+	return go2jsStringify(value).replace(
+		new RegExp(go2jsStringify(pattern), "g"),
+		go2jsRegexpExpand(go2jsStringify(replacement))
+	);
+}
+
+function go2jsRegexpExpand(replacement) {
+	return go2jsStringify(replacement)
+		.replace(/\$(\d+)/g, (match, index) => "$" + (Number(index) === 0 ? "&" : index))
+		.replace(/\$\{(\w+)\}/g, (match, name) => "$" + (name === "0" ? "&" : name));
 }
 
 function go2jsRegexpSplit(pattern, value, limit) {

@@ -185,7 +185,7 @@ func main() {
 		`go2jsMapSet(values, "bob", 30);`,
 		"go2jsLen(values)",
 		"function go2jsMap(entries)",
-		"const map = new Map();",
+		"const map = new go2jsNativeMap();",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("generated JavaScript missing %q:\n%s", want, output)

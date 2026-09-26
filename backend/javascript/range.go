@@ -289,7 +289,7 @@ function* go2jsRangeValue(value) {
 		return;
 	}
 
-	if (value instanceof Map) {
+	if (value instanceof go2jsNativeMap) {
 		for (const entry of value.entries()) {
 			yield entry;
 		}

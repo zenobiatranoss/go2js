@@ -161,9 +161,19 @@ var hexFuncs = map[string]string{
 }
 
 var sortFuncs = map[string]string{
-	"Ints":     "go2jsSortInts",
-	"Strings":  "go2jsSortStrings",
-	"Float64s": "go2jsSortFloat64s",
+	"Ints":              "go2jsSortInts",
+	"Strings":           "go2jsSortStrings",
+	"Float64s":          "go2jsSortFloat64s",
+	"Slice":             "go2jsSortSlice",
+	"SliceStable":       "go2jsSortSlice",
+	"Search":            "go2jsSortSearch",
+	"SearchInts":        "go2jsSortSearchInts",
+	"SearchStrings":     "go2jsSortSearchStrings",
+	"SearchFloat64s":    "go2jsSortSearchFloat64s",
+	"IsSorted":          "go2jsSortIsSorted",
+	"IntsAreSorted":     "go2jsSortIntsAreSorted",
+	"StringsAreSorted":  "go2jsSortStringsAreSorted",
+	"Float64sAreSorted": "go2jsSortFloat64sAreSorted",
 }
 
 var unicodeFuncs = map[string]string{
@@ -205,11 +215,18 @@ var urlFuncs = map[string]string{
 }
 
 var filepathFuncs = map[string]string{
-	"Join":  "go2jsFilepathJoin",
-	"Base":  "go2jsFilepathBase",
-	"Dir":   "go2jsFilepathDir",
-	"Ext":   "go2jsFilepathExt",
-	"Clean": "go2jsFilepathClean",
+	"Join":       "go2jsFilepathJoin",
+	"Base":       "go2jsFilepathBase",
+	"Dir":        "go2jsFilepathDir",
+	"Ext":        "go2jsFilepathExt",
+	"Clean":      "go2jsFilepathClean",
+	"Abs":        "go2jsFilepathAbs",
+	"IsAbs":      "go2jsFilepathIsAbs",
+	"Rel":        "go2jsFilepathRel",
+	"Split":      "go2jsFilepathSplit",
+	"ToSlash":    "go2jsFilepathToSlash",
+	"Match":      "go2jsFilepathMatch",
+	"VolumeName": "go2jsFilepathVolumeName",
 }
 
 var regexpFuncs = map[string]string{

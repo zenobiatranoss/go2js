@@ -115,7 +115,7 @@ function go2jsContextState(cancelled, err, deadline) {
 	return {
 		done: cancelled === true,
 		err: err || null,
-		values: new Map(),
+		values: new go2jsNativeMap(),
 		deadline: deadline || 0,
 		callbacks: []
 	};
@@ -174,7 +174,7 @@ function go2jsContextBackground() {
 function go2jsContextWithValue(parent, key, value) {
 	const base = go2jsContextStateOf(parent);
 	const child = go2jsContextState(base.done, base.err, base.deadline);
-	child.values = new Map(base.values);
+	child.values = new go2jsNativeMap(base.values);
 	child.values.set(key, value);
 	child.parent = base;
 
@@ -372,7 +372,7 @@ function go2jsAtomicValueTypeCompareAndSwap(cell, oldValue, newValue) {
 function go2jsFlagState() {
 	if (go2jsFlagState.current === undefined) {
 		go2jsFlagState.current = {
-			values: new Map(),
+			values: new go2jsNativeMap(),
 			order: [],
 			args: [],
 			parsed: false

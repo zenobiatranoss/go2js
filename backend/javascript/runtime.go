@@ -2,6 +2,8 @@ package javascript
 
 func runtimeSource() string {
 	return `
+const go2jsNativeMap = globalThis.Map;
+const go2jsNativeSet = globalThis.Set;
 
 function go2jsFloat(value) {
 	if (Number.isNaN(value)) {
@@ -348,7 +350,16 @@ function go2jsRegexpNew(pattern) {
             return go2jsRegexpReplaceAllString(source, value, replacement);
         },
         ReplaceAll(value, replacement) {
-            return go2jsBytesToString(value).replace(new RegExp(source, "g"), go2jsStringify(replacement));
+            return go2jsBytesToString(value).replace(new RegExp(source, "g"), go2jsRegexpExpand(replacement));
+        },
+        Replace(value, replacement) {
+            return go2jsStringify(value).replace(new RegExp(source), go2jsRegexpExpand(replacement));
+        },
+        ReplaceLiteral(value, replacement) {
+            return go2jsStringify(value).replace(new RegExp(source), () => go2jsStringify(replacement));
+        },
+        ReplaceAllLiteral(value, replacement) {
+            return go2jsStringify(value).replace(new RegExp(source, "g"), () => go2jsStringify(replacement));
         },
         Split(value, limit) {
             return go2jsRegexpSplit(source, value, limit);
@@ -396,6 +407,95 @@ function go2jsFilepathClean(value) {
     }
 
     return path || (absolute ? "/" : ".");
+}
+
+function go2jsFilepathAbs(value) {
+	const path = String(value);
+
+	if (go2jsFilepathIsAbs(path)) {
+		return [go2jsFilepathClean(path), null];
+	}
+
+	let base = "/";
+
+	try {
+		if (typeof process !== "undefined" && process.cwd) {
+			base = process.cwd();
+		}
+	} catch (err) {
+		base = "/";
+	}
+
+	return [go2jsFilepathClean(base + "/" + path), null];
+}
+
+function go2jsFilepathIsAbs(value) {
+	return String(value).startsWith("/");
+}
+
+function go2jsFilepathRel(base, target) {
+	const from = go2jsFilepathClean(base).split("/").filter(part => part !== "");
+	const to = go2jsFilepathClean(target).split("/").filter(part => part !== "");
+
+	let shared = 0;
+
+	while (shared < from.length && shared < to.length && from[shared] === to[shared]) {
+		shared++;
+	}
+
+	const parts = [];
+
+	for (let i = shared; i < from.length; i++) {
+		parts.push("..");
+	}
+
+	for (let i = shared; i < to.length; i++) {
+		parts.push(to[i]);
+	}
+
+	return parts.join("/");
+}
+
+function go2jsFilepathSplit(value) {
+	const path = String(value);
+	const index = path.lastIndexOf("/");
+
+	if (index < 0) {
+		return ["", path];
+	}
+
+	if (index === 0) {
+		return ["/", path.slice(1)];
+	}
+
+	return [path.slice(0, index), path.slice(index + 1)];
+}
+
+function go2jsFilepathToSlash(value) {
+	return String(value).split("\\").join("/");
+}
+
+function go2jsFilepathMatch(pattern, name) {
+	const source = String(pattern)
+		.split("")
+		.map(char => {
+			if (char === "*") {
+				return ".*";
+			}
+
+			if ("\\.[]{}()+-^$|?+".indexOf(char) >= 0) {
+				return "\\" + char;
+			}
+
+			return char;
+		})
+		.join("");
+
+	return new RegExp("^" + source + "$").test(String(name));
+}
+
+function go2jsFilepathVolumeName(value) {
+	return "";
 }
 
 function go2jsFilepathJoin(...parts) {
@@ -552,7 +652,7 @@ function go2jsJSONEncode(value, fields, omitEmpty) {
         return value.map(item => go2jsJSONEncode(item, fields, omitEmpty));
     }
 
-    if (value instanceof Map) {
+    if (value instanceof go2jsNativeMap) {
         const out = {};
         for (const [key, item] of value.entries()) {
             out[go2jsStringify(key)] = go2jsJSONEncode(item, fields, omitEmpty);
@@ -842,8 +942,8 @@ function go2jsCloneValue(value) {
         return value.slice();
     }
 
-    if (value instanceof Map) {
-        return new Map(value);
+    if (value instanceof go2jsNativeMap) {
+        return new go2jsNativeMap(value);
     }
 
     if (typeof value !== "object") {
@@ -1178,7 +1278,7 @@ function go2jsGoTypeName(value) {
 		return "[]interface {}";
 	}
 
-	if (value instanceof Map) {
+	if (value instanceof go2jsNativeMap) {
 		return "map[" + go2jsGoTypeName(go2jsFirstKey(value)) + "]" + go2jsGoTypeName(go2jsFirstValue(value));
 	}
 
@@ -1364,8 +1464,12 @@ function go2jsTypeOf(value) {
 		return value.type || "unknown";
 	}
 
+	if (value instanceof Error) {
+		return "error";
+	}
+
 	if (typeof value === "number") {
-		return "number";
+		return Number.isInteger(value) ? "int" : "float64";
 	}
 
 	if (typeof value === "string") {
@@ -1377,14 +1481,34 @@ function go2jsTypeOf(value) {
 	}
 
 	if (Array.isArray(value)) {
-		return "slice";
+		if (value.length === 0) {
+			return "[]interface {}";
+		}
+
+		return "[]" + go2jsTypeOf(value[0]);
+	}
+
+	if (value instanceof go2jsNativeMap) {
+		if (value.size === 0) {
+			return "map[interface {}]interface {}";
+		}
+
+		return "map[" + go2jsTypeOf(go2jsFirstKey(value)) + "]" + go2jsTypeOf(go2jsFirstValue(value));
 	}
 
 	if (typeof value === "object") {
-		return value.constructor?.name || "object";
+		const ctor = value.constructor;
+
+		if (ctor && typeof ctor.name === "string" && ctor.name !== "Object") {
+			const registered = go2jsLookupTypeName(ctor.name);
+
+			return registered !== undefined ? registered : ctor.name;
+		}
+
+		return "struct {}";
 	}
 
-	return typeof value;
+	return "interface {}";
 }
 
 function go2jsAssert(value, typeName) {
@@ -1397,6 +1521,12 @@ function go2jsAssert(value, typeName) {
 		throw new TypeError(
 			"interface conversion: " + value.type + " is not " + typeName
 		);
+	}
+
+	const actual = go2jsTypeOf(value);
+
+	if (actual === typeName) {
+		return value;
 	}
 
 	throw new TypeError("interface conversion failed");
@@ -1484,7 +1614,7 @@ function go2jsLen(value) {
 	if (value.__go2js_pointer === true) {
 		return go2jsLen(value.get());
 	}
-	if (value instanceof Map || value instanceof Set) {
+	if (value instanceof go2jsNativeMap || value instanceof go2jsNativeSet) {
 		return value.size;
 	}
 	if (typeof value === "string") {
@@ -1528,7 +1658,7 @@ function go2jsCap(value) {
 	if (value.__go2js_pointer === true) {
 		return go2jsCap(value.get());
 	}
-	if (value instanceof Map || value instanceof Set) {
+	if (value instanceof go2jsNativeMap || value instanceof go2jsNativeSet) {
 		return value.size;
 	}
 	if (Array.isArray(value)) {
@@ -1598,11 +1728,11 @@ function go2jsMakeSlice(size, capacity) {
 }
 
 function go2jsMakeMap() {
-	return new Map();
+	return new go2jsNativeMap();
 }
 
 function go2jsMap(entries) {
-	const map = new Map();
+	const map = new go2jsNativeMap();
 
 	if (!entries) {
 		return map;
@@ -1619,7 +1749,7 @@ function go2jsMap(entries) {
 }
 
 function go2jsMapGet(map, key, zero) {
-	if (!(map instanceof Map)) {
+	if (!(map instanceof go2jsNativeMap)) {
 		return zero;
 	}
 
@@ -1630,7 +1760,7 @@ function go2jsMapGet(map, key, zero) {
 }
 
 function go2jsMapGetOK(map, key, zero) {
-	if (!(map instanceof Map) || !map.has(key)) {
+	if (!(map instanceof go2jsNativeMap) || !map.has(key)) {
 		return [zero, false];
 	}
 
@@ -1638,42 +1768,42 @@ function go2jsMapGetOK(map, key, zero) {
 }
 
 function go2jsMapSet(map, key, value) {
-	if (!(map instanceof Map)) {
+	if (!(map instanceof go2jsNativeMap)) {
 		throw new TypeError("go2jsMapSet expects a Map");
 	}
 	map.set(key, value);
 }
 
 function go2jsMapDelete(map, key) {
-	if (!(map instanceof Map)) {
+	if (!(map instanceof go2jsNativeMap)) {
 		throw new TypeError("go2jsMapDelete expects a Map");
 	}
 	map.delete(key);
 }
 
 function go2jsMapHas(map, key) {
-	if (!(map instanceof Map)) {
+	if (!(map instanceof go2jsNativeMap)) {
 		return false;
 	}
 	return map.has(key);
 }
 
 function go2jsMapKeys(map) {
-	if (!(map instanceof Map)) {
+	if (!(map instanceof go2jsNativeMap)) {
 		return [];
 	}
 	return Array.from(map.keys());
 }
 
 function go2jsMapValues(map) {
-	if (!(map instanceof Map)) {
+	if (!(map instanceof go2jsNativeMap)) {
 		return [];
 	}
 	return Array.from(map.values());
 }
 
 function go2jsMapEntries(map) {
-	if (!(map instanceof Map)) {
+	if (!(map instanceof go2jsNativeMap)) {
 		return [];
 	}
 	return Array.from(map.entries());
@@ -1684,8 +1814,8 @@ function go2jsCopy(value) {
 		return value.slice();
 	}
 
-	if (value instanceof Map) {
-		return new Map(value);
+	if (value instanceof go2jsNativeMap) {
+		return new go2jsNativeMap(value);
 	}
 
 	if (value && typeof value === "object") {
@@ -1696,7 +1826,7 @@ function go2jsCopy(value) {
 }
 
 function go2jsClear(value) {
-	if (value instanceof Map || value instanceof Set) {
+	if (value instanceof go2jsNativeMap || value instanceof go2jsNativeSet) {
 		value.clear();
 		return;
 	}
@@ -1714,7 +1844,7 @@ function go2jsClear(value) {
 }
 
 function go2jsDelete(value, key) {
-	if (value instanceof Map) {
+	if (value instanceof go2jsNativeMap) {
 		value.delete(key);
 		return;
 	}
@@ -1725,7 +1855,7 @@ function go2jsDelete(value, key) {
 }
 
 function go2jsContains(value, item) {
-	if (value instanceof Map || value instanceof Set) {
+	if (value instanceof go2jsNativeMap || value instanceof go2jsNativeSet) {
 		return value.has(item);
 	}
 
@@ -1752,7 +1882,7 @@ function go2jsToArray(value) {
 		return value.slice();
 	}
 
-	if (value instanceof Map || value instanceof Set) {
+	if (value instanceof go2jsNativeMap || value instanceof go2jsNativeSet) {
 		return Array.from(value);
 	}
 
@@ -1764,7 +1894,7 @@ function go2jsToArray(value) {
 }
 
 function go2jsRange(value) {
-	if (value instanceof Map || value instanceof Set) {
+	if (value instanceof go2jsNativeMap || value instanceof go2jsNativeSet) {
 		return value.entries();
 	}
 
@@ -1820,7 +1950,7 @@ function go2jsStringify(value) {
 	if (value.__go2js_interface === true) {
 		return go2jsStringify(value.value);
 	}
-	if (value instanceof Map) {
+	if (value instanceof go2jsNativeMap) {
 		const parts = [];
 		for (const [key, val] of value) {
 			parts.push(go2jsStringify(key) + ":" + go2jsStringify(val));
@@ -1883,7 +2013,7 @@ function go2jsFormat(value) {
 		return "&" + go2jsFormat(go2jsDeref(value));
 	}
 
-	if (value instanceof Map) {
+	if (value instanceof go2jsNativeMap) {
 		// fmt sorts map keys, so the output must be deterministic.
 		const entries = Array.from(value.entries());
 		entries.sort((a, b) => go2jsCompareValues(a[0], b[0]));
@@ -2078,6 +2208,16 @@ function go2jsTypedType(value) {
 	return null;
 }
 
+function go2jsFormatHexBytes(value, upper) {
+	let text = "";
+
+	for (const item of go2jsToArray(value)) {
+		text += (Number(item) & 255).toString(16).padStart(2, "0");
+	}
+
+	return upper ? text.toUpperCase() : text;
+}
+
 function go2jsIsByteArray(value) {
 	if (!Array.isArray(value) || value.length === 0) {
 		return false;
@@ -2223,7 +2363,7 @@ function go2jsGoSyntax(value) {
 		return String(value);
 	}
 
-	if (value instanceof Map) {
+	if (value instanceof go2jsNativeMap) {
 		const entries = Array.from(value.entries());
 		entries.sort((a, b) => go2jsCompareValues(a[0], b[0]));
 
@@ -2267,6 +2407,7 @@ function go2jsFormatValue(verb, spec, value) {
 	const tagged = go2jsTypedType(value);
 
 	value = go2jsUntyped(value);
+	value = go2jsMaterializeValue(value);
 
 	if (verb !== "%" && !go2jsVerbAccepts(verb, go2jsInferTypeName(value, tagged))) {
 		return "%!" + verb + "(" + go2jsInferTypeName(value, tagged) + "=" + go2jsFormat(value) + ")";
@@ -2312,8 +2453,14 @@ function go2jsFormatValue(verb, spec, value) {
 		case "o":
 			return integerBody(intValue, 8, flags.includes("#") ? "0" : "");
 		case "x":
+			if ((Array.isArray(value) || value instanceof Uint8Array) && !Number.isInteger(Number(value))) {
+				return go2jsFormatHexBytes(value, false);
+			}
 			return integerBody(intValue, 16, flags.includes("#") ? "0x" : "", false);
 		case "X":
+			if ((Array.isArray(value) || value instanceof Uint8Array) && !Number.isInteger(Number(value))) {
+				return go2jsFormatHexBytes(value, true);
+			}
 			return integerBody(intValue, 16, flags.includes("#") ? "0X" : "", true);
 		case "f": {
 			const num = Number(value);
@@ -2893,6 +3040,80 @@ function go2jsStrconvAppendBool(dst, value) {
 
 function go2jsSortInts(values) {
 	values.sort((a, b) => a - b);
+}
+
+function go2jsSortReverse(data) {
+	this.data = data;
+}
+
+go2jsSortReverse.prototype.Len = function() {
+	return go2jsLen(this.data);
+};
+
+go2jsSortReverse.prototype.Less = function(i, j) {
+	return go2jsRawCompare(this.data[j], this.data[i]) < 0;
+};
+
+go2jsSortReverse.prototype.Swap = function(i, j) {
+	const items = this.data;
+	const tmp = items[i];
+	items[i] = items[j];
+	items[j] = tmp;
+};
+
+function go2jsSortInterface(data) {
+	if (data instanceof go2jsSortReverse) {
+		const items = go2jsToArray(data.data);
+
+		items.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+		items.reverse();
+
+		if (Array.isArray(data.data)) {
+			data.data.length = 0;
+			data.data.push(...items);
+		}
+
+		return;
+	}
+
+	const items = go2jsToArray(data);
+
+	items.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+
+	if (Array.isArray(data)) {
+		data.length = 0;
+		data.push(...items);
+	}
+}
+
+function go2jsSortSearch(values, target, less) {
+	const items = go2jsToArray(values);
+	let low = 0;
+	let high = items.length;
+
+	while (low < high) {
+		const mid = Math.floor((low + high) / 2);
+
+		if (less(target, items[mid])) {
+			high = mid;
+		} else {
+			low = mid + 1;
+		}
+	}
+
+	return low;
+}
+
+function go2jsSortIsSorted(values, less) {
+	const items = go2jsToArray(values);
+
+	for (let i = 1; i < items.length; i++) {
+		if (less(items[i], items[i - 1])) {
+			return false;
+		}
+	}
+
+	return true;
 }
 
 function go2jsSortFloat64s(values) {

@@ -74,6 +74,20 @@ func (e *emitter) isMapLookupExpr(expr ast.Expr) bool {
 }
 
 func (e *emitter) emitMultiReturnExpr(expr ast.Expr) error {
+	if assert, ok := expr.(*ast.TypeAssertExpr); ok && assert.Type != nil {
+		e.needsRuntime = true
+		e.write("go2jsAssertOK(")
+
+		if err := e.emitExpr(assert.X); err != nil {
+			return err
+		}
+
+		e.write(`, "`)
+		e.write(goTypeNameFromExpr(assert.Type))
+		e.write(`")`)
+		return nil
+	}
+
 	if e.isChannelRecvExpr(expr) {
 		e.channelPairTarget = true
 		defer func() { e.channelPairTarget = false }()

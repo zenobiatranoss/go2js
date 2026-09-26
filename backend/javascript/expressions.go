@@ -119,16 +119,28 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			e.write("go2jsDuration(")
 		}
 
-		if err := e.emitExpr(x.X); err != nil {
-			return err
-		}
+		if x.Op == token.AND_NOT {
+			e.write("(")
+			if err := e.emitExpr(x.X); err != nil {
+				return err
+			}
+			e.write(" & ~")
+			if err := e.emitExpr(x.Y); err != nil {
+				return err
+			}
+			e.write(")")
+		} else {
+			if err := e.emitExpr(x.X); err != nil {
+				return err
+			}
 
-		e.write(" ")
-		e.write(x.Op.String())
-		e.write(" ")
+			e.write(" ")
+			e.write(x.Op.String())
+			e.write(" ")
 
-		if err := e.emitExpr(x.Y); err != nil {
-			return err
+			if err := e.emitExpr(x.Y); err != nil {
+				return err
+			}
 		}
 
 		if wrapDuration {
@@ -271,6 +283,10 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			}
 
 			if handled, err := e.emitSyncMethodCall(x, selector); handled {
+				return err
+			}
+
+			if handled, err := e.emitSortCall(x, selector); handled {
 				return err
 			}
 
@@ -419,6 +435,11 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				return err
 			}
 		}
+
+		if e.needsEmptyVariadicArgument(x) {
+			e.write(", []")
+		}
+
 		e.write(")")
 
 	case *ast.SelectorExpr:
@@ -600,6 +621,8 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			if err := e.emitExpr(x.Low); err != nil {
 				return err
 			}
+		} else if x.High != nil {
+			e.write("0")
 		}
 
 		if x.High != nil {
@@ -736,17 +759,25 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 
 		if x.Type.Params != nil {
 			first := true
+			last := -1
 
-			for _, field := range x.Type.Params.List {
+			for index, field := range x.Type.Params.List {
 				for _, name := range field.Names {
 					if !first {
 						e.write(", ")
 					}
 
-					e.write(name.Name)
+					if _, variadic := field.Type.(*ast.Ellipsis); variadic {
+						e.write("...")
+						last = index
+					}
+
+					e.write(javaScriptIdentifier(name.Name))
 					first = false
 				}
 			}
+
+			_ = last
 		}
 
 		e.write(") ")
@@ -819,12 +850,40 @@ func (e *emitter) emitStructCompositeLit(x *ast.CompositeLit) (bool, error) {
 		return false, nil
 	}
 
-	structType, ok := info.Type.Underlying().(*gotypes.Struct)
+	literalType := info.Type
+
+	if pointer, isPointer := literalType.(*gotypes.Pointer); isPointer {
+		if _, isStruct := pointer.Elem().Underlying().(*gotypes.Struct); isStruct {
+			e.needsRuntime = true
+			e.write("go2jsNew(")
+
+			nested := &ast.CompositeLit{Type: x.Type, Lbrace: x.Lbrace, Elts: x.Elts, Rbrace: x.Rbrace}
+			nestedInfo := info
+			nestedInfo.Type = pointer.Elem()
+			previous, hadPrevious := e.analysis.Types[nested]
+			e.analysis.Types[nested] = nestedInfo
+			_, err := e.emitStructCompositeLit(nested)
+			if hadPrevious {
+				e.analysis.Types[nested] = previous
+			} else {
+				delete(e.analysis.Types, nested)
+			}
+
+			if err != nil {
+				return true, err
+			}
+
+			e.write(")")
+			return true, nil
+		}
+	}
+
+	structType, ok := literalType.Underlying().(*gotypes.Struct)
 	if !ok {
 		return false, nil
 	}
 
-	named, isNamed := info.Type.(*gotypes.Named)
+	named, isNamed := literalType.(*gotypes.Named)
 	if !isNamed {
 		return e.emitAnonymousStructLiteral(x, structType)
 	}

@@ -88,6 +88,24 @@ func (e *emitter) emitInterfaceValue(expr ast.Expr, target gotypes.Type) error {
 		}
 	}
 
+	if target != nil && e.analysis != nil {
+		if _, isStruct := target.Underlying().(*gotypes.Struct); isStruct {
+			if info, ok := e.analysis.Types[expr]; ok && info.Type != nil {
+				if _, sourceIsStruct := info.Type.Underlying().(*gotypes.Struct); sourceIsStruct {
+					if _, isComposite := expr.(*ast.CompositeLit); !isComposite {
+						e.needsRuntime = true
+						e.write("go2jsStructCopy(")
+						if err := e.emitExpr(expr); err != nil {
+							return err
+						}
+						e.write(")")
+						return nil
+					}
+				}
+			}
+		}
+	}
+
 	if isInterfaceGoType(target) {
 		if e.isInterfaceExpr(expr) {
 			return e.emitExpr(expr)
@@ -95,9 +113,25 @@ func (e *emitter) emitInterfaceValue(expr ast.Expr, target gotypes.Type) error {
 
 		e.needsRuntime = true
 		e.write("go2jsInterface(")
+
+		if info, ok := e.analysis.Types[expr]; ok && info.Type != nil {
+			if _, isStruct := info.Type.Underlying().(*gotypes.Struct); isStruct {
+				if _, isComposite := expr.(*ast.CompositeLit); !isComposite {
+					e.write("go2jsStructCopy(")
+					if err := e.emitExpr(expr); err != nil {
+						return err
+					}
+					e.write(")")
+					goto interfaceName
+				}
+			}
+		}
+
 		if err := e.emitExpr(expr); err != nil {
 			return err
 		}
+
+	interfaceName:
 		e.write(`, "`)
 		if info, ok := e.analysis.Types[expr]; ok && info.Type != nil {
 			e.write(concreteTypeName(info.Type))
@@ -140,13 +174,17 @@ func (e *emitter) callSignature(call *ast.CallExpr) *gotypes.Signature {
 		}
 	}
 
-	function, ok := object.(*gotypes.Func)
-	if !ok {
-		return nil
+	if function, ok := object.(*gotypes.Func); ok {
+		signature, _ := function.Type().(*gotypes.Signature)
+		return signature
 	}
 
-	signature, _ := function.Type().(*gotypes.Signature)
-	return signature
+	if variable, ok := object.(*gotypes.Var); ok {
+		signature, _ := variable.Type().(*gotypes.Signature)
+		return signature
+	}
+
+	return nil
 }
 
 // isMultiValueCall reports whether expr is a call that yields more than one result.

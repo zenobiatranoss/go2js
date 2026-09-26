@@ -348,7 +348,7 @@ function go2jsOnceDo(once, fn) {
 }
 
 function go2jsSyncMap() {
-	return { entries: new Map() };
+	return { entries: new go2jsNativeMap() };
 }
 
 function go2jsSyncMapStore(store, key, value) {
