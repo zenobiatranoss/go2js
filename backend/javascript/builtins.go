@@ -67,6 +67,25 @@ func builtinName(call *ast.CallExpr) (string, bool) {
 	return "", false
 }
 
+func isFmtPrintBuiltin(call *ast.CallExpr) bool {
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+
+	pkg, ok := selector.X.(*ast.Ident)
+	if !ok || pkg.Name != "fmt" {
+		return false
+	}
+
+	switch selector.Sel.Name {
+	case "Println", "Print", "Sprintf", "Printf", "Fprintf", "Fprintln", "Fprint":
+		return true
+	default:
+		return false
+	}
+}
+
 func isBuiltinOperator(op token.Token) bool {
 	switch op {
 	case token.ADD,

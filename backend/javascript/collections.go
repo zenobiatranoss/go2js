@@ -654,3 +654,94 @@ function go2jsSliceCopy(dst, src) {
 }
 `
 }
+
+func (e *emitter) mapValueType(index *ast.IndexExpr) gotypes.Type {
+	if e.analysis == nil || index == nil {
+		return nil
+	}
+
+	info, ok := e.analysis.Types[index.X]
+	if !ok || info.Type == nil {
+		return nil
+	}
+
+	switch value := info.Type.(type) {
+	case *gotypes.Map:
+		return value.Elem()
+	case *gotypes.Named:
+		if underlying, ok := value.Underlying().(*gotypes.Map); ok {
+			return underlying.Elem()
+		}
+	}
+
+	return nil
+}
+
+func (e *emitter) mapLiteralValueType(lit *ast.CompositeLit) gotypes.Type {
+	if e.analysis == nil || lit == nil {
+		return nil
+	}
+
+	if mapType, ok := lit.Type.(*ast.MapType); ok {
+		if info, found := e.analysis.Types[mapType.Value]; found {
+			return info.Type
+		}
+
+		return nil
+	}
+
+	info, ok := e.analysis.Types[lit]
+	if !ok || info.Type == nil {
+		return nil
+	}
+
+	named, ok := info.Type.(*gotypes.Named)
+	if !ok {
+		return nil
+	}
+
+	underlying, ok := named.Underlying().(*gotypes.Map)
+	if !ok {
+		return nil
+	}
+
+	return underlying.Elem()
+}
+
+func (e *emitter) compositeElementType(lit *ast.CompositeLit) gotypes.Type {
+	if e.analysis == nil || lit == nil {
+		return nil
+	}
+
+	if lit.Type == nil {
+		if slice, ok := e.expectedElementType.(*gotypes.Slice); ok {
+			return slice.Elem()
+		}
+
+		if named, ok := e.expectedElementType.(*gotypes.Named); ok {
+			if underlying, ok := named.Underlying().(*gotypes.Slice); ok {
+				return underlying.Elem()
+			}
+		}
+
+		return nil
+	}
+
+	if arrayType, ok := lit.Type.(*ast.ArrayType); ok {
+		if info, found := e.analysis.Types[arrayType.Elt]; found {
+			return info.Type
+		}
+
+		return nil
+	}
+
+	if info, found := e.analysis.Types[lit]; found && info.Type != nil {
+		if named, ok := info.Type.(*gotypes.Named); ok {
+			if underlying, ok := named.Underlying().(*gotypes.Slice); ok {
+				return underlying.Elem()
+			}
+		}
+	}
+
+	return nil
+}

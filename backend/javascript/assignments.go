@@ -1,9 +1,11 @@
 package javascript
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	gotypesstd "go/types"
+	"strconv"
 	"strings"
 )
 
@@ -275,6 +277,14 @@ func (e *emitter) emitParallelAssignment(stmt *ast.AssignStmt) (bool, error) {
 		return true, nil
 	}
 
+	if e.parallelAssignReusesTargets(stmt) {
+		e.statementContext = true
+
+		defer func() { e.statementContext = false }()
+
+		return true, e.emitParallelAssignmentWithTemps(stmt)
+	}
+
 	e.writeIndent()
 
 	if stmt.Tok == token.DEFINE {
@@ -392,4 +402,159 @@ func (e *emitter) emitParallelAssignmentInline(stmt *ast.AssignStmt) (bool, erro
 
 	e.write("]")
 	return true, nil
+}
+
+func (e *emitter) parallelAssignReusesTargets(stmt *ast.AssignStmt) bool {
+	if stmt.Tok != token.DEFINE {
+		return false
+	}
+
+	for _, lhs := range stmt.Lhs {
+		ident, ok := lhs.(*ast.Ident)
+		if !ok {
+			return true
+		}
+
+		if ident.Name == blankIdentifier {
+			continue
+		}
+
+		if e.isShadowed(ident.Name) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (e *emitter) emitParallelAssignmentWithTemps(stmt *ast.AssignStmt) error {
+	e.tempCounter++
+
+	prefix := fmt.Sprintf("go2jsP%d_", e.tempCounter)
+
+	if !e.statementContext {
+		return e.emitParallelTempsInline(stmt, prefix)
+	}
+
+	e.writeIndent()
+	e.write("const [")
+
+	for i := range stmt.Lhs {
+		if i > 0 {
+			e.write(", ")
+		}
+
+		e.write(prefix)
+		e.write(strconv.Itoa(i))
+	}
+
+	e.write("] = [")
+
+	for i, rhs := range stmt.Rhs {
+		if i > 0 {
+			e.write(", ")
+		}
+
+		if err := e.emitParallelRHS(stmt, i, rhs); err != nil {
+			return err
+		}
+	}
+
+	e.write("];")
+	e.newline()
+
+	for i, lhs := range stmt.Lhs {
+		ident, ok := lhs.(*ast.Ident)
+		if ok && ident.Name == blankIdentifier {
+			continue
+		}
+
+		fresh := ok && stmt.Tok == token.DEFINE && !e.isDeclaredHere(ident.Name)
+
+		e.writeIndent()
+
+		if fresh {
+			e.declare(ident.Name)
+			e.write(e.emitDeclarationKeyword())
+		}
+
+		if err := e.emitExpr(lhs); err != nil {
+			return err
+		}
+
+		e.write(" = ")
+		e.write(prefix)
+		e.write(strconv.Itoa(i))
+		e.write(";")
+		e.newline()
+	}
+
+	return nil
+}
+
+func (e *emitter) emitParallelRHS(stmt *ast.AssignStmt, index int, rhs ast.Expr) error {
+	if ident, ok := stmt.Lhs[index].(*ast.Ident); ok {
+		if valueType := e.variableType(ident); valueType != nil {
+			return e.emitInterfaceValue(rhs, valueType)
+		}
+	}
+
+	return e.emitExpr(rhs)
+}
+
+func (e *emitter) emitParallelTempsInline(stmt *ast.AssignStmt, prefix string) error {
+	e.write("((")
+
+	for i := range stmt.Lhs {
+		if i > 0 {
+			e.write(", ")
+		}
+
+		e.write(prefix)
+		e.write(strconv.Itoa(i))
+	}
+
+	e.write(") = [")
+
+	for i, rhs := range stmt.Rhs {
+		if i > 0 {
+			e.write(", ")
+		}
+
+		if err := e.emitParallelRHS(stmt, i, rhs); err != nil {
+			return err
+		}
+	}
+
+	e.write("], (")
+	e.write(e.emitDeclarationKeyword())
+
+	first := true
+
+	for i, lhs := range stmt.Lhs {
+		ident, ok := lhs.(*ast.Ident)
+		if !ok || ident.Name == blankIdentifier {
+			continue
+		}
+
+		if !first {
+			e.write(", ")
+		}
+
+		first = false
+
+		if !e.isDeclaredHere(ident.Name) {
+			e.declare(ident.Name)
+			e.write(e.emitDeclarationKeyword())
+		}
+
+		e.write(e.resolveName(ident.Name))
+		e.write(" = ")
+		e.write(prefix)
+		e.write(strconv.Itoa(i))
+	}
+
+	e.write("))")
+
+	return nil
 }

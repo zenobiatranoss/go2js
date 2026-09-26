@@ -49,7 +49,7 @@ func (e *emitter) emitFuncBody(body *ast.BlockStmt) error {
 	e.write("{")
 	e.newline()
 
-	e.scopes = append(e.scopes, map[string]bool{})
+	e.pushScope()
 	e.indent++
 
 	e.writeIndent()

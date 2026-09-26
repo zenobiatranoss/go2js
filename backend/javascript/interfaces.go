@@ -145,6 +145,65 @@ func (e *emitter) callSignature(call *ast.CallExpr) *gotypes.Signature {
 	return signature
 }
 
+func (e *emitter) hasStringMethod(t gotypes.Type) bool {
+	named, ok := t.(*gotypes.Named)
+	if !ok {
+		return false
+	}
+
+	if !isScalarNamedType(named) {
+		return false
+	}
+
+	method, ok := lookupNamedMethod(named, "String")
+	if !ok {
+		return false
+	}
+
+	if !e.declaresInSource(method) {
+		return false
+	}
+
+	signature, ok := method.Type().(*gotypes.Signature)
+	if !ok || signature.Params().Len() != 0 || signature.Results().Len() != 1 {
+		return false
+	}
+
+	basic, ok := signature.Results().At(0).Type().(*gotypes.Basic)
+	if !ok {
+		return false
+	}
+
+	return basic.Kind() == gotypes.String
+}
+
+func (e *emitter) emitStringerValue(expr ast.Expr) (bool, error) {
+	if e.analysis == nil {
+		return false, nil
+	}
+
+	info, ok := e.analysis.Types[expr]
+	if !ok || info.Type == nil {
+		return false, nil
+	}
+
+	typeName, ok := info.Type.(*gotypes.Named)
+	if !ok || !e.hasStringMethod(typeName) {
+		return false, nil
+	}
+
+	e.write(scalarNamedMethodName(typeName.Obj().Name(), "String"))
+	e.write("(")
+
+	if err := e.emitExpr(expr); err != nil {
+		return true, err
+	}
+
+	e.write(")")
+
+	return true, nil
+}
+
 func (e *emitter) emitCallArgument(call *ast.CallExpr, index int, expr ast.Expr) error {
 	if call != nil && call.Ellipsis.IsValid() && index == len(call.Args)-1 {
 		e.write("...")
@@ -288,4 +347,63 @@ func exprString(expr ast.Expr) string {
 	default:
 		return ""
 	}
+}
+
+func (e *emitter) emitFmtPrintArguments(call *ast.CallExpr) error {
+	e.write("(")
+
+	for i, arg := range call.Args {
+		if i > 0 {
+			e.write(", ")
+		}
+
+		if i == 0 {
+			if isFormatStringPlaceholder(call) {
+				if err := e.emitExpr(arg); err != nil {
+					return err
+				}
+
+				continue
+			}
+		}
+
+		if emitted, err := e.emitStringerValue(arg); emitted || err != nil {
+			if err != nil {
+				return err
+			}
+
+			continue
+		}
+
+		if err := e.emitCallArgument(call, i, arg); err != nil {
+			return err
+		}
+	}
+
+	e.write(")")
+
+	return nil
+}
+
+func isFormatStringPlaceholder(call *ast.CallExpr) bool {
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+
+	return selector.Sel.Name == "Sprintf" || selector.Sel.Name == "Printf"
+}
+
+func (e *emitter) declaresInSource(fn *gotypes.Func) bool {
+	if e.analysis == nil || fn == nil {
+		return false
+	}
+
+	for _, object := range e.analysis.Defs {
+		if object == fn {
+			return true
+		}
+	}
+
+	return false
 }

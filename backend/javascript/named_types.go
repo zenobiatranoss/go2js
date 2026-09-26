@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/ast"
 	gotypesstd "go/types"
+	"strconv"
 )
 
 func isScalarNamedType(t gotypesstd.Type) bool {
@@ -248,10 +249,10 @@ func (e *emitter) emitScalarNamedPointerCall(call *ast.CallExpr, selector *ast.S
 	}
 
 	e.needsRuntime = true
-	e.write(ident.Name)
+	e.write(e.resolveName(ident.Name))
 	e.write(" = (() => {")
 	e.write("const cell = go2jsNew(")
-	e.write(ident.Name)
+	e.write(e.resolveName(ident.Name))
 	e.write(");")
 
 	if results == 1 {
@@ -271,7 +272,7 @@ func (e *emitter) emitScalarNamedPointerCall(call *ast.CallExpr, selector *ast.S
 	e.write(");")
 
 	if results == 1 {
-		e.write(ident.Name)
+		e.write(e.resolveName(ident.Name))
 		e.write(" = go2jsDeref(cell);")
 		e.write("return result;")
 	} else {
@@ -373,7 +374,31 @@ func (e *emitter) emitScalarNamedFuncDecl(fn *ast.FuncDecl) (bool, error) {
 	e.write(receiver.Names[0].Name)
 	e.write(") ")
 
-	return true, e.emitFuncBody(fn.Body)
+	if err := e.emitFuncBody(fn.Body); err != nil {
+		return true, err
+	}
+
+	e.needsRuntime = true
+	e.write("go2jsRegisterMethod(")
+	e.write(strconv.Quote(typeName + "." + fn.Name.Name))
+	e.write(", ")
+	e.write(scalarNamedMethodName(typeName, fn.Name.Name))
+	e.write(");")
+	e.newline()
+
+	return true, nil
+}
+
+func lookupNamedMethod(named *gotypesstd.Named, name string) (*gotypesstd.Func, bool) {
+	for i := 0; i < named.NumMethods(); i++ {
+		method := named.Method(i)
+
+		if method.Name() == name {
+			return method, true
+		}
+	}
+
+	return nil, false
 }
 
 func (e *emitter) typeObject(name string) (gotypesstd.Object, bool) {
@@ -404,4 +429,71 @@ func (e *emitter) emitPointerOperand(expr ast.Expr) error {
 	}
 
 	return e.emitExpr(expr)
+}
+
+func (e *emitter) emitStructFieldStringers(typeName string, structType *ast.StructType) error {
+	if structType == nil || structType.Fields == nil || e.analysis == nil {
+		return nil
+	}
+
+	type entry struct {
+		field  string
+		method string
+	}
+
+	var entries []entry
+
+	for _, field := range structType.Fields.List {
+		if len(field.Names) != 1 {
+			continue
+		}
+
+		if e.analysis.Types == nil {
+			continue
+		}
+
+		info, ok := e.analysis.Types[field.Type]
+		if !ok || info.Type == nil {
+			continue
+		}
+
+		named, ok := info.Type.(*gotypesstd.Named)
+		if !ok {
+			continue
+		}
+
+		if !e.hasStringMethod(named) {
+			continue
+		}
+
+		entries = append(entries, entry{
+			field:  field.Names[0].Name,
+			method: named.Obj().Name() + ".String",
+		})
+	}
+
+	if len(entries) == 0 {
+		return nil
+	}
+
+	e.needsRuntime = true
+	e.writeIndent()
+	e.write("go2jsRegisterStructFormat(")
+	e.write(strconv.Quote(typeName))
+	e.write(", {")
+
+	for i, item := range entries {
+		if i > 0 {
+			e.write(", ")
+		}
+
+		e.write(strconv.Quote(item.field))
+		e.write(": ")
+		e.write(strconv.Quote(item.method))
+	}
+
+	e.write("});")
+	e.newline()
+
+	return nil
 }

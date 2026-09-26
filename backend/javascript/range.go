@@ -41,7 +41,7 @@ func (e *emitter) emitRangeStmt(stmt *ast.RangeStmt) error {
 	e.write(")) {")
 	e.newline()
 
-	e.scopes = append(e.scopes, map[string]bool{})
+	e.pushScope()
 	e.indent++
 
 	defer func() {
@@ -267,7 +267,7 @@ func (e *emitter) emitRangeBinding(lhs ast.Expr, value string, tok token.Token) 
 
 		e.declare(ident.Name)
 		e.write("let ")
-		e.write(ident.Name)
+		e.write(e.resolveName(ident.Name))
 	} else {
 		if err := e.emitExpr(lhs); err != nil {
 			return err

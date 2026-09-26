@@ -6,6 +6,7 @@ import (
 	"go/ast"
 	"go/token"
 	gotypesstd "go/types"
+	"strconv"
 	"strings"
 
 	"github.com/zenobiatranoss/go2js/compiler/semantic"
@@ -15,9 +16,15 @@ import (
 type emitter struct {
 	receiver            string
 	channelPairTarget   bool
+	mapLookupPairTarget bool
 	scalarReceiver      string
 	target              string
-	scopes              []map[string]bool
+	scopes              []scopeMap
+	renames             int
+	tempCounter         int
+	statementContext    bool
+	pendingParams       []string
+	expectedElementType gotypesstd.Type
 	buf                 bytes.Buffer
 	indent              int
 	needsRuntime        bool
@@ -110,12 +117,16 @@ func EmitWithContextOptionsTarget(file *ast.File, analysis *gotypes.Result, cont
 func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 	e.receiver = ""
 	e.channelPairTarget = false
+	e.mapLookupPairTarget = false
 	e.scalarReceiver = ""
+	parameters := e.functionParameters(fn)
+	e.pendingParams = parameters
 	e.currentFunction = fn
 	e.functionBodyPending = true
 	defer func() {
 		e.currentFunction = nil
 		e.functionBodyPending = false
+		e.pendingParams = nil
 	}()
 
 	e.resultCount = e.functionResultCount(fn)
@@ -235,14 +246,42 @@ func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 	e.emitFunctionParameters(fn)
 	e.write(") ")
 
+	_ = parameters
+
 	return e.emitFuncBody(fn.Body)
+}
+
+func (e *emitter) emitForHeader(stmt *ast.ForStmt) error {
+	if stmt.Init != nil {
+		if err := e.emitInlineStmt(stmt.Init); err != nil {
+			return err
+		}
+	}
+
+	e.write("; ")
+
+	if stmt.Cond != nil {
+		if err := e.emitExpr(stmt.Cond); err != nil {
+			return err
+		}
+	}
+
+	e.write("; ")
+
+	if stmt.Post != nil {
+		if err := e.emitInlineStmt(stmt.Post); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (e *emitter) emitBlock(block *ast.BlockStmt) error {
 	e.write("{")
 	e.newline()
 
-	e.scopes = append(e.scopes, map[string]bool{})
+	e.pushScope()
 	e.indent++
 
 	if block == e.functionBody {
@@ -379,8 +418,20 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 	case *ast.ExprStmt:
 		e.writeIndent()
 
+		if call, ok := s.X.(*ast.CallExpr); ok {
+			if _, isFuncLit := call.Fun.(*ast.FuncLit); isFuncLit {
+				e.write("(")
+			}
+		}
+
 		if err := e.emitExpr(s.X); err != nil {
 			return err
+		}
+
+		if call, ok := s.X.(*ast.CallExpr); ok {
+			if _, isFuncLit := call.Fun.(*ast.FuncLit); isFuncLit {
+				e.write(")")
+			}
 		}
 
 		e.write(";")
@@ -480,10 +531,11 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 
 		if s.Tok == token.DEFINE {
 			e.write(e.emitDeclarationKeyword())
-		}
-		for _, lhs := range s.Lhs {
-			if ident, ok := lhs.(*ast.Ident); ok {
-				e.declare(ident.Name)
+
+			for _, lhs := range s.Lhs {
+				if ident, ok := lhs.(*ast.Ident); ok {
+					e.declare(ident.Name)
+				}
 			}
 		}
 
@@ -536,80 +588,27 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 		}
 
 	case *ast.IfStmt:
-		if s.Init != nil {
-			e.writeIndent()
-
-			if err := e.emitInlineStmt(s.Init); err != nil {
-				return err
-			}
-
-			e.newline()
-		}
-
-		e.writeIndent()
-		e.write("if (")
-
-		if err := e.emitExpr(s.Cond); err != nil {
-			return err
-		}
-
-		e.write(") ")
-
-		if err := e.emitBlock(s.Body); err != nil {
-			return err
-		}
-
-		if s.Else != nil {
-			e.writeIndent()
-			e.write("else ")
-
-			switch elseStmt := s.Else.(type) {
-			case *ast.BlockStmt:
-				if err := e.emitBlock(elseStmt); err != nil {
-					return err
-				}
-
-			case *ast.IfStmt:
-				if err := e.emitStmt(elseStmt); err != nil {
-					return err
-				}
-
-			default:
-				return fmt.Errorf("unsupported else statement: %T", s.Else)
-			}
-		}
+		return e.emitIfStmt(s)
 
 	case *ast.ForStmt:
 		e.writeIndent()
 		e.write("for (")
 
-		if s.Init != nil {
-			if err := e.emitInlineStmt(s.Init); err != nil {
-				return err
-			}
-		}
+		e.pushScope()
 
-		e.write("; ")
-
-		if s.Cond != nil {
-			if err := e.emitExpr(s.Cond); err != nil {
-				return err
-			}
-		}
-
-		e.write("; ")
-
-		if s.Post != nil {
-			if err := e.emitInlineStmt(s.Post); err != nil {
-				return err
-			}
+		if err := e.emitForHeader(s); err != nil {
+			e.scopes = e.scopes[:len(e.scopes)-1]
+			return err
 		}
 
 		e.write(") ")
 
 		if err := e.emitBlock(s.Body); err != nil {
+			e.scopes = e.scopes[:len(e.scopes)-1]
 			return err
 		}
+
+		e.scopes = e.scopes[:len(e.scopes)-1]
 
 	case *ast.RangeStmt:
 		return e.emitRangeStmt(s)
@@ -721,6 +720,124 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 	return nil
 }
 
+func (e *emitter) emitIfStmt(stmt *ast.IfStmt) error {
+	if stmt.Init == nil {
+		return e.emitIfBody(stmt)
+	}
+
+	e.writeIndent()
+	e.write("{")
+	e.newline()
+	e.indent++
+
+	e.pushScope()
+	e.statementContext = true
+
+	e.writeIndent()
+
+	if err := e.emitInlineStmt(stmt.Init); err != nil {
+		e.indent--
+		e.scopes = e.scopes[:len(e.scopes)-1]
+		e.statementContext = false
+		return err
+	}
+
+	e.statementContext = false
+
+	e.newline()
+
+	if err := e.emitIfBody(stmt); err != nil {
+		e.indent--
+		e.scopes = e.scopes[:len(e.scopes)-1]
+		return err
+	}
+
+	e.indent--
+	e.scopes = e.scopes[:len(e.scopes)-1]
+
+	e.writeIndent()
+	e.write("}")
+	e.newline()
+
+	return nil
+}
+
+func (e *emitter) emitIfBody(stmt *ast.IfStmt) error {
+	e.writeIndent()
+	e.write("if (")
+
+	if err := e.emitExpr(stmt.Cond); err != nil {
+		return err
+	}
+
+	e.write(") ")
+
+	if err := e.emitBlock(stmt.Body); err != nil {
+		return err
+	}
+
+	if stmt.Else == nil {
+		return nil
+	}
+
+	e.writeIndent()
+	e.write("else ")
+
+	switch elseStmt := stmt.Else.(type) {
+	case *ast.BlockStmt:
+		return e.emitBlock(elseStmt)
+
+	case *ast.IfStmt:
+		return e.emitIfStmt(elseStmt)
+
+	default:
+		return fmt.Errorf("unsupported else statement: %T", stmt.Else)
+	}
+}
+
+func (e *emitter) emitInlineMultiReturn(stmt *ast.AssignStmt) error {
+	if stmt.Tok == token.DEFINE {
+		e.write(e.emitDeclarationKeyword())
+
+		for _, lhs := range stmt.Lhs {
+			if ident, ok := lhs.(*ast.Ident); ok && ident.Name != blankIdentifier {
+				e.declare(ident.Name)
+			}
+		}
+	}
+
+	e.write("[")
+
+	for i, lhs := range stmt.Lhs {
+		if i > 0 {
+			e.write(", ")
+		}
+
+		if err := e.emitExpr(lhs); err != nil {
+			return err
+		}
+	}
+
+	e.write("] = ")
+
+	if assert, ok := stmt.Rhs[0].(*ast.TypeAssertExpr); ok && assert.Type != nil {
+		e.needsRuntime = true
+		e.write("go2jsAssertOK(")
+
+		if err := e.emitExpr(assert.X); err != nil {
+			return err
+		}
+
+		e.write(`, "`)
+		e.write(goTypeNameFromExpr(assert.Type))
+		e.write(`")`)
+
+		return nil
+	}
+
+	return e.emitMultiReturnExpr(stmt.Rhs[0])
+}
+
 func (e *emitter) emitInlineStmt(stmt ast.Stmt) error {
 	switch s := stmt.(type) {
 	case *ast.AssignStmt:
@@ -730,13 +847,27 @@ func (e *emitter) emitInlineStmt(stmt ast.Stmt) error {
 			return e.emitBlankAssignment(s)
 		}
 
+		if len(s.Lhs) > 1 && len(s.Rhs) == 1 && e.isMultiReturnCall(s.Rhs[0]) {
+			return e.emitInlineMultiReturn(s)
+		}
+
 		if len(s.Lhs) > 1 && len(s.Rhs) == len(s.Lhs) {
+			if e.parallelAssignReusesTargets(s) {
+				return e.emitParallelAssignmentWithTemps(s)
+			}
+
 			if handled, err := e.emitParallelAssignmentInline(s); handled {
 				return err
 			}
 		}
 
 		if s.Tok == token.DEFINE {
+			for _, lhs := range s.Lhs {
+				if ident, ok := lhs.(*ast.Ident); ok && ident.Name != blankIdentifier {
+					e.declare(ident.Name)
+				}
+			}
+
 			e.write(e.emitDeclarationKeyword())
 		}
 
@@ -1111,6 +1242,11 @@ func (e *emitter) emitType(spec *ast.TypeSpec) error {
 		e.writeIndent()
 		e.write("}")
 		e.newline()
+
+		if err := e.emitStructFieldStringers(spec.Name.Name, t); err != nil {
+			return err
+		}
+
 		e.newline()
 
 	default:
@@ -1146,20 +1282,76 @@ func structZeroValue(expr ast.Expr) string {
 	return "null"
 }
 
+type scopeMap map[string]string
+
 func (e *emitter) isShadowed(name string) bool {
 	for i := len(e.scopes) - 1; i >= 0; i-- {
-		if e.scopes[i][name] {
+		if _, ok := e.scopes[i][name]; ok {
 			return true
 		}
 	}
 	return false
 }
 
+func (e *emitter) isDeclaredHere(name string) bool {
+	if len(e.scopes) == 0 {
+		return false
+	}
+	_, ok := e.scopes[len(e.scopes)-1][name]
+	return ok
+}
+
+func (e *emitter) resolveName(name string) string {
+	for i := len(e.scopes) - 1; i >= 0; i-- {
+		if js, ok := e.scopes[i][name]; ok {
+			return js
+		}
+	}
+
+	return name
+}
+
+func (e *emitter) pushScope() {
+	e.scopes = append(e.scopes, scopeMap{})
+
+	if len(e.pendingParams) == 0 {
+		return
+	}
+
+	for _, name := range e.pendingParams {
+		if name != blankIdentifier {
+			e.declare(name)
+		}
+	}
+
+	e.pendingParams = nil
+}
+
 func (e *emitter) declare(name string) {
 	if len(e.scopes) == 0 {
 		return
 	}
-	e.scopes[len(e.scopes)-1][name] = true
+
+	current := e.scopes[len(e.scopes)-1]
+
+	if _, ok := current[name]; ok {
+		return
+	}
+
+	if !e.isShadowed(name) {
+		current[name] = name
+		return
+	}
+
+	for {
+		e.renames++
+		js := name + "$" + strconv.Itoa(e.renames)
+
+		if !e.isShadowed(js) {
+			current[name] = js
+			return
+		}
+	}
 }
 
 func (e *emitter) variableType(ident *ast.Ident) gotypesstd.Type {

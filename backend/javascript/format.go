@@ -101,6 +101,22 @@ func (e *emitter) emitSprintfCall(args []ast.Expr) error {
 			e.write(", ")
 		}
 
+		if i == 0 {
+			if err := e.emitExpr(arg); err != nil {
+				return err
+			}
+
+			continue
+		}
+
+		if emitted, err := e.emitStringerValue(arg); emitted || err != nil {
+			if err != nil {
+				return err
+			}
+
+			continue
+		}
+
 		if err := e.emitExpr(arg); err != nil {
 			return err
 		}

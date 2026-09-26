@@ -824,6 +824,17 @@ function go2jsNew(value) {
 	);
 }
 
+const go2jsMethodTable = Object.create(null);
+const go2jsStructFormats = Object.create(null);
+
+function go2jsRegisterMethod(name, fn) {
+	go2jsMethodTable[name] = fn;
+}
+
+function go2jsRegisterStructFormat(name, fields) {
+	go2jsStructFormats[name] = fields;
+}
+
 function go2jsInterface(value, typeName) {
 	return {
 		__go2js_interface: true,
@@ -927,13 +938,23 @@ function go2jsInterfaceCall(value, method, ...args) {
 		throw new TypeError("call of method on nil interface");
 	}
 
-	const fn = target[method];
+	let fn = target[method];
+	let bound = false;
+
+	if (typeof fn !== "function" && typeof value.type === "string") {
+		fn = go2jsMethodTable[value.type + "." + method];
+		bound = true;
+	}
 
 	if (typeof fn !== "function") {
 		throw new TypeError("interface method " + method + " is not implemented");
 	}
 
-	return fn.apply(target, args);
+	if (bound) {
+		return fn(target, ...args);
+	}
+
+	return fn.call(target, ...args);
 }
 
 function go2jsTypeOf(value) {
@@ -1172,6 +1193,14 @@ function go2jsMapGet(map, key) {
 	return map.get(key);
 }
 
+function go2jsMapGetOK(map, key, zero) {
+	if (!(map instanceof Map) || !map.has(key)) {
+		return [zero, false];
+	}
+
+	return [map.get(key), true];
+}
+
 function go2jsMapSet(map, key, value) {
 	if (!(map instanceof Map)) {
 		throw new TypeError("go2jsMapSet expects a Map");
@@ -1391,6 +1420,14 @@ function go2jsFormat(value) {
 	}
 
 	if (value.__go2js_interface === true) {
+		if (typeof value.type === "string") {
+			const stringer = go2jsMethodTable[value.type + ".String"];
+
+			if (typeof stringer === "function") {
+				return stringer(value.value);
+			}
+		}
+
 		return go2jsFormat(value.value);
 	}
 
@@ -1435,8 +1472,19 @@ function go2jsFormat(value) {
 	}
 
 	const parts = [];
+	const ctor = value.constructor;
+	const fields = ctor && typeof ctor.name === "string" ? go2jsStructFormats[ctor.name] : null;
 
 	for (const key of Object.keys(value)) {
+		if (fields && typeof fields[key] === "string") {
+			const formatter = go2jsMethodTable[fields[key]];
+
+			if (typeof formatter === "function") {
+				parts.push(formatter(value[key]));
+				continue;
+			}
+		}
+
 		parts.push(go2jsFormat(value[key]));
 	}
 
@@ -1444,11 +1492,39 @@ function go2jsFormat(value) {
 }
 
 function go2jsPrintln(...values) {
-	process.stdout.write(values.map(go2jsFormat).join(" ") + "\n");
+	process.stdout.write(go2jsJoinOperands(values, true) + "\n");
+}
+
+function go2jsJoinOperands(values, alwaysSpace) {
+	let text = "";
+
+	for (let i = 0; i < values.length; i++) {
+		if (i > 0) {
+			if (alwaysSpace || (!isStringOperand(values[i - 1]) && !isStringOperand(values[i]))) {
+				text += " ";
+			}
+		}
+
+		text += go2jsFormat(values[i]);
+	}
+
+	return text;
+}
+
+function isStringOperand(value) {
+	if (value === null || value === undefined) {
+		return false;
+	}
+
+	if (value.__go2js_interface === true) {
+		return typeof value.value === "string";
+	}
+
+	return typeof value === "string";
 }
 
 function go2jsPrint(...values) {
-	process.stdout.write(values.map(go2jsFormat).join(" "));
+	process.stdout.write(go2jsJoinOperands(values, false));
 }
 
 function go2jsSprintf(format, ...args) {

@@ -67,10 +67,21 @@ func (e *emitter) isChannelRecvExpr(expr ast.Expr) bool {
 	return ok && unary.Op == token.ARROW && e.isChannelExpr(unary.X)
 }
 
+func (e *emitter) isMapLookupExpr(expr ast.Expr) bool {
+	index, ok := expr.(*ast.IndexExpr)
+
+	return ok && e.isMapExpr(index.X)
+}
+
 func (e *emitter) emitMultiReturnExpr(expr ast.Expr) error {
 	if e.isChannelRecvExpr(expr) {
 		e.channelPairTarget = true
 		defer func() { e.channelPairTarget = false }()
+	}
+
+	if e.isMapLookupExpr(expr) {
+		e.mapLookupPairTarget = true
+		defer func() { e.mapLookupPairTarget = false }()
 	}
 
 	return e.emitExpr(expr)
@@ -215,7 +226,7 @@ func (e *emitter) emitChannelRange(stmt *ast.RangeStmt) (bool, error) {
 	e.write(")) {")
 	e.newline()
 
-	e.scopes = append(e.scopes, map[string]bool{})
+	e.pushScope()
 	e.indent++
 
 	if targets[0] != nil {

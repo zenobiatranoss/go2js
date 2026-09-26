@@ -54,7 +54,7 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			e.write(x.Name)
 			e.write(")")
 		} else {
-			e.write(x.Name)
+			e.write(e.resolveName(x.Name))
 		}
 
 	case *ast.BasicLit:
@@ -304,6 +304,16 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 
 		if name, ok := builtinName(x); ok {
 			e.write(name)
+
+			if isFmtPrintBuiltin(x) {
+				e.needsRuntime = true
+
+				if err := e.emitFmtPrintArguments(x); err != nil {
+					return err
+				}
+
+				return nil
+			}
 			if name == "go2jsLen" || name == "go2jsCap" || name == "go2jsAppend" || name == "go2jsMake" || name == "go2jsMakeMap" || name == "go2jsMapDelete" || name == "go2jsSprintf" || name == "go2jsPrintln" || name == "go2jsPrint" || name == "go2jsPanic" || name == "go2jsRecover" || name == "go2jsComplex" || name == "go2jsReal" || name == "go2jsImag" {
 				e.needsRuntime = true
 			}
@@ -496,7 +506,13 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 
 		if e.isMapExpr(x.X) {
 			e.needsRuntime = true
-			e.write("go2jsMapGet(")
+
+			if e.mapLookupPairTarget {
+				e.write("go2jsMapGetOK(")
+			} else {
+				e.write("go2jsMapGet(")
+			}
+
 			if err := e.emitExpr(x.X); err != nil {
 				return err
 			}
@@ -504,6 +520,11 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			if err := e.emitExpr(x.Index); err != nil {
 				return err
 			}
+			if e.mapLookupPairTarget {
+				e.write(", ")
+				e.write(zeroValueForGoType(e.mapValueType(x)))
+			}
+
 			e.write(")")
 			return nil
 		}
@@ -565,6 +586,8 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		}
 
 		if _, ok := x.Type.(*ast.MapType); ok {
+			mapValue := e.mapLiteralValueType(x)
+
 			e.needsRuntime = true
 			e.write("go2jsMap([")
 
@@ -583,9 +606,15 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 					return err
 				}
 				e.write(", ")
-				if err := e.emitExpr(kv.Value); err != nil {
+
+				if isInterfaceGoType(mapValue) {
+					if err := e.emitInterfaceValue(kv.Value, mapValue); err != nil {
+						return err
+					}
+				} else if err := e.emitExpr(kv.Value); err != nil {
 					return err
 				}
+
 				e.write("]")
 			}
 
@@ -596,6 +625,8 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		if emitted, err := e.emitStructCompositeLit(x); emitted || err != nil {
 			return err
 		}
+
+		elementType := e.compositeElementType(x)
 
 		if x.Type != nil {
 			if _, ok := x.Type.(*ast.ArrayType); ok {
@@ -610,6 +641,32 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		for i, elt := range x.Elts {
 			if i > 0 {
 				e.write(", ")
+			}
+
+			if isInterfaceGoType(elementType) {
+				if err := e.emitInterfaceValue(elt, elementType); err != nil {
+					return err
+				}
+
+				continue
+			}
+
+			if elementType != nil {
+				if info, ok := e.analysis.Types[elt]; ok && info.Type == nil {
+					_ = info
+				}
+
+				previous := e.expectedElementType
+				e.expectedElementType = elementType
+
+				if err := e.emitExpr(elt); err != nil {
+					e.expectedElementType = previous
+					return err
+				}
+
+				e.expectedElementType = previous
+
+				continue
 			}
 
 			if err := e.emitExpr(elt); err != nil {
@@ -749,13 +806,21 @@ func (e *emitter) functionResultCount(fn *ast.FuncDecl) int {
 }
 
 func (e *emitter) isMultiReturnCall(expr ast.Expr) bool {
+	if e.isChannelRecvExpr(expr) {
+		return true
+	}
+
+	if e.isMapLookupExpr(expr) {
+		return true
+	}
+
+	if assert, ok := expr.(*ast.TypeAssertExpr); ok {
+		return assert.Type != nil
+	}
+
 	call, ok := expr.(*ast.CallExpr)
 	if !ok || e.analysis == nil {
 		return false
-	}
-
-	if e.isChannelRecvExpr(expr) {
-		return true
 	}
 
 	if selector, ok := call.Fun.(*ast.SelectorExpr); ok {
