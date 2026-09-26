@@ -137,6 +137,28 @@ func conversionName(t types.Type) string {
 	}
 }
 
+// isDurationType reports whether an expression has the named type
+// time.Duration, which needs to stay a duration through arithmetic.
+func (e *emitter) isDurationType(expr ast.Expr) bool {
+	named, ok := e.analyzedType(expr).(*types.Named)
+	if !ok {
+		return false
+	}
+
+	obj := named.Obj()
+
+	return obj != nil && obj.Pkg() != nil && obj.Pkg().Path() == "time" && obj.Name() == "Duration"
+}
+
+func isDurationArithmetic(op token.Token) bool {
+	switch op {
+	case token.ADD, token.SUB, token.MUL, token.QUO:
+		return true
+	default:
+		return false
+	}
+}
+
 func (e *emitter) isMapExpr(expr ast.Expr) bool {
 	if e.analysis == nil {
 		return false

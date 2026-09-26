@@ -108,6 +108,15 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			return nil
 		}
 
+		// Arithmetic on time.Duration yields a Duration, but plain JS operators
+		// would return a bare number, so the result is rewrapped.
+		wrapDuration := e.isDurationType(x) && isDurationArithmetic(x.Op)
+
+		if wrapDuration {
+			e.needsRuntime = true
+			e.write("go2jsDuration(")
+		}
+
 		if err := e.emitExpr(x.X); err != nil {
 			return err
 		}
@@ -118,6 +127,10 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 
 		if err := e.emitExpr(x.Y); err != nil {
 			return err
+		}
+
+		if wrapDuration {
+			e.write(")")
 		}
 
 	case *ast.StarExpr:
@@ -266,8 +279,21 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 						if i > 0 {
 							e.write(", ")
 						}
+
+						// Go spreads a multi-value call used as the sole
+						// argument into the variadic parameter list.
+						spread := len(x.Args) == 1 && e.isVariadicCall(x) && e.isMultiValueCall(arg)
+
+						if spread {
+							e.write("...(")
+						}
+
 						if err := e.emitCallArgument(x, i, arg); err != nil {
 							return err
+						}
+
+						if spread {
+							e.write(")")
 						}
 					}
 					e.write(")")
@@ -492,6 +518,10 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			}
 		}
 
+		if err := e.checkSupportedPackageSelector(x); err != nil {
+			return err
+		}
+
 		if err := e.emitExpr(x.X); err != nil {
 			return err
 		}
@@ -520,10 +550,8 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			if err := e.emitExpr(x.Index); err != nil {
 				return err
 			}
-			if e.mapLookupPairTarget {
-				e.write(", ")
-				e.write(zeroValueForGoType(e.mapValueType(x)))
-			}
+			e.write(", ")
+			e.write(zeroValueForGoType(e.mapValueType(x)))
 
 			e.write(")")
 			return nil

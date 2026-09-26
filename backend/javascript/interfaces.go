@@ -134,6 +134,10 @@ func (e *emitter) callSignature(call *ast.CallExpr) *gotypes.Signature {
 		if selection := e.analysis.Selections[fn]; selection != nil {
 			object = selection.Obj()
 		}
+
+		if object == nil {
+			object = e.analysis.Uses[fn.Sel]
+		}
 	}
 
 	function, ok := object.(*gotypes.Func)
@@ -143,6 +147,31 @@ func (e *emitter) callSignature(call *ast.CallExpr) *gotypes.Signature {
 
 	signature, _ := function.Type().(*gotypes.Signature)
 	return signature
+}
+
+// isMultiValueCall reports whether expr is a call that yields more than one result.
+func (e *emitter) isMultiValueCall(expr ast.Expr) bool {
+	call, ok := expr.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+
+	signature := e.callSignature(call)
+	if signature == nil {
+		return false
+	}
+
+	return signature.Results().Len() > 1
+}
+
+// isVariadicCall reports whether the callee accepts a variadic parameter list.
+func (e *emitter) isVariadicCall(call *ast.CallExpr) bool {
+	signature := e.callSignature(call)
+	if signature == nil {
+		return false
+	}
+
+	return signature.Variadic()
 }
 
 func (e *emitter) hasStringMethod(t gotypes.Type) bool {
@@ -357,10 +386,22 @@ func (e *emitter) emitFmtPrintArguments(call *ast.CallExpr) error {
 			e.write(", ")
 		}
 
+		// Go spreads a multi-value call used as the sole argument of a
+		// variadic call, so the values must be forwarded individually.
+		spread := len(call.Args) == 1 && e.isVariadicCall(call) && e.isMultiValueCall(arg)
+
+		if spread {
+			e.write("...(")
+		}
+
 		if i == 0 {
 			if isFormatStringPlaceholder(call) {
 				if err := e.emitExpr(arg); err != nil {
 					return err
+				}
+
+				if spread {
+					e.write(")")
 				}
 
 				continue
@@ -372,11 +413,19 @@ func (e *emitter) emitFmtPrintArguments(call *ast.CallExpr) error {
 				return err
 			}
 
+			if spread {
+				e.write(")")
+			}
+
 			continue
 		}
 
 		if err := e.emitCallArgument(call, i, arg); err != nil {
 			return err
+		}
+
+		if spread {
+			e.write(")")
 		}
 	}
 

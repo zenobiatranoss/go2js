@@ -71,6 +71,7 @@ function go2jsStringsNewReader(value) {
     const text = String(value);
 
     return {
+        __go2js_text: text,
         Read: function(buffer) {
             if (position >= text.length) {
                 return [0, "EOF"];
@@ -88,8 +89,20 @@ function go2jsStringsNewReader(value) {
     };
 }
 
+// go2jsUnwrap returns the concrete value behind an interface wrapper so
+// runtime helpers can call methods on it.
+function go2jsUnwrap(value) {
+	if (value !== null && value !== undefined && value.__go2js_interface === true) {
+		return value.value;
+	}
+
+	return value;
+}
+
 function go2jsIOReadAll(reader) {
-    const chunks = [];
+	reader = go2jsUnwrap(reader);
+
+	const chunks = [];
     const buffer = new Array(4096);
 
     while (true) {
@@ -172,12 +185,7 @@ function go2jsHTTPNewServeMux() {
 function go2jsTimeDate(year, month, day, hour, minute, second, nanosecond, location) {
     const date = new Date(0);
 
-    date.setUTCFullYear(
-        Number(year),
-        Number(month) - 1,
-        Number(day)
-    );
-
+    date.setUTCFullYear(Number(year), Number(month) - 1, Number(day));
     date.setUTCHours(
         Number(hour),
         Number(minute),
@@ -185,41 +193,40 @@ function go2jsTimeDate(year, month, day, hour, minute, second, nanosecond, locat
         Math.floor(Number(nanosecond) / 1000000)
     );
 
+    return go2jsTimeValue(date);
+}
+
+// go2jsTimeMonth wraps a month number so it prints as its Go name while still
+// comparing and converting like the underlying integer.
+function go2jsTimeMonth(month) {
     return {
-        value: date,
-        Year: function() {
-            return this.value.getUTCFullYear();
+        __go2js_month: month,
+        valueOf: function() {
+            return this.__go2js_month;
         },
-        Month: function() {
-            return this.value.getUTCMonth() + 1;
-        },
-        Day: function() {
-            return this.value.getUTCDate();
-        },
-        Hour: function() {
-            return this.value.getUTCHours();
-        },
-        Format: function(layout) {
-            return go2jsTimeFormat(this.value, String(layout));
-        },
-        Add: function(duration) {
-            const next = new Date(this.value.getTime() + Number(duration) / 1000000);
-            return go2jsTimeValue(next);
-        },
-        Sub: function(other) {
-            return (this.value.getTime() - other.value.getTime()) * 1000000;
+        String: function() {
+            return go2jsMonthName(this.__go2js_month);
         }
     };
 }
 
+function go2jsMonthName(month) {
+    const names = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+    ];
+
+    return names[month - 1] || "";
+}
+
 function go2jsTimeValue(date) {
-    return {
+    const self = {
         value: date,
         Year: function() {
             return this.value.getUTCFullYear();
         },
         Month: function() {
-            return this.value.getUTCMonth() + 1;
+            return go2jsTimeMonth(this.value.getUTCMonth() + 1);
         },
         Day: function() {
             return this.value.getUTCDate();
@@ -227,17 +234,56 @@ function go2jsTimeValue(date) {
         Hour: function() {
             return this.value.getUTCHours();
         },
+        Minute: function() {
+            return this.value.getUTCMinutes();
+        },
+        Second: function() {
+            return this.value.getUTCSeconds();
+        },
+        Nanosecond: function() {
+            return this.value.getUTCMilliseconds() * 1000000;
+        },
+        Clock: function() {
+            return [this.Hour(), this.Minute(), this.Second()];
+        },
+        Unix: function() {
+            return Math.floor(this.value.getTime() / 1000);
+        },
+        UnixNano: function() {
+            return this.value.getTime() * 1000000;
+        },
+        IsZero: function() {
+            return this.value.getTime() === 0;
+        },
+        Before: function(other) {
+            return this.value.getTime() < go2jsTimeDateOf(other).getTime();
+        },
+        After: function(other) {
+            return this.value.getTime() > go2jsTimeDateOf(other).getTime();
+        },
+        Equal: function(other) {
+            return this.value.getTime() === go2jsTimeDateOf(other).getTime();
+        },
         Format: function(layout) {
             return go2jsTimeFormat(this.value, String(layout));
         },
+        String: function() {
+            return this.value.toISOString();
+        },
         Add: function(duration) {
-            const next = new Date(this.value.getTime() + Number(duration) / 1000000);
+            const next = new Date(this.value.getTime() + go2jsDurationNanos(duration) / 1000000);
             return go2jsTimeValue(next);
         },
         Sub: function(other) {
-            return (this.value.getTime() - other.value.getTime()) * 1000000;
+            return go2jsDuration((this.value.getTime() - go2jsTimeDateOf(other).getTime()) * 1000000);
         }
     };
+
+    return self;
+}
+
+function go2jsTimeDateOf(value) {
+    return value !== null && value !== undefined && value.value instanceof Date ? value.value : value;
 }
 
 function go2jsTimeFormat(date, layout) {
@@ -499,6 +545,50 @@ go2jsBytesBuffer.prototype.Bytes = function() {
 
 go2jsBytesBuffer.prototype.Reset = function() {
     this.data.length = 0;
+};
+
+go2jsBytesBuffer.prototype.WriteString = function(value) {
+    this.Write(value);
+    return go2jsStringByteLength(go2jsStringify(value));
+};
+
+go2jsBytesBuffer.prototype.WriteByte = function(value) {
+    this.data.push(value & 0xff);
+    return 1;
+};
+
+go2jsBytesBuffer.prototype.WriteRune = function(value) {
+    return this.WriteString(String.fromCodePoint(value));
+};
+
+go2jsBytesBuffer.prototype.Len = function() {
+    return this.data.length;
+};
+
+go2jsBytesBuffer.prototype.Cap = function() {
+    return this.data.length;
+};
+
+go2jsBytesBuffer.prototype.Grow = function(n) {
+    return this;
+};
+
+go2jsBytesBuffer.prototype.Truncate = function(n) {
+    if (n < this.data.length) {
+        this.data.length = Math.max(0, n);
+    }
+};
+
+go2jsBytesBuffer.prototype.UnreadByte = function() {
+    this.data.pop();
+};
+
+go2jsBytesBuffer.prototype.ReadByte = function() {
+    if (this.data.length === 0) {
+        return -1;
+    }
+
+    return this.data.shift();
 };
 
 function go2jsBytesEqual(a, b) {
@@ -826,6 +916,84 @@ function go2jsNew(value) {
 
 const go2jsMethodTable = Object.create(null);
 const go2jsStructFormats = Object.create(null);
+const go2jsTypeNames = Object.create(null);
+
+function go2jsRegisterTypeName(constructor, name) {
+	go2jsTypeNames[name] = constructor;
+}
+
+// go2jsGoTypeName reports the Go type name of a value for %T.
+function go2jsGoTypeName(value) {
+	if (value === null || value === undefined) {
+		return "<nil>";
+	}
+
+	if (typeof value === "boolean") {
+		return "bool";
+	}
+
+	if (typeof value === "number") {
+		return Number.isInteger(value) ? "int" : "float64";
+	}
+
+	if (value instanceof Error) {
+		return "error";
+	}
+
+	if (value.__go2js_interface === true) {
+		return value.type;
+	}
+
+	if (Array.isArray(value)) {
+		return "[]interface {}";
+	}
+
+	if (value instanceof Map) {
+		return "map[" + go2jsGoTypeName(go2jsFirstKey(value)) + "]" + go2jsGoTypeName(go2jsFirstValue(value));
+	}
+
+	const ctor = value.constructor;
+
+	if (ctor && typeof ctor.name === "string") {
+		const registered = go2jsLookupTypeName(ctor.name);
+
+		if (registered !== undefined) {
+			return registered;
+		}
+	}
+
+	if (ctor && typeof ctor.name === "string" && ctor.name !== "Object") {
+		return "main." + ctor.name;
+	}
+
+	return "interface {}";
+}
+
+function go2jsLookupTypeName(jsName) {
+	for (const name of Object.keys(go2jsTypeNames)) {
+		if (go2jsTypeNames[name].name === jsName) {
+			return name;
+		}
+	}
+
+	return undefined;
+}
+
+function go2jsFirstKey(value) {
+	for (const [key] of value) {
+		return key;
+	}
+
+	return null;
+}
+
+function go2jsFirstValue(value) {
+	for (const [, item] of value) {
+		return item;
+	}
+
+	return null;
+}
 
 function go2jsRegisterMethod(name, fn) {
 	go2jsMethodTable[name] = fn;
@@ -1086,13 +1254,38 @@ function go2jsLen(value) {
 	if (value instanceof Map || value instanceof Set) {
 		return value.size;
 	}
-	if (typeof value === "string" || Array.isArray(value)) {
+	if (typeof value === "string") {
+		return go2jsStringByteLength(value);
+	}
+	if (Array.isArray(value)) {
 		return value.length;
 	}
 	if (typeof value === "object") {
 		return Object.keys(value).length;
 	}
 	return 0;
+}
+
+// go2jsStringByteLength mirrors Go's len(string), which counts UTF-8 bytes
+// rather than UTF-16 code units.
+function go2jsStringByteLength(s) {
+	let bytes = 0;
+
+	for (const ch of s) {
+		const code = ch.codePointAt(0);
+
+		if (code < 0x80) {
+			bytes += 1;
+		} else if (code < 0x800) {
+			bytes += 2;
+		} else if (code < 0x10000) {
+			bytes += 3;
+		} else {
+			bytes += 4;
+		}
+	}
+
+	return bytes;
 }
 
 function go2jsCap(value) {
@@ -1102,8 +1295,11 @@ function go2jsCap(value) {
 	if (value instanceof Map || value instanceof Set) {
 		return value.size;
 	}
-	if (Array.isArray(value) || typeof value === "string") {
+	if (Array.isArray(value)) {
 		return value.length;
+	}
+	if (typeof value === "string") {
+		return go2jsStringByteLength(value);
 	}
 	return 0;
 }
@@ -1186,11 +1382,15 @@ function go2jsMap(entries) {
 	return map;
 }
 
-function go2jsMapGet(map, key) {
+function go2jsMapGet(map, key, zero) {
 	if (!(map instanceof Map)) {
-		return undefined;
+		return zero;
 	}
-	return map.get(key);
+
+	const value = map.get(key);
+
+	// A missing key yields the element type's zero value, not null.
+	return value === undefined ? zero : value;
 }
 
 function go2jsMapGetOK(map, key, zero) {
@@ -1410,6 +1610,18 @@ function go2jsStringify(value) {
 	return String(value);
 }
 
+// go2jsCompareValues orders map keys the way Go's fmt package does.
+function go2jsCompareValues(a, b) {
+	if (typeof a === "number" && typeof b === "number") {
+		return a < b ? -1 : a > b ? 1 : 0;
+	}
+
+	const left = go2jsFormat(a);
+	const right = go2jsFormat(b);
+
+	return left < right ? -1 : left > right ? 1 : 0;
+}
+
 function go2jsFormat(value) {
 	if (value === null || value === undefined) {
 		return "<nil>";
@@ -1436,11 +1648,11 @@ function go2jsFormat(value) {
 	}
 
 	if (value instanceof Map) {
-		const parts = [];
+		// fmt sorts map keys, so the output must be deterministic.
+		const entries = Array.from(value.entries());
+		entries.sort((a, b) => go2jsCompareValues(a[0], b[0]));
 
-		for (const [key, item] of value) {
-			parts.push(go2jsFormat(key) + ":" + go2jsFormat(item));
-		}
+		const parts = entries.map(([key, item]) => go2jsFormat(key) + ":" + go2jsFormat(item));
 
 		return "map[" + parts.join(" ") + "]";
 	}
@@ -1564,35 +1776,265 @@ function go2jsSprintf(format, ...args) {
 }
 
 function go2jsFormatValue(verb, spec, value) {
+	const parsed = go2jsParseFormatSpec(spec);
+	const flags = parsed.flags;
+	const precision = parsed.precision;
+
+	// Renders the sign prefix and zero-pads the digits that follow it.
+	const numberText = (num, body, prefixOverride) => {
+		const prefix = prefixOverride !== undefined
+			? prefixOverride
+			: num < 0
+				? "-"
+				: flags.includes("+")
+					? "+"
+					: flags.includes(" ")
+						? " "
+						: "";
+
+		return go2jsPadNumber(prefix + body, prefix, body, parsed);
+	};
+
+	const integerBody = (num, base, prefix, upper) => {
+		const magnitude = Math.abs(Math.trunc(num));
+		let body = magnitude.toString(base);
+
+		if (upper) {
+			body = body.toUpperCase();
+		}
+
+		if (prefix !== "") {
+			body = prefix + body;
+		}
+
+		return numberText(num, body);
+	};
+
+	const intValue = Math.trunc(Number(value));
+
 	switch (verb) {
 		case "d":
-			return String(Math.trunc(value));
+			return numberText(intValue, String(Math.abs(intValue)));
 		case "b":
-			return Math.trunc(value).toString(2);
+			return integerBody(intValue, 2, flags.includes("#") ? "0b" : "");
 		case "o":
-			return Math.trunc(value).toString(8);
+			return integerBody(intValue, 8, flags.includes("#") ? "0" : "");
 		case "x":
-			return Math.trunc(value).toString(16);
+			return integerBody(intValue, 16, flags.includes("#") ? "0x" : "", false);
 		case "X":
-			return Math.trunc(value).toString(16).toUpperCase();
-		case "s":
-			return go2jsFormat(value);
-		case "v":
-			return go2jsFormat(value);
-		case "q":
-			return JSON.stringify(go2jsStringify(value));
-		case "t":
-			return value ? "true" : "false";
-		case "c":
-			return String.fromCharCode(value);
+			return integerBody(intValue, 16, flags.includes("#") ? "0X" : "", true);
 		case "f": {
-			const match = spec.match(/\.(\d+)/);
-			const precision = match ? parseInt(match[1], 10) : 6;
-			return Number(value).toFixed(precision);
+			const num = Number(value);
+			const body = Math.abs(num).toFixed(precision === null ? 6 : precision);
+
+			return numberText(num, body);
 		}
+		case "e":
+			return go2jsFormatE(Number(value), precision === null ? 6 : precision, parsed);
+		case "g":
+			return go2jsFormatG(Number(value), precision, parsed);
+		case "s": {
+			let text = go2jsFormat(value);
+
+			if (precision !== null) {
+				text = text.slice(0, precision);
+			}
+
+			return go2jsPad(text, parsed, false);
+		}
+		case "v": {
+			let text = go2jsFormat(value);
+
+			if (precision !== null) {
+				text = text.slice(0, precision);
+			}
+
+			return go2jsPad(text, parsed, false);
+		}
+		case "q":
+			return go2jsPad(JSON.stringify(go2jsStringify(value)), parsed, false);
+		case "t":
+			return go2jsPad(value ? "true" : "false", parsed, false);
+		case "c":
+			return go2jsPad(String.fromCharCode(value), parsed, false);
+		case "T":
+			return go2jsPad(go2jsGoTypeName(value), parsed, false);
 		default:
 			return go2jsStringify(value);
 	}
+}
+
+function go2jsParseFormatSpec(spec) {
+	let i = 1;
+	let flags = "";
+
+	while (i < spec.length && "+-# 0".includes(spec[i])) {
+		flags += spec[i];
+		i++;
+	}
+
+	let width = "";
+
+	while (i < spec.length && spec[i] >= "0" && spec[i] <= "9") {
+		width += spec[i];
+		i++;
+	}
+
+	let precision = null;
+
+	if (i < spec.length && spec[i] === ".") {
+		i++;
+
+		let digits = "";
+
+		while (i < spec.length && spec[i] >= "0" && spec[i] <= "9") {
+			digits += spec[i];
+			i++;
+		}
+
+		precision = digits === "" ? 0 : parseInt(digits, 10);
+	}
+
+	return {
+		flags,
+		width: width === "" ? 0 : parseInt(width, 10),
+		precision,
+		verb: spec[i],
+	};
+}
+
+function go2jsPad(text, parsed, numeric) {
+	if (parsed.width <= text.length) {
+		return text;
+	}
+
+	const fill = parsed.width - text.length;
+
+	if (parsed.flags.includes("-")) {
+		return text + " ".repeat(fill);
+	}
+
+	if (numeric && parsed.flags.includes("0")) {
+		return text.padStart(parsed.width, "0");
+	}
+
+	return " ".repeat(fill) + text;
+}
+
+// go2jsPadNumber keeps any sign or base prefix in front of the zero padding.
+function go2jsPadNumber(text, prefix, body, parsed) {
+	if (parsed.width <= text.length) {
+		return text;
+	}
+
+	const fill = parsed.width - text.length;
+
+	if (parsed.flags.includes("-")) {
+		return text + " ".repeat(fill);
+	}
+
+	if (parsed.flags.includes("0")) {
+		return prefix + body.padStart(body.length + fill, "0");
+	}
+
+	return " ".repeat(fill) + text;
+}
+
+function go2jsFormatE(value, precision, parsed) {
+	if (!Number.isFinite(value)) {
+		return go2jsPad(String(value), parsed, false);
+	}
+
+	const [mantissa, exponent] = Math.abs(value).toExponential(precision).split("e");
+	const exp = parseInt(exponent, 10);
+	const expSign = exp < 0 ? "-" : "+";
+	const expDigits = String(Math.abs(exp)).padStart(2, "0");
+	const body = mantissa + "e" + expSign + expDigits;
+	const prefix = value < 0 ? "-" : parsed.flags.includes("+") ? "+" : parsed.flags.includes(" ") ? " " : "";
+
+	return go2jsPadNumber(prefix + body, prefix, body, parsed);
+}
+
+// go2jsDecimalParts splits a JS shortest representation into significant digits
+// and a decimal point position, so %g can pick between %e and %f like Go does.
+// The value equals 0.<digits> * 10^dp.
+function go2jsDecimalParts(value) {
+	const text = String(Math.abs(value));
+
+	if (text === "Infinity" || text === "NaN") {
+		return null;
+	}
+
+	let mantissa = text;
+	let exponent = 0;
+
+	if (text.includes("e")) {
+		const [mantissaPart, exponentPart] = text.split("e");
+		mantissa = mantissaPart;
+		exponent = parseInt(exponentPart, 10);
+	}
+
+	const [intPart, fracPart = ""] = mantissa.split(".");
+	const raw = intPart + fracPart;
+	const fractionDigits = fracPart.length;
+	const firstSignificant = raw.search(/[1-9]/);
+
+	if (firstSignificant < 0) {
+		return { digits: "0", dp: 1 };
+	}
+
+	const significant = raw.slice(firstSignificant);
+	const digits = significant.replace(/0+$/, "") || "0";
+	// Trailing zeros stripped above scale the value rather than change dp.
+	const dp = significant.length - fractionDigits + exponent;
+
+	return { digits, dp };
+}
+
+// go2jsFormatG renders %g, using the shortest representation when no precision
+// is given and switching to the exponent form outside Go's -4..eprec window.
+function go2jsFormatG(value, precision, parsed) {
+	if (value === 0) {
+		return go2jsPadNumber("0", "", "0", parsed);
+	}
+
+	const parts = go2jsDecimalParts(value);
+
+	if (parts === null) {
+		return go2jsPad(String(value), parsed, false);
+	}
+
+	const exp = parts.dp - 1;
+	// Go uses the exponent form when exp < -4 or exp >= eprec, and picks
+	// eprec = 6 whenever the shortest representation was requested.
+	const eprec = precision === null ? 6 : precision;
+
+	if (exp < -4 || exp >= eprec) {
+		const mantissaDigits = precision === null ? parts.digits.length - 1 : precision - 1;
+
+		return go2jsFormatE(value, Math.max(mantissaDigits, 0), parsed);
+	}
+
+	const body = go2jsFixedFromParts(parts, precision === null ? parts.digits.length : precision);
+	const prefix = value < 0 ? "-" : parsed.flags.includes("+") ? "+" : parsed.flags.includes(" ") ? " " : "";
+
+	return go2jsPadNumber(prefix + body, prefix, body, parsed);
+}
+
+// go2jsFixedFromParts renders a decimal point at parts.dp using exactly
+// significant digits.
+function go2jsFixedFromParts(parts, significant) {
+	const digits = parts.digits.padEnd(significant, "0");
+
+	if (parts.dp <= 0) {
+		return "0." + "0".repeat(-parts.dp) + digits;
+	}
+
+	if (parts.dp >= significant) {
+		return digits + "0".repeat(parts.dp - significant);
+	}
+
+	return digits.slice(0, parts.dp) + "." + digits.slice(parts.dp);
 }
 
 function go2jsStringsContains(s, substr) {
@@ -1726,6 +2168,68 @@ function go2jsStringsCompare(a, b) {
 
 function go2jsStringsToValidUTF8(s) {
 	return s;
+}
+
+function go2jsStringsLastIndex(s, substr) {
+	return s.lastIndexOf(substr);
+}
+
+function go2jsMathInf(sign) {
+	return sign >= 0 ? Infinity : -Infinity;
+}
+
+function go2jsMathNaN() {
+	return NaN;
+}
+
+function go2jsHexEncodeToString(src) {
+	const bytes = go2jsHexBytes(src);
+	let out = "";
+
+	for (const b of bytes) {
+		out += b.toString(16).padStart(2, "0");
+	}
+
+	return out;
+}
+
+function go2jsHexDecodeString(s) {
+	const out = [];
+
+	for (let i = 0; i + 1 < s.length; i += 2) {
+		const byte = parseInt(s.slice(i, i + 2), 16);
+
+		if (Number.isNaN(byte)) {
+			throw new Error("encoding/hex: invalid byte: " + s.slice(i, i + 2));
+		}
+
+		out.push(byte);
+	}
+
+	return out;
+}
+
+function go2jsHexEncodedLen(n) {
+	return n * 2;
+}
+
+function go2jsHexDecodedLen(s) {
+	return s.length >> 1;
+}
+
+function go2jsHexBytes(src) {
+	if (Array.isArray(src)) {
+		return src.map((b) => b & 0xff);
+	}
+
+	const text = go2jsStringify(src);
+	const out = [];
+
+	for (let i = 0; i < text.length; i++) {
+		out.push(text.charCodeAt(i) & 0xff);
+	}
+
+	return out;
 }
 
 function go2jsStringsCount(s, substr) {

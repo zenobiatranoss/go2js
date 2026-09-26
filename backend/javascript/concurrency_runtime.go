@@ -519,12 +519,8 @@ function go2jsErrorsAs(err, target) {
 	return err instanceof target;
 }
 
-function go2jsErrorsJoin(errs) {
-	if (!Array.isArray(errs) || errs.length === 0) {
-		return null;
-	}
-
-	const parts = errs.filter(item => item !== null && item !== undefined);
+function go2jsErrorsJoin(...errs) {
+	const parts = errs.flat().filter(item => item !== null && item !== undefined);
 
 	if (parts.length === 0) {
 		return null;
@@ -534,7 +530,18 @@ function go2jsErrorsJoin(errs) {
 		return parts[0];
 	}
 
-	return new Error(parts.map(part => part.message).join("\n"));
+	const error = new Error(parts.map(part => go2jsErrorMessage(part)).join("\n"));
+	error.joined = parts;
+
+	return error;
+}
+
+function go2jsErrorMessage(err) {
+	if (err === null || err === undefined) {
+		return "<nil>";
+	}
+
+	return typeof err === "object" && err.message !== undefined ? err.message : String(err);
 }
 
 function go2jsContextBackground() {
@@ -549,10 +556,51 @@ function go2jsContextBackground() {
 function go2jsDuration(nanoseconds) {
 	return {
 		nanoseconds: nanoseconds,
+		valueOf() {
+			return this.nanoseconds;
+		},
 		String() {
 			return go2jsDurationString(this.nanoseconds);
 		}
 	};
+}
+
+// go2jsDurationNanos accepts either a duration object or a raw nanosecond count.
+function go2jsDurationNanos(value) {
+	if (value !== null && value !== undefined && typeof value.nanoseconds === "number") {
+		return value.nanoseconds;
+	}
+
+	return Number(value);
+}
+
+// Methods on the named scalar type time.Duration are emitted as flat functions.
+function DurationString(d) {
+	return go2jsDurationString(go2jsDurationNanos(d));
+}
+
+function DurationNanoseconds(d) {
+	return go2jsDurationNanos(d);
+}
+
+function DurationMicroseconds(d) {
+	return Math.trunc(go2jsDurationNanos(d) / 1000);
+}
+
+function DurationMilliseconds(d) {
+	return Math.trunc(go2jsDurationNanos(d) / 1000000);
+}
+
+function DurationSeconds(d) {
+	return go2jsDurationNanos(d) / 1000000000;
+}
+
+function DurationMinutes(d) {
+	return go2jsDurationNanos(d) / 60000000000;
+}
+
+function DurationHours(d) {
+	return go2jsDurationNanos(d) / 3600000000000;
 }
 
 function go2jsDurationDecimal(value) {

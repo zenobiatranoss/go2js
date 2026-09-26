@@ -104,6 +104,11 @@ func EmitWithContextOptionsTarget(file *ast.File, analysis *gotypes.Result, cont
 			rangeRuntimeSource(),
 			genericRuntimeSource(),
 			concurrencyRuntimeSource(),
+			pathRuntimeSource(),
+			bufioRuntimeSource(),
+			randRuntimeSource(),
+			cmpRuntimeSource(),
+			errorsRuntimeSource(),
 		)
 		prefix = lowerJavaScriptTarget(prefix, e.target)
 		if prefix != "" {
@@ -641,81 +646,130 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 		return e.emitBranchStmt(s)
 
 	case *ast.SwitchStmt:
-		e.writeIndent()
-		e.write("switch (")
-
-		if s.Tag != nil {
-			if err := e.emitExpr(s.Tag); err != nil {
-				return err
-			}
-		} else {
-			e.write("true")
-		}
-
-		e.write(") {")
-		e.newline()
-
-		e.indent++
-
-		for _, item := range s.Body.List {
-			clause, ok := item.(*ast.CaseClause)
-			if !ok {
-				return fmt.Errorf("unsupported switch clause: %T", item)
-			}
-
-			if clause.List == nil {
-				e.writeIndent()
-				e.write("default:")
-				e.newline()
-			} else {
-				for _, expr := range clause.List {
-					e.writeIndent()
-					e.write("case ")
-
-					if err := e.emitExpr(expr); err != nil {
-						return err
-					}
-
-					e.write(":")
-					e.newline()
-				}
-			}
-
-			e.indent++
-
-			didFallthrough := false
-			bodyCount := len(clause.Body)
-
-			if bodyCount > 0 {
-				if branch, ok := clause.Body[bodyCount-1].(*ast.BranchStmt); ok && branch.Tok == token.FALLTHROUGH {
-					didFallthrough = true
-					bodyCount--
-				}
-			}
-
-			for i := 0; i < bodyCount; i++ {
-				if err := e.emitStmt(clause.Body[i]); err != nil {
-					return err
-				}
-			}
-
-			if !didFallthrough {
-				e.writeIndent()
-				e.write("break;")
-				e.newline()
-			}
-
-			e.indent--
-		}
-
-		e.indent--
-		e.writeIndent()
-		e.write("}")
-		e.newline()
+		return e.emitSwitchStmt(s)
 
 	default:
 		return fmt.Errorf("unsupported statement: %T", stmt)
 	}
+
+	return nil
+}
+
+// emitSwitchStmt wraps a switch that has an init statement in a block so the
+// init variable stays scoped to the switch, matching Go.
+func (e *emitter) emitSwitchStmt(stmt *ast.SwitchStmt) error {
+	if stmt.Init == nil {
+		return e.emitSwitchClauses(stmt)
+	}
+
+	e.writeIndent()
+	e.write("{")
+	e.newline()
+	e.indent++
+
+	e.pushScope()
+	e.statementContext = true
+
+	e.writeIndent()
+
+	if err := e.emitInlineStmt(stmt.Init); err != nil {
+		e.statementContext = false
+		e.indent--
+		e.scopes = e.scopes[:len(e.scopes)-1]
+		return err
+	}
+
+	e.statementContext = false
+	e.newline()
+
+	if err := e.emitSwitchClauses(stmt); err != nil {
+		e.indent--
+		e.scopes = e.scopes[:len(e.scopes)-1]
+		return err
+	}
+
+	e.indent--
+	e.scopes = e.scopes[:len(e.scopes)-1]
+
+	e.writeIndent()
+	e.write("}")
+	e.newline()
+
+	return nil
+}
+
+func (e *emitter) emitSwitchClauses(s *ast.SwitchStmt) error {
+	e.writeIndent()
+	e.write("switch (")
+
+	if s.Tag != nil {
+		if err := e.emitExpr(s.Tag); err != nil {
+			return err
+		}
+	} else {
+		e.write("true")
+	}
+
+	e.write(") {")
+	e.newline()
+
+	e.indent++
+
+	for _, item := range s.Body.List {
+		clause, ok := item.(*ast.CaseClause)
+		if !ok {
+			return fmt.Errorf("unsupported switch clause: %T", item)
+		}
+
+		if clause.List == nil {
+			e.writeIndent()
+			e.write("default:")
+			e.newline()
+		} else {
+			for _, expr := range clause.List {
+				e.writeIndent()
+				e.write("case ")
+
+				if err := e.emitExpr(expr); err != nil {
+					return err
+				}
+
+				e.write(":")
+				e.newline()
+			}
+		}
+
+		e.indent++
+
+		didFallthrough := false
+		bodyCount := len(clause.Body)
+
+		if bodyCount > 0 {
+			if branch, ok := clause.Body[bodyCount-1].(*ast.BranchStmt); ok && branch.Tok == token.FALLTHROUGH {
+				didFallthrough = true
+				bodyCount--
+			}
+		}
+
+		for i := 0; i < bodyCount; i++ {
+			if err := e.emitStmt(clause.Body[i]); err != nil {
+				return err
+			}
+		}
+
+		if !didFallthrough {
+			e.writeIndent()
+			e.write("break;")
+			e.newline()
+		}
+
+		e.indent--
+	}
+
+	e.indent--
+	e.writeIndent()
+	e.write("}")
+	e.newline()
 
 	return nil
 }
@@ -1075,15 +1129,7 @@ func (e *emitter) emitType(spec *ast.TypeSpec) error {
 		if t.Fields != nil {
 			for _, field := range t.Fields.List {
 				if len(field.Names) == 0 {
-					name := ""
-					switch value := field.Type.(type) {
-					case *ast.Ident:
-						name = value.Name
-					case *ast.StarExpr:
-						if ident, ok := value.X.(*ast.Ident); ok {
-							name = ident.Name
-						}
-					}
+					name := embeddedFieldName(field.Type)
 
 					if name != "" {
 						e.writeIndent()
@@ -1091,128 +1137,42 @@ func (e *emitter) emitType(spec *ast.TypeSpec) error {
 						e.write(name)
 						e.write(" = ")
 
-						switch value := field.Type.(type) {
-						case *ast.Ident:
-							e.write("new ")
-							e.write(value.Name)
-							e.write("()")
-						case *ast.StarExpr:
-							if ident, ok := value.X.(*ast.Ident); ok {
-								e.needsRuntime = true
-								e.write("go2jsPtr(new ")
-								e.write(ident.Name)
-								e.write("())")
-							} else {
-								e.write("null")
-							}
-						default:
-							e.write(structZeroValue(field.Type))
-						}
-
-						e.write(";")
-						e.newline()
-						embedded = append(embedded, name)
-					}
-					continue
-				}
-
-				for _, name := range field.Names {
-					e.writeIndent()
-					e.write("this.")
-					e.write(name.Name)
-					e.write(" = ")
-					e.write(structZeroValue(field.Type))
-					e.write(";")
-					e.newline()
-				}
-			}
-		}
-		if t.Fields != nil {
-			for _, field := range t.Fields.List {
-				if len(field.Names) == 0 {
-					name := ""
-					switch value := field.Type.(type) {
-					case *ast.Ident:
-						name = value.Name
-					case *ast.StarExpr:
-						if ident, ok := value.X.(*ast.Ident); ok {
-							name = ident.Name
-						}
-					}
-
-					if name != "" {
-						e.writeIndent()
-						e.write("this.")
-						e.write(name)
-						e.write(" = ")
-
-						switch value := field.Type.(type) {
-						case *ast.Ident:
-							e.write("new ")
-							e.write(value.Name)
-							e.write("()")
-						case *ast.StarExpr:
-							if ident, ok := value.X.(*ast.Ident); ok {
-								e.needsRuntime = true
-								e.write("go2jsPtr(new ")
-								e.write(ident.Name)
-								e.write("())")
-							} else {
-								e.write("null")
-							}
-						default:
-							e.write(structZeroValue(field.Type))
-						}
-
-						e.write(";")
-						e.newline()
-						embedded = append(embedded, name)
-					}
-					continue
-				}
-
-				for _, name := range field.Names {
-					e.writeIndent()
-					e.write("this.")
-					e.write(name.Name)
-					e.write(" = ")
-					e.write(structZeroValue(field.Type))
-					e.write(";")
-					e.newline()
-				}
-			}
-		}
-		if t.Fields != nil {
-			for _, field := range t.Fields.List {
-				for _, name := range field.Names {
-					e.writeIndent()
-					e.write("this.")
-					e.write(name.Name)
-					e.write(" = ")
-
-					if len(field.Names) == 0 {
-						embedded = append(embedded, name.Name)
-
-						switch value := field.Type.(type) {
-						case *ast.Ident:
-							e.write("new ")
-							e.write(value.Name)
-							e.write("()")
-						case *ast.StarExpr:
-							if ident, ok := value.X.(*ast.Ident); ok {
+						// Only struct types get a nested instance and method
+						// promotion; embedded named scalars stay plain values.
+						if e.isStructEmbed(field.Type) {
+							switch value := field.Type.(type) {
+							case *ast.Ident:
 								e.write("new ")
-								e.write(ident.Name)
+								e.write(value.Name)
 								e.write("()")
-							} else {
-								e.write("null")
+							case *ast.StarExpr:
+								if ident, ok := value.X.(*ast.Ident); ok {
+									e.needsRuntime = true
+									e.write("go2jsPtr(new ")
+									e.write(ident.Name)
+									e.write("())")
+								} else {
+									e.write("null")
+								}
 							}
-						default:
-							e.write(structZeroValue(field.Type))
-						}
-					} else {
-						e.write(structZeroValue(field.Type))
-					}
 
+							embedded = append(embedded, name)
+						} else {
+							e.write(e.fieldZeroValue(field.Type))
+						}
+
+						e.write(";")
+						e.newline()
+					}
+					continue
+				}
+
+				for _, name := range field.Names {
+					e.writeIndent()
+					e.write("this.")
+					e.write(name.Name)
+					e.write(" = ")
+					e.write(e.fieldZeroValue(field.Type))
 					e.write(";")
 					e.newline()
 				}
@@ -1247,6 +1207,10 @@ func (e *emitter) emitType(spec *ast.TypeSpec) error {
 			return err
 		}
 
+		if err := e.emitTypeNameRegistration(spec.Name); err != nil {
+			return err
+		}
+
 		e.newline()
 
 	default:
@@ -1254,6 +1218,43 @@ func (e *emitter) emitType(spec *ast.TypeSpec) error {
 	}
 
 	return nil
+}
+
+func embeddedFieldName(fieldType ast.Expr) string {
+	switch value := fieldType.(type) {
+	case *ast.Ident:
+		return value.Name
+	case *ast.StarExpr:
+		if ident, ok := value.X.(*ast.Ident); ok {
+			return ident.Name
+		}
+	}
+
+	return ""
+}
+
+// isStructEmbed reports whether an embedded field names a struct type, which
+// decides between a nested instance and a plain zero value.
+func (e *emitter) isStructEmbed(fieldType ast.Expr) bool {
+	t := e.analyzedType(fieldType)
+	if t == nil {
+		// Without type information assume a struct, matching the old behaviour.
+		return true
+	}
+
+	_, ok := t.Underlying().(*gotypesstd.Struct)
+
+	return ok
+}
+
+// fieldZeroValue prefers the type-aware zero value so named scalar types such
+// as "type Celsius float64" get 0 rather than null.
+func (e *emitter) fieldZeroValue(expr ast.Expr) string {
+	if t := e.analyzedType(expr); t != nil {
+		return zeroValueForGoType(t)
+	}
+
+	return structZeroValue(expr)
 }
 
 func structZeroValue(expr ast.Expr) string {
@@ -1452,6 +1453,12 @@ func (e *emitter) emitConversion(call *ast.CallExpr) error {
 	if name == "go2jsComplexConvert" {
 		e.needsRuntime = true
 	}
+
+	// string(rune) encodes a code point, while string(any) stringifies.
+	if name == "String" && isIntegerType(e.analyzedType(call.Args[0])) {
+		name = "String.fromCodePoint"
+	}
+
 	if name == "" {
 		if typeName != nil {
 			return fmt.Errorf("unsupported conversion to %s", typeName.Name())

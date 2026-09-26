@@ -181,7 +181,7 @@ func main() {
 		"let values = go2jsMap([",
 		`["alice", 10]`,
 		`["bob", 20]`,
-		`console.log(go2jsMapGet(values, "alice"));`,
+		`console.log(go2jsMapGet(values, "alice", 0));`,
 		`go2jsMapSet(values, "bob", 30);`,
 		"go2jsLen(values)",
 		"function go2jsMap(entries)",
@@ -215,7 +215,7 @@ func main() {
 	for _, want := range []string{
 		"let values = go2jsMakeMap();",
 		"go2jsMapSet(values, \"alice\", 10);",
-		"go2jsMapGet(values, \"alice\")",
+		"go2jsMapGet(values, \"alice\", 0)",
 		"go2jsMapDelete(values, \"alice\")",
 		"go2jsLen(values)",
 	} {
@@ -350,7 +350,7 @@ func main() {
 
 	for _, want := range []string{
 		"Math.trunc(input)",
-		"String(65)",
+		"String.fromCodePoint(65)",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("generated JavaScript missing %q:\n%s", want, output)

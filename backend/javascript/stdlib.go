@@ -1,70 +1,61 @@
 package javascript
 
+var stdlibFuncMaps = map[string]map[string]string{
+	"bufio":        bufioFuncs,
+	"bytes":        bytesFuncs,
+	"cmp":          cmpFuncs,
+	"encoding":     encodingFuncs,
+	"encoding/hex": hexFuncs,
+	"errors":       errorsFuncs,
+	"fmt":          fmtFuncs,
+	"filepath":     filepathFuncs,
+	"http":         httpFuncs,
+	"io":           ioFuncs,
+	"json":         jsonFuncs,
+	"math":         mathFuncs,
+	"math/rand":    randFuncs,
+	"os":           osFuncs,
+	"path":         pathFuncs,
+	"regexp":       regexpFuncs,
+	"sort":         sortFuncs,
+	"strconv":      strconvFuncs,
+	"strings":      stringsFuncs,
+	"time":         timeFuncs,
+	"unicode":      unicodeFuncs,
+	"url":          urlFuncs,
+	"utf8":         utf8Funcs,
+}
+
+// stdlibPkgAliases maps an import path to the local package identifiers that may
+// refer to it. Callers pass the identifier used in the source, which is not
+// always the last path segment (for example "math/rand" is used as "rand").
+var stdlibPkgAliases = map[string][]string{
+	"math/rand":    {"rand"},
+	"encoding/hex": {"hex"},
+}
+
 func stdlibFuncName(pkg, name string) (string, bool) {
-	switch pkg {
-	case "strings":
-		if jsName, ok := stringsFuncs[name]; ok {
-			return jsName, true
-		}
-	case "bytes":
-		if jsName, ok := bytesFuncs[name]; ok {
-			return jsName, true
-		}
-	case "json":
-		if jsName, ok := jsonFuncs[name]; ok {
-			return jsName, true
-		}
-	case "url":
-		if jsName, ok := urlFuncs[name]; ok {
-			return jsName, true
-		}
-	case "filepath":
-		if jsName, ok := filepathFuncs[name]; ok {
-			return jsName, true
-		}
-	case "regexp":
-		if jsName, ok := regexpFuncs[name]; ok {
-			return jsName, true
-		}
-	case "os":
-		if jsName, ok := osFuncs[name]; ok {
-			return jsName, true
-		}
-	case "http":
-		if jsName, ok := httpFuncs[name]; ok {
-			return jsName, true
-		}
-	case "time":
-		if jsName, ok := timeFuncs[name]; ok {
-			return jsName, true
-		}
-	case "io":
-		if jsName, ok := ioFuncs[name]; ok {
-			return jsName, true
-		}
-	case "strconv":
-		if jsName, ok := strconvFuncs[name]; ok {
-			return jsName, true
-		}
-	case "math":
-		if jsName, ok := mathFuncs[name]; ok {
-			return jsName, true
-		}
-	case "sort":
-		if jsName, ok := sortFuncs[name]; ok {
-			return jsName, true
-		}
-	case "unicode":
-		if jsName, ok := unicodeFuncs[name]; ok {
-			return jsName, true
-		}
-	case "utf8":
-		if jsName, ok := utf8Funcs[name]; ok {
-			return jsName, true
+	functions, ok := stdlibFuncMaps[stdlibPkgPath(pkg)]
+	if !ok {
+		return "", false
+	}
+
+	jsName, ok := functions[name]
+
+	return jsName, ok
+}
+
+// stdlibPkgPath resolves a local package identifier to its import path.
+func stdlibPkgPath(pkg string) string {
+	for path, aliases := range stdlibPkgAliases {
+		for _, alias := range aliases {
+			if alias == pkg {
+				return path
+			}
 		}
 	}
 
-	return "", false
+	return pkg
 }
 
 var stringsFuncs = map[string]string{
@@ -92,6 +83,7 @@ var stringsFuncs = map[string]string{
 	"CutSuffix":   "go2jsStringsCutSuffix",
 	"TrimPrefix":  "go2jsStringsTrimPrefix",
 	"TrimSuffix":  "go2jsStringsTrimSuffix",
+	"LastIndex":   "go2jsStringsLastIndex",
 }
 
 var strconvFuncs = map[string]string{
@@ -142,6 +134,15 @@ var mathFuncs = map[string]string{
 	"Signbit": "go2jsMathSignbit",
 	"Exp":     "Math.exp",
 	"Log1p":   "Math.log1p",
+	"Inf":     "go2jsMathInf",
+	"NaN":     "go2jsMathNaN",
+}
+
+var hexFuncs = map[string]string{
+	"EncodeToString": "go2jsHexEncodeToString",
+	"DecodeString":   "go2jsHexDecodeString",
+	"EncodedLen":     "go2jsHexEncodedLen",
+	"DecodedLen":     "go2jsHexDecodedLen",
 }
 
 var sortFuncs = map[string]string{
@@ -223,14 +224,67 @@ var bytesFuncs = map[string]string{
 	"Equal": "go2jsBytesEqual",
 }
 
+var bufioFuncs = map[string]string{
+	"NewReader":  "go2jsBufioNewReader",
+	"NewScanner": "go2jsBufioNewScanner",
+	"NewWriter":  "go2jsBufioNewWriter",
+	"ScanLines":  "go2jsBufioScanLines",
+}
+
+var pathFuncs = map[string]string{
+	"Base":  "go2jsPathBase",
+	"Dir":   "go2jsPathDir",
+	"Ext":   "go2jsPathExt",
+	"Clean": "go2jsPathClean",
+	"Join":  "go2jsPathJoin",
+	"Split": "go2jsPathSplit",
+	"IsAbs": "go2jsPathIsAbs",
+}
+
+var randFuncs = map[string]string{
+	"Int":     "go2jsRandInt",
+	"Intn":    "go2jsRandIntn",
+	"Int63":   "go2jsRandInt63",
+	"Float64": "go2jsRandFloat64",
+	"Perm":    "go2jsRandPerm",
+	"Shuffle": "go2jsRandShuffle",
+	"Seed":    "go2jsRandSeed",
+}
+
+var cmpFuncs = map[string]string{
+	"Compare": "go2jsCmpCompare",
+	"Less":    "go2jsCmpLess",
+	"Or":      "go2jsCmpOr",
+	"OrLess":  "go2jsCmpOrLess",
+}
+
+var errorsFuncs = map[string]string{
+	"New":    "go2jsErrorsNew",
+	"Is":     "go2jsErrorsIs",
+	"As":     "go2jsErrorsAs",
+	"Unwrap": "go2jsErrorsUnwrap",
+	"Join":   "go2jsErrorsJoin",
+}
+
+var encodingFuncs = map[string]string{
+	"Hex": "go2jsEncodingHex",
+}
+
+var fmtFuncs = map[string]string{
+	"Sprintf": "go2jsSprintf",
+	"Errorf":  "go2jsErrorf",
+}
+
 var multiReturnStdlibFuncs = map[string]bool{
+	"strings.CutPrefix":  true,
+	"strings.CutSuffix":  true,
 	"time.Date":          false,
 	"http.NewRequest":    true,
 	"io.ReadAll":         true,
 	"strconv.Unquote":    true,
-	"strings.CutSuffix":  true,
-	"strings.CutPrefix":  true,
 	"strings.Cut":        true,
+	"path.Split":         true,
+	"bufio.ScanLines":    true,
 	"strconv.Atoi":       true,
 	"strconv.ParseInt":   true,
 	"strconv.ParseFloat": true,

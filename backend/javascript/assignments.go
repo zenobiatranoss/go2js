@@ -97,7 +97,48 @@ func (e *emitter) declareNonBlank(lhs []ast.Expr) {
 	}
 }
 
+// emitTypeAssertAssignInline writes a comma-ok type assertion without the
+// indentation and trailing semicolon that statement context expects.
+func (e *emitter) emitTypeAssertAssignInline(stmt *ast.AssignStmt, assert *ast.TypeAssertExpr) error {
+	e.needsRuntime = true
+
+	if stmt.Tok == token.DEFINE {
+		if e.inlineMode {
+			e.declareNonBlank(stmt.Lhs)
+		} else {
+			e.writeIndent()
+		}
+
+		e.write(e.emitDeclarationKeyword())
+	}
+
+	e.write(e.blankDestructuringPattern(stmt.Lhs))
+	e.write(" = go2jsAssertOK(")
+
+	if err := e.emitExpr(assert.X); err != nil {
+		return err
+	}
+
+	e.write(`, "`)
+	e.write(goTypeNameFromExpr(assert.Type))
+	e.write(`")`)
+
+	if !e.inlineMode {
+		e.write(";")
+		e.newline()
+	}
+
+	return nil
+}
+
 func (e *emitter) emitBlankAssignment(stmt *ast.AssignStmt) error {
+	// A comma-ok type assertion must not panic, even when a target is blank.
+	if len(stmt.Lhs) == 2 && len(stmt.Rhs) == 1 {
+		if assert, ok := stmt.Rhs[0].(*ast.TypeAssertExpr); ok && assert.Type != nil {
+			return e.emitTypeAssertAssignInline(stmt, assert)
+		}
+	}
+
 	if len(stmt.Rhs) == 1 && len(stmt.Lhs) > 1 && e.isMultiReturnCall(stmt.Rhs[0]) {
 		if e.isAllBlank(stmt.Lhs) {
 			e.writeIndent()

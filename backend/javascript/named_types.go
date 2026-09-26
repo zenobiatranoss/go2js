@@ -431,11 +431,40 @@ func (e *emitter) emitPointerOperand(expr ast.Expr) error {
 	return e.emitExpr(expr)
 }
 
+// emitTypeNameRegistration records the fully qualified Go type name so %T can
+// report "main.Point" rather than the JavaScript class name.
+func (e *emitter) emitTypeNameRegistration(typeIdent *ast.Ident) error {
+	if typeIdent == nil || e.semantic == nil {
+		return nil
+	}
+
+	typeName, ok := e.semantic.Object(typeIdent).(*gotypesstd.TypeName)
+	if !ok {
+		return nil
+	}
+
+	qualified := typeName.Name()
+
+	if pkg := typeName.Pkg(); pkg != nil && pkg.Name() != "" {
+		qualified = pkg.Name() + "." + typeName.Name()
+	}
+
+	e.needsRuntime = true
+	e.writeIndent()
+	e.write("go2jsRegisterTypeName(")
+	e.write(typeName.Name())
+	e.write(", ")
+	e.write(strconv.Quote(qualified))
+	e.write(");")
+	e.newline()
+
+	return nil
+}
+
 func (e *emitter) emitStructFieldStringers(typeName string, structType *ast.StructType) error {
 	if structType == nil || structType.Fields == nil || e.analysis == nil {
 		return nil
 	}
-
 	type entry struct {
 		field  string
 		method string
