@@ -240,7 +240,7 @@ func (e *emitter) emitFunctionParameters(fn *ast.FuncDecl) {
 			e.write("...")
 		}
 
-		e.write(name)
+		e.write(javaScriptIdentifier(name))
 		first = false
 	}
 }

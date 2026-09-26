@@ -31,7 +31,7 @@ func (e *emitter) emitConstDecl(decl *ast.GenDecl) error {
 
 			e.writeIndent()
 			e.write("const ")
-			e.write(name.Name)
+			e.write(javaScriptIdentifier(name.Name))
 			e.write(" = ")
 			e.write(value)
 			e.write(";")

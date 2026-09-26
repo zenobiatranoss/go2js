@@ -78,7 +78,26 @@ func (e *emitter) emitFuncBody(body *ast.BlockStmt) error {
 	e.writeIndent()
 	e.write("};")
 	e.newline()
-	e.newline()
+
+	if err := e.emitNamedResults(); err != nil {
+		e.indent--
+		e.scopes = e.scopes[:len(e.scopes)-1]
+		return err
+	}
+
+	namedReturn := e.canUseNamedReturn()
+
+	if namedReturn {
+		e.deferNamedReturn = true
+		defer func() { e.deferNamedReturn = false }()
+
+		e.writeIndent()
+		e.write("const go2jsReturnSignal = {};")
+		e.newline()
+		e.writeIndent()
+		e.write("let go2jsReturning = false;")
+		e.newline()
+	}
 
 	e.writeIndent()
 	e.write("try {")
@@ -98,9 +117,24 @@ func (e *emitter) emitFuncBody(body *ast.BlockStmt) error {
 	e.write("} catch (go2jsCaught) {")
 	e.newline()
 	e.indent++
-	e.writeIndent()
-	e.write("go2jsPanicValue = go2jsCaught;")
-	e.newline()
+
+	if namedReturn {
+		e.writeIndent()
+		e.write("if (go2jsCaught !== go2jsReturnSignal) {")
+		e.newline()
+		e.indent++
+		e.writeIndent()
+		e.write("go2jsPanicValue = go2jsCaught;")
+		e.newline()
+		e.indent--
+		e.writeIndent()
+		e.write("}")
+		e.newline()
+	} else {
+		e.writeIndent()
+		e.write("go2jsPanicValue = go2jsCaught;")
+		e.newline()
+	}
 	e.indent--
 	e.writeIndent()
 	e.write("} finally {")
@@ -138,6 +172,35 @@ func (e *emitter) emitFuncBody(body *ast.BlockStmt) error {
 
 	e.indent--
 	e.scopes = e.scopes[:len(e.scopes)-1]
+
+	if namedReturn {
+		e.writeIndent()
+		e.write("if (go2jsReturning || go2jsRecovered) {")
+		e.newline()
+		e.indent++
+		e.writeIndent()
+		e.write("return ")
+
+		names := e.namedResultNames()
+		if len(names) == 1 {
+			e.write(names[0])
+		} else {
+			e.write("[")
+			for i, name := range names {
+				if i > 0 {
+					e.write(", ")
+				}
+				e.write(name)
+			}
+			e.write("]")
+		}
+
+		e.newline()
+		e.indent--
+		e.writeIndent()
+		e.write("}")
+		e.newline()
+	}
 
 	e.writeIndent()
 	e.write("}")

@@ -193,8 +193,26 @@ func (e *emitter) isTypeConversion(call *ast.CallExpr) bool {
 		return e.analyzedType(call) != nil
 	}
 
-	ident, ok := call.Fun.(*ast.Ident)
-	if !ok {
+	var ident *ast.Ident
+
+	switch fun := call.Fun.(type) {
+	case *ast.Ident:
+		ident = fun
+
+	case *ast.SelectorExpr:
+		if !e.isPackageSelector(fun) {
+			return false
+		}
+
+		ident = fun.Sel
+
+		if _, ok := e.analysis.Uses[ident].(*types.TypeName); !ok {
+			return false
+		}
+
+		return stdlibTypeConversions[e.packageKeyFor(fun)] != ""
+
+	default:
 		return false
 	}
 
@@ -205,6 +223,27 @@ func (e *emitter) isTypeConversion(call *ast.CallExpr) bool {
 
 	_, ok = object.(*types.TypeName)
 	return ok
+}
+
+func (e *emitter) packageKeyFor(sel *ast.SelectorExpr) string {
+	qualifier, ok := sel.X.(*ast.Ident)
+	if !ok {
+		return ""
+	}
+
+	packageName := qualifier.Name
+
+	if e.analysis != nil {
+		if name, ok := e.analysis.Uses[qualifier].(*types.PkgName); ok {
+			packageName = name.Imported().Name()
+		}
+	}
+
+	return packageName + "." + sel.Sel.Name
+}
+
+var stdlibTypeConversions = map[string]string{
+	"time.Duration": "go2jsDuration",
 }
 
 func isComplexType(t types.Type) bool {

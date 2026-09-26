@@ -438,3 +438,102 @@ func main() {
 }
 `)
 }
+
+func TestFmtWritersAndSyncMutexValue(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"sync"
+)
+
+func main() {
+	writer := bufio.NewWriter(os.Stdout)
+	fmt.Fprintf(writer, "%s=%d\n", "answer", 42)
+	writer.Flush()
+
+	var mu sync.Mutex
+	mu.Lock()
+	mu.Unlock()
+	fmt.Println("unlocked")
+}
+`)
+}
+
+func TestUserStructZeroValueAndNilAppend(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+type Point struct {
+	X int
+	Y int
+}
+
+func (p Point) Sum() int {
+	return p.X + p.Y
+}
+
+func main() {
+	var p Point
+	fmt.Println(p.Sum())
+
+	var values []int
+	values = append(values, 1, 2)
+	fmt.Println(values, len(values))
+
+	arr := [3]int{7, 8, 9}
+	ptr := &arr
+	fmt.Println(len(ptr), cap(ptr))
+}
+`)
+}
+
+func TestNamedResultsWithDefer(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+func compute(fail bool) (result int, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("recovered: %v", r)
+		}
+	}()
+
+	if fail {
+		panic("boom")
+	}
+
+	return 21, nil
+}
+
+func main() {
+	value, err := compute(false)
+	fmt.Println(value, err)
+
+	value, err = compute(true)
+	fmt.Println(value, err != nil)
+}
+`)
+}
+
+func TestAnonymousStructLiteralAndReservedNames(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+func main() {
+	point := struct{ X, Y int }{1, 2}
+	fmt.Println(point.X, point.Y)
+
+	class := 3
+	delete := 4
+	in := 5
+	undefined := 6
+	fmt.Println(class, delete, in, undefined)
+}
+`)
+}

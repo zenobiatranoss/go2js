@@ -105,6 +105,7 @@ var strconvFuncs = map[string]string{
 	"Atoi":        "go2jsStrconvAtoi",
 	"ParseInt":    "go2jsStrconvParseInt",
 	"ParseFloat":  "go2jsStrconvParseFloat",
+	"ParseUint":   "go2jsStrconvParseUint",
 	"ParseBool":   "go2jsStrconvParseBool",
 	"FormatInt":   "go2jsStrconvFormatInt",
 	"Quote":       "go2jsStrconvQuote",
@@ -287,8 +288,13 @@ var encodingFuncs = map[string]string{
 }
 
 var fmtFuncs = map[string]string{
-	"Sprintf": "go2jsSprintf",
-	"Errorf":  "go2jsErrorf",
+	"Sprintf":  "go2jsSprintf",
+	"Errorf":   "go2jsErrorf",
+	"Sprint":   "go2jsSprint",
+	"Sprintln": "go2jsSprintln",
+	"Fprint":   "go2jsFprint",
+	"Fprintf":  "go2jsFprintf",
+	"Fprintln": "go2jsFprintln",
 }
 
 var multiReturnStdlibFuncs = map[string]bool{
@@ -304,8 +310,9 @@ var multiReturnStdlibFuncs = map[string]bool{
 	"strconv.Atoi":       true,
 	"strconv.ParseInt":   true,
 	"strconv.ParseFloat": true,
+	"strconv.ParseUint":  true,
 	"strconv.ParseBool":  true,
 	"json.Marshal":       true,
-	"json.Unmarshal":     true,
+	"json.Unmarshal":     false,
 	"url.Parse":          true,
 }

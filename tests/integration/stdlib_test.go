@@ -189,3 +189,99 @@ func main() {
 		t.Fatalf("context error identity mismatch: got %q want %q", got, want)
 	}
 }
+
+func TestBytesBufferConstructors(t *testing.T) {
+	source := `package main
+
+import (
+	"bytes"
+	"fmt"
+)
+
+func main() {
+	buffer := bytes.NewBufferString("xy")
+	fmt.Println(buffer.String())
+
+	other := bytes.NewBuffer([]byte("hello"))
+	other.WriteString(" world")
+	fmt.Println(other.String(), other.Len())
+}
+`
+	got, want := runCompiledProgram(t, source)
+	if got != want {
+		t.Fatalf("bytes buffer mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestStrconvParseUint(t *testing.T) {
+	source := `package main
+
+import (
+	"fmt"
+	"strconv"
+)
+
+func main() {
+	value, err := strconv.ParseUint("42", 10, 64)
+	fmt.Println(value, err)
+
+	bad, berr := strconv.ParseUint("-1", 10, 64)
+	fmt.Println(bad, berr != nil)
+}
+`
+	got, want := runCompiledProgram(t, source)
+	if got != want {
+		t.Fatalf("strconv.ParseUint mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestJSONStructTags(t *testing.T) {
+	source := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+)
+
+type Addr struct {
+	City string ` + "`json:\"city\"`" + `
+	Zip  int    ` + "`json:\"zip\"`" + `
+	Note string ` + "`json:\"note,omitempty\"`" + `
+}
+
+func main() {
+	data, err := json.Marshal(Addr{City: "Paris", Zip: 75000})
+	fmt.Println(string(data), err)
+
+	var decoded Addr
+	uerr := json.Unmarshal([]byte(` + "`{\"city\":\"Rome\",\"zip\":1}`" + `), &decoded)
+	fmt.Println(decoded.City, decoded.Zip, uerr)
+}
+`
+	got, want := runCompiledProgram(t, source)
+	if got != want {
+		t.Fatalf("json struct tag mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestTimeDurationConversion(t *testing.T) {
+	source := `package main
+
+import (
+	"fmt"
+	"time"
+)
+
+func main() {
+	d := time.Duration(1500)
+	fmt.Println(d.Milliseconds())
+
+	total := d + time.Second
+	fmt.Println(total.Milliseconds())
+}
+`
+	got, want := runCompiledProgram(t, source)
+	if got != want {
+		t.Fatalf("time.Duration conversion mismatch: got %q want %q", got, want)
+	}
+}

@@ -157,26 +157,30 @@ function go2jsBufioNewReader(source) {
 }
 
 function go2jsBufioNewWriter(destination) {
-	destination = go2jsUnwrap(destination);
+	const target = go2jsUnwrap(destination);
 
 	let pending = "";
 
 	return {
 		Write: function (chunk) {
-			pending += go2jsStringify(chunk);
-			return go2jsLen(chunk);
+			const text = go2jsBytesToString(chunk);
+			pending += text;
+			return [text.length, null];
 		},
 		WriteString: function (chunk) {
-			pending += go2jsStringify(chunk);
-			return go2jsStringify(chunk).length;
+			const text = go2jsStringify(chunk);
+			pending += text;
+			return text.length;
 		},
 		Flush: function () {
 			if (pending === "") {
-				return;
+				return null;
 			}
 
-			go2jsOutputText(go2jsStringify(destination), pending);
+			const written = go2jsWriteDestination(target, pending);
 			pending = "";
+
+			return written;
 		},
 	};
 }

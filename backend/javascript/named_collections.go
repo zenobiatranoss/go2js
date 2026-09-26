@@ -98,7 +98,7 @@ func (e *emitter) emitNamedCollectionLiteral(x *ast.CompositeLit, elem types.Typ
 		if i > 0 {
 			e.write(", ")
 		}
-		e.write(zeroValueForGoType(elem))
+		e.write(e.zeroValue(elem))
 	}
 	e.write("];")
 	e.newline()

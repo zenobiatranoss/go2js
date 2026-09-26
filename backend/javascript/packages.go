@@ -512,6 +512,10 @@ func (e *emitter) emitPackageCall(call *ast.CallExpr, selector *ast.SelectorExpr
 	}
 
 	switch pkg.Name {
+	case "json":
+		if handled, err := e.emitJSONCall(call, selector); handled {
+			return handled, err
+		}
 	case "atomic":
 		return e.emitAtomicCall(call, selector)
 	case "context":

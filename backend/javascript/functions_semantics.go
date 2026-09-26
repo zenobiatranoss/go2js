@@ -62,12 +62,28 @@ func (e *emitter) emitNamedResults() error {
 		e.write(e.emitDeclarationKeyword())
 		e.write(name)
 		e.write(" = ")
-		e.write(zeroValueForGoType(result.Type()))
+		e.write(e.zeroValue(result.Type()))
 		e.write(";")
 		e.newline()
 	}
 
 	return nil
+}
+
+func (e *emitter) zeroValue(t types.Type) string {
+	if e != nil && t != nil {
+		if named, ok := t.(*types.Named); ok {
+			obj := named.Obj()
+
+			if obj != nil && e.localStructTypes[obj.Name()] {
+				if _, isStruct := named.Underlying().(*types.Struct); isStruct {
+					return "new " + javaScriptIdentifier(obj.Name()) + "()"
+				}
+			}
+		}
+	}
+
+	return zeroValueForGoType(t)
 }
 
 func zeroValueForGoType(t types.Type) string {

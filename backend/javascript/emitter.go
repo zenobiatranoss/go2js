@@ -38,12 +38,42 @@ type emitter struct {
 	tempID              int
 	genericParams       map[*gotypesstd.TypeParam]string
 
-	functionBody   *ast.BlockStmt
-	gotoMode       bool
-	gotoLabels     map[string]int
-	gotoDispatcher string
-	gotoStmtDepth  int
-	inlineMode     bool
+	functionBody     *ast.BlockStmt
+	deferNamedReturn bool
+	localStructTypes map[string]bool
+	gotoMode         bool
+	gotoLabels       map[string]int
+	gotoDispatcher   string
+	gotoStmtDepth    int
+	inlineMode       bool
+}
+
+func localStructTypeNames(file *ast.File) map[string]bool {
+	names := map[string]bool{}
+
+	if file == nil {
+		return names
+	}
+
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.TYPE {
+			continue
+		}
+
+		for _, spec := range gen.Specs {
+			typeSpec, ok := spec.(*ast.TypeSpec)
+			if !ok {
+				continue
+			}
+
+			if _, isStruct := typeSpec.Type.(*ast.StructType); isStruct {
+				names[typeSpec.Name.Name] = true
+			}
+		}
+	}
+
+	return names
 }
 
 func Emit(file *ast.File, analysis *gotypes.Result) (string, error) {
@@ -64,9 +94,10 @@ func EmitWithContextOptionsTarget(file *ast.File, analysis *gotypes.Result, cont
 	}
 
 	e := &emitter{
-		analysis: analysis,
-		semantic: context,
-		target:   normalizeTarget(target),
+		analysis:         analysis,
+		semantic:         context,
+		target:           normalizeTarget(target),
+		localStructTypes: localStructTypeNames(file),
 	}
 	for _, decl := range file.Decls {
 		switch d := decl.(type) {
@@ -294,6 +325,38 @@ func (e *emitter) emitForHeader(stmt *ast.ForStmt) error {
 	return nil
 }
 
+func (e *emitter) emitDeferredReturn(stmt *ast.ReturnStmt) error {
+	names := e.namedResultNames()
+
+	if len(stmt.Results) > 0 {
+		for i, result := range stmt.Results {
+			if i >= len(names) {
+				break
+			}
+
+			e.writeIndent()
+			e.write(names[i])
+			e.write(" = ")
+
+			if err := e.emitReturnExpr(result, i); err != nil {
+				return err
+			}
+
+			e.write(";")
+			e.newline()
+		}
+	}
+
+	e.writeIndent()
+	e.write("go2jsReturning = true;")
+	e.newline()
+	e.writeIndent()
+	e.write("throw go2jsReturnSignal;")
+	e.newline()
+
+	return nil
+}
+
 func (e *emitter) emitBlock(block *ast.BlockStmt) error {
 	e.write("{")
 	e.newline()
@@ -390,6 +453,14 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 
 	switch s := stmt.(type) {
 	case *ast.ReturnStmt:
+		if e.deferNamedReturn && e.canUseNamedReturn() {
+			if err := e.emitDeferredReturn(s); err != nil {
+				return err
+			}
+
+			break
+		}
+
 		e.writeIndent()
 		e.write("return")
 
@@ -1045,7 +1116,7 @@ func (e *emitter) emitValueDecl(decl *ast.GenDecl) error {
 				e.write(", ")
 			}
 
-			e.write(name.Name)
+			e.write(javaScriptIdentifier(name.Name))
 
 			if i < len(valueSpec.Values) {
 				e.write(" = ")
@@ -1063,7 +1134,7 @@ func (e *emitter) emitValueDecl(decl *ast.GenDecl) error {
 					e.write(")")
 				} else {
 					e.write(" = ")
-					e.write(zeroValueForGoType(target))
+					e.write(e.zeroValue(target))
 				}
 			}
 
@@ -1271,7 +1342,7 @@ func (e *emitter) isStructEmbed(fieldType ast.Expr) bool {
 // as "type Celsius float64" get 0 rather than null.
 func (e *emitter) fieldZeroValue(expr ast.Expr) string {
 	if t := e.analyzedType(expr); t != nil {
-		return zeroValueForGoType(t)
+		return e.zeroValue(t)
 	}
 
 	return structZeroValue(expr)
@@ -1322,6 +1393,30 @@ func (e *emitter) isDeclaredHere(name string) bool {
 	return ok
 }
 
+var javaScriptReservedNames = map[string]bool{
+	"arguments": true, "await": true, "break": true, "case": true,
+	"catch": true, "class": true, "const": true, "continue": true,
+	"debugger": true, "default": true, "delete": true, "do": true,
+	"else": true, "enum": true, "eval": true, "export": true,
+	"extends": true, "finally": true, "for": true,
+	"function": true, "if": true, "implements": true, "import": true,
+	"in": true, "instanceof": true, "interface": true, "let": true,
+	"new": true, "null": true, "package": true, "private": true,
+	"protected": true, "public": true, "return": true, "static": true,
+	"super": true, "switch": true, "this": true, "throw": true,
+	"try": true, "typeof": true, "var": true,
+	"void": true, "while": true, "with": true, "yield": true,
+	"NaN": true, "Infinity": true, "undefined": true,
+}
+
+func javaScriptIdentifier(name string) string {
+	if !javaScriptReservedNames[name] {
+		return name
+	}
+
+	return name + "$go2js"
+}
+
 func (e *emitter) resolveName(name string) string {
 	for i := len(e.scopes) - 1; i >= 0; i-- {
 		if js, ok := e.scopes[i][name]; ok {
@@ -1329,7 +1424,7 @@ func (e *emitter) resolveName(name string) string {
 		}
 	}
 
-	return name
+	return javaScriptIdentifier(name)
 }
 
 func (e *emitter) pushScope() {
@@ -1360,7 +1455,7 @@ func (e *emitter) declare(name string) {
 	}
 
 	if !e.isShadowed(name) {
-		current[name] = name
+		current[name] = javaScriptIdentifier(name)
 		return
 	}
 

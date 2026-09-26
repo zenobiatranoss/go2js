@@ -154,14 +154,24 @@ func (e *emitter) emitFileCall(call *ast.CallExpr, selector *ast.SelectorExpr) (
 		return false, nil
 	}
 
-	writer, ok := e.osFileDescriptor(call.Args[0])
-	if !ok {
-		return false, nil
+	writer, isStdWriter := e.osFileDescriptor(call.Args[0])
+	if !isStdWriter {
+		writer = "go2jsFprint"
 	}
 
 	e.needsRuntime = true
 	e.write(writer)
-	e.write("([")
+	e.write("(")
+
+	if !isStdWriter {
+		if err := e.emitExpr(call.Args[0]); err != nil {
+			return true, err
+		}
+
+		e.write(", ")
+	}
+
+	e.write("[")
 
 	if format == "printf" {
 		e.write("go2jsSprintf(")

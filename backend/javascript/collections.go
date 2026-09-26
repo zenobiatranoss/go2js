@@ -527,6 +527,10 @@ function go2jsSliceMake(length, capacity, zeroFactory) {
 }
 
 function go2jsSliceAppend(value, ...items) {
+	if (value === null || value === undefined) {
+		value = go2jsSliceView([], 0, 0, 0);
+	}
+
 	const state = go2jsSliceState(value);
 
 	if (!state) {

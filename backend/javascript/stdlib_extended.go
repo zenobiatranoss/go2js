@@ -1271,37 +1271,38 @@ func extendedStdlibFuncs() {
 	})
 
 	extend(bytesFuncs, map[string]string{
-		"Contains":     "go2jsBytesContains",
-		"ContainsAny":  "go2jsBytesContainsAny",
-		"ContainsFunc": "go2jsBytesContainsFunc",
-		"Count":        "go2jsBytesCount",
-		"EqualFold":    "go2jsBytesEqualFold",
-		"HasPrefix":    "go2jsBytesHasPrefix",
-		"HasSuffix":    "go2jsBytesHasSuffix",
-		"Index":        "go2jsBytesIndex",
-		"IndexAny":     "go2jsBytesIndexAny",
-		"IndexByte":    "go2jsBytesIndexByte",
-		"Join":         "go2jsBytesJoin",
-		"LastIndex":    "go2jsBytesLastIndex",
-		"Repeat":       "go2jsBytesRepeat",
-		"Replace":      "go2jsBytesReplace",
-		"ReplaceAll":   "go2jsBytesReplaceAll",
-		"Split":        "go2jsBytesSplit",
-		"SplitN":       "go2jsBytesSplitN",
-		"Title":        "go2jsBytesTitle",
-		"ToLower":      "go2jsBytesToLower",
-		"ToUpper":      "go2jsBytesToUpper",
-		"Trim":         "go2jsBytesTrim",
-		"TrimSpace":    "go2jsBytesTrimSpace",
-		"TrimPrefix":   "go2jsBytesTrimPrefix",
-		"TrimSuffix":   "go2jsBytesTrimSuffix",
-		"Fields":       "go2jsBytesFields",
-		"NewBuffer":    "go2jsBytesNewBuffer",
-		"NewReader":    "go2jsBytesNewReader",
-		"Runes":        "go2jsBytesRunes",
-		"CutPrefix":    "go2jsBytesCutPrefix",
-		"CutSuffix":    "go2jsBytesCutSuffix",
-		"Compare":      "go2jsBytesCompare",
+		"Contains":        "go2jsBytesContains",
+		"ContainsAny":     "go2jsBytesContainsAny",
+		"ContainsFunc":    "go2jsBytesContainsFunc",
+		"Count":           "go2jsBytesCount",
+		"EqualFold":       "go2jsBytesEqualFold",
+		"HasPrefix":       "go2jsBytesHasPrefix",
+		"HasSuffix":       "go2jsBytesHasSuffix",
+		"Index":           "go2jsBytesIndex",
+		"IndexAny":        "go2jsBytesIndexAny",
+		"IndexByte":       "go2jsBytesIndexByte",
+		"Join":            "go2jsBytesJoin",
+		"LastIndex":       "go2jsBytesLastIndex",
+		"Repeat":          "go2jsBytesRepeat",
+		"Replace":         "go2jsBytesReplace",
+		"ReplaceAll":      "go2jsBytesReplaceAll",
+		"Split":           "go2jsBytesSplit",
+		"SplitN":          "go2jsBytesSplitN",
+		"Title":           "go2jsBytesTitle",
+		"ToLower":         "go2jsBytesToLower",
+		"ToUpper":         "go2jsBytesToUpper",
+		"Trim":            "go2jsBytesTrim",
+		"TrimSpace":       "go2jsBytesTrimSpace",
+		"TrimPrefix":      "go2jsBytesTrimPrefix",
+		"TrimSuffix":      "go2jsBytesTrimSuffix",
+		"Fields":          "go2jsBytesFields",
+		"NewBuffer":       "go2jsBytesNewBuffer",
+		"NewBufferString": "go2jsBytesNewBufferString",
+		"NewReader":       "go2jsBytesNewReader",
+		"Runes":           "go2jsBytesRunes",
+		"CutPrefix":       "go2jsBytesCutPrefix",
+		"CutSuffix":       "go2jsBytesCutSuffix",
+		"Compare":         "go2jsBytesCompare",
 	})
 
 	extend(ioFuncs, map[string]string{
@@ -2155,6 +2156,10 @@ function go2jsBytesFields(a) {
 
 function go2jsBytesNewBuffer(data) {
 	return new go2jsBytesBuffer(go2jsToArray(data));
+}
+
+function go2jsBytesNewBufferString(text) {
+	return new go2jsBytesBuffer(go2jsStringToBytes(go2jsStringify(text)));
 }
 
 function go2jsBytesNewReader(data) {

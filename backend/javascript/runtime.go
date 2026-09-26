@@ -535,15 +535,98 @@ function go2jsURLValues() {
     return values;
 }
 
-function go2jsJSONMarshal(value) {
+function go2jsJSONMarshal(value, fields, omitEmpty) {
     try {
-        return [JSON.stringify(value), null];
+        return [JSON.stringify(go2jsJSONEncode(value, fields, omitEmpty)), null];
     } catch (err) {
         return [null, err];
     }
 }
 
-function go2jsJSONUnmarshal(data, target) {
+function go2jsJSONEncode(value, fields, omitEmpty) {
+    if (value === null || value === undefined) {
+        return null;
+    }
+
+    if (Array.isArray(value)) {
+        return value.map(item => go2jsJSONEncode(item, fields, omitEmpty));
+    }
+
+    if (value instanceof Map) {
+        const out = {};
+        for (const [key, item] of value.entries()) {
+            out[go2jsStringify(key)] = go2jsJSONEncode(item, fields, omitEmpty);
+        }
+        return out;
+    }
+
+    if (typeof value !== "object" || value instanceof Error) {
+        return value;
+    }
+
+    if (fields) {
+        const out = {};
+        let written = false;
+
+        for (const field of Object.keys(fields)) {
+            if (!(field in value)) {
+                continue;
+            }
+
+            const name = fields[field];
+            const item = value[field];
+
+            if (omitEmpty && omitEmpty.indexOf(name) >= 0 && go2jsJSONEmpty(item)) {
+                continue;
+            }
+
+            out[name] = go2jsJSONEncode(item, null, null);
+            written = true;
+        }
+
+        if (written) {
+            return out;
+        }
+    }
+
+    const out = {};
+
+    for (const key of Object.keys(value)) {
+        out[key] = go2jsJSONEncode(value[key], null, null);
+    }
+
+    return out;
+}
+
+function go2jsJSONEmpty(value) {
+    if (value === null || value === undefined) {
+        return true;
+    }
+
+    if (typeof value === "boolean") {
+        return !value;
+    }
+
+    if (typeof value === "number") {
+        return value === 0;
+    }
+
+    if (typeof value === "string") {
+        return value === "";
+    }
+
+    if (value !== null && value !== undefined && value.__go2js_pointer === true) {
+        return go2jsJSONEmpty(value.get());
+    }
+
+    if (Array.isArray(value) || typeof value === "object") {
+        return go2jsLen(value) === 0;
+    }
+
+    return false;
+}
+
+function go2jsJSONUnmarshal(data, target, fields) {
     try {
         const value = JSON.parse(
             typeof data === "string"
@@ -553,14 +636,46 @@ function go2jsJSONUnmarshal(data, target) {
 
         if (target !== null && target !== undefined && typeof target === "object") {
             if (value !== null && typeof value === "object") {
-                Object.assign(target, value);
+                go2jsJSONDecode(value, target, fields);
             }
-            return [null];
+            return null;
         }
 
-        return [null];
+        return null;
     } catch (err) {
-        return [err];
+        return err;
+    }
+}
+
+function go2jsJSONDecode(value, target, fields) {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+        return;
+    }
+
+    for (const key of Object.keys(value)) {
+        let name = key;
+
+        if (fields) {
+            let matched = false;
+
+            for (const field of Object.keys(fields)) {
+                if (fields[field] === key && field in target) {
+                    name = field;
+                    matched = true;
+                    break;
+                }
+            }
+
+            if (!matched && key in target) {
+                name = key;
+            }
+        }
+
+        if (!(name in target)) {
+            continue;
+        }
+
+        target[name] = value[key];
     }
 }
 
@@ -613,8 +728,8 @@ go2jsStringsBuilder.prototype.Cap = function() {
     return this.Len();
 };
 
-function go2jsBytesBuffer() {
-    this.data = [];
+function go2jsBytesBuffer(initial) {
+    this.data = initial === null || initial === undefined ? [] : go2jsToArray(initial);
 }
 
 go2jsBytesBuffer.prototype.Write = function(value) {
@@ -1366,6 +1481,9 @@ function go2jsLen(value) {
 	if (value === null || value === undefined) {
 		return 0;
 	}
+	if (value.__go2js_pointer === true) {
+		return go2jsLen(value.get());
+	}
 	if (value instanceof Map || value instanceof Set) {
 		return value.size;
 	}
@@ -1406,6 +1524,9 @@ function go2jsStringByteLength(s) {
 function go2jsCap(value) {
 	if (value === null || value === undefined) {
 		return 0;
+	}
+	if (value.__go2js_pointer === true) {
+		return go2jsCap(value.get());
 	}
 	if (value instanceof Map || value instanceof Set) {
 		return value.size;
@@ -1852,6 +1973,53 @@ function isStringOperand(value) {
 
 function go2jsPrint(...values) {
 	process.stdout.write(go2jsJoinOperands(values, false));
+}
+function go2jsWriteDestination(destination, text) {
+	const target = go2jsUnwrap(destination);
+
+	if (target === null || target === undefined) {
+		throw new Error("io: writer is nil");
+	}
+
+	if (typeof target.write === "function") {
+		target.write(text);
+		return [text.length, null];
+	}
+
+	if (typeof target.Write === "function") {
+		const written = target.Write(go2jsStringToBytes(text));
+		return Array.isArray(written) ? written : [written, null];
+	}
+
+	throw new Error("io: writer does not implement Write");
+}
+
+function go2jsSprint(...values) {
+	return go2jsJoinOperands(values, false);
+}
+
+function go2jsSprintln(...values) {
+	return go2jsJoinOperands(values, true) + "\n";
+}
+
+function go2jsFprint(writer, values, suffix, separator) {
+	const target = go2jsUnwrap(writer);
+
+	if (target === null || target === undefined || typeof target.Write !== "function") {
+		throw new Error("fmt.Fprint: writer does not implement Write");
+	}
+
+	const written = target.Write(go2jsStringToBytes(go2jsOutputText(values, suffix, separator)));
+
+	return Array.isArray(written) ? written[0] : written;
+}
+
+function go2jsFprintf(writer, format, args) {
+	return go2jsFprint(writer, [go2jsSprintf(format, ...args)], "", "");
+}
+
+function go2jsFprintln(writer, values) {
+	return go2jsFprint(writer, values, "\n", " ");
 }
 
 function go2jsSprintf(format, ...args) {
@@ -2592,6 +2760,23 @@ function go2jsStrconvParseInt(s, base, bitSize) {
 	if (Number.isNaN(value)) {
 		return [0, new Error("strconv.ParseInt: parsing " + JSON.stringify(s) + ": invalid syntax")];
 	}
+	return [value, null];
+}
+
+function go2jsStrconvParseUint(s, base, bitSize) {
+	const text = go2jsStringify(s).trim();
+	const negative = text.startsWith("-");
+
+	if (negative) {
+		return [0, new Error('strconv.ParseUint: parsing "' + text + '": invalid syntax')];
+	}
+
+	const value = parseInt(text, base || 10);
+
+	if (Number.isNaN(value) || value < 0) {
+		return [0, new Error('strconv.ParseUint: parsing "' + text + '": invalid syntax')];
+	}
+
 	return [value, null];
 }
 

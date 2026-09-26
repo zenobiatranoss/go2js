@@ -561,7 +561,7 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				return err
 			}
 			e.write(", ")
-			e.write(zeroValueForGoType(e.mapValueType(x)))
+			e.write(e.zeroValue(e.mapValueType(x)))
 
 			e.write(")")
 			return nil
@@ -762,6 +762,53 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 	return nil
 }
 
+func (e *emitter) packageTypeConstructor(named *gotypes.Named) string {
+	if named == nil || named.Obj() == nil || named.Obj().Pkg() == nil {
+		return ""
+	}
+
+	return packageTypes[named.Obj().Pkg().Name()+"."+named.Obj().Name()]
+}
+
+func (e *emitter) emitAnonymousStructLiteral(x *ast.CompositeLit, structType *gotypes.Struct) (bool, error) {
+	e.write("{")
+
+	for i, elt := range x.Elts {
+		if i > 0 {
+			e.write(", ")
+		}
+
+		if kv, ok := elt.(*ast.KeyValueExpr); ok {
+			if err := e.emitExpr(kv.Key); err != nil {
+				return true, err
+			}
+
+			e.write(": ")
+
+			if err := e.emitExpr(kv.Value); err != nil {
+				return true, err
+			}
+
+			continue
+		}
+
+		if i >= structType.NumFields() {
+			return true, fmt.Errorf("too many values in anonymous struct literal")
+		}
+
+		e.write(structType.Field(i).Name())
+		e.write(": ")
+
+		if err := e.emitExpr(elt); err != nil {
+			return true, err
+		}
+	}
+
+	e.write("}")
+
+	return true, nil
+}
+
 func (e *emitter) emitStructCompositeLit(x *ast.CompositeLit) (bool, error) {
 	if e.analysis == nil {
 		return false, nil
@@ -772,9 +819,14 @@ func (e *emitter) emitStructCompositeLit(x *ast.CompositeLit) (bool, error) {
 		return false, nil
 	}
 
-	named, ok := info.Type.(*gotypes.Named)
+	structType, ok := info.Type.Underlying().(*gotypes.Struct)
 	if !ok {
 		return false, nil
+	}
+
+	named, isNamed := info.Type.(*gotypes.Named)
+	if !isNamed {
+		return e.emitAnonymousStructLiteral(x, structType)
 	}
 
 	if named.Obj() != nil && named.Obj().Pkg() != nil &&
@@ -788,14 +840,21 @@ func (e *emitter) emitStructCompositeLit(x *ast.CompositeLit) (bool, error) {
 		return true, nil
 	}
 
-	structType, ok := named.Underlying().(*gotypes.Struct)
+	structType, ok = named.Underlying().(*gotypes.Struct)
 	if !ok {
 		return false, nil
 	}
 
-	e.write("Object.assign(new ")
-	e.write(named.Obj().Name())
-	e.write("(), {")
+	if constructor := e.packageTypeConstructor(named); constructor != "" {
+		e.needsRuntime = true
+		e.write("Object.assign(")
+		e.write(constructor)
+		e.write("(), {")
+	} else {
+		e.write("Object.assign(new ")
+		e.write(named.Obj().Name())
+		e.write("(), {")
+	}
 
 	for i, elt := range x.Elts {
 		if i > 0 {
