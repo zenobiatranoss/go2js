@@ -1,2 +1,7 @@
-.idea/
+.idea/*
+!.idea/.gitignore
+!.idea/go.imports.xml
+!.idea/go2js.iml
+!.idea/modules.xml
+!.idea/vcs.xml
 out.js
