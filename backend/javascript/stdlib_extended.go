@@ -1367,14 +1367,15 @@ func extendedStdlibFuncs() {
 	})
 
 	extend(timeFuncs, map[string]string{
-		"Since": "go2jsTimeSince",
-		"Until": "go2jsTimeUntil",
-		"Now":   "go2jsTimeNow",
-		"Sleep": "go2jsTimeSleep",
-		"Unix":  "go2jsTimeUnix",
-		"Parse": "go2jsTimeParse",
-		"After": "go2jsTimeAfter",
-		"Tick":  "go2jsTimeTick",
+		"Since":         "go2jsTimeSince",
+		"Until":         "go2jsTimeUntil",
+		"Now":           "go2jsTimeNow",
+		"Sleep":         "go2jsTimeSleep",
+		"Unix":          "go2jsTimeUnix",
+		"Parse":         "go2jsTimeParse",
+		"After":         "go2jsTimeAfter",
+		"ParseDuration": "go2jsParseDuration",
+		"Tick":          "go2jsTimeTick",
 	})
 
 }
@@ -2355,11 +2356,15 @@ function go2jsIOEOF() {
 }
 
 function go2jsIODiscard() {
-	return go2jsInterface({
+	const writer = go2jsInterface({
 		Write(buffer) {
 			return go2jsToArray(buffer).length;
 		},
 	}, "io.Writer");
+
+	writer.__go2js_discard = true;
+
+	return writer;
 }
 
 function go2jsIOReadFull(reader, buffer) {

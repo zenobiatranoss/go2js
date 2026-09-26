@@ -907,6 +907,199 @@ go2jsBytesBuffer.prototype.ReadByte = function() {
     return this.data.shift();
 };
 
+go2jsBytesBuffer.prototype.Available = function() {
+	return this.data.length;
+};
+
+go2jsBytesBuffer.prototype.AvailableBuffer = function() {
+	const out = new go2jsBytesBuffer();
+
+	out.data = this.data.slice(this.data.length);
+
+	return out;
+};
+
+go2jsBytesBuffer.prototype.Read = function(target) {
+	if (this.data.length === 0) {
+		if (target && typeof target.Write === "function") {
+			return go2jsIOReadAllResult(0, null);
+		}
+		return 0;
+	}
+
+	const n = Math.min(this.data.length, target ? target.data.length : this.data.length);
+
+	for (let i = 0; i < n; i++) {
+		if (target) {
+			target.data[i] = this.data[i];
+		}
+	}
+
+	this.data = this.data.slice(n);
+
+	if (target) {
+		return go2jsIOReadAllResult(n, null);
+	}
+
+	return n;
+};
+
+go2jsBytesBuffer.prototype.ReadRune = function() {
+	if (this.data.length === 0) {
+		return [go2jsRuneEOF, 0];
+	}
+
+	const first = this.data[0];
+
+	if (first < 0x80) {
+		this.data.shift();
+		return [first, 1];
+	}
+
+	let width = 0;
+	if ((first & 0xe0) === 0xc0) {
+		width = 2;
+	} else if ((first & 0xf0) === 0xe0) {
+		width = 3;
+	} else if ((first & 0xf8) === 0xf0) {
+		width = 4;
+	} else {
+		this.data.shift();
+		return [0xfffd, 1];
+	}
+
+	if (this.data.length < width) {
+		this.data = [];
+		return [0xfffd, 1];
+	}
+
+	const slice = this.data.slice(0, width);
+	this.data = this.data.slice(width);
+
+	const text = go2jsBytesToString(slice);
+	const decoded = Array.from(text);
+	const rune = decoded.length > 0 ? decoded[0].codePointAt(0) : 0xfffd;
+
+	return [rune, width];
+};
+
+go2jsBytesBuffer.prototype.UnreadRune = function() {
+	return null;
+};
+
+go2jsBytesBuffer.prototype.ReadString = function(delim) {
+	if (this.data.length === 0) {
+		return go2jsBytesReadStringResult("", null);
+	}
+
+	const needle = go2jsToArray(delim);
+	const limit = needle.length;
+
+	if (limit === 0) {
+		const out = this.data.slice();
+		this.data = [];
+		return go2jsBytesReadStringResult(go2jsBytesToString(out), null);
+	}
+
+	for (let i = 0; i + limit <= this.data.length; i++) {
+		let match = true;
+		for (let j = 0; j < limit; j++) {
+			if (this.data[i + j] !== needle[j]) {
+				match = false;
+				break;
+			}
+		}
+		if (match) {
+			const out = this.data.slice(0, i + limit);
+			this.data = this.data.slice(i + limit);
+			return go2jsBytesReadStringResult(go2jsBytesToString(out), null);
+		}
+	}
+
+	return go2jsBytesReadStringResult("", go2jsEOFError());
+};
+
+go2jsBytesBuffer.prototype.ReadBytes = function(delim) {
+	const result = this.ReadString(delim);
+
+	return result[0] === "" && result[1] !== null
+		? [null, result[1]]
+		: [go2jsStringToBytes(result[0]), null];
+};
+
+go2jsBytesBuffer.prototype.Next = function(n) {
+	const count = n === undefined ? 1 : n;
+
+	if (count <= 0) {
+		return go2jsStringToBytes("");
+	}
+
+	const out = this.data.slice(0, count);
+	this.data = this.data.slice(count);
+
+	return out;
+};
+
+go2jsBytesBuffer.prototype.WriteTo = function(target) {
+	if (target && target.__go2js_discard === true) {
+		const written = this.data.length;
+		this.data = [];
+		return [written, null];
+	}
+
+	if (!target || typeof target.Write !== "function") {
+		return [0, null];
+	}
+
+	const written = this.data.length;
+
+	if (written > 0) {
+		target.Write(go2jsStringToBytes(go2jsBytesToString(this.data)));
+	}
+
+	this.data = [];
+
+	return [written, null];
+};
+
+go2jsBytesBuffer.prototype.ReadFrom = function(source) {
+	if (!source || typeof source.Read !== "function") {
+		return [0, null];
+	}
+
+	let total = 0;
+
+	for (;;) {
+		const chunk = go2jsStringToBytes("");
+		const result = source.Read(chunk);
+		const value = result && result.value !== undefined ? result.value : result;
+		const err = result && result.err !== undefined ? result.err : null;
+
+		if (value && value.length > 0) {
+			this.data = this.data.concat(Array.from(value));
+			total += value.length;
+		}
+
+		if (err !== null || value === null || value.length === 0) {
+			break;
+		}
+	}
+
+	return [total, null];
+};
+
+function go2jsBytesReadStringResult(value, err) {
+	return [value, err];
+}
+
+function go2jsIOReadAllResult(n, err) {
+	return [null, err];
+}
+
+function go2jsEOFError() {
+	return go2jsSentinelError("EOF");
+}
+
 function go2jsBytesEqual(a, b) {
     if (a === null || a === undefined || b === null || b === undefined) {
         return a === b;

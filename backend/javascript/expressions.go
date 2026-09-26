@@ -992,6 +992,10 @@ func (e *emitter) isMultiReturnCall(expr ast.Expr) bool {
 			}
 		}
 
+		if e.isStdlibMethodMultiReturn(selector) {
+			return true
+		}
+
 		if pkg, ok := selector.X.(*ast.Ident); ok {
 			if override, known := multiReturnStdlibFuncs[pkg.Name+"."+selector.Sel.Name]; known {
 				return override
@@ -1024,4 +1028,44 @@ func (e *emitter) isMultiReturnCall(expr ast.Expr) bool {
 
 	results := function.Type().(*gotypes.Signature).Results()
 	return results.Len() > 1
+}
+
+func (e *emitter) isStdlibMethodMultiReturn(selector *ast.SelectorExpr) bool {
+	if e.analysis == nil || selector.Sel == nil {
+		return false
+	}
+
+	receiver := e.analyzedType(selector.X)
+	if receiver == nil {
+		return false
+	}
+
+	if pointer, ok := receiver.(*gotypes.Pointer); ok {
+		receiver = pointer.Elem()
+	}
+
+	named, ok := receiver.(*gotypes.Named)
+	if !ok {
+		return false
+	}
+
+	obj := named.Obj()
+	if obj == nil || obj.Pkg() == nil {
+		return false
+	}
+
+	key := obj.Pkg().Path() + "." + obj.Name() + "." + selector.Sel.Name
+	if !stdlibMethodMultiReturn[key] {
+		return false
+	}
+
+	return true
+}
+
+var stdlibMethodMultiReturn = map[string]bool{
+	"bytes.Buffer.ReadString": true,
+	"bytes.Buffer.ReadBytes":  true,
+	"bytes.Buffer.WriteTo":    true,
+	"bytes.Buffer.ReadFrom":   true,
+	"bytes.Buffer.Read":       true,
 }

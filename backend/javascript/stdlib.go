@@ -329,6 +329,7 @@ var multiReturnStdlibFuncs = map[string]bool{
 	"strconv.ParseFloat": true,
 	"strconv.ParseUint":  true,
 	"strconv.ParseBool":  true,
+	"time.ParseDuration": true,
 	"json.Marshal":       true,
 	"json.Unmarshal":     false,
 	"url.Parse":          true,

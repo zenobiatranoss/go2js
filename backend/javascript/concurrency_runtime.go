@@ -558,6 +558,33 @@ function go2jsDuration(nanoseconds) {
 		},
 		String() {
 			return go2jsDurationString(this.nanoseconds);
+		},
+		Nanoseconds() {
+			return this.nanoseconds;
+		},
+		Microseconds() {
+			return Math.trunc(this.nanoseconds / 1000);
+		},
+		Milliseconds() {
+			return Math.trunc(this.nanoseconds / 1000000);
+		},
+		Seconds() {
+			return this.nanoseconds / 1000000000;
+		},
+		Minutes() {
+			return this.nanoseconds / 60000000000;
+		},
+		Hours() {
+			return this.nanoseconds / 3600000000000;
+		},
+		Abs() {
+			return go2jsDuration(Math.abs(this.nanoseconds));
+		},
+		Truncate(m) {
+			return DurationTruncate(this, m);
+		},
+		Round(m) {
+			return DurationRound(this, m);
 		}
 	};
 }
@@ -721,5 +748,84 @@ function go2jsOutputText(value, suffix, separator) {
 function go2jsExit(code) {
 	process.exit(code === undefined ? 0 : Number(code));
 }
+
+function DurationAbs(d) {
+	return go2jsDuration(Math.abs(go2jsDurationNanos(d)));
+}
+
+function DurationTruncate(d, multiple) {
+	const step = go2jsDurationNanos(multiple);
+
+	if (step === 0) {
+		return go2jsDuration(go2jsDurationNanos(d));
+	}
+
+	return go2jsDuration(Math.trunc(go2jsDurationNanos(d) / step) * step);
+}
+
+function DurationRound(d, multiple) {
+	const step = go2jsDurationNanos(multiple);
+
+	if (step === 0) {
+		return go2jsDuration(go2jsDurationNanos(d));
+	}
+
+	const value = go2jsDurationNanos(d);
+	const half = step / 2;
+	let offset = value % step;
+
+	if (offset < 0) {
+		offset += step;
+	}
+
+	const rounded = offset >= half ? value + (step - offset) : value - offset;
+
+	return go2jsDuration(rounded);
+}
+
+function go2jsParseDuration(text) {
+	const source = String(text);
+	const scale = {
+		ns: 1,
+		us: 1000,
+		"\u00b5s": 1000,
+		"\u03bcs": 1000,
+		ms: 1000000,
+		s: 1000000000,
+		m: 60000000000,
+		h: 3600000000000
+	};
+
+	const pattern = /([+-]?(?:\d+(?:\.\d*)?|\.\d+))(ns|us|\u00b5s|\u03bcs|ms|s|m|h)/g;
+
+	let total = 0;
+	let matched = false;
+	let position = 0;
+	let match;
+
+	while ((match = pattern.exec(source)) !== null) {
+		if (match.index !== position) {
+			return [go2jsDuration(0), go2jsSentinelError("time: invalid duration " + JSON.stringify(source))];
+		}
+
+		position = pattern.lastIndex;
+		matched = true;
+
+		let value = Number(match[1]);
+		if (value < 0) {
+			value = -value;
+			total -= value * scale[match[2]];
+		} else {
+			total += value * scale[match[2]];
+		}
+	}
+
+	if (!matched || position !== source.replace(/^\s+|\s+$/g, "").length) {
+		return [go2jsDuration(0), go2jsSentinelError("time: invalid duration " + JSON.stringify(source))];
+	}
+
+	return [go2jsDuration(Math.round(total)), null];
+}
+
 `
 }
