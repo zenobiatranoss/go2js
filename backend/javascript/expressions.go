@@ -68,6 +68,13 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 
 			e.write(strconv.Quote(value))
 
+		case token.IMAG:
+			value, err := complexLiteralJavaScript(x.Value)
+			if err != nil {
+				return err
+			}
+			e.write(value)
+
 		default:
 			e.write(x.Value)
 		}
@@ -75,6 +82,10 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 	case *ast.BinaryExpr:
 		if handled, err := e.emitInterfaceComparison(x); handled {
 			return err
+		}
+
+		if e.isComplexExpr(x) {
+			return e.emitComplexBinary(x)
 		}
 
 		if x.Op == token.QUO && e.isIntegerExpr(x.X) && e.isIntegerExpr(x.Y) {
@@ -111,6 +122,15 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		e.needsRuntime = true
 
 	case *ast.UnaryExpr:
+		if e.isComplexExpr(x) {
+			switch x.Op {
+			case token.ADD:
+				return e.emitExpr(x.X)
+			case token.SUB:
+				return e.emitComplexUnary("go2jsComplexNeg", x.X)
+			}
+		}
+
 		switch x.Op {
 		case token.AND:
 			e.needsRuntime = true
@@ -239,7 +259,7 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 
 		if name, ok := builtinName(x); ok {
 			e.write(name)
-			if name == "go2jsLen" || name == "go2jsCap" || name == "go2jsAppend" || name == "go2jsMake" || name == "go2jsMakeMap" || name == "go2jsMapDelete" || name == "go2jsSprintf" || name == "go2jsPanic" || name == "go2jsRecover" {
+			if name == "go2jsLen" || name == "go2jsCap" || name == "go2jsAppend" || name == "go2jsMake" || name == "go2jsMakeMap" || name == "go2jsMapDelete" || name == "go2jsSprintf" || name == "go2jsPanic" || name == "go2jsRecover" || name == "go2jsComplex" || name == "go2jsReal" || name == "go2jsImag" {
 				e.needsRuntime = true
 			}
 
@@ -302,6 +322,76 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		e.write(")")
 
 	case *ast.SelectorExpr:
+		if pkg, ok := x.X.(*ast.Ident); ok && pkg.Name == "time" {
+			switch x.Sel.Name {
+			case "January":
+				e.write("1")
+				return nil
+			case "February":
+				e.write("2")
+				return nil
+			case "March":
+				e.write("3")
+				return nil
+			case "April":
+				e.write("4")
+				return nil
+			case "May":
+				e.write("5")
+				return nil
+			case "June":
+				e.write("6")
+				return nil
+			case "July":
+				e.write("7")
+				return nil
+			case "August":
+				e.write("8")
+				return nil
+			case "September":
+				e.write("9")
+				return nil
+			case "October":
+				e.write("10")
+				return nil
+			case "November":
+				e.write("11")
+				return nil
+			case "December":
+				e.write("12")
+				return nil
+			case "UTC":
+				e.write("0")
+				return nil
+			case "Hour":
+				e.write("3600000000000")
+				return nil
+			case "Minute":
+				e.write("60000000000")
+				return nil
+			}
+		}
+
+		if pkg, ok := x.X.(*ast.Ident); ok && pkg.Name == "http" {
+			switch x.Sel.Name {
+			case "MethodGet":
+				e.write(`"GET"`)
+				return nil
+			}
+		}
+
+		if pkg, ok := x.X.(*ast.Ident); ok && pkg.Name == "os" {
+			switch x.Sel.Name {
+			case "Args":
+				e.needsRuntime = true
+				e.write("go2jsOSArgs()")
+				return nil
+			case "PathSeparator":
+				e.write(`"/"`)
+				return nil
+			}
+		}
+
 		if method, signature, kind, ok := e.selectorMethod(x); ok {
 			e.needsRuntime = true
 
@@ -526,6 +616,17 @@ func (e *emitter) emitStructCompositeLit(x *ast.CompositeLit) (bool, error) {
 	named, ok := info.Type.(*gotypes.Named)
 	if !ok {
 		return false, nil
+	}
+
+	if named.Obj() != nil && named.Obj().Pkg() != nil &&
+		named.Obj().Pkg().Path() == "net/url" &&
+		named.Obj().Name() == "Values" {
+		if len(x.Elts) != 0 {
+			return false, nil
+		}
+		e.needsRuntime = true
+		e.write("go2jsURLValues()")
+		return true, nil
 	}
 
 	structType, ok := named.Underlying().(*gotypes.Struct)

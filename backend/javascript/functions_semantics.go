@@ -77,6 +77,10 @@ func zeroValueForGoType(t types.Type) string {
 
 	switch t := t.(type) {
 	case *types.Named:
+		if obj := t.Obj(); obj != nil && obj.Pkg() != nil &&
+			obj.Pkg().Path() == "bytes" && obj.Name() == "Buffer" {
+			return "new go2jsBytesBuffer()"
+		}
 		return zeroValueForGoType(t.Underlying())
 
 	case *types.Basic:
@@ -87,9 +91,10 @@ func zeroValueForGoType(t types.Type) string {
 			return `""`
 		case types.Int, types.Int8, types.Int16, types.Int32, types.Int64,
 			types.Uint, types.Uint8, types.Uint16, types.Uint32, types.Uint64,
-			types.Uintptr, types.Float32, types.Float64,
-			types.Complex64, types.Complex128:
+			types.Uintptr, types.Float32, types.Float64:
 			return "0"
+		case types.Complex64, types.Complex128:
+			return "{re: 0, im: 0}"
 		default:
 			return "null"
 		}

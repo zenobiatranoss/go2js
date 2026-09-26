@@ -2,6 +2,7 @@ package javascript
 
 import (
 	"go/ast"
+	"go/token"
 	"go/types"
 )
 
@@ -123,6 +124,8 @@ func conversionName(t types.Type) string {
 		return "Math.trunc"
 	case "float32", "float64":
 		return "Number"
+	case "complex64", "complex128":
+		return "go2jsComplexConvert"
 	case "string":
 		return "String"
 	case "bool":
@@ -147,8 +150,13 @@ func (e *emitter) isMapExpr(expr ast.Expr) bool {
 }
 
 func (e *emitter) isTypeConversion(call *ast.CallExpr) bool {
-	if e.analysis == nil || len(call.Args) != 1 {
+	if e.analysis == nil || call == nil || len(call.Args) != 1 {
 		return false
+	}
+
+	switch call.Fun.(type) {
+	case *ast.ArrayType, *ast.MapType, *ast.StarExpr, *ast.ChanType, *ast.InterfaceType, *ast.StructType:
+		return e.analyzedType(call) != nil
 	}
 
 	ident, ok := call.Fun.(*ast.Ident)
@@ -163,4 +171,35 @@ func (e *emitter) isTypeConversion(call *ast.CallExpr) bool {
 
 	_, ok = object.(*types.TypeName)
 	return ok
+}
+
+func isComplexType(t types.Type) bool {
+	if t == nil {
+		return false
+	}
+	basic, ok := t.Underlying().(*types.Basic)
+	return ok && basic.Info()&types.IsComplex != 0
+}
+
+func (e *emitter) isComplexExpr(expr ast.Expr) bool {
+	if e.analysis != nil {
+		if value, ok := e.analysis.Types[expr]; ok && isComplexType(value.Type) {
+			return true
+		}
+	}
+	switch x := expr.(type) {
+	case *ast.BasicLit:
+		return x.Kind == token.IMAG
+	case *ast.BinaryExpr:
+		return e.isComplexExpr(x.X) || e.isComplexExpr(x.Y)
+	case *ast.UnaryExpr:
+		return e.isComplexExpr(x.X)
+	case *ast.ParenExpr:
+		return e.isComplexExpr(x.X)
+	case *ast.CallExpr:
+		id, ok := x.Fun.(*ast.Ident)
+		return ok && id.Name == "complex"
+	default:
+		return false
+	}
 }

@@ -34,6 +34,12 @@ func builtinName(call *ast.CallExpr) (string, bool) {
 			return "go2jsPanic", true
 		case "recover":
 			return "go2jsRecover", true
+		case "real":
+			return "go2jsReal", true
+		case "imag":
+			return "go2jsImag", true
+		case "complex":
+			return "go2jsComplex", true
 		}
 
 	case *ast.SelectorExpr:

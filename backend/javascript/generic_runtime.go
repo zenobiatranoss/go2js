@@ -21,9 +21,10 @@ function go2jsZero(type) {
 	case "uintptr":
 	case "float32":
 	case "float64":
+		return 0
 	case "complex64":
 	case "complex128":
-		return 0
+		return { re: 0, im: 0 }
 	case "pointer":
 	case "interface":
 	case "slice":

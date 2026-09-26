@@ -1,8 +1,4 @@
-package javascript
-
-func runtimeSource() string {
-	return `
-
+"use strict";
 function go2jsFloat(value) {
 	if (Number.isNaN(value)) {
 		return "NaN";
@@ -2212,7 +2208,229 @@ function go2jsUTF8ValidString(s) {
 
 	return true;
 }
-
-
-`
+class User {
+    ID;
+    Name;
+    Email;
+    constructor() {
+        this.ID = 0;
+        this.Name = "";
+        this.Email = "";
+        this.ID = 0;
+        this.Name = "";
+        this.Email = "";
+        this.ID = 0;
+        this.Name = "";
+        this.Email = "";
+    }
 }
+
+function testStrings() {
+    let s = "go2js standard library test";
+    console.log("strings:", go2jsStringsToUpper(s));
+    console.log("contains:", go2jsStringsContains(s, "standard"));
+    console.log("replace:", go2jsStringsReplaceAll(s, "library", "stdlib"));
+    console.log("split:", go2jsStringsJoin(go2jsStringsSplit("one,two,three", ","), "|"));
+}
+
+function testBytes() {
+    let a = go2jsStringToBytes("hello ");
+    let b = go2jsStringToBytes("world");
+    let buf = new go2jsBytesBuffer();
+    buf.Write(a);
+    buf.Write(b);
+    console.log("bytes:", buf.String());
+    console.log("bytes equal:", go2jsBytesEqual(go2jsStringToBytes("abc"), go2jsStringToBytes("abc")));
+}
+
+function testStrconv() {
+    let [n, ] = go2jsStrconvAtoi("12345");
+    let [f, ] = go2jsStrconvParseFloat("12.5", 64);
+    let b = go2jsStrconvFormatInt(999, 10);
+    console.log("strconv:", n, f, b);
+}
+
+function testJSON() {
+    let u = Object.assign(new User(), {ID: 42, Name: "Alice", Email: "alice@example.com"});
+    let [data, err] = go2jsJSONMarshal(u);
+    console.log("json error:", err);
+    console.log("json:", String(data));
+    let decoded = {};
+    err = go2jsJSONUnmarshal(data, go2jsPtr(() => decoded, value => decoded = value));
+    console.log("json decoded:", decoded.ID, decoded.Name, decoded.Email);
+    console.log("json decode error:", err);
+}
+
+function testURL() {
+    let [u, ] = go2jsURLParse("https://example.com/users?id=42&name=alice");
+    console.log("url scheme:", u.Scheme);
+    console.log("url host:", u.Host);
+    console.log("url path:", u.Path);
+    console.log("url query:", u.Query().Get("name"));
+    let values = go2jsURLValues();
+    values.Set("page", "2");
+    values.Set("limit", "50");
+    console.log("url values:", values.Encode());
+}
+
+function testRegexp() {
+    let r = go2jsRegexpMustCompile("go[0-9]+js");
+    console.log("regexp match:", r.MatchString("this is go2js"));
+    console.log("regexp find:", r.FindString("project go2js works"));
+}
+
+function testSort() {
+    let values = [9, 2, 7, 1, 5, 3];
+    go2jsSortInts(values);
+    console.log("sort:", values);
+    let names = ["charlie", "alice", "bob"];
+    go2jsSortStrings(names);
+    console.log("sort strings:", names);
+}
+
+function testFilepath() {
+    let p = go2jsFilepathJoin("tmp", "go2js", "test.txt");
+    console.log("filepath base:", go2jsFilepathBase(p));
+    console.log("filepath dir:", go2jsFilepathDir(p));
+    console.log("filepath ext:", go2jsFilepathExt(p));
+    console.log("filepath clean:", go2jsFilepathClean("./tmp/../tmp/test.txt"));
+}
+
+function testOS() {
+    console.log("os args:", go2jsLen(go2jsOSArgs()));
+    console.log("os separator:", String("/"));
+    let name = "GO2JS_TEST_VALUE";
+    go2jsOSSetenv(name, "hello");
+    console.log("os env:", go2jsOSGetenv(name));
+    let info, err = go2jsOSStat("stdlib_realworld.go");
+    console.log("os stat exists:", go2jsEqual(err, null));
+    if (info != null) {
+        console.log("os stat size:", go2jsInterfaceCall(info, "Size") > 0);
+    }
+}
+
+function testErrors() {
+    let err = new Error("test error");
+    console.log("errors:", go2jsInterfaceCall(err, "Error"));
+    console.log("errors nil:", go2jsEqual(null, null));
+}
+
+function testIO() {
+    let reader = go2jsStringsNewReader("hello from io");
+    let [data, err] = go2jsIOReadAll(reader);
+    console.log("io:", String(data));
+    console.log("io error:", err);
+}
+
+function testHTTP() {
+    let [req, err] = go2jsHTTPNewRequest("GET", "https://example.com/api/test?value=42", null);
+    if (go2jsEqual(err, null) === false) {
+        console.log("http request error:", err);
+        return;
+    }
+    req.Header.Set("User-Agent", "go2js-test");
+    req.Header.Set("X-Test", "hello");
+    console.log("http method:", req.Method);
+    console.log("http url:", req.URL.String());
+    console.log("http user-agent:", req.Header.Get("User-Agent"));
+    console.log("http x-test:", req.Header.Get("X-Test"));
+}
+
+function testHTTPServer() {
+    let mux = go2jsHTTPNewServeMux();
+    mux.HandleFunc("/hello", function(w, r) {
+        fmt.Fprint(w, "hello");
+    }
+);
+    let req = httptestRequest("/hello");
+    let handler, pattern = go2jsInterface(mux.Handler(req), "(h net/http.Handler, pattern string)");
+    console.log("http route:", go2jsEqual(handler, null) === false, pattern);
+}
+
+function httptestRequest(path) {
+    let [req, ] = go2jsHTTPNewRequest("GET", "http://localhost" + path, null);
+    return req;
+}
+
+function testTime() {
+    let now = go2jsTimeDate(2026, 9, 26, 12, 30, 45, 0, 0);
+    console.log("time year:", now.Year());
+    console.log("time month:", now.Month());
+    console.log("time day:", now.Day());
+    console.log("time hour:", now.Hour());
+    console.log("time formatted:", now.Format("2006-01-02 15:04:05"));
+    let later = now.Add(2 * 3600000000000 + 30 * 60000000000);
+    console.log("time later:", later.Format("15:04"));
+    console.log("time duration:", later.Sub(now));
+}
+
+function testConcurrency() {
+    let wg = {};
+    let mu = {};
+    let total = 0;
+    for (let i = 0; i < 10; i++) {
+        wg.Add(1);
+        queueMicrotask(() => function() {
+            const go2jsDefers = [];
+            let go2jsPanicValue;
+            let go2jsRecovered = false;            const go2jsRecover = () => {
+                if (go2jsPanicValue === undefined || go2jsRecovered) return undefined;
+                go2jsRecovered = true;
+                return go2jsPanicValue;
+            };
+
+            try {
+                (() => go2jsDefers.push(() => wg.Done()))();
+                mu.Lock();
+                total++;
+                mu.Unlock();
+            } catch (go2jsCaught) {
+                go2jsPanicValue = go2jsCaught;
+            } finally {
+                for (let i = go2jsDefers.length - 1; i >= 0; i--) {
+                    go2jsDefers[i]();
+                }
+                if (go2jsPanicValue !== undefined && !go2jsRecovered) {
+                    throw go2jsPanicValue;
+                }
+            }
+        }
+());
+    }
+    wg.Wait();
+    console.log("sync total:", total);
+}
+
+function main() {
+    console.log("=== strings ===");
+    testStrings();
+    console.log("=== bytes ===");
+    testBytes();
+    console.log("=== strconv ===");
+    testStrconv();
+    console.log("=== json ===");
+    testJSON();
+    console.log("=== url ===");
+    testURL();
+    console.log("=== regexp ===");
+    testRegexp();
+    console.log("=== sort ===");
+    testSort();
+    console.log("=== filepath ===");
+    testFilepath();
+    console.log("=== os ===");
+    testOS();
+    console.log("=== errors ===");
+    testErrors();
+    console.log("=== io ===");
+    testIO();
+    console.log("=== http ===");
+    testHTTP();
+    console.log("=== time ===");
+    testTime();
+    console.log("=== sync ===");
+    testConcurrency();
+    console.log("=== done ===");
+}
+
+main();

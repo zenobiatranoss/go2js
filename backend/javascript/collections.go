@@ -52,6 +52,10 @@ func collectionZeroValue(t gotypes.Type) string {
 
 	switch t := t.(type) {
 	case *gotypes.Named:
+		if obj := t.Obj(); obj != nil && obj.Pkg() != nil &&
+			obj.Pkg().Path() == "bytes" && obj.Name() == "Buffer" {
+			return "new go2jsBytesBuffer()"
+		}
 		if _, ok := t.Underlying().(*gotypes.Struct); ok {
 			return "new " + t.Obj().Name() + "()"
 		}

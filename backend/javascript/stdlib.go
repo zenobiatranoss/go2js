@@ -6,6 +6,42 @@ func stdlibFuncName(pkg, name string) (string, bool) {
 		if jsName, ok := stringsFuncs[name]; ok {
 			return jsName, true
 		}
+	case "bytes":
+		if jsName, ok := bytesFuncs[name]; ok {
+			return jsName, true
+		}
+	case "json":
+		if jsName, ok := jsonFuncs[name]; ok {
+			return jsName, true
+		}
+	case "url":
+		if jsName, ok := urlFuncs[name]; ok {
+			return jsName, true
+		}
+	case "filepath":
+		if jsName, ok := filepathFuncs[name]; ok {
+			return jsName, true
+		}
+	case "regexp":
+		if jsName, ok := regexpFuncs[name]; ok {
+			return jsName, true
+		}
+	case "os":
+		if jsName, ok := osFuncs[name]; ok {
+			return jsName, true
+		}
+	case "http":
+		if jsName, ok := httpFuncs[name]; ok {
+			return jsName, true
+		}
+	case "time":
+		if jsName, ok := timeFuncs[name]; ok {
+			return jsName, true
+		}
+	case "io":
+		if jsName, ok := ioFuncs[name]; ok {
+			return jsName, true
+		}
 	case "strconv":
 		if jsName, ok := strconvFuncs[name]; ok {
 			return jsName, true
@@ -32,6 +68,7 @@ func stdlibFuncName(pkg, name string) (string, bool) {
 }
 
 var stringsFuncs = map[string]string{
+	"NewReader":   "go2jsStringsNewReader",
 	"Contains":    "go2jsStringsContains",
 	"HasPrefix":   "go2jsStringsHasPrefix",
 	"HasSuffix":   "go2jsStringsHasSuffix",
@@ -142,7 +179,54 @@ var utf8Funcs = map[string]string{
 	"ValidString":       "go2jsUTF8ValidString",
 }
 
+var jsonFuncs = map[string]string{
+	"Marshal":   "go2jsJSONMarshal",
+	"Unmarshal": "go2jsJSONUnmarshal",
+}
+
+var urlFuncs = map[string]string{
+	"Parse": "go2jsURLParse",
+}
+
+var filepathFuncs = map[string]string{
+	"Join":  "go2jsFilepathJoin",
+	"Base":  "go2jsFilepathBase",
+	"Dir":   "go2jsFilepathDir",
+	"Ext":   "go2jsFilepathExt",
+	"Clean": "go2jsFilepathClean",
+}
+
+var regexpFuncs = map[string]string{
+	"MustCompile": "go2jsRegexpMustCompile",
+}
+
+var ioFuncs = map[string]string{
+	"ReadAll": "go2jsIOReadAll",
+}
+
+var timeFuncs = map[string]string{
+	"Date": "go2jsTimeDate",
+}
+
+var httpFuncs = map[string]string{
+	"NewRequest":  "go2jsHTTPNewRequest",
+	"NewServeMux": "go2jsHTTPNewServeMux",
+}
+
+var osFuncs = map[string]string{
+	"Getenv": "go2jsOSGetenv",
+	"Setenv": "go2jsOSSetenv",
+	"Stat":   "go2jsOSStat",
+}
+
+var bytesFuncs = map[string]string{
+	"Equal": "go2jsBytesEqual",
+}
+
 var multiReturnStdlibFuncs = map[string]bool{
+	"time.Date":          false,
+	"http.NewRequest":    true,
+	"io.ReadAll":         true,
 	"strconv.Unquote":    true,
 	"strings.CutSuffix":  true,
 	"strings.CutPrefix":  true,
@@ -151,4 +235,7 @@ var multiReturnStdlibFuncs = map[string]bool{
 	"strconv.ParseInt":   true,
 	"strconv.ParseFloat": true,
 	"strconv.ParseBool":  true,
+	"json.Marshal":       true,
+	"json.Unmarshal":     true,
+	"url.Parse":          true,
 }

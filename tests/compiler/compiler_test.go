@@ -358,6 +358,28 @@ func main() {
 	}
 }
 
+func TestCompileInterfaceConversion(t *testing.T) {
+	source := `package main
+
+func main() {
+	var value error
+	value = error(nil)
+	println(value == nil)
+}
+`
+
+	file := writeSource(t, source)
+
+	output, err := compiler.CompileFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(output, "null") {
+		t.Fatalf("interface nil conversion missing:\n%s", output)
+	}
+}
+
 func TestCompileParameterScope(t *testing.T) {
 	source := `package main
 

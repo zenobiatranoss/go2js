@@ -64,7 +64,7 @@ func (e *emitter) constLiteral(name *ast.Ident) (string, error) {
 
 	if basic, ok := constantObject.Type().Underlying().(*gotypesstd.Basic); ok {
 		if basic.Info()&gotypesstd.IsComplex != 0 {
-			return "", fmt.Errorf("complex constants are not supported yet: %s", name.Name)
+			return fmt.Sprintf("{re: %s, im: %s}", constant.Real(value).ExactString(), constant.Imag(value).ExactString()), nil
 		}
 
 		if basic.Kind() == gotypesstd.String {

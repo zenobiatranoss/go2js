@@ -372,6 +372,15 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 		e.write(";")
 		e.newline()
 
+	case *ast.GoStmt:
+		e.writeIndent()
+		e.write("queueMicrotask(() => ")
+		if err := e.emitExpr(s.Call); err != nil {
+			return err
+		}
+		e.write(");")
+		e.newline()
+
 	case *ast.AssignStmt:
 		if handled, err := e.emitTypeAssertAssignment(s); handled {
 			return err
@@ -822,6 +831,9 @@ func (e *emitter) emitValueDecl(decl *ast.GenDecl) error {
 					e.write(" = go2jsZero(")
 					e.write(e.genericDescriptorForType(target))
 					e.write(")")
+				} else {
+					e.write(" = ")
+					e.write(zeroValueForGoType(target))
 				}
 			}
 
@@ -1149,27 +1161,36 @@ func (e *emitter) variableType(ident *ast.Ident) gotypesstd.Type {
 }
 
 func (e *emitter) emitConversion(call *ast.CallExpr) error {
-	ident, ok := call.Fun.(*ast.Ident)
-	if !ok {
-		return fmt.Errorf("unsupported conversion")
-	}
+	var target gotypesstd.Type
+	var typeName *gotypesstd.TypeName
 
-	var object gotypesstd.Object
-	if e.semantic != nil {
-		object = e.semantic.Object(ident)
+	if ident, ok := call.Fun.(*ast.Ident); ok {
+		var object gotypesstd.Object
+		if e.semantic != nil {
+			object = e.semantic.Object(ident)
+		} else {
+			object = e.analysis.Uses[ident]
+			if object == nil {
+				object = e.analysis.Defs[ident]
+			}
+		}
+
+		var ok bool
+		typeName, ok = object.(*gotypesstd.TypeName)
+		if !ok {
+			return fmt.Errorf("unsupported conversion")
+		}
+		target = typeName.Type()
 	} else {
-		object = e.analysis.Uses[ident]
-		if object == nil {
-			object = e.analysis.Defs[ident]
+		target = e.analyzedType(call)
+		if target == nil {
+			return fmt.Errorf("cannot determine conversion target")
 		}
 	}
 
-	typeName, ok := object.(*gotypesstd.TypeName)
-	if !ok {
-		return fmt.Errorf("unsupported conversion")
+	if isInterfaceGoType(target) {
+		return e.emitInterfaceValue(call.Args[0], target)
 	}
-
-	target := typeName.Type()
 
 	if param, ok := target.(*gotypesstd.TypeParam); ok {
 		descriptor, found := e.currentGenericTypeDescriptor(param)
@@ -1190,9 +1211,31 @@ func (e *emitter) emitConversion(call *ast.CallExpr) error {
 		return nil
 	}
 
+	if slice, ok := target.(*gotypesstd.Slice); ok {
+		if basic, ok := slice.Elem().Underlying().(*gotypesstd.Basic); ok && basic.Kind() == gotypesstd.Uint8 {
+			if source := e.analyzedType(call.Args[0]); source != nil {
+				if basicSource, ok := source.Underlying().(*gotypesstd.Basic); ok && basicSource.Kind() == gotypesstd.String {
+					e.needsRuntime = true
+					e.write("go2jsStringToBytes(")
+					if err := e.emitExpr(call.Args[0]); err != nil {
+						return err
+					}
+					e.write(")")
+					return nil
+				}
+			}
+		}
+	}
+
 	name := conversionName(target)
+	if name == "go2jsComplexConvert" {
+		e.needsRuntime = true
+	}
 	if name == "" {
-		return fmt.Errorf("unsupported conversion to %s", typeName.Name())
+		if typeName != nil {
+			return fmt.Errorf("unsupported conversion to %s", typeName.Name())
+		}
+		return fmt.Errorf("unsupported conversion to %s", target.String())
 	}
 
 	e.write(name)
