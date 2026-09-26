@@ -82,7 +82,10 @@ func main() {
 func TestMapLookupCommaOKInsideLoops(t *testing.T) {
 	runParityTest(t, `package main
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+)
 
 func main() {
 	values := map[int]string{1: "one", 2: "two"}
@@ -96,7 +99,15 @@ func main() {
 		fmt.Println(key, "missing")
 	}
 
+	keys := make([]int, 0, len(values))
+
 	for key := range values {
+		keys = append(keys, key)
+	}
+
+	sort.Ints(keys)
+
+	for _, key := range keys {
 		text, ok := values[key]
 
 		if !ok {

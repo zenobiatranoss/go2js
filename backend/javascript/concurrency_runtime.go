@@ -683,21 +683,39 @@ function go2jsErrorString(value) {
 	return go2jsStringify(value);
 }
 
-function go2jsStdoutWrite(values, suffix) {
-	process.stdout.write(go2jsOutputText(values, suffix));
+function go2jsStdoutWrite(values, suffix, separator) {
+	process.stdout.write(go2jsOutputText(values, suffix, separator));
 }
 
-function go2jsStderrWrite(values, suffix) {
-	process.stderr.write(go2jsOutputText(values, suffix));
+function go2jsStderrWrite(values, suffix, separator) {
+	process.stderr.write(go2jsOutputText(values, suffix, separator));
 }
 
-function go2jsOutputText(value, suffix) {
+function go2jsOperandIsString(value) {
+	return typeof value === "string";
+}
+
+function go2jsOutputText(value, suffix, separator) {
 	if (value === undefined) {
 		return "";
 	}
 
 	if (Array.isArray(value)) {
-		return value.map(item => go2jsErrorString(item)).join("") + suffix;
+		if (separator === undefined || separator === null || separator === "") {
+			let out = "";
+
+			for (let index = 0; index < value.length; index++) {
+				if (index > 0 && !go2jsOperandIsString(value[index - 1]) && !go2jsOperandIsString(value[index])) {
+					out += " ";
+				}
+
+				out += go2jsErrorString(value[index]);
+			}
+
+			return out + suffix;
+		}
+
+		return value.map(item => go2jsErrorString(item)).join(separator) + suffix;
 	}
 
 	return go2jsErrorString(value) + suffix;

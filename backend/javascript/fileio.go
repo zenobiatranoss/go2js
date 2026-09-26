@@ -181,6 +181,13 @@ func (e *emitter) emitFileCall(call *ast.CallExpr, selector *ast.SelectorExpr) (
 		e.write(`""`)
 	}
 
+	e.write(", ")
+	if format == "println" {
+		e.write(`" "`)
+	} else {
+		e.write(`""`)
+	}
+
 	e.write(")")
 	return true, nil
 }

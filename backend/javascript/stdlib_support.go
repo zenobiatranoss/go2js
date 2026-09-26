@@ -9,6 +9,8 @@ import (
 )
 
 var supportedStdlibPackages = func() map[string]map[string]bool {
+	_ = stdlibFuncMapsInitialized
+
 	supported := make(map[string]map[string]bool, len(stdlibFuncMaps))
 
 	for name, functions := range stdlibFuncMaps {

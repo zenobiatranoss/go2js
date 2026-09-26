@@ -78,8 +78,11 @@ func zeroValueForGoType(t types.Type) string {
 	switch t := t.(type) {
 	case *types.Named:
 		if obj := t.Obj(); obj != nil && obj.Pkg() != nil {
-			if obj.Pkg().Path() == "bytes" && obj.Name() == "Buffer" {
+			switch obj.Pkg().Path() + "." + obj.Name() {
+			case "bytes.Buffer":
 				return "new go2jsBytesBuffer()"
+			case "strings.Builder":
+				return "new go2jsStringsBuilder()"
 			}
 
 			if constructor, ok := packageTypes[obj.Pkg().Name()+"."+obj.Name()]; ok {

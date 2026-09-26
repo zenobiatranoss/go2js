@@ -324,9 +324,6 @@ function go2jsCmpOr(...values) {
 	return 0;
 }
 
-function go2jsCmpOrLess(a, b) {
-	return go2jsCmpOr(go2jsCmpCompare(a, b), go2jsCmpCompare(b, a)) < 0;
-}
 `
 }
 

@@ -150,6 +150,10 @@ func (e *emitter) callResultCount(expr ast.Expr) int {
 		if selection := e.analysis.Selections[fn]; selection != nil {
 			object = selection.Obj()
 		}
+
+		if object == nil {
+			object = e.analysis.Uses[fn.Sel]
+		}
 	}
 
 	function, ok := object.(*gotypes.Func)

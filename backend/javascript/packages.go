@@ -14,6 +14,9 @@ type packageSymbol struct {
 }
 
 var packageConstants = map[string]string{
+	"os.Stdin":         "go2jsOSStdin()",
+	"os.Stdout":        "go2jsOSStdout()",
+	"os.Stderr":        "go2jsOSStderr()",
 	"time.Nanosecond":  "go2jsDuration(1)",
 	"time.Microsecond": "go2jsDuration(1000)",
 	"time.Millisecond": "go2jsDuration(1000000)",
@@ -176,6 +179,14 @@ func (e *emitter) emitPackageValue(selector *ast.SelectorExpr) (bool, error) {
 		e.needsRuntime = true
 		e.write(value)
 		e.write("()")
+		return true, nil
+	}
+
+	if value, ok := packageVarValues[key]; ok {
+		e.needsRuntime = true
+		e.write(value)
+		e.write("()")
+
 		return true, nil
 	}
 
@@ -488,6 +499,58 @@ func (e *emitter) emitSyncTypeDecl(spec *ast.TypeSpec) (bool, error) {
 	e.write(constructor)
 	e.write(";")
 	e.newline()
+
+	return true, nil
+}
+
+func (e *emitter) emitPackageVarCall(call *ast.CallExpr, selector *ast.SelectorExpr) (bool, error) {
+	inner, ok := selector.X.(*ast.SelectorExpr)
+	if !ok {
+		return false, nil
+	}
+
+	if !e.isPackageSelector(inner) {
+		return false, nil
+	}
+
+	pkg, ok := inner.X.(*ast.Ident)
+	if !ok {
+		return false, nil
+	}
+
+	kind, ok := packageVarTypes[pkg.Name+"."+inner.Sel.Name]
+	if !ok {
+		return false, nil
+	}
+
+	helper, ok := packageVarMethods[kind+"."+selector.Sel.Name]
+	if !ok {
+		return false, e.unsupportedStdlibError(e.positionOf(selector),
+			"method %s.%s.%s is not available in the JavaScript standard library",
+			pkg.Name, inner.Sel.Name, selector.Sel.Name)
+	}
+
+	e.needsRuntime = true
+	e.write(helper)
+	e.write("(")
+
+	if value, ok := packageVarValues[pkg.Name+"."+inner.Sel.Name]; ok {
+		e.write(value)
+		e.write("()")
+	} else {
+		if err := e.emitExpr(inner); err != nil {
+			return false, err
+		}
+	}
+
+	for _, arg := range call.Args {
+		e.write(", ")
+		if err := e.emitExpr(arg); err != nil {
+			return false, err
+		}
+	}
+
+	e.write(")")
 
 	return true, nil
 }

@@ -300,18 +300,70 @@ function go2jsTimeFormat(date, layout) {
         .replace(/05/g, pad(date.getUTCSeconds(), 2));
 }
 
-function go2jsRegexpMustCompile(pattern) {
-    const regexp = new RegExp(pattern);
+function go2jsRegexpNew(pattern) {
+    const source = String(pattern);
 
     return {
-        MatchString: function(value) {
-            return regexp.test(value);
+        pattern: source,
+        MatchString(value) {
+            return new RegExp(source).test(String(value));
         },
-        FindString: function(value) {
-            const match = value.match(regexp);
-            return match ? match[0] : "";
+        Find(value) {
+            const match = new RegExp(source).exec(go2jsBytesToString(value));
+            return match === null ? null : go2jsStringToBytes(match[0]);
+        },
+        FindString(value) {
+            const match = new RegExp(source).exec(go2jsBytesToString(value));
+            return match === null ? "" : match[0];
+        },
+        FindStringIndex(value) {
+            const match = new RegExp(source).exec(go2jsBytesToString(value));
+            return match === null ? null : [match.index, match.index + match[0].length];
+        },
+        FindAllString(value, limit) {
+            return go2jsRegexpFindAllString(source, value, limit);
+        },
+        FindAllStringIndex(value, limit) {
+            const regex = new RegExp(source, "g");
+            const text = go2jsBytesToString(value);
+            const out = [];
+
+            for (;;) {
+                const match = regex.exec(text);
+
+                if (match === null) {
+                    break;
+                }
+
+                out.push([match.index, match.index + match[0].length]);
+
+                if (limit >= 0 && out.length >= limit) {
+                    break;
+                }
+            }
+
+            return out;
+        },
+        ReplaceAllString(value, replacement) {
+            return go2jsRegexpReplaceAllString(source, value, replacement);
+        },
+        ReplaceAll(value, replacement) {
+            return go2jsBytesToString(value).replace(new RegExp(source, "g"), go2jsStringify(replacement));
+        },
+        Split(value, limit) {
+            return go2jsRegexpSplit(source, value, limit);
+        },
+        String() {
+            return source;
+        },
+        NumSubexp() {
+            return new RegExp(source + "|").exec("").length - 1;
         }
     };
+}
+
+function go2jsRegexpMustCompile(pattern) {
+    return go2jsRegexpNew(pattern);
 }
 
 function go2jsFilepathClean(value) {
@@ -511,6 +563,55 @@ function go2jsJSONUnmarshal(data, target) {
         return [err];
     }
 }
+
+function go2jsStringsBuilder() {
+    this.parts = [];
+}
+
+go2jsStringsBuilder.prototype.WriteString = function(value) {
+    this.parts.push(String(value));
+    return this.parts.length;
+};
+
+go2jsStringsBuilder.prototype.Write = function(value) {
+    this.parts.push(go2jsBytesToString(value));
+    return go2jsToArray(value).length;
+};
+
+go2jsStringsBuilder.prototype.WriteRune = function(value) {
+    this.parts.push(String.fromCodePoint(Number(value)));
+    return 1;
+};
+
+go2jsStringsBuilder.prototype.WriteByte = function(value) {
+    this.parts.push(String.fromCharCode(Number(value) & 255));
+    return 1;
+};
+
+go2jsStringsBuilder.prototype.String = function() {
+    return this.parts.join("");
+};
+
+go2jsStringsBuilder.prototype.Len = function() {
+    let total = 0;
+
+    for (const part of this.parts) {
+        total += part.length;
+    }
+
+    return total;
+};
+
+go2jsStringsBuilder.prototype.Reset = function() {
+    this.parts.length = 0;
+};
+
+go2jsStringsBuilder.prototype.Grow = function() {
+};
+
+go2jsStringsBuilder.prototype.Cap = function() {
+    return this.Len();
+};
 
 function go2jsBytesBuffer() {
     this.data = [];
@@ -2296,8 +2397,28 @@ function go2jsStrconvUnquote(s) {
 	}
 }
 
+function go2jsStrconvFormatVerb(value) {
+	if (typeof value === "string") {
+		return value;
+	}
+
+	if (value === null || value === undefined) {
+		return "";
+	}
+
+	const code = Number(value);
+
+	if (!Number.isInteger(code) || code < 0 || code > 0x10ffff) {
+		return String(value);
+	}
+
+	return String.fromCodePoint(code);
+}
+
 function go2jsStrconvFormatFloat(value, format, precision, bitSize) {
 	const number = Number(value);
+
+	format = go2jsStrconvFormatVerb(format);
 
 	if (Number.isNaN(number)) {
 		return "NaN";

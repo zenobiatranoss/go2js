@@ -445,6 +445,108 @@ func (e *emitter) emitParallelAssignmentInline(stmt *ast.AssignStmt) (bool, erro
 	return true, nil
 }
 
+func (e *emitter) multiReturnReusesTargets(stmt *ast.AssignStmt) bool {
+	if stmt.Tok != token.DEFINE {
+		return false
+	}
+
+	for _, lhs := range stmt.Lhs {
+		ident, ok := lhs.(*ast.Ident)
+
+		if !ok {
+			return true
+		}
+
+		if ident.Name == blankIdentifier {
+			continue
+		}
+
+		if e.isShadowed(ident.Name) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (e *emitter) emitMultiReturnWithTemps(stmt *ast.AssignStmt) error {
+	e.tempCounter++
+
+	prefix := fmt.Sprintf("go2jsM%d_", e.tempCounter)
+
+	if e.inlineMode {
+		e.write("[")
+		for i := range stmt.Lhs {
+			if i > 0 {
+				e.write(", ")
+			}
+			e.write(prefix)
+			e.write(strconv.Itoa(i))
+		}
+		e.write("] = ")
+
+		if err := e.emitMultiReturnExpr(stmt.Rhs[0]); err != nil {
+			return err
+		}
+	} else {
+		e.writeIndent()
+		e.write("const [")
+
+		for i := range stmt.Lhs {
+			if i > 0 {
+				e.write(", ")
+			}
+			e.write(prefix)
+			e.write(strconv.Itoa(i))
+		}
+
+		e.write("] = ")
+
+		if err := e.emitMultiReturnExpr(stmt.Rhs[0]); err != nil {
+			return err
+		}
+
+		e.write(";")
+		e.newline()
+	}
+
+	for i, lhs := range stmt.Lhs {
+		ident, ok := lhs.(*ast.Ident)
+
+		if ok && ident.Name == blankIdentifier {
+			continue
+		}
+
+		fresh := ok && !e.isDeclaredHere(ident.Name)
+
+		if !e.inlineMode {
+			e.writeIndent()
+		}
+
+		if fresh {
+			e.declare(ident.Name)
+			e.write(e.emitDeclarationKeyword())
+		}
+
+		if err := e.emitExpr(lhs); err != nil {
+			return err
+		}
+
+		e.write(" = ")
+		e.write(prefix)
+		e.write(strconv.Itoa(i))
+
+		if !e.inlineMode {
+			e.write(";")
+			e.newline()
+		} else if i < len(stmt.Lhs)-1 {
+			e.write(", ")
+		}
+	}
+
+	return nil
+}
+
 func (e *emitter) parallelAssignReusesTargets(stmt *ast.AssignStmt) bool {
 	if stmt.Tok != token.DEFINE {
 		return false

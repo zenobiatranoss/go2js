@@ -73,7 +73,7 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				return err
 			}
 
-			e.write(strconv.Quote(value))
+			e.write(strconv.Itoa(int([]rune(value)[0])))
 
 		case token.IMAG:
 			value, err := complexLiteralJavaScript(x.Value)
@@ -257,6 +257,10 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 
 		if selector, ok := x.Fun.(*ast.SelectorExpr); ok {
 			if handled, err := e.emitFileCall(x, selector); handled {
+				return err
+			}
+
+			if handled, err := e.emitPackageVarCall(x, selector); handled {
 				return err
 			}
 
@@ -861,7 +865,15 @@ func (e *emitter) isMultiReturnCall(expr ast.Expr) bool {
 		}
 
 		if pkg, ok := selector.X.(*ast.Ident); ok {
-			return multiReturnStdlibFuncs[pkg.Name+"."+selector.Sel.Name]
+			if override, known := multiReturnStdlibFuncs[pkg.Name+"."+selector.Sel.Name]; known {
+				return override
+			}
+		}
+
+		if function, ok := e.analysis.Uses[selector.Sel].(*gotypes.Func); ok {
+			if signature, ok := function.Type().(*gotypes.Signature); ok {
+				return signature.Results() != nil && signature.Results().Len() > 1
+			}
 		}
 
 		return false

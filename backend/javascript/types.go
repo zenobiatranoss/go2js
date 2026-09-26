@@ -76,11 +76,21 @@ func (e *emitter) analyzedType(expr ast.Expr) types.Type {
 	}
 
 	value, ok := e.analysis.Types[expr]
-	if !ok {
-		return nil
+	if ok && value.Type != nil {
+		return value.Type
 	}
 
-	return value.Type
+	if ident, isIdent := expr.(*ast.Ident); isIdent {
+		if object := e.analysis.Defs[ident]; object != nil {
+			return object.Type()
+		}
+
+		if object := e.analysis.Uses[ident]; object != nil {
+			return object.Type()
+		}
+	}
+
+	return nil
 }
 
 func (e *emitter) isIntegerExpr(expr ast.Expr) bool {

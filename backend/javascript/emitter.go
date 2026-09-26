@@ -109,6 +109,11 @@ func EmitWithContextOptionsTarget(file *ast.File, analysis *gotypes.Result, cont
 			randRuntimeSource(),
 			cmpRuntimeSource(),
 			errorsRuntimeSource(),
+			extendedRuntimeSource(),
+			extendedRuntimeSource2(),
+			bytesToStringRuntimeSource(),
+			osStdioRuntimeSource(),
+			runeRuntimeSource(),
 		)
 		prefix = lowerJavaScriptTarget(prefix, e.target)
 		if prefix != "" {
@@ -461,6 +466,10 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 		}
 
 		if len(s.Lhs) > 1 && len(s.Rhs) == 1 && e.isMultiReturnCall(s.Rhs[0]) {
+			if e.multiReturnReusesTargets(s) {
+				return e.emitMultiReturnWithTemps(s)
+			}
+
 			e.writeIndent()
 
 			if s.Tok == token.DEFINE {
@@ -902,6 +911,10 @@ func (e *emitter) emitInlineStmt(stmt ast.Stmt) error {
 		}
 
 		if len(s.Lhs) > 1 && len(s.Rhs) == 1 && e.isMultiReturnCall(s.Rhs[0]) {
+			if e.multiReturnReusesTargets(s) {
+				return e.emitMultiReturnWithTemps(s)
+			}
+
 			return e.emitInlineMultiReturn(s)
 		}
 
@@ -1430,11 +1443,78 @@ func (e *emitter) emitConversion(call *ast.CallExpr) error {
 	}
 
 	if slice, ok := target.(*gotypesstd.Slice); ok {
-		if basic, ok := slice.Elem().Underlying().(*gotypesstd.Basic); ok && basic.Kind() == gotypesstd.Uint8 {
-			if source := e.analyzedType(call.Args[0]); source != nil {
-				if basicSource, ok := source.Underlying().(*gotypesstd.Basic); ok && basicSource.Kind() == gotypesstd.String {
+		if source := e.analyzedType(call.Args[0]); source != nil {
+			if basicSource, ok := source.Underlying().(*gotypesstd.Basic); ok && basicSource.Kind() == gotypesstd.String {
+				if basic, ok := slice.Elem().Underlying().(*gotypesstd.Basic); ok {
+					switch basic.Kind() {
+					case gotypesstd.Uint8:
+						e.needsRuntime = true
+
+						if bytes, ok := go2jsByteLiteral(call.Args[0]); ok {
+							e.write(bytes)
+							return nil
+						}
+
+						e.write("go2jsStringToBytes(")
+						if err := e.emitExpr(call.Args[0]); err != nil {
+							return err
+						}
+						e.write(")")
+						return nil
+					case gotypesstd.Int32:
+						e.needsRuntime = true
+						e.write("go2jsStringToRunes(")
+						if err := e.emitExpr(call.Args[0]); err != nil {
+							return err
+						}
+						e.write(")")
+						return nil
+					}
+				}
+			}
+		}
+	}
+
+	if basic, ok := target.Underlying().(*gotypesstd.Basic); ok && basic.Kind() == gotypesstd.Int32 {
+		if source := e.analyzedType(call.Args[0]); source != nil {
+			if sourceBasic, ok := source.Underlying().(*gotypesstd.Basic); ok && sourceBasic.Info()&gotypesstd.IsInteger != 0 {
+				if err := e.emitExpr(call.Args[0]); err != nil {
+					return err
+				}
+				return nil
+			}
+
+			if sourceBasic, ok := source.Underlying().(*gotypesstd.Basic); ok && sourceBasic.Kind() == gotypesstd.String {
+				e.needsRuntime = true
+				e.write("go2jsRuneCodePoint(")
+				if err := e.emitExpr(call.Args[0]); err != nil {
+					return err
+				}
+				e.write(")")
+				return nil
+			}
+		}
+	}
+
+	if basic, ok := target.Underlying().(*gotypesstd.Basic); ok && basic.Kind() == gotypesstd.String {
+		if source := e.analyzedType(call.Args[0]); source != nil {
+			if slice, ok := source.Underlying().(*gotypesstd.Slice); ok {
+				helper := ""
+
+				if elem, ok := slice.Elem().Underlying().(*gotypesstd.Basic); ok {
+					switch elem.Kind() {
+					case gotypesstd.Uint8:
+						helper = "go2jsBytesToString("
+					case gotypesstd.Int32:
+						helper = "go2jsRunesToString("
+					case gotypesstd.Uint16:
+						helper = "go2jsUTF16Decode("
+					}
+				}
+
+				if helper != "" {
 					e.needsRuntime = true
-					e.write("go2jsStringToBytes(")
+					e.write(helper)
 					if err := e.emitExpr(call.Args[0]); err != nil {
 						return err
 					}
@@ -1487,4 +1567,38 @@ func (e *emitter) newline() {
 
 func (e *emitter) writeIndent() {
 	e.buf.WriteString(strings.Repeat("    ", e.indent))
+}
+
+func go2jsByteLiteral(expr ast.Expr) (string, bool) {
+	literal, ok := expr.(*ast.BasicLit)
+
+	if !ok || literal.Kind != token.STRING {
+		return "", false
+	}
+
+	value, err := strconv.Unquote(literal.Value)
+
+	if err != nil {
+		return "", false
+	}
+
+	if !strings.ContainsRune(literal.Value, '\\') {
+		return "", false
+	}
+
+	var out strings.Builder
+
+	out.WriteString("[")
+
+	for index := 0; index < len(value); index++ {
+		if index > 0 {
+			out.WriteString(",")
+		}
+
+		out.WriteString(strconv.Itoa(int(value[index])))
+	}
+
+	out.WriteString("]")
+
+	return out.String(), true
 }

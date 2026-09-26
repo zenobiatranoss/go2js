@@ -1,37 +1,50 @@
 package javascript
 
 var stdlibFuncMaps = map[string]map[string]string{
-	"bufio":        bufioFuncs,
-	"bytes":        bytesFuncs,
-	"cmp":          cmpFuncs,
-	"encoding":     encodingFuncs,
-	"encoding/hex": hexFuncs,
-	"errors":       errorsFuncs,
-	"fmt":          fmtFuncs,
-	"filepath":     filepathFuncs,
-	"http":         httpFuncs,
-	"io":           ioFuncs,
-	"json":         jsonFuncs,
-	"math":         mathFuncs,
-	"math/rand":    randFuncs,
-	"os":           osFuncs,
-	"path":         pathFuncs,
-	"regexp":       regexpFuncs,
-	"sort":         sortFuncs,
-	"strconv":      strconvFuncs,
-	"strings":      stringsFuncs,
-	"time":         timeFuncs,
-	"unicode":      unicodeFuncs,
-	"url":          urlFuncs,
-	"utf8":         utf8Funcs,
+	"bufio":           bufioFuncs,
+	"bytes":           bytesFuncs,
+	"cmp":             cmpFuncs,
+	"encoding":        encodingFuncs,
+	"encoding/base64": base64Funcs,
+	"encoding/hex":    hexFuncs,
+	"errors":          errorsFuncs,
+	"fmt":             fmtFuncs,
+	"filepath":        filepathFuncs,
+	"http":            httpFuncs,
+	"io":              ioFuncs,
+	"log":             logFuncs,
+	"maps":            mapsFuncs,
+	"json":            jsonFuncs,
+	"math":            mathFuncs,
+	"math/rand":       randFuncs,
+	"os":              osFuncs,
+	"path":            pathFuncs,
+	"regexp":          regexpFuncs,
+	"slices":          slicesFuncs,
+	"sort":            sortFuncs,
+	"strconv":         strconvFuncs,
+	"strings":         stringsFuncs,
+	"time":            timeFuncs,
+	"unicode":         unicodeFuncs,
+	"unicode/utf16":   utf16Funcs,
+	"url":             urlFuncs,
+	"utf8":            utf8Funcs,
 }
 
 // stdlibPkgAliases maps an import path to the local package identifiers that may
 // refer to it. Callers pass the identifier used in the source, which is not
 // always the last path segment (for example "math/rand" is used as "rand").
+var stdlibFuncMapsInitialized = func() bool {
+	extendedStdlibFuncs()
+
+	return true
+}()
+
 var stdlibPkgAliases = map[string][]string{
-	"math/rand":    {"rand"},
-	"encoding/hex": {"hex"},
+	"math/rand":       {"rand"},
+	"encoding/hex":    {"hex"},
+	"encoding/base64": {"base64"},
+	"unicode/utf16":   {"utf16"},
 }
 
 func stdlibFuncName(pkg, name string) (string, bool) {
@@ -198,7 +211,10 @@ var filepathFuncs = map[string]string{
 }
 
 var regexpFuncs = map[string]string{
+	"Compile":     "go2jsRegexpMustCompile",
 	"MustCompile": "go2jsRegexpMustCompile",
+	"MatchString": "go2jsRegexpMatchString",
+	"QuoteMeta":   "go2jsRegexpQuoteMeta",
 }
 
 var ioFuncs = map[string]string{
@@ -255,7 +271,6 @@ var cmpFuncs = map[string]string{
 	"Compare": "go2jsCmpCompare",
 	"Less":    "go2jsCmpLess",
 	"Or":      "go2jsCmpOr",
-	"OrLess":  "go2jsCmpOrLess",
 }
 
 var errorsFuncs = map[string]string{
