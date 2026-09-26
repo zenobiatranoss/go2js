@@ -14,29 +14,41 @@ type packageSymbol struct {
 }
 
 var packageConstants = map[string]string{
-	"os.Stdin":         "go2jsOSStdin()",
-	"os.Stdout":        "go2jsOSStdout()",
-	"os.Stderr":        "go2jsOSStderr()",
-	"time.Nanosecond":  "go2jsDuration(1)",
-	"time.Microsecond": "go2jsDuration(1000)",
-	"time.Millisecond": "go2jsDuration(1000000)",
-	"time.Second":      "go2jsDuration(1000000000)",
-	"time.Minute":      "go2jsDuration(60000000000)",
-	"time.Hour":        "go2jsDuration(3600000000000)",
-	"time.UTC":         "0",
-	"time.Local":       "1",
-	"time.January":     "1",
-	"time.February":    "2",
-	"time.March":       "3",
-	"time.April":       "4",
-	"time.May":         "5",
-	"time.June":        "6",
-	"time.July":        "7",
-	"time.August":      "8",
-	"time.September":   "9",
-	"time.October":     "10",
-	"time.November":    "11",
-	"time.December":    "12",
+	"crypto/sha1.Size":        "20",
+	"crypto/sha1.BlockSize":   "64",
+	"crypto/sha256.Size":      "32",
+	"crypto/sha256.BlockSize": "64",
+	"crypto/md5.Size":         "16",
+	"crypto/md5.BlockSize":    "64",
+	"sha1.Size":               "20",
+	"sha1.BlockSize":          "64",
+	"sha256.Size":             "32",
+	"sha256.BlockSize":        "64",
+	"md5.Size":                "16",
+	"md5.BlockSize":           "64",
+	"os.Stdin":                "go2jsOSStdin()",
+	"os.Stdout":               "go2jsOSStdout()",
+	"os.Stderr":               "go2jsOSStderr()",
+	"time.Nanosecond":         "go2jsDuration(1)",
+	"time.Microsecond":        "go2jsDuration(1000)",
+	"time.Millisecond":        "go2jsDuration(1000000)",
+	"time.Second":             "go2jsDuration(1000000000)",
+	"time.Minute":             "go2jsDuration(60000000000)",
+	"time.Hour":               "go2jsDuration(3600000000000)",
+	"time.UTC":                "0",
+	"time.Local":              "1",
+	"time.January":            "1",
+	"time.February":           "2",
+	"time.March":              "3",
+	"time.April":              "4",
+	"time.May":                "5",
+	"time.June":               "6",
+	"time.July":               "7",
+	"time.August":             "8",
+	"time.September":          "9",
+	"time.October":            "10",
+	"time.November":           "11",
+	"time.December":           "12",
 
 	"math.Pi":                     "Math.PI",
 	"math.E":                      "Math.E",
@@ -101,6 +113,13 @@ var packageTypes = map[string]string{
 	"sync.RWMutex":   "go2jsRWMutex",
 	"sync.Once":      "go2jsOnce",
 	"sync.Map":       "go2jsSyncMap",
+	"atomic.Int32":   "go2jsAtomicInt32Type",
+	"atomic.Int64":   "go2jsAtomicInt64Type",
+	"atomic.Uint32":  "go2jsAtomicUint32Type",
+	"atomic.Uint64":  "go2jsAtomicUint64Type",
+	"atomic.Uintptr": "go2jsAtomicUint64Type",
+	"atomic.Bool":    "go2jsAtomicBoolType",
+	"atomic.Value":   "go2jsAtomicValueType",
 }
 
 func (e *emitter) isPackageIdent(ident *ast.Ident) bool {
@@ -179,6 +198,12 @@ func (e *emitter) emitPackageValue(selector *ast.SelectorExpr) (bool, error) {
 		e.needsRuntime = true
 		e.write(value)
 		e.write("()")
+		return true, nil
+	}
+
+	if jsName, ok := stdlibFuncName(pkg, selector.Sel.Name); ok {
+		e.needsRuntime = true
+		e.write(jsName)
 		return true, nil
 	}
 
@@ -326,6 +351,53 @@ var syncMethodHelpers = map[string]map[string]string{
 		"CompareAndSwap": "go2jsSyncMapCompareAndSwap",
 		"Range":          "go2jsSyncMapRange",
 	},
+	"atomic.Int32": {
+		"Add":            "go2jsAtomicTypeAdd",
+		"Load":           "go2jsAtomicTypeLoad",
+		"Store":          "go2jsAtomicTypeStore",
+		"Swap":           "go2jsAtomicTypeSwap",
+		"CompareAndSwap": "go2jsAtomicTypeCompareAndSwap",
+	},
+	"atomic.Int64": {
+		"Add":            "go2jsAtomicTypeAdd",
+		"Load":           "go2jsAtomicTypeLoad",
+		"Store":          "go2jsAtomicTypeStore",
+		"Swap":           "go2jsAtomicTypeSwap",
+		"CompareAndSwap": "go2jsAtomicTypeCompareAndSwap",
+	},
+	"atomic.Uint32": {
+		"Add":            "go2jsAtomicTypeAdd",
+		"Load":           "go2jsAtomicTypeLoad",
+		"Store":          "go2jsAtomicTypeStore",
+		"Swap":           "go2jsAtomicTypeSwap",
+		"CompareAndSwap": "go2jsAtomicTypeCompareAndSwap",
+	},
+	"atomic.Uint64": {
+		"Add":            "go2jsAtomicTypeAdd",
+		"Load":           "go2jsAtomicTypeLoad",
+		"Store":          "go2jsAtomicTypeStore",
+		"Swap":           "go2jsAtomicTypeSwap",
+		"CompareAndSwap": "go2jsAtomicTypeCompareAndSwap",
+	},
+	"atomic.Uintptr": {
+		"Add":            "go2jsAtomicTypeAdd",
+		"Load":           "go2jsAtomicTypeLoad",
+		"Store":          "go2jsAtomicTypeStore",
+		"Swap":           "go2jsAtomicTypeSwap",
+		"CompareAndSwap": "go2jsAtomicTypeCompareAndSwap",
+	},
+	"atomic.Bool": {
+		"Load":           "go2jsAtomicBoolTypeLoad",
+		"Store":          "go2jsAtomicBoolTypeStore",
+		"Swap":           "go2jsAtomicBoolTypeSwap",
+		"CompareAndSwap": "go2jsAtomicBoolTypeCompareAndSwap",
+	},
+	"atomic.Value": {
+		"Load":           "go2jsAtomicValueTypeLoad",
+		"Store":          "go2jsAtomicValueTypeStore",
+		"Swap":           "go2jsAtomicValueTypeSwap",
+		"CompareAndSwap": "go2jsAtomicValueTypeCompareAndSwap",
+	},
 }
 
 func (e *emitter) syncMethodKey(selector *ast.SelectorExpr) (string, bool) {
@@ -406,8 +478,14 @@ func (e *emitter) emitSyncMethodCall(call *ast.CallExpr, selector *ast.SelectorE
 }
 
 var contextFunctions = map[string]string{
-	"Background": "go2jsContextBackground",
-	"TODO":       "go2jsContextBackground",
+	"Background":   "go2jsContextBackground",
+	"TODO":         "go2jsContextBackground",
+	"WithCancel":   "go2jsContextWithCancel",
+	"WithValue":    "go2jsContextWithValue",
+	"WithTimeout":  "go2jsContextWithTimeout",
+	"WithDeadline": "go2jsContextWithDeadline",
+	"AfterFunc":    "go2jsContextAfterFunc",
+	"Cause":        "go2jsContextCause",
 }
 
 var errorsFunctions = map[string]string{

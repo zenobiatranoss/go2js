@@ -86,12 +86,14 @@ var packageVarMethods = map[string]string{
 }
 
 var packageVarValues = map[string]string{
-	"base64.StdEncoding":    "go2jsBase64StdEncoding",
-	"base64.URLEncoding":    "go2jsBase64URLEncoding",
-	"base64.RawStdEncoding": "go2jsBase64RawStdEncoding",
-	"base64.RawURLEncoding": "go2jsBase64RawURLEncoding",
-	"log.Default":           "go2jsLogDefault",
-	"io.Discard":            "go2jsIODiscard",
+	"base64.StdEncoding":       "go2jsBase64StdEncoding",
+	"base64.URLEncoding":       "go2jsBase64URLEncoding",
+	"base64.RawStdEncoding":    "go2jsBase64RawStdEncoding",
+	"base64.RawURLEncoding":    "go2jsBase64RawURLEncoding",
+	"log.Default":              "go2jsLogDefault",
+	"io.Discard":               "go2jsIODiscard",
+	"context.Canceled":         "go2jsContextCanceled",
+	"context.DeadlineExceeded": "go2jsContextDeadlineExceeded",
 }
 
 func extendedRuntimeSource() string {
@@ -935,18 +937,21 @@ function go2jsUTF16EncodeRune(value) {
 }
 
 var packageVarTypes = map[string]string{
-	"base64.StdEncoding":    "base64.Encoding",
-	"base64.URLEncoding":    "base64.Encoding",
-	"base64.RawStdEncoding": "base64.Encoding",
-	"base64.RawURLEncoding": "base64.Encoding",
-	"log.Default":           "log.Logger",
-	"io.Discard":            "io.Writer",
+	"base64.StdEncoding":       "base64.Encoding",
+	"base64.URLEncoding":       "base64.Encoding",
+	"base64.RawStdEncoding":    "base64.Encoding",
+	"base64.RawURLEncoding":    "base64.Encoding",
+	"log.Default":              "log.Logger",
+	"io.Discard":               "io.Writer",
+	"context.Canceled":         "error",
+	"context.DeadlineExceeded": "error",
 }
 
 var packageVarPaths = map[string]string{
-	"base64": "encoding/base64",
-	"io":     "io",
-	"log":    "log",
+	"base64":  "encoding/base64",
+	"io":      "io",
+	"log":     "log",
+	"context": "context",
 }
 
 func bytesToStringRuntimeSource() string {
@@ -975,6 +980,19 @@ function go2jsRawText(value) {
 	if (value === null || value === undefined) {
 		return "";
 	}
+
+	if (value.__go2js_interface === true) {
+		return go2jsRawText(value.value);
+	}
+
+	if (value.__go2js_pointer === true) {
+		return go2jsRawText(value.get());
+	}
+
+	if (value.__go2js_text !== undefined) {
+		return value.__go2js_text;
+	}
+
 
 	if (Array.isArray(value)) {
 		return go2jsBytesToString(value);

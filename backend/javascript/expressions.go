@@ -46,6 +46,8 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			e.write("null")
 		} else if x.Name == "_" {
 			e.writeBlankIdentifier(x)
+		} else if x.Name == e.aggregateReceiver && !e.isShadowed(x.Name) {
+			e.write(x.Name)
 		} else if x.Name == e.receiver && !e.isShadowed(x.Name) {
 			e.write("this")
 		} else if x.Name == e.scalarReceiver && !e.isShadowed(x.Name) {
@@ -310,6 +312,10 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			}
 			if e.isDirectMethodCall(selector) {
 				if handled, err := e.emitScalarNamedMethodCall(x, selector); handled {
+					return err
+				}
+
+				if handled, err := e.emitNamedAggregateMethodCall(x, selector); handled {
 					return err
 				}
 

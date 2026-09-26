@@ -18,6 +18,7 @@ type emitter struct {
 	channelPairTarget   bool
 	mapLookupPairTarget bool
 	scalarReceiver      string
+	aggregateReceiver   string
 	target              string
 	scopes              []scopeMap
 	renames             int
@@ -114,6 +115,7 @@ func EmitWithContextOptionsTarget(file *ast.File, analysis *gotypes.Result, cont
 			bytesToStringRuntimeSource(),
 			osStdioRuntimeSource(),
 			runeRuntimeSource(),
+			moreRuntimeSource(),
 		)
 		prefix = lowerJavaScriptTarget(prefix, e.target)
 		if prefix != "" {
@@ -129,6 +131,7 @@ func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 	e.channelPairTarget = false
 	e.mapLookupPairTarget = false
 	e.scalarReceiver = ""
+	e.aggregateReceiver = ""
 	parameters := e.functionParameters(fn)
 	e.pendingParams = parameters
 	e.currentFunction = fn
@@ -184,6 +187,10 @@ func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 		}
 
 		if handled, err := e.emitScalarNamedFuncDecl(fn); handled {
+			return err
+		}
+
+		if handled, err := e.emitNamedAggregateFuncDecl(fn); handled {
 			return err
 		}
 

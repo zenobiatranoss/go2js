@@ -526,3 +526,157 @@ func (e *emitter) emitStructFieldStringers(typeName string, structType *ast.Stru
 
 	return nil
 }
+
+// namedAggregateReceiverType reports the named type of a method receiver whose
+// underlying type is a slice, array, map, pointer, function or channel. Those
+// values are represented by plain JavaScript objects, so the methods cannot
+// live on a prototype and are emitted as registered functions instead.
+// isNamedAggregateType reports whether a named type is represented by a plain
+// JavaScript value rather than by an emitted class.
+func (e *emitter) isNamedAggregateType(typeName string) bool {
+	object, ok := e.typeObject(typeName)
+	if !ok {
+		return false
+	}
+
+	named, ok := object.Type().(*gotypesstd.Named)
+	if !ok {
+		return false
+	}
+
+	switch named.Underlying().(type) {
+	case *gotypesstd.Struct, *gotypesstd.Interface, *gotypesstd.Basic:
+		return false
+	}
+
+	return true
+}
+
+func (e *emitter) namedAggregateReceiverType(selector *ast.SelectorExpr) (string, bool) {
+	if e.analysis == nil || selector == nil {
+		return "", false
+	}
+
+	selection := e.analysis.Selections[selector]
+	if selection == nil {
+		return "", false
+	}
+
+	named, ok := derefNamed(selection.Recv())
+	if !ok {
+		return "", false
+	}
+
+	switch named.Underlying().(type) {
+	case *gotypesstd.Struct, *gotypesstd.Interface, *gotypesstd.Basic:
+		return "", false
+	}
+
+	return named.Obj().Name(), true
+}
+
+func (e *emitter) emitNamedAggregateMethodCall(call *ast.CallExpr, selector *ast.SelectorExpr) (bool, error) {
+	typeName, ok := e.namedAggregateReceiverType(selector)
+	if !ok {
+		return false, nil
+	}
+
+	method, ok := e.analysis.Selections[selector].Obj().(*gotypesstd.Func)
+	if !ok {
+		return false, nil
+	}
+
+	e.needsRuntime = true
+	e.write("go2jsNamedMethodCall(")
+
+	if err := e.emitExpr(selector.X); err != nil {
+		return true, err
+	}
+
+	e.write(", ")
+	e.write(strconv.Quote(typeName))
+	e.write(", ")
+	e.write(strconv.Quote(method.Name()))
+
+	for _, arg := range call.Args {
+		e.write(", ")
+		if err := e.emitExpr(arg); err != nil {
+			return true, err
+		}
+	}
+
+	e.write(")")
+	return true, nil
+}
+
+func (e *emitter) emitNamedAggregateFuncDecl(fn *ast.FuncDecl) (bool, error) {
+	if fn.Recv == nil || len(fn.Recv.List) != 1 {
+		return false, nil
+	}
+
+	receiver := fn.Recv.List[0]
+	typeExpr := ast.Expr(receiver.Type)
+
+	if star, ok := typeExpr.(*ast.StarExpr); ok {
+		typeExpr = star.X
+	}
+
+	var typeName string
+
+	switch t := typeExpr.(type) {
+	case *ast.Ident:
+		typeName = t.Name
+	case *ast.IndexExpr:
+		ident, ok := t.X.(*ast.Ident)
+		if !ok {
+			return false, nil
+		}
+		typeName = ident.Name
+	case *ast.IndexListExpr:
+		ident, ok := t.X.(*ast.Ident)
+		if !ok {
+			return false, nil
+		}
+		typeName = ident.Name
+	default:
+		return false, nil
+	}
+
+	if !e.isNamedAggregateType(typeName) {
+		return false, nil
+	}
+
+	if len(receiver.Names) > 0 {
+		e.aggregateReceiver = receiver.Names[0].Name
+	}
+
+	e.needsRuntime = true
+	e.write("function ")
+	e.write(namedAggregateMethodName(typeName, fn.Name.Name))
+	e.write("(")
+	e.write(receiver.Names[0].Name)
+
+	if parameters := e.functionParameters(fn); len(parameters) > 0 {
+		e.write(", ")
+		e.emitFunctionParameters(fn)
+	}
+
+	e.write(") ")
+
+	if err := e.emitFuncBody(fn.Body); err != nil {
+		return true, err
+	}
+
+	e.write("go2jsRegisterMethod(")
+	e.write(strconv.Quote(typeName + "." + fn.Name.Name))
+	e.write(", ")
+	e.write(namedAggregateMethodName(typeName, fn.Name.Name))
+	e.write(");")
+	e.newline()
+
+	return true, nil
+}
+
+func namedAggregateMethodName(typeName, method string) string {
+	return "go2jsMethod" + typeName + method
+}

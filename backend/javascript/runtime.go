@@ -835,6 +835,20 @@ function go2jsMethodExpression(method, copyReceiver) {
 	};
 }
 
+function go2jsNamedMethodCall(receiver, typeName, method, ...args) {
+	const fn = go2jsMethodTable[typeName + "." + method];
+
+	if (typeof fn !== "function") {
+		throw new TypeError("method " + typeName + "." + method + " is not implemented");
+	}
+
+	if (receiver !== null && receiver !== undefined && receiver.__go2js_pointer === true) {
+		return fn(receiver.get(), ...args);
+	}
+
+	return fn(receiver, ...args);
+}
+
 function go2jsInvokeMethod(receiver, method, args) {
 	if (receiver === null || receiver === undefined) {
 		throw new TypeError("method call on nil receiver");
@@ -1876,10 +1890,219 @@ function go2jsSprintf(format, ...args) {
 	return result;
 }
 
+function go2jsTyped(value, type) {
+	return {__go2js_typed: true, value: value, type: type};
+}
+
+function go2jsUntyped(value) {
+	if (value !== null && value !== undefined && value.__go2js_typed === true) {
+		return value.value;
+	}
+
+	return value;
+}
+
+function go2jsTypedType(value) {
+	if (value !== null && value !== undefined && value.__go2js_typed === true) {
+		return value.type;
+	}
+
+	return null;
+}
+
+function go2jsIsByteArray(value) {
+	if (!Array.isArray(value) || value.length === 0) {
+		return false;
+	}
+
+	for (const item of value) {
+		if (typeof item !== "number" || !Number.isInteger(item) || item < 0 || item > 255) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+function go2jsInferTypeName(value, tagged) {
+	if (typeof tagged === "string") {
+		return tagged;
+	}
+
+	if (value === null || value === undefined) {
+		return "<nil>";
+	}
+
+	if (value.__go2js_interface === true) {
+		return typeof value.type === "string" ? value.type : "interface {}";
+	}
+
+	if (value instanceof Error) {
+		return "error";
+	}
+
+	if (typeof value === "string") {
+		return "string";
+	}
+
+	if (typeof value === "boolean") {
+		return "bool";
+	}
+
+	if (typeof value === "number") {
+		return Number.isInteger(value) ? "int" : "float64";
+	}
+
+	if (go2jsIsByteArray(value)) {
+		return "[]uint8";
+	}
+
+	if (Array.isArray(value)) {
+		return "[]int";
+	}
+
+	if (typeof value === "object") {
+		const name = go2jsGoTypeName(value);
+
+		if (typeof name === "string" && name !== "" && name !== "object") {
+			return name;
+		}
+
+		return "struct {}";
+	}
+
+	return "interface {}";
+}
+
+function go2jsVerbAccepts(verb, typeName) {
+	switch (verb) {
+		case "d":
+		case "b":
+		case "o":
+		case "c":
+			return typeName === "int" || typeName === "int8" || typeName === "int16" ||
+				typeName === "int32" || typeName === "int64" || typeName === "uint" ||
+				typeName === "uint8" || typeName === "uint16" || typeName === "uint32" ||
+				typeName === "uint64" || typeName === "uintptr" || typeName === "rune" ||
+				typeName === "byte";
+		case "e":
+		case "E":
+		case "f":
+		case "F":
+		case "g":
+		case "G":
+			return typeName === "int" || typeName === "int8" || typeName === "int16" ||
+				typeName === "int32" || typeName === "int64" || typeName === "uint" ||
+				typeName === "uint8" || typeName === "uint16" || typeName === "uint32" ||
+				typeName === "uint64" || typeName === "uintptr" || typeName === "rune" ||
+				typeName === "byte" || typeName === "float32" || typeName === "float64";
+		case "s":
+		case "q":
+			return !go2jsIsBasicScalarName(typeName) || typeName === "string";
+		case "x":
+		case "X":
+			return true;
+		case "v":
+		case "T":
+			return true;
+		case "t":
+			return typeName === "bool";
+		default:
+			return true;
+	}
+}
+
+function go2jsIsBasicScalarName(typeName) {
+	switch (typeName) {
+	case "bool":
+	case "int":
+	case "int8":
+	case "int16":
+	case "int32":
+	case "int64":
+	case "uint":
+	case "uint8":
+	case "uint16":
+	case "uint32":
+	case "uint64":
+	case "uintptr":
+	case "float32":
+	case "float64":
+	case "complex64":
+	case "complex128":
+	case "rune":
+	case "byte":
+		return true;
+	default:
+		return false;
+	}
+}
+
+function go2jsGoSyntax(value) {
+	if (value === null || value === undefined) {
+		return "<nil>";
+	}
+
+	if (value instanceof Error) {
+		return value.message;
+	}
+
+	if (typeof value === "string") {
+		return JSON.stringify(value);
+	}
+
+	if (typeof value === "number" || typeof value === "boolean") {
+		return String(value);
+	}
+
+	if (value instanceof Map) {
+		const entries = Array.from(value.entries());
+		entries.sort((a, b) => go2jsCompareValues(a[0], b[0]));
+
+		return "map[" + go2jsGoTypeName(value) + "]" +
+			"{" + entries.map(([key, item]) => go2jsGoSyntax(key) + ":" + go2jsGoSyntax(item)).join(", ") + "}";
+	}
+
+	if (Array.isArray(value)) {
+		return "[]" + go2jsGoTypeName(value) + "{" + value.map(item => go2jsGoSyntax(item)).join(", ") + "}";
+	}
+
+	const ctor = value.constructor;
+	const name = ctor && typeof ctor.name === "string" ? ctor.name : "";
+	const fields = name !== "" ? go2jsStructFormats[name] : null;
+	const parts = [];
+
+	for (const key of Object.keys(value)) {
+		const fieldType = fields && typeof fields[key] === "string" ? fields[key] : "";
+		parts.push(key + ":" + go2jsGoSyntax(value[key]));
+
+		if (fieldType === "") {
+			continue;
+		}
+	}
+
+	return go2jsQualifiedTypeName(go2jsGoTypeName(value)) + "{" + parts.join(", ") + "}";
+}
+
+function go2jsQualifiedTypeName(name) {
+	if (name === "" || name === "Object" || name === "Array") {
+		return "";
+	}
+
+	return name;
+}
+
 function go2jsFormatValue(verb, spec, value) {
 	const parsed = go2jsParseFormatSpec(spec);
 	const flags = parsed.flags;
 	const precision = parsed.precision;
+	const tagged = go2jsTypedType(value);
+
+	value = go2jsUntyped(value);
+
+	if (verb !== "%" && !go2jsVerbAccepts(verb, go2jsInferTypeName(value, tagged))) {
+		return "%!" + verb + "(" + go2jsInferTypeName(value, tagged) + "=" + go2jsFormat(value) + ")";
+	}
 
 	// Renders the sign prefix and zero-pads the digits that follow it.
 	const numberText = (num, body, prefixOverride) => {
@@ -1932,10 +2155,22 @@ function go2jsFormatValue(verb, spec, value) {
 		}
 		case "e":
 			return go2jsFormatE(Number(value), precision === null ? 6 : precision, parsed);
+		case "E": {
+			const upper = go2jsFormatE(Number(value), precision === null ? 6 : precision, parsed);
+			const exponent = upper.indexOf("e");
+
+			return exponent === -1 ? upper : upper.slice(0, exponent) + "E" + upper.slice(exponent + 1);
+		}
 		case "g":
 			return go2jsFormatG(Number(value), precision, parsed);
 		case "s": {
-			let text = go2jsFormat(value);
+			let text;
+
+			if (tagged === "[]uint8" || (tagged === null && go2jsIsByteArray(value))) {
+				text = go2jsBytesToString(value);
+			} else {
+				text = go2jsFormat(value);
+			}
 
 			if (precision !== null) {
 				text = text.slice(0, precision);
@@ -1944,7 +2179,7 @@ function go2jsFormatValue(verb, spec, value) {
 			return go2jsPad(text, parsed, false);
 		}
 		case "v": {
-			let text = go2jsFormat(value);
+			let text = flags.includes("#") ? go2jsGoSyntax(value) : go2jsFormat(value);
 
 			if (precision !== null) {
 				text = text.slice(0, precision);

@@ -409,6 +409,45 @@ function go2jsSliceView(data, offset, length, capacity) {
 			return Reflect.get(target, property, receiver);
 		},
 
+		has(target, property) {
+			const index = Number(property);
+
+			if (Number.isInteger(index) && String(index) === String(property)) {
+				return index >= 0 && index < state.length;
+			}
+
+			return Reflect.has(target, property);
+		},
+
+		ownKeys(target) {
+			const keys = [];
+
+			for (let i = 0; i < state.length; i++) {
+				keys.push(String(i));
+			}
+
+			return keys.concat(Reflect.ownKeys(target).filter(key => key !== "length"));
+		},
+
+		getOwnPropertyDescriptor(target, property) {
+			const index = Number(property);
+
+			if (Number.isInteger(index) && String(index) === String(property)) {
+				if (index < 0 || index >= state.length) {
+					return undefined;
+				}
+
+				return {
+					value: state.data[state.offset + index],
+					writable: true,
+					enumerable: true,
+					configurable: true
+				};
+			}
+
+			return Reflect.getOwnPropertyDescriptor(target, property);
+		},
+
 		set(target, property, value) {
 			const index = Number(property);
 			if (Number.isInteger(index) && String(index) === String(property)) {

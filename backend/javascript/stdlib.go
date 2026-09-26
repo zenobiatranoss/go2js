@@ -36,6 +36,7 @@ var stdlibFuncMaps = map[string]map[string]string{
 // always the last path segment (for example "math/rand" is used as "rand").
 var stdlibFuncMapsInitialized = func() bool {
 	extendedStdlibFuncs()
+	moreStdlibFuncs()
 
 	return true
 }()

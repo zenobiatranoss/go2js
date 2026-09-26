@@ -20,7 +20,19 @@ var supportedStdlibPackages = func() map[string]map[string]bool {
 	supported["fmt"] = funcSet(fmtFuncs)
 	supported["errors"] = funcSet(errorsFuncs)
 	supported["encoding"] = funcSet(encodingFuncs)
-	supported["context"] = funcSet(map[string]string{"Background": "go2jsContextBackground", "TODO": "go2jsContextBackground"})
+	supported["context"] = funcSet(contextFunctions)
+	supported["context"] = funcSet(map[string]string{
+		"Background":       "go2jsContextBackground",
+		"TODO":             "go2jsContextBackground",
+		"WithCancel":       "go2jsContextWithCancel",
+		"WithValue":        "go2jsContextWithValue",
+		"WithTimeout":      "go2jsContextWithTimeout",
+		"WithDeadline":     "go2jsContextWithDeadline",
+		"AfterFunc":        "go2jsContextAfterFunc",
+		"Cause":            "go2jsContextCause",
+		"Canceled":         "go2jsContextCanceled",
+		"DeadlineExceeded": "go2jsContextDeadlineExceeded",
+	})
 
 	for path, aliases := range stdlibPkgAliases {
 		for _, alias := range aliases {

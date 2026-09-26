@@ -3,6 +3,7 @@ package javascript
 import (
 	"go/ast"
 	gotypesstd "go/types"
+	"strconv"
 )
 
 func (e *emitter) isErrorExpr(expr ast.Expr) bool {
@@ -53,6 +54,20 @@ func (e *emitter) isErrorInterfaceExpr(expr ast.Expr) bool {
 }
 
 func (e *emitter) emitFormatArgument(arg ast.Expr) error {
+	if name, ok := e.byteSliceTypeName(arg); ok {
+		e.needsRuntime = true
+		e.write("go2jsTyped(")
+
+		if err := e.emitExpr(arg); err != nil {
+			return err
+		}
+
+		e.write(", ")
+		e.write(strconv.Quote(name))
+		e.write(")")
+		return nil
+	}
+
 	if e.isErrorExpr(arg) || e.isErrorInterfaceExpr(arg) {
 		e.needsRuntime = true
 		e.write("go2jsErrorString(")
@@ -217,4 +232,33 @@ func (e *emitter) isPrintCall(call *ast.CallExpr) bool {
 	}
 
 	return false
+}
+
+func (e *emitter) byteSliceTypeName(arg ast.Expr) (string, bool) {
+	t := e.analyzedType(arg)
+
+	if t == nil {
+		return "", false
+	}
+
+	slice, ok := t.Underlying().(*gotypesstd.Slice)
+
+	if !ok {
+		return "", false
+	}
+
+	elem, ok := slice.Elem().Underlying().(*gotypesstd.Basic)
+
+	if !ok {
+		return "", false
+	}
+
+	switch elem.Kind() {
+	case gotypesstd.Uint8:
+		return "[]uint8", true
+	case gotypesstd.Int32:
+		return "[]rune", true
+	}
+
+	return "", false
 }
