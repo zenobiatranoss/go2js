@@ -45,7 +45,7 @@ func collectionElementType(t gotypes.Type) gotypes.Type {
 	}
 }
 
-func collectionZeroValue(t gotypes.Type) string {
+func (e *emitter) collectionZeroValue(t gotypes.Type) string {
 	if t == nil {
 		return "null"
 	}
@@ -61,9 +61,9 @@ func collectionZeroValue(t gotypes.Type) string {
 			}
 		}
 		if _, ok := t.Underlying().(*gotypes.Struct); ok {
-			return "new " + t.Obj().Name() + "()"
+			return "new " + e.typeReference(t) + "()"
 		}
-		return collectionZeroValue(t.Underlying())
+		return e.collectionZeroValue(t.Underlying())
 
 	case *gotypes.Basic:
 		switch t.Kind() {
@@ -84,7 +84,7 @@ func collectionZeroValue(t gotypes.Type) string {
 		return fmt.Sprintf(
 			"go2jsArrayLiteral(%d, () => %s, [])",
 			t.Len(),
-			collectionZeroValue(t.Elem()),
+			e.collectionZeroValue(t.Elem()),
 		)
 
 	case *gotypes.Struct:
@@ -122,7 +122,7 @@ func (e *emitter) emitCollectionCompositeLit(x *ast.CompositeLit) (bool, error) 
 	}
 
 	element := collectionElementType(t)
-	zero := collectionZeroValue(element)
+	zero := e.collectionZeroValue(element)
 
 	e.needsRuntime = true
 
@@ -251,7 +251,7 @@ func (e *emitter) emitCollectionBuiltinCall(call *ast.CallExpr) (bool, error) {
 		}
 
 		element := collectionElementType(sliceType)
-		zero := collectionZeroValue(element)
+		zero := e.collectionZeroValue(element)
 
 		e.needsRuntime = true
 		e.write("go2jsSliceMake(")

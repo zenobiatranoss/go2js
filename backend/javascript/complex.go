@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/constant"
 	"go/token"
+	"math/big"
 )
 
 func complexLiteralJavaScript(lit string) (string, error) {
@@ -58,4 +59,31 @@ func (e *emitter) emitComplexCall(name string, args ...ast.Expr) error {
 
 func (e *emitter) emitComplexUnary(name string, expr ast.Expr) error {
 	return e.emitComplexCall(name, expr)
+}
+
+const maxSafeIntegerLiteral = 9007199254740991
+
+func integerLiteralJavaScript(lit *ast.BasicLit) (string, error) {
+	value := constant.MakeFromLiteral(lit.Value, lit.Kind, 0)
+	if value == nil {
+		return lit.Value, nil
+	}
+
+	switch value.Kind() {
+	case constant.Int, constant.Float:
+	default:
+		return lit.Value, nil
+	}
+
+	if exact := constant.ToInt(value); exact.Kind() == constant.Int {
+		if text, ok := new(big.Int).SetString(exact.ExactString(), 10); ok {
+			if !text.IsInt64() || text.Int64() > maxSafeIntegerLiteral || text.Int64() < -maxSafeIntegerLiteral {
+				return "", fmt.Errorf(
+					"integer literal %s exceeds the JavaScript safe integer range and cannot be represented exactly",
+					lit.Value)
+			}
+		}
+	}
+
+	return lit.Value, nil
 }

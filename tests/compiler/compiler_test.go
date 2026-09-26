@@ -489,3 +489,42 @@ func (u User) Test() string {
 		t.Fatalf("local receiver shadow return was incorrectly rewritten:\n%s", output)
 	}
 }
+
+func TestCompileRejectsUnsafeIntegerLiteral(t *testing.T) {
+	source := `package main
+
+func main() {
+	var x int64 = 9223372036854775807
+	_ = x
+}
+`
+
+	file := writeSource(t, source)
+
+	_, err := compiler.CompileFile(file)
+	if err == nil {
+		t.Fatal("expected an error for an integer literal outside the safe range")
+	}
+
+	if !strings.Contains(err.Error(), "safe integer range") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCompileAcceptsMaxSafeIntegerLiteral(t *testing.T) {
+	source := `package main
+
+import "fmt"
+
+func main() {
+	var x int64 = 9007199254740991
+	fmt.Println(x)
+}
+`
+
+	file := writeSource(t, source)
+
+	if _, err := compiler.CompileFile(file); err != nil {
+		t.Fatalf("max safe integer should compile: %v", err)
+	}
+}

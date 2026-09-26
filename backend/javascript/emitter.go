@@ -46,6 +46,28 @@ type emitter struct {
 	gotoDispatcher   string
 	gotoStmtDepth    int
 	inlineMode       bool
+	selfPackagePath  string
+	qualifiers       map[string]string
+}
+
+func (e *emitter) typeReference(named *gotypesstd.Named) string {
+	name := named.Obj().Name()
+
+	obj := named.Obj()
+	if obj == nil || obj.Pkg() == nil {
+		return name
+	}
+
+	path := obj.Pkg().Path()
+	if e.selfPackagePath == "" || path == e.selfPackagePath {
+		return name
+	}
+
+	if qualifier, ok := e.qualifiers[path]; ok && qualifier != "" {
+		return qualifier + "." + name
+	}
+
+	return name
 }
 
 func localStructTypeNames(file *ast.File) map[string]bool {
@@ -89,6 +111,10 @@ func EmitWithContextOptions(file *ast.File, analysis *gotypes.Result, context *s
 }
 
 func EmitWithContextOptionsTarget(file *ast.File, analysis *gotypes.Result, context *semantic.Context, includeRuntime bool, target string) (string, error) {
+	return EmitWithContextOptionsTargetQualified(file, analysis, context, includeRuntime, target, "", nil)
+}
+
+func EmitWithContextOptionsTargetQualified(file *ast.File, analysis *gotypes.Result, context *semantic.Context, includeRuntime bool, target string, selfPackagePath string, qualifiers map[string]string) (string, error) {
 	if context == nil && analysis != nil {
 		context = semantic.NewResultContext(analysis, nil)
 	}
@@ -98,6 +124,8 @@ func EmitWithContextOptionsTarget(file *ast.File, analysis *gotypes.Result, cont
 		semantic:         context,
 		target:           normalizeTarget(target),
 		localStructTypes: localStructTypeNames(file),
+		selfPackagePath:  selfPackagePath,
+		qualifiers:       qualifiers,
 	}
 	for _, decl := range file.Decls {
 		switch d := decl.(type) {

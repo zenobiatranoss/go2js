@@ -85,7 +85,11 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			e.write(value)
 
 		default:
-			e.write(x.Value)
+			converted, err := integerLiteralJavaScript(x)
+			if err != nil {
+				return err
+			}
+			e.write(converted)
 		}
 
 	case *ast.BinaryExpr:
@@ -252,7 +256,7 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 
 			e.needsRuntime = true
 			e.write("go2jsNew(")
-			e.write(collectionZeroValue(t))
+			e.write(e.collectionZeroValue(t))
 			e.write(")")
 			return nil
 		}
@@ -911,7 +915,7 @@ func (e *emitter) emitStructCompositeLit(x *ast.CompositeLit) (bool, error) {
 		e.write("(), {")
 	} else {
 		e.write("Object.assign(new ")
-		e.write(named.Obj().Name())
+		e.write(e.typeReference(named))
 		e.write("(), {")
 	}
 

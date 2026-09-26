@@ -3,7 +3,6 @@ package compiler
 import (
 	"fmt"
 	"go/ast"
-	"go/importer"
 	"go/types"
 	"hash/fnv"
 	"os"
@@ -76,7 +75,7 @@ func compileProjectWithOptions(dir string, options Options) (string, error) {
 
 	p.importer = &projectImporter{
 		project:  p,
-		fallback: importer.Default(),
+		fallback: newModuleImporter(root),
 	}
 
 	target, err := p.load(targetPath)
@@ -348,17 +347,38 @@ func (p *project) emitImports(out *strings.Builder, pkg *Package) error {
 func (p *project) emitFiles(pkg *projectPackage) (string, error) {
 	var out strings.Builder
 
+	qualifiers := map[string]string{}
+
+	for _, imported := range pkg.pkg.Imports() {
+		if !p.isLocal(imported) {
+			continue
+		}
+
+		alias, err := p.alias(pkg.pkg, imported)
+		if err != nil {
+			return "", err
+		}
+
+		if alias == "" {
+			continue
+		}
+
+		qualifiers[imported] = alias
+	}
+
 	for _, file := range pkg.pkg.Files {
 		if file == nil || file.File == nil {
 			return "", fmt.Errorf("compiler: package %q contains invalid file", pkg.path)
 		}
 
-		code, err := javascript.EmitWithContextOptionsTarget(
+		code, err := javascript.EmitWithContextOptionsTargetQualified(
 			file.File,
 			pkg.analysis.Types,
 			pkg.analysis.Semantic,
 			p.options.Runtime,
 			p.options.Target,
+			pkg.path,
+			qualifiers,
 		)
 		if err != nil {
 			return "", err

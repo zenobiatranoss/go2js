@@ -80,6 +80,7 @@ var packageConstants = map[string]string{
 	"math.MaxUint16":              "65535",
 	"math.MaxUint32":              "4294967295",
 	"math.MaxUint":                "Number.MAX_SAFE_INTEGER",
+	"math.MaxUint64":              "Number.MAX_SAFE_INTEGER",
 	"math.MaxUintptr":             "Number.MAX_SAFE_INTEGER",
 
 	"os.PathSeparator":     `"/"`,
