@@ -230,6 +230,10 @@ func (e *emitter) emitBlankAssignment(stmt *ast.AssignStmt) error {
 
 func (e *emitter) emitInlineBlankAssignment(stmt *ast.AssignStmt) error {
 	if len(stmt.Rhs) == 1 && len(stmt.Lhs) > 1 && e.isMultiReturnCall(stmt.Rhs[0]) {
+		if stmt.Tok == token.DEFINE {
+			e.write(e.emitDeclarationKeyword())
+			e.declareNonBlank(stmt.Lhs)
+		}
 		e.write(e.blankDestructuringPattern(stmt.Lhs))
 		e.write(" = ")
 		return e.emitMultiReturnExpr(stmt.Rhs[0])

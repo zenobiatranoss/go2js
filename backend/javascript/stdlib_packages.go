@@ -240,12 +240,23 @@ function go2jsContextAfterFunc(ctx, fn) {
 	return 2;
 }
 
+var go2jsContextCanceledError = null;
+var go2jsContextDeadlineExceededError = null;
+
 function go2jsContextCanceled() {
-	return go2jsInterface(new Error("context canceled"), "error");
+	if (go2jsContextCanceledError === null) {
+		go2jsContextCanceledError = go2jsInterface(new Error("context canceled"), "error");
+	}
+
+	return go2jsContextCanceledError;
 }
 
 function go2jsContextDeadlineExceeded() {
-	return go2jsInterface(new Error("context deadline exceeded"), "error");
+	if (go2jsContextDeadlineExceededError === null) {
+		go2jsContextDeadlineExceededError = go2jsInterface(new Error("context deadline exceeded"), "error");
+	}
+
+	return go2jsContextDeadlineExceededError;
 }
 
 function go2jsContextCause(ctx) {

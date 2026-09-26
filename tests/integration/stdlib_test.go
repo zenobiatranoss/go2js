@@ -9,11 +9,11 @@ func TestStdlibFormatting(t *testing.T) {
 
 import "fmt"
 
-func main() {
-	fmt.Println("%d %s %x %X %#v", 42, "hello", 255, 255, Point{X:1, Y:2})
-}
+type Point struct{ X, Y int }
 
-type Point struct { X, Y int }
+func main() {
+	fmt.Println("%d %s %x %X %#v", 42, "hello", 255, 255, Point{X: 1, Y: 2})
+}
 `
 	got, want := runCompiledProgram(t, source)
 	if got != want {
@@ -21,4 +21,171 @@ type Point struct { X, Y int }
 	}
 }
 
-type testPoint struct{ X, Y int }
+func TestBlankAndNamedMultiReturnDeclaration(t *testing.T) {
+	source := `package main
+
+import "fmt"
+
+func pair() (int, error) {
+	return 7, nil
+}
+
+func main() {
+	value, _ := pair()
+	fmt.Println("value", value)
+
+	first, second := pair()
+	fmt.Println("both", first, second == nil)
+
+	other, _ := pair()
+	fmt.Println("other", other)
+}
+`
+	got, want := runCompiledProgram(t, source)
+	if got != want {
+		t.Fatalf("multi return mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestPackageErrorValuesAreConstructed(t *testing.T) {
+	source := `package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+)
+
+func main() {
+	fmt.Println(context.Canceled)
+	fmt.Println(context.DeadlineExceeded)
+	fmt.Println(errors.Is(context.Canceled, context.Canceled))
+}
+`
+	got, want := runCompiledProgram(t, source)
+	if got != want {
+		t.Fatalf("package error mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestIOWritersAndReaders(t *testing.T) {
+	source := `package main
+
+import (
+	"fmt"
+	"io"
+	"os"
+	"strings"
+)
+
+func main() {
+	var captured strings.Builder
+	io.MultiWriter(&captured, io.Discard).Write([]byte("tee\n"))
+	fmt.Print(captured.String())
+
+	discarded, err := io.ReadAll(io.TeeReader(strings.NewReader("tee"), io.Discard))
+	fmt.Println(string(discarded), err)
+
+	joined := io.MultiReader(strings.NewReader("ab"), strings.NewReader("cd"))
+	data, _ := io.ReadAll(joined)
+	fmt.Println(string(data))
+
+	limited, _ := io.ReadAll(io.LimitReader(strings.NewReader("0123456789"), 4))
+	fmt.Println(string(limited))
+
+	moved, _ := io.Copy(os.Stdout, strings.NewReader("copied\n"))
+	fmt.Println("copied", moved > 0)
+}
+`
+	got, want := runCompiledProgram(t, source)
+	if got != want {
+		t.Fatalf("io composition mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestLogDefaultLogger(t *testing.T) {
+	source := `package main
+
+import (
+	"fmt"
+	"log"
+	"os"
+)
+
+func main() {
+	log.SetFlags(0)
+	log.SetPrefix("app: ")
+	fmt.Println(log.Default() != nil)
+	fmt.Print(log.Default().Prefix())
+	fmt.Println(log.Default().Flags())
+	fmt.Println(log.Writer() == os.Stderr)
+}
+`
+	got, want := runCompiledProgram(t, source)
+	if got != want {
+		t.Fatalf("log default mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestErrorSentinelValues(t *testing.T) {
+	source := `package main
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"syscall"
+)
+
+var ErrCustom = errors.New("custom")
+
+func main() {
+	fmt.Println(io.EOF)
+	fmt.Println(io.ErrUnexpectedEOF)
+	fmt.Println(os.ErrNotExist)
+	fmt.Println(syscall.ENOENT)
+
+	fmt.Println(errors.Is(io.EOF, io.EOF))
+	fmt.Println(errors.Is(os.ErrNotExist, syscall.ENOENT))
+
+	wrapped := fmt.Errorf("wrap: %w", ErrCustom)
+	fmt.Println(wrapped)
+	fmt.Println(errors.Is(wrapped, ErrCustom))
+	fmt.Println(errors.Unwrap(wrapped) == ErrCustom)
+
+	joined := errors.Join(ErrCustom, io.EOF)
+	fmt.Println(joined)
+	fmt.Println(errors.Is(joined, ErrCustom))
+	fmt.Println(errors.Is(joined, io.EOF))
+}
+`
+	got, want := runCompiledProgram(t, source)
+	if got != want {
+		t.Fatalf("error sentinel mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestContextErrorIdentity(t *testing.T) {
+	source := `package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+)
+
+func main() {
+	fmt.Println(errors.Is(context.Canceled, context.Canceled))
+	fmt.Println(errors.Is(context.Canceled, context.DeadlineExceeded))
+
+	wrapped := fmt.Errorf("layer: %w", context.DeadlineExceeded)
+	fmt.Println(wrapped)
+	fmt.Println(errors.Is(wrapped, context.DeadlineExceeded))
+}
+`
+	got, want := runCompiledProgram(t, source)
+	if got != want {
+		t.Fatalf("context error identity mismatch: got %q want %q", got, want)
+	}
+}

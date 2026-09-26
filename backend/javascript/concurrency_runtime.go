@@ -474,11 +474,19 @@ function go2jsErrorsIs(err, target) {
 		return true;
 	}
 
-	if (err === null || err === undefined || err.cause === undefined) {
+	if (err === null || err === undefined) {
 		return false;
 	}
 
-	return go2jsErrorsIs(err.cause, target);
+	if (err.cause !== undefined) {
+		return go2jsErrorsIs(err.cause, target);
+	}
+
+	if (Array.isArray(err.joined)) {
+		return err.joined.some(part => go2jsErrorsIs(part, target));
+	}
+
+	return false;
 }
 
 function go2jsWrapError(format, ...args) {
@@ -511,14 +519,6 @@ function go2jsErrorsUnwrap(err) {
 	return null;
 }
 
-function go2jsErrorsAs(err, target) {
-	if (typeof target !== "function") {
-		return false;
-	}
-
-	return err instanceof target;
-}
-
 function go2jsErrorsJoin(...errs) {
 	const parts = errs.flat().filter(item => item !== null && item !== undefined);
 
@@ -541,16 +541,13 @@ function go2jsErrorMessage(err) {
 		return "<nil>";
 	}
 
-	return typeof err === "object" && err.message !== undefined ? err.message : String(err);
-}
+	err = go2jsUnwrap(err);
 
-function go2jsContextBackground() {
-	return {
-		__go2js_context: true,
-		done: false,
-		err: null,
-		value: undefined
-	};
+	if (err === null || err === undefined) {
+		return "<nil>";
+	}
+
+	return typeof err === "object" && err.message !== undefined ? err.message : String(err);
 }
 
 function go2jsDuration(nanoseconds) {

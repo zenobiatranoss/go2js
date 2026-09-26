@@ -1,6 +1,9 @@
 package javascript
 
 import (
+	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -98,5 +101,79 @@ func TestRuntimeBundlePreservesSourceOrder(t *testing.T) {
 
 	if first > second {
 		t.Fatal("runtime source order changed")
+	}
+}
+
+func runtimeBundleSources() []string {
+	return []string{
+		runtimeSource(),
+		collectionRuntimeSource(),
+		rangeRuntimeSource(),
+		genericRuntimeSource(),
+		concurrencyRuntimeSource(),
+		pathRuntimeSource(),
+		bufioRuntimeSource(),
+		randRuntimeSource(),
+		cmpRuntimeSource(),
+		errorsRuntimeSource(),
+		extendedRuntimeSource(),
+		extendedRuntimeSource2(),
+		bytesToStringRuntimeSource(),
+		osStdioRuntimeSource(),
+		runeRuntimeSource(),
+		moreRuntimeSource(),
+	}
+}
+
+var runtimeFunctionPattern = regexp.MustCompile(`(?m)^function ([A-Za-z0-9_$]+)\(`)
+
+func TestRuntimeSourcesHaveNoDuplicateFunctions(t *testing.T) {
+	units := runtimeBundleSources()
+	owners := map[string][]string{}
+
+	for index, source := range units {
+		for _, match := range runtimeFunctionPattern.FindAllStringSubmatch(source, -1) {
+			owners[match[1]] = append(owners[match[1]], strconv.Itoa(index))
+		}
+	}
+
+	var duplicates []string
+
+	for name, seen := range owners {
+		if len(seen) > 1 {
+			duplicates = append(duplicates, name+" declared in units "+strings.Join(seen, ", "))
+		}
+	}
+
+	sort.Strings(duplicates)
+
+	for _, duplicate := range duplicates {
+		t.Error("duplicate runtime function: " + duplicate)
+	}
+}
+
+func TestPackageVarValuesHaveMatchingTypes(t *testing.T) {
+	moreStdlibFuncs()
+
+	for key := range packageVarValues {
+		if packageVarTypes[key] == "" {
+			t.Errorf("package var %s has no packageVarTypes entry", key)
+		}
+	}
+
+	for key := range packageVarTypes {
+		if packageVarValues[key] == "" {
+			t.Errorf("package var type %s has no packageVarValues entry", key)
+		}
+	}
+}
+
+func TestPackageVarValuesEmitSingleCall(t *testing.T) {
+	moreStdlibFuncs()
+
+	for key, value := range packageVarValues {
+		if strings.HasSuffix(value, "()") {
+			t.Errorf("package var %s maps to %q, which would emit a doubled call", key, value)
+		}
 	}
 }

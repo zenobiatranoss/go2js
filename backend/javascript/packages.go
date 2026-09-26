@@ -201,17 +201,17 @@ func (e *emitter) emitPackageValue(selector *ast.SelectorExpr) (bool, error) {
 		return true, nil
 	}
 
-	if jsName, ok := stdlibFuncName(pkg, selector.Sel.Name); ok {
-		e.needsRuntime = true
-		e.write(jsName)
-		return true, nil
-	}
-
 	if value, ok := packageVarValues[key]; ok {
 		e.needsRuntime = true
 		e.write(value)
 		e.write("()")
 
+		return true, nil
+	}
+
+	if jsName, ok := stdlibFuncName(pkg, selector.Sel.Name); ok {
+		e.needsRuntime = true
+		e.write(jsName)
 		return true, nil
 	}
 

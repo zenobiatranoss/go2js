@@ -284,15 +284,6 @@ function go2jsRandShuffle(values) {
 	return values;
 }
 
-function go2jsRandPerm(limit) {
-	const values = [];
-
-	for (let i = 0; i < limit; i++) {
-		values.push(i);
-	}
-
-	return go2jsRandShuffle(values);
-}
 `
 }
 
@@ -329,10 +320,6 @@ function go2jsCmpOr(...values) {
 
 func errorsRuntimeSource() string {
 	return `
-function go2jsErrorsNew(text) {
-	return new Error(go2jsStringify(text));
-}
-
 function go2jsEncodingHex(value) {
 	const bytes = Array.isArray(value) ? value : go2jsStringToBytes(go2jsStringify(value));
 	let out = "";

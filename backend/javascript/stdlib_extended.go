@@ -94,6 +94,19 @@ var packageVarValues = map[string]string{
 	"io.Discard":               "go2jsIODiscard",
 	"context.Canceled":         "go2jsContextCanceled",
 	"context.DeadlineExceeded": "go2jsContextDeadlineExceeded",
+	"io.EOF":                   "go2jsIOEOFError",
+	"io.ErrUnexpectedEOF":      `go2jsSentinelError("unexpected EOF")`,
+
+	"os.ErrNotExist":   `go2jsSentinelError("file does not exist")`,
+	"os.ErrExist":      `go2jsSentinelError("file already exists")`,
+	"os.ErrClosed":     `go2jsSentinelError("file already closed")`,
+	"os.ErrPermission": `go2jsSentinelError("permission denied")`,
+
+	"syscall.ENOENT": `go2jsSentinelError("no such file or directory")`,
+	"syscall.EEXIST": `go2jsSentinelError("file exists")`,
+	"syscall.EACCES": `go2jsSentinelError("permission denied")`,
+	"syscall.EPERM":  `go2jsSentinelError("operation not permitted")`,
+	"syscall.EINVAL": `go2jsSentinelError("invalid argument")`,
 }
 
 func extendedRuntimeSource() string {
@@ -723,6 +736,81 @@ function go2jsLogDefault() {
 	return go2jsLogDefaultLogger;
 }
 
+function go2jsLogStandardWriter() {
+	return process.stderr;
+}
+
+function go2jsLogStamp() {
+	const now = new Date();
+	const pad = value => String(value).padStart(2, "0");
+	let stamp = "";
+
+	if ((go2jsLogStandardFlags & 2) === 2) {
+		stamp += pad(now.getHours()) + ":" + pad(now.getMinutes()) + ":" + pad(now.getSeconds()) + " ";
+	}
+
+	if ((go2jsLogStandardFlags & 1) === 1) {
+		stamp = now.getFullYear() + "/" + pad(now.getMonth() + 1) + "/" + pad(now.getDate()) + " " + stamp;
+	}
+
+	return stamp;
+}
+
+function go2jsLogDecorate(text) {
+	return go2jsLogCurrentPrefix + go2jsLogStamp() + text;
+}
+
+function go2jsLogWriteStandard(text) {
+	process.stderr.write(go2jsLogDecorate(text));
+}
+
+function go2jsLogBuildStandard() {
+	return {
+		Print(...values) {
+			go2jsLogWriteStandard(go2jsLogEnsureNewline(go2jsSprint(values)));
+		},
+		Printf(format, ...values) {
+			go2jsLogWriteStandard(go2jsLogEnsureNewline(go2jsSprintf(format, ...values)));
+		},
+		Println(...values) {
+			go2jsLogWriteStandard(go2jsLogSprintln(values));
+		},
+		Fatal(...values) {
+			go2jsLogWriteStandard(go2jsLogEnsureNewline(go2jsSprint(values)));
+			process.exit(1);
+		},
+		Fatalf(format, ...values) {
+			go2jsLogWriteStandard(go2jsLogEnsureNewline(go2jsSprintf(format, ...values)));
+			process.exit(1);
+		},
+		Fatalln(...values) {
+			go2jsLogWriteStandard(go2jsLogSprintln(values));
+			process.exit(1);
+		},
+		Panic(...values) {
+			go2jsPanic(go2jsSprint(values));
+		},
+		Panicf(format, ...values) {
+			go2jsPanic(go2jsSprintf(format, ...values));
+		},
+		Writer() {
+			return go2jsLogStandardWriter();
+		},
+		SetPrefix(value) {
+			go2jsLogCurrentPrefix = go2jsRawText(value);
+		},
+		Prefix() {
+			return go2jsLogCurrentPrefix;
+		},
+		SetFlags(value) {
+			go2jsLogStandardFlags = Number(value) | 0;
+		},
+		Flags() {
+			return go2jsLogStandardFlags;
+		},
+	};
+}
+
 function go2jsLogSetFlags(value) {
 	go2jsLogStandardFlags = Number(value) | 0;
 }
@@ -859,7 +947,7 @@ function go2jsLogNew(writer, prefix, ...rest) {
 
 var go2jsLogStandardFlags = 3;
 var go2jsLogCurrentPrefix = "";
-var go2jsLogDefaultLogger = null;
+var go2jsLogDefaultLogger = go2jsLogBuildStandard();
 
 function go2jsUTF16Encode(value) {
 	const units = [];
@@ -945,6 +1033,19 @@ var packageVarTypes = map[string]string{
 	"io.Discard":               "io.Writer",
 	"context.Canceled":         "error",
 	"context.DeadlineExceeded": "error",
+	"io.EOF":                   "error",
+	"io.ErrUnexpectedEOF":      "error",
+
+	"os.ErrNotExist":   "error",
+	"os.ErrExist":      "error",
+	"os.ErrClosed":     "error",
+	"os.ErrPermission": "error",
+
+	"syscall.ENOENT": "error",
+	"syscall.EEXIST": "error",
+	"syscall.EACCES": "error",
+	"syscall.EPERM":  "error",
+	"syscall.EINVAL": "error",
 }
 
 var packageVarPaths = map[string]string{
@@ -2216,6 +2317,12 @@ function go2jsIOEOFError() {
 	return "EOF";
 }
 
+function go2jsSentinelError(message) {
+	return function go2jsSentinelErrorValue() {
+		return message;
+	};
+}
+
 function go2jsIOEOF() {
 	return "EOF";
 }
@@ -2433,9 +2540,6 @@ function go2jsOSFileMethods() {
 		go2jsRegisterMethod(name + ".Name", go2jsOSFileName);
 		go2jsRegisterMethod(name + ".Close", close);
 	}
-
-	go2jsRegisterMethod("*strings.Builder.Write", go2jsStringsBuilder.prototype.Write);
-	go2jsRegisterMethod("strings.Builder.Write", go2jsStringsBuilder.prototype.Write);
 }
 
 function go2jsOSStdin() {
