@@ -2893,8 +2893,34 @@ function go2jsStringsHasSuffix(s, suffix) {
 	return s.endsWith(suffix);
 }
 
+function go2jsStringsUTF8Index(text, utf16Index) {
+	if (utf16Index < 0) {
+		return utf16Index;
+	}
+
+	let bytes = 0;
+
+	for (let offset = 0; offset < utf16Index; offset++) {
+		const code = text.codePointAt(offset);
+
+		if (code < 0x80) {
+			bytes += 1;
+		} else if (code < 0x800) {
+			bytes += 2;
+		} else {
+			bytes += code < 0x10000 ? 3 : 4;
+		}
+
+		if (code >= 0x10000) {
+			offset++;
+		}
+	}
+
+	return bytes;
+}
+
 function go2jsStringsIndex(s, substr) {
-	return s.indexOf(substr);
+	return go2jsStringsUTF8Index(s, s.indexOf(substr));
 }
 
 function go2jsStringsToUpper(s) {
@@ -3015,7 +3041,7 @@ function go2jsStringsToValidUTF8(s) {
 }
 
 function go2jsStringsLastIndex(s, substr) {
-	return s.lastIndexOf(substr);
+	return go2jsStringsUTF8Index(s, s.lastIndexOf(substr));
 }
 
 function go2jsMathInf(sign) {

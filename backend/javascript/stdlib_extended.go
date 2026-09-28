@@ -1394,11 +1394,12 @@ function go2jsStringsContainsAny(value, chars) {
 
 function go2jsStringsIndexAny(value, chars) {
 	const text = go2jsStringify(value);
-	const set = go2jsStringify(chars);
+	const set = Array.from(go2jsStringify(chars));
+	const { chars: runes, starts } = go2jsStringsByteOffsets(text);
 
-	for (let index = 0; index < text.length; index++) {
-		if (set.includes(text[index])) {
-			return index;
+	for (let index = 0; index < runes.length; index++) {
+		if (set.includes(runes[index])) {
+			return starts[index];
 		}
 	}
 
@@ -1407,11 +1408,12 @@ function go2jsStringsIndexAny(value, chars) {
 
 function go2jsStringsLastIndexAny(value, chars) {
 	const text = go2jsStringify(value);
-	const set = go2jsStringify(chars);
+	const set = Array.from(go2jsStringify(chars));
+	const { chars: runes, starts } = go2jsStringsByteOffsets(text);
 
-	for (let index = text.length - 1; index >= 0; index--) {
-		if (set.includes(text[index])) {
-			return index;
+	for (let index = runes.length - 1; index >= 0; index--) {
+		if (set.includes(runes[index])) {
+			return starts[index];
 		}
 	}
 
@@ -1419,19 +1421,67 @@ function go2jsStringsLastIndexAny(value, chars) {
 }
 
 function go2jsStringsIndexByte(value, b) {
-	return go2jsStringify(value).indexOf(String.fromCodePoint(Number(b)));
+	return go2jsStringsIndexRune(value, b);
 }
 
 function go2jsStringsLastIndexByte(value, b) {
-	return go2jsStringify(value).lastIndexOf(String.fromCodePoint(Number(b)));
+	return go2jsStringsLastIndexRune(value, b);
+}
+
+function go2jsStringsIndexRune(value, r) {
+	const target = String.fromCodePoint(Number(r));
+	const { chars, starts } = go2jsStringsByteOffsets(go2jsStringify(value));
+
+	for (let index = 0; index < chars.length; index++) {
+		if (chars[index] === target) {
+			return starts[index];
+		}
+	}
+
+	return -1;
+}
+
+function go2jsStringsLastIndexRune(value, r) {
+	const target = String.fromCodePoint(Number(r));
+	const { chars, starts } = go2jsStringsByteOffsets(go2jsStringify(value));
+
+	for (let index = chars.length - 1; index >= 0; index--) {
+		if (chars[index] === target) {
+			return starts[index];
+		}
+	}
+
+	return -1;
+}
+
+function go2jsStringsByteOffsets(text) {
+	const chars = Array.from(text);
+	const starts = [];
+	let offset = 0;
+
+	for (const char of chars) {
+		starts.push(offset);
+
+		const code = char.codePointAt(0);
+
+		if (code < 0x80) {
+			offset += 1;
+		} else if (code < 0x800) {
+			offset += 2;
+		} else {
+			offset += code < 0x10000 ? 3 : 4;
+		}
+	}
+
+	return { chars, starts };
 }
 
 function go2jsStringsIndexFunc(value, predicate) {
-	const chars = Array.from(go2jsStringify(value));
+	const { chars, starts } = go2jsStringsByteOffsets(go2jsStringify(value));
 
 	for (let index = 0; index < chars.length; index++) {
 		if (predicate(chars[index].codePointAt(0))) {
-			return index;
+			return starts[index];
 		}
 	}
 
@@ -1562,10 +1612,6 @@ function go2jsStringsMap(mapping, value) {
 
 function go2jsStringsContainsRune(value, r) {
 	return go2jsStringify(value).includes(String.fromCodePoint(Number(r)));
-}
-
-function go2jsStringsIndexRune(value, r) {
-	return go2jsStringify(value).indexOf(String.fromCodePoint(Number(r)));
 }
 
 function go2jsStringsNewReplacer(...args) {

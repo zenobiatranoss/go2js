@@ -85,6 +85,35 @@ var containerListFuncs = map[string]string{
 	"New": "go2jsListNew",
 }
 
+func extraStringsFuncs() {
+	extendStrings := func(entries map[string]string) {
+		for name, helper := range entries {
+			stringsFuncs[name] = helper
+		}
+	}
+
+	extendStrings(map[string]string{
+		"Cut":           "go2jsStringsCut",
+		"SplitN":        "go2jsStringsSplitN",
+		"ToTitle":       "go2jsStringsToTitle",
+		"LastIndexFunc": "go2jsStringsLastIndexFunc",
+	})
+
+	for name, helper := range map[string]string{
+		"QuoteToGraphic":       "go2jsStrconvQuoteToGraphic",
+		"QuoteRuneToGraphic":   "go2jsStrconvQuoteRuneToGraphic",
+		"QuoteRuneToASCII":     "go2jsStrconvQuoteRuneToASCII",
+		"AppendQuoteToGraphic": "go2jsStrconvAppendQuoteToGraphic",
+		"AppendQuoteToASCII":   "go2jsStrconvAppendQuoteToASCII",
+		"FormatUint":           "go2jsStrconvFormatUint",
+		"AppendUint":           "go2jsStrconvAppendUint",
+		"CanBackquote":         "go2jsStrconvCanBackquote",
+		"QuotedPrefix":         "go2jsStrconvQuotedPrefix",
+	} {
+		strconvFuncs[name] = helper
+	}
+}
+
 func moreStdlibFuncs() {
 	stdlibFuncMaps["context"] = contextFuncs
 	stdlibFuncMaps["sync/atomic"] = atomicFuncs
@@ -97,6 +126,8 @@ func moreStdlibFuncs() {
 	stdlibFuncMaps["container/heap"] = heapFuncs
 	stdlibFuncMaps["container/list"] = containerListFuncs
 
+	extraStringsFuncs()
+
 	stdlibPkgAliases["crypto/sha256"] = []string{"sha256"}
 	stdlibPkgAliases["crypto/sha1"] = []string{"sha1"}
 	stdlibPkgAliases["crypto/md5"] = []string{"md5"}
@@ -108,7 +139,260 @@ func moreStdlibFuncs() {
 }
 
 func moreRuntimeSource() string {
-	return `
+	return `function go2jsStrconvQuoteToGraphic(value) {
+	return go2jsStrconvQuoteGraphic(go2jsStringify(value), false, false);
+}
+
+function go2jsStrconvQuoteRuneToGraphic(value) {
+	return go2jsStrconvQuoteGraphic(String.fromCodePoint(Number(value)), false, true);
+}
+
+function go2jsStrconvQuoteRuneToASCII(value) {
+	return go2jsStrconvQuoteGraphic(String.fromCodePoint(Number(value)), true, true);
+}
+
+function go2jsStrconvAppendQuoteToGraphic(target, value) {
+	go2jsStrconvAppendBytes(target, go2jsStrconvQuoteToGraphic(value));
+
+	return target;
+}
+
+function go2jsStrconvAppendQuoteToASCII(target, value) {
+	go2jsStrconvAppendBytes(target, go2jsStrconvQuoteGraphic(go2jsStringify(value), true, false));
+
+	return target;
+}
+
+function go2jsStrconvAppendBytes(target, text) {
+	for (let index = 0; index < text.length; index++) {
+		target.push(text.charCodeAt(index));
+	}
+}
+
+const go2jsQuoteEscapes = {
+	7: "\\a",
+	8: "\\b",
+	9: "\\t",
+	10: "\\n",
+	11: "\\v",
+	12: "\\f",
+	13: "\\r",
+	34: "\\\"",
+	92: "\\\\"
+};
+
+function go2jsStrconvQuoteGraphic(text, asciiOnly, singleRune) {
+	const quote = String.fromCharCode(34);
+	let out = singleRune ? String.fromCharCode(39) : quote;
+
+	for (const char of text) {
+		const code = char.codePointAt(0);
+		const escape = go2jsQuoteEscapes[code];
+
+		if (escape !== undefined) {
+			out += escape;
+			continue;
+		}
+
+		if (code < 0x20 || code === 0x7f) {
+			out += "\\x" + code.toString(16).padStart(2, "0");
+			continue;
+		}
+
+		if (code > 0x7e) {
+			if (asciiOnly) {
+				out += code > 0xffff
+					? "\\U" + code.toString(16).toUpperCase().padStart(8, "0")
+					: "\\u" + code.toString(16).padStart(4, "0");
+				continue;
+			}
+
+			if (code < 0xa0 || (code >= 0x2000 && code <= 0x200f) || (code >= 0x2028 && code <= 0x202f)) {
+				out += "\\u" + code.toString(16).padStart(4, "0");
+				continue;
+			}
+
+			if (code === 0x2028 || code === 0x2029) {
+				out += "\\u" + code.toString(16).padStart(4, "0");
+				continue;
+			}
+		}
+
+		out += char;
+	}
+
+	return out + (singleRune ? String.fromCharCode(39) : quote);
+}
+
+const go2jsStrconvDigits = "0123456789abcdefghijklmnopqrstuvwxyz";
+
+function go2jsStrconvFormatUint(value, base) {
+	let remaining = Number(value);
+
+	if (!Number.isFinite(remaining) || remaining < 0 || Math.floor(remaining) !== remaining) {
+		throw go2jsError("strconv: invalid unsigned integer");
+	}
+
+	if (base < 2 || base > 36) {
+		throw go2jsError("strconv: invalid base " + base);
+	}
+
+	if (remaining === 0) {
+		return "0";
+	}
+
+	let text = "";
+
+	while (remaining > 0) {
+		const digit = remaining % base;
+		text = go2jsStrconvDigits[digit] + text;
+		remaining = Math.floor(remaining / base);
+	}
+
+	return text;
+}
+
+function go2jsStrconvAppendUint(target, value, base) {
+	go2jsStrconvAppendBytes(target, go2jsStrconvFormatUint(value, base));
+
+	return target;
+}
+
+function go2jsStrconvCanBackquote(value) {
+	const text = go2jsStringify(value);
+
+	if (text.indexOf(String.fromCharCode(96)) !== -1 || text.indexOf(String.fromCharCode(13)) !== -1) {
+		return false;
+	}
+
+	for (let index = 0; index < text.length; index++) {
+		const code = text.charCodeAt(index);
+
+		if (code < 0x20 && code !== 9) {
+			return false;
+		}
+
+		if (code === 0x7f) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+function go2jsStrconvQuotedPrefix(value) {
+	const text = go2jsStringify(value);
+	const quote = text[0];
+
+	if (quote !== String.fromCharCode(34) && quote !== String.fromCharCode(39) && quote !== String.fromCharCode(96)) {
+		return [null, go2jsSentinelError("invalid syntax")];
+	}
+
+	for (let index = 1; index < text.length; index++) {
+		const char = text[index];
+
+		if (char === String.fromCharCode(92)) {
+			index++;
+			continue;
+		}
+
+		if (char === quote) {
+			return [text.slice(0, index + 1), null];
+		}
+	}
+
+	return [null, go2jsSentinelError("invalid syntax")];
+}
+
+function go2jsStringsSplitN(value, sep, n) {
+	if (n === 0) {
+		return [];
+	}
+
+	const parts = go2jsStringify(value).split(go2jsStringify(sep));
+
+	if (n > 0 && parts.length > n) {
+		const head = parts.slice(0, n - 1);
+		head.push(parts.slice(n - 1).join(go2jsStringify(sep)));
+		return head;
+	}
+
+	return parts;
+}
+
+const go2jsTitleDigraphs = {
+	"\u01f3": "\u01f2",
+	"\u01f1": "\u01f0",
+	"\u1f88": "\u1f80",
+	"\u1f89": "\u1f81",
+	"\u1f8a": "\u1f82",
+	"\u1f8b": "\u1f83",
+	"\u1f8c": "\u1f84",
+	"\u1f8d": "\u1f85",
+	"\u1f8e": "\u1f86",
+	"\u1f8f": "\u1f87",
+	"\u1f98": "\u1f90",
+	"\u1f99": "\u1f91",
+	"\u1f9a": "\u1f92",
+	"\u1f9b": "\u1f93",
+	"\u1f9c": "\u1f94",
+	"\u1f9d": "\u1f95",
+	"\u1f9e": "\u1f96",
+	"\u1f9f": "\u1f97",
+	"\u1fa8": "\u1fa0",
+	"\u1fa9": "\u1fa1",
+	"\u1faa": "\u1fa2",
+	"\u1fab": "\u1fa3",
+	"\u1fac": "\u1fa4",
+	"\u1fad": "\u1fa5",
+	"\u1fae": "\u1fa6",
+	"\u1faf": "\u1fa7",
+	"\u1fbc": "\u1fb3",
+	"\u1fcc": "\u1fc3",
+	"\u1ffc": "\u1ff3"
+};
+
+function go2jsStringsToTitle(value) {
+	return go2jsStringify(value).replace(/[\s\S]/g, char => {
+		const digraph = go2jsTitleDigraphs[char];
+		return digraph === undefined ? char.toUpperCase() : digraph;
+	});
+}
+
+function go2jsUTF8Length(char) {
+	const code = char.codePointAt(0);
+
+	if (code < 0x80) {
+		return 1;
+	}
+
+	if (code < 0x800) {
+		return 2;
+	}
+
+	return code < 0x10000 ? 3 : 4;
+}
+
+function go2jsStringsLastIndexFunc(value, fn) {
+	const text = go2jsStringify(value);
+	const graphemes = Array.from(text);
+	let offset = 0;
+	const starts = [];
+
+	for (const grapheme of graphemes) {
+		starts.push(offset);
+		offset += go2jsUTF8Length(grapheme);
+	}
+
+	for (let index = graphemes.length - 1; index >= 0; index--) {
+		if (fn(graphemes[index].codePointAt(0))) {
+			return starts[index];
+		}
+	}
+
+	return -1;
+}
+
 const go2jsContextStates = new WeakMap();
 
 function go2jsContextState(cancelled, err, deadline) {
