@@ -162,6 +162,8 @@ func moreStdlibFuncs() {
 	stdlibFuncMaps["crypto/md5"] = md5Funcs
 	stdlibFuncMaps["crypto/hmac"] = hmacFuncs
 	stdlibFuncMaps["encoding/csv"] = csvFuncs
+	stdlibFuncMaps["crypto/rand"] = cryptoRandFuncs
+	stdlibPkgAliases["crypto/rand"] = []string{"rand"}
 	stdlibFuncMaps["container/heap"] = heapFuncs
 	stdlibFuncMaps["container/list"] = containerListFuncs
 

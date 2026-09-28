@@ -36,6 +36,38 @@ function go2jsOSArgs() {
     return process.argv.slice(1);
 }
 
+function go2jsOSGetpid() {
+    return typeof process === "object" && typeof process.pid === "number" ? process.pid : 1;
+}
+
+function go2jsOSGetppid() {
+    return typeof process === "object" && typeof process.ppid === "number" ? process.ppid : 1;
+}
+
+function go2jsOSGetuid() {
+    return typeof process === "object" && typeof process.getuid === "function" ? process.getuid() : -1;
+}
+
+function go2jsOSGeteuid() {
+    return typeof process === "object" && typeof process.geteuid === "function" ? process.geteuid() : -1;
+}
+
+function go2jsOSGetgid() {
+    return typeof process === "object" && typeof process.getgid === "function" ? process.getgid() : -1;
+}
+
+function go2jsOSGetegid() {
+    return typeof process === "object" && typeof process.getegid === "function" ? process.getegid() : -1;
+}
+
+function go2jsOSHostname() {
+    return typeof os === "object" && typeof os.hostname === "function" ? os.hostname() : "";
+}
+
+function go2jsOSExecutable() {
+    return typeof process === "object" && typeof process.execPath === "string" ? process.execPath : "";
+}
+
 function go2jsOSGetenv(name) {
     return process.env[String(name)] || "";
 }
@@ -109,19 +141,23 @@ function go2jsIOReadAll(reader) {
 
     while (true) {
         const result = reader.Read(buffer);
+        const read = Number(result[0]) || 0;
+
+        if (read > 0) {
+            chunks.push(...buffer.slice(0, read));
+        }
 
         if (result[1] !== null && result[1] !== undefined) {
             if (result[1] === "EOF") {
                 break;
             }
+
             return [null, result[1]];
         }
 
-        if (result[0] <= 0) {
+        if (read <= 0) {
             break;
         }
-
-        chunks.push(...buffer.slice(0, result[0]));
     }
 
     return [String.fromCharCode(...chunks), null];
@@ -1716,7 +1752,17 @@ function go2jsEqual(a, b) {
 	}
 
 	if (Array.isArray(a) || Array.isArray(b)) {
-		return false;
+		if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
+			return false;
+		}
+
+		for (let index = 0; index < a.length; index++) {
+			if (!go2jsEqual(a[index], b[index])) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	if (typeof a === "object" || typeof b === "object") {
@@ -2081,6 +2127,115 @@ function go2jsMakeMap() {
 	return new go2jsNativeMap();
 }
 
+function go2jsBinaryBigEndian() {
+    return "be";
+}
+
+function go2jsBinaryLittleEndian() {
+    return "le";
+}
+
+function go2jsBinaryPutUint(order, width, target, value) {
+    let number = Number(value);
+
+    if (!Number.isFinite(number) || number < 0) {
+        number = 0;
+    }
+
+    number = Math.trunc(number) % Math.pow(2, width);
+
+    if (number < 0) {
+        number += Math.pow(2, width);
+    }
+
+    const bytes = new Array(width);
+
+    for (let index = width - 1; index >= 0; index--) {
+        bytes[index] = number % 256;
+        number = Math.floor(number / 256);
+    }
+
+    if (order === "le") {
+        bytes.reverse();
+    }
+
+    for (let index = 0; index < width; index++) {
+        target[index] = bytes[index] & 255;
+    }
+}
+
+function go2jsBinaryUint(order, width, source) {
+    let result = 0;
+
+    if (order === "le") {
+        for (let index = width - 1; index >= 0; index--) {
+            result = result * 256 + (Number(source[index]) & 255);
+        }
+
+        return result;
+    }
+
+    for (let index = 0; index < width; index++) {
+        result = result * 256 + (Number(source[index]) & 255);
+    }
+
+    return result;
+}
+
+function go2jsBinaryUvarint(buffer) {
+    let value = 0;
+    let shift = 0;
+
+    for (let index = 0; index < buffer.length; index++) {
+        const current = Number(buffer[index]) & 255;
+
+        if (current < 0x80) {
+            return [value + current * Math.pow(2, shift), index + 1];
+        }
+
+        value += (current & 0x7f) * Math.pow(2, shift);
+        shift += 7;
+    }
+
+    return [value, 0];
+}
+
+function go2jsBinaryVarint(buffer) {
+    const [value, read] = go2jsBinaryUvarint(buffer);
+
+    if (read === 0) {
+        return [0, 0];
+    }
+
+    return value % 2 === 0 ? [-(value / 2), read] : [(value + 1) / 2, read];
+}
+
+function go2jsBinaryPutUvarint(buffer, value) {
+    let remaining = Math.trunc(Number(value));
+
+    if (!Number.isFinite(remaining) || remaining < 0) {
+        remaining = 0;
+    }
+
+    for (let index = 0; index < buffer.length; index++) {
+        if (remaining < 0x80) {
+            buffer[index] = remaining & 255;
+            return index + 1;
+        }
+
+        buffer[index] = (remaining & 0x7f) | 0x80;
+        remaining = Math.floor(remaining / 128);
+    }
+
+    return 0;
+}
+
+function go2jsBinaryPutVarint(buffer, value) {
+    const number = Math.trunc(Number(value));
+
+    return go2jsBinaryPutUvarint(buffer, number < 0 ? -2 * number : 2 * number);
+}
+
 function go2jsMapTypeName(typeName) {
 	return String(typeName).replace(/\bany\b/g, "interface {}");
 }
@@ -2269,6 +2424,30 @@ function go2jsRange(value) {
 	}
 
 	return Object.entries(value || {});
+}
+
+function go2jsStringByteAt(value, index) {
+	if (typeof value !== "string") {
+		return value[Math.trunc(index)];
+	}
+
+	return value.charCodeAt(Math.trunc(index));
+}
+
+function go2jsZeroArray(length) {
+	const out = new Array(length);
+
+	for (let index = 0; index < length; index++) {
+		out[index] = 0;
+	}
+
+	Object.defineProperty(out, "__go2js_cap", {
+		value: length,
+		writable: true,
+		configurable: true
+	});
+
+	return out;
 }
 
 function go2jsZeroValue(type) {
@@ -2828,11 +3007,21 @@ function go2jsFormatValue(verb, spec, value) {
 			if ((Array.isArray(value) || value instanceof Uint8Array) && !Number.isInteger(Number(value))) {
 				return go2jsFormatHexBytes(value, false);
 			}
+
+			if (typeof value === "string" || typeof value === "boolean") {
+				return go2jsFormatHexBytes(go2jsStringToBytes(value), false);
+			}
+
 			return integerBody(intValue, 16, flags.includes("#") ? "0x" : "", false);
 		case "X":
 			if ((Array.isArray(value) || value instanceof Uint8Array) && !Number.isInteger(Number(value))) {
 				return go2jsFormatHexBytes(value, true);
 			}
+
+			if (typeof value === "string" || typeof value === "boolean") {
+				return go2jsFormatHexBytes(go2jsStringToBytes(value), true);
+			}
+
 			return integerBody(intValue, 16, flags.includes("#") ? "0X" : "", true);
 		case "f": {
 			const num = Number(value);
@@ -3229,6 +3418,23 @@ function go2jsMathInf(sign) {
 
 function go2jsMathNaN() {
 	return NaN;
+}
+
+function go2jsHexEncode(dst, src) {
+	const target = go2jsUnwrap(dst);
+	const bytes = go2jsHexBytes(src);
+
+	if (go2jsLen(target) < bytes.length * 2) {
+		throw new Error("encoding/hex: buffer too small");
+	}
+
+	const text = go2jsHexEncodeToString(bytes);
+
+	for (let index = 0; index < text.length; index++) {
+		target[index] = text.charCodeAt(index);
+	}
+
+	return text.length;
 }
 
 function go2jsHexEncodeToString(src) {

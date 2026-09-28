@@ -439,6 +439,19 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				e.write(")")
 				continue
 			}
+			// Go forwards a multi-value call used as the sole argument of a
+			// call whose parameters match those results.
+			if len(x.Args) == 1 && e.spreadsMultiValueCall(x, arg) {
+				e.write("...(")
+
+				if err := e.emitExpr(arg); err != nil {
+					return err
+				}
+
+				e.write(")")
+				continue
+			}
+
 			if err := e.emitCallArgument(x, i, arg); err != nil {
 				return err
 			}
@@ -591,6 +604,24 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			}
 			e.write(", ")
 			e.write(e.zeroValue(e.mapValueType(x)))
+
+			e.write(")")
+			return nil
+		}
+
+		if e.isStringIndexExpr(x) {
+			e.needsRuntime = true
+			e.write("go2jsStringByteAt(")
+
+			if err := e.emitExpr(x.X); err != nil {
+				return err
+			}
+
+			e.write(", ")
+
+			if err := e.emitExpr(x.Index); err != nil {
+				return err
+			}
 
 			e.write(")")
 			return nil
@@ -1133,4 +1164,38 @@ func (e *emitter) emitErrorsAs(call *ast.CallExpr) error {
 	e.write(`")`)
 
 	return nil
+}
+
+func (e *emitter) spreadsMultiValueCall(call *ast.CallExpr, arg ast.Expr) bool {
+	if call.Ellipsis.IsValid() || !e.isMultiValueCall(arg) {
+		return false
+	}
+
+	signature := e.callSignature(call)
+	if signature == nil || signature.Variadic() {
+		return false
+	}
+
+	params := signature.Params()
+	if params.Len() == 0 {
+		return false
+	}
+
+	results := e.callResultCount(arg)
+	if results == 0 {
+		return false
+	}
+
+	return results == params.Len()
+}
+
+func (e *emitter) isStringIndexExpr(x *ast.IndexExpr) bool {
+	t := e.analyzedType(x.X)
+	if t == nil {
+		return false
+	}
+
+	basic, ok := t.Underlying().(*gotypes.Basic)
+
+	return ok && basic.Info()&gotypes.IsString == gotypes.IsString
 }

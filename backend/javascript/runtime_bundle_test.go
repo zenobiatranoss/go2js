@@ -1,6 +1,10 @@
 package javascript
 
 import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -149,6 +153,24 @@ func TestRuntimeSourcesHaveNoDuplicateFunctions(t *testing.T) {
 
 	for _, duplicate := range duplicates {
 		t.Error("duplicate runtime function: " + duplicate)
+	}
+}
+
+func TestRuntimeSourcesAreValidJavaScript(t *testing.T) {
+	dir := t.TempDir()
+
+	for index, source := range runtimeBundleSources() {
+		path := filepath.Join(dir, fmt.Sprintf("unit_%02d.js", index))
+
+		if err := os.WriteFile(path, []byte(source), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		check := exec.Command("node", "--check", path)
+
+		if output, err := check.CombinedOutput(); err != nil {
+			t.Errorf("runtime unit %d is not valid JavaScript: %v\n%s", index, err, output)
+		}
 	}
 }
 

@@ -1136,6 +1136,30 @@ function go2jsStringToRunes(value) {
 	return Array.from(go2jsRawText(value)).map(char => char.codePointAt(0));
 }
 
+function go2jsNilBytes() {
+	return new Uint8Array(0);
+}
+
+function go2jsNilSlice() {
+	return [];
+}
+
+function go2jsStringToUTF16(value) {
+	if (typeof value === "string") {
+		return Array.from(value).map(character => character.charCodeAt(0));
+	}
+
+	if (value === null || value === undefined) {
+		return [];
+	}
+
+	return Array.from(value).map(item => Number(item));
+}
+
+function go2jsBytesCopy(value) {
+	return go2jsStringToBytes(go2jsBytesToString(value));
+}
+
 function go2jsRunesToString(value) {
 	if (typeof value === "string") {
 		return value;
@@ -1903,32 +1927,12 @@ function go2jsOSMkdirAll(name) {
 	}
 }
 
-function go2jsOSHostname() {
-	try {
-		return require("os").hostname();
-	} catch (err) {
-		return "";
-	}
-}
-
-function go2jsOSExecutable() {
-	try {
-		return require("process").execPath;
-	} catch (err) {
-		return "";
-	}
-}
-
 function go2jsOSTempDir() {
 	try {
 		return require("os").tmpdir();
 	} catch (err) {
 		return "/tmp";
 	}
-}
-
-function go2jsOSGetpid() {
-	return process.pid;
 }
 
 function go2jsOSExit(code) {
@@ -2387,6 +2391,40 @@ function go2jsIOCopy(destination, source) {
 	return [total, null];
 }
 
+function go2jsCryptoRandomBytes(count) {
+	const bytes = new Uint8Array(count);
+
+	if (typeof crypto === "object" && typeof crypto.getRandomValues === "function") {
+		crypto.getRandomValues(bytes);
+
+		return bytes;
+	}
+
+	for (let index = 0; index < count; index++) {
+		bytes[index] = Math.floor(Math.random() * 256);
+	}
+
+	return bytes;
+}
+
+function go2jsCryptoRandRead(buffer) {
+	const target = go2jsUnwrap(buffer);
+	const length = go2jsLen(target);
+	const random = go2jsCryptoRandomBytes(length);
+
+	for (let index = 0; index < length; index++) {
+		target[index] = random[index];
+	}
+
+	return [length, null];
+}
+
+function go2jsCryptoRandReader() {
+	return {
+		Read: go2jsCryptoRandRead
+	};
+}
+
 function go2jsIOEOFError() {
 	return "EOF";
 }
@@ -2415,10 +2453,10 @@ function go2jsIODiscard() {
 
 function go2jsIOReadFull(reader, buffer) {
 	let total = 0;
-	const target = go2jsToArray(buffer);
+	const length = go2jsLen(buffer);
 
-	while (total < target.length) {
-		const chunk = new Array(target.length - total).fill(0);
+	while (total < length) {
+		const chunk = go2jsSliceFrom(buffer, total);
 		const result = go2jsCallMethod(reader, "Read", chunk);
 
 		const read = Array.isArray(result) ? result[0] : Number(result);
@@ -2427,14 +2465,19 @@ function go2jsIOReadFull(reader, buffer) {
 			return [total, go2jsIOUnexpectedEOFErorror()];
 		}
 
-		for (let index = 0; index < read; index++) {
-			target[total + index] = chunk[index];
-		}
-
 		total += read;
 	}
 
 	return [total, null];
+}
+function go2jsSliceFrom(value, start) {
+	const state = go2jsSliceState(value);
+
+	if (!state) {
+		return go2jsToArray(value).slice(start);
+	}
+
+	return go2jsSliceView(state.data, state.offset + start, state.length - start, state.capacity - start);
 }
 
 function go2jsIOUnexpectedEOFErorror() {

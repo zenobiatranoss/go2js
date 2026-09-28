@@ -1,6 +1,9 @@
 package javascript
 
-import "go/types"
+import (
+	"go/types"
+	"strconv"
+)
 
 func (e *emitter) namedResultNames() []string {
 	if e.currentSignature == nil {
@@ -75,9 +78,13 @@ func (e *emitter) zeroValue(t types.Type) string {
 		if named, ok := t.(*types.Named); ok {
 			obj := named.Obj()
 
-			if obj != nil && e.localStructTypes[obj.Name()] {
-				if _, isStruct := named.Underlying().(*types.Struct); isStruct {
+			if _, isStruct := named.Underlying().(*types.Struct); isStruct && obj != nil {
+				if e.localStructTypes[obj.Name()] {
 					return "new " + javaScriptIdentifier(obj.Name()) + "()"
+				}
+
+				if reference := e.typeReference(named); reference != obj.Name() {
+					return "new " + reference + "()"
 				}
 			}
 		}
@@ -124,7 +131,7 @@ func zeroValueForGoType(t types.Type) string {
 		}
 
 	case *types.Array:
-		return "[]"
+		return "go2jsZeroArray(" + strconv.FormatInt(t.Len(), 10) + ")"
 
 	case *types.Struct:
 		return "{}"

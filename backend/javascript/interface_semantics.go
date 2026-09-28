@@ -3,6 +3,7 @@ package javascript
 import (
 	"go/ast"
 	"go/token"
+	"go/types"
 )
 
 func (e *emitter) emitInterfaceComparison(expr *ast.BinaryExpr) (bool, error) {
@@ -14,7 +15,7 @@ func (e *emitter) emitInterfaceComparison(expr *ast.BinaryExpr) (bool, error) {
 		return false, nil
 	}
 
-	if !e.isInterfaceExpr(expr.X) && !e.isInterfaceExpr(expr.Y) {
+	if !e.isInterfaceExpr(expr.X) && !e.isInterfaceExpr(expr.Y) && !e.isAggregateComparison(expr) {
 		return false, nil
 	}
 
@@ -38,4 +39,24 @@ func (e *emitter) emitInterfaceComparison(expr *ast.BinaryExpr) (bool, error) {
 	}
 
 	return true, nil
+}
+func (e *emitter) isAggregateComparison(expr *ast.BinaryExpr) bool {
+	return e.isAggregateType(e.analyzedType(expr.X)) || e.isAggregateType(e.analyzedType(expr.Y))
+}
+
+func (e *emitter) isAggregateType(t types.Type) bool {
+	if t == nil {
+		return false
+	}
+
+	if interfaceType, ok := t.Underlying().(*types.Interface); ok && interfaceType.Empty() {
+		return true
+	}
+
+	switch t.Underlying().(type) {
+	case *types.Struct, *types.Array:
+		return true
+	}
+
+	return false
 }

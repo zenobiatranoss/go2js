@@ -130,7 +130,8 @@ func (e *emitter) isMapExprType(expr ast.Expr) bool {
 func conversionName(t types.Type) string {
 	switch typeName(t) {
 	case "int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64", "uintptr":
+		"uint", "uint8", "uint16", "uint32", "uint64", "uintptr",
+		"byte", "rune":
 		return "Math.trunc"
 	case "float32", "float64":
 		return "Number"
@@ -275,4 +276,64 @@ func (e *emitter) isComplexExpr(expr ast.Expr) bool {
 	default:
 		return false
 	}
+}
+
+func sliceConversionHelper(target, source types.Type) (string, bool) {
+	if target == nil || source == nil {
+		return "", false
+	}
+
+	slice, ok := target.Underlying().(*types.Slice)
+	if !ok {
+		return "", false
+	}
+
+	elem, ok := slice.Elem().Underlying().(*types.Basic)
+	if !ok {
+		return "", false
+	}
+
+	if basic, ok := source.Underlying().(*types.Basic); ok {
+		switch basic.Kind() {
+		case types.String:
+			if elem.Kind() == types.Uint8 {
+				return "go2jsStringToBytes(", true
+			}
+
+			if elem.Kind() == types.Int32 {
+				return "go2jsStringToRunes(", true
+			}
+
+			if elem.Kind() == types.Uint16 {
+				return "go2jsStringToUTF16(", true
+			}
+		}
+	}
+
+	if isNilExprType(source) {
+		if elem.Kind() == types.Uint8 {
+			return "go2jsNilBytes(", true
+		}
+
+		return "go2jsNilSlice(", true
+	}
+
+	if sourceSlice, ok := source.Underlying().(*types.Slice); ok {
+		sourceElem, ok := sourceSlice.Elem().Underlying().(*types.Basic)
+		if ok && sourceElem.Kind() == types.Uint8 && elem.Kind() == types.Uint8 {
+			return "go2jsBytesCopy(", true
+		}
+	}
+
+	return "", false
+}
+
+func isNilExprType(t types.Type) bool {
+	if t == nil {
+		return false
+	}
+
+	basic, ok := t.(*types.Basic)
+
+	return ok && basic.Kind() == types.UntypedNil
 }

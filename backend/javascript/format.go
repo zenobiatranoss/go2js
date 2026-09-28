@@ -3,6 +3,9 @@ package javascript
 import (
 	"fmt"
 	"go/ast"
+	"go/token"
+	"strconv"
+	"strings"
 )
 
 func isFormatCall(call *ast.CallExpr) bool {
@@ -96,6 +99,8 @@ func (e *emitter) emitSprintfCall(args []ast.Expr) error {
 	e.needsRuntime = true
 	e.write("go2jsSprintf(")
 
+	verbs, literal := formatStringVerbs(args)
+
 	for i, arg := range args {
 		if i > 0 {
 			e.write(", ")
@@ -109,12 +114,14 @@ func (e *emitter) emitSprintfCall(args []ast.Expr) error {
 			continue
 		}
 
-		if emitted, err := e.emitStringerValue(arg); emitted || err != nil {
-			if err != nil {
-				return err
-			}
+		if !literal || verbUsesStringer(verbs[i-1]) {
+			if emitted, err := e.emitStringerValue(arg); emitted || err != nil {
+				if err != nil {
+					return err
+				}
 
-			continue
+				continue
+			}
 		}
 
 		if err := e.emitExpr(arg); err != nil {
@@ -124,4 +131,56 @@ func (e *emitter) emitSprintfCall(args []ast.Expr) error {
 
 	e.write(")")
 	return nil
+}
+
+func verbUsesStringer(verb byte) bool {
+	switch verb {
+	case 'v', 's', 'q', 'x', 'X', 't', 'p':
+		return true
+	}
+
+	return false
+}
+func formatStringVerbs(args []ast.Expr) ([]byte, bool) {
+	if len(args) == 0 {
+		return nil, false
+	}
+
+	literal, ok := args[0].(*ast.BasicLit)
+	if !ok || literal.Kind != token.STRING {
+		return nil, false
+	}
+
+	format, err := strconv.Unquote(literal.Value)
+	if err != nil {
+		return nil, false
+	}
+
+	var verbs []byte
+
+	for i := 0; i < len(format); i++ {
+		if format[i] != '%' {
+			continue
+		}
+
+		i++
+
+		for i < len(format) && strings.ContainsRune("#0+- ", rune(format[i])) {
+			i++
+		}
+
+		for i < len(format) && (format[i] == '.' || (format[i] >= '0' && format[i] <= '9')) {
+			i++
+		}
+
+		if i >= len(format) {
+			break
+		}
+
+		if format[i] != '%' {
+			verbs = append(verbs, format[i])
+		}
+	}
+
+	return verbs, true
 }
