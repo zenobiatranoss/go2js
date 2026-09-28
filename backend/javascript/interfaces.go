@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/ast"
 	gotypes "go/types"
+	"strings"
 )
 
 func (e *emitter) isInterfaceExpr(expr ast.Expr) bool {
@@ -375,6 +376,22 @@ func (e *emitter) emitInterfaceCall(call *ast.CallExpr, sel *ast.SelectorExpr) e
 	return nil
 }
 
+func (e *emitter) typeAssertName(expr ast.Expr) string {
+	if name := goTypeNameFromExpr(expr); name != "" {
+		return name
+	}
+
+	return normalizeGoTypeName(e.analyzedType(expr))
+}
+
+func normalizeGoTypeName(t gotypes.Type) string {
+	if t == nil {
+		return ""
+	}
+
+	return strings.ReplaceAll(t.String(), "any", "interface {}")
+}
+
 func (e *emitter) emitTypeAssert(x *ast.TypeAssertExpr) error {
 	if x == nil || x.Type == nil {
 		return fmt.Errorf("unsupported type assertion")
@@ -388,7 +405,7 @@ func (e *emitter) emitTypeAssert(x *ast.TypeAssertExpr) error {
 	}
 
 	e.write(`, "`)
-	e.write(goTypeNameFromExpr(x.Type))
+	e.write(e.typeAssertName(x.Type))
 	e.write(`")`)
 
 	return nil

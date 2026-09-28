@@ -107,3 +107,40 @@ func main() {
 		t.Fatalf("json.Unmarshal into maps mismatch\n--- want ---\n%s\n--- got ---\n%s", want, got)
 	}
 }
+
+func TestMapTypeAssertions(t *testing.T) {
+	source := `package main
+
+import "fmt"
+
+func main() {
+	m := map[string]any{"outer": map[string]any{"inner": "z"}, "list": []any{1, 2}}
+	fmt.Println(m["outer"])
+	fmt.Println(m["list"])
+	fmt.Println(m["outer"].(map[string]any)["inner"])
+
+	mixed := map[string]any{"n": 1, "s": "t", "b": true, "f": 1.5}
+	fmt.Println(mixed["n"], mixed["s"], mixed["b"], mixed["f"])
+
+	if _, ok := mixed["n"].(int); ok {
+		fmt.Println("int")
+	}
+
+	if _, ok := mixed["n"].(string); ok {
+		fmt.Println("string")
+	} else {
+		fmt.Println("not string")
+	}
+
+	values := []any{1, "t", 2.5}
+	if _, ok := values[1].(string); ok {
+		fmt.Println("slice string")
+	}
+}
+`
+
+	got, want := runCompiledProgram(t, source)
+	if got != want {
+		t.Fatalf("map type assertions mismatch\n--- want ---\n%s\n--- got ---\n%s", want, got)
+	}
+}

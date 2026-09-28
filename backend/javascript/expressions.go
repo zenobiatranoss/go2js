@@ -656,8 +656,16 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 
 		if _, ok := x.Type.(*ast.MapType); ok {
 			mapValue := e.mapLiteralValueType(x)
+			mapType := e.analyzedType(x)
 
 			e.needsRuntime = true
+
+			if mapType != nil {
+				e.write("go2jsMapTyped(")
+				e.write(strconv.Quote(mapType.String()))
+				e.write(", ")
+			}
+
 			e.write("go2jsMap([")
 
 			for i, elt := range x.Elts {
@@ -688,6 +696,11 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			}
 
 			e.write("])")
+
+			if mapType != nil {
+				e.write(")")
+			}
+
 			return nil
 		}
 

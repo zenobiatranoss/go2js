@@ -178,7 +178,7 @@ func main() {
 	}
 
 	for _, want := range []string{
-		"let values = go2jsMap([",
+		`let values = go2jsMapTyped("map[string]int", go2jsMap([`,
 		`["alice", 10]`,
 		`["bob", 20]`,
 		`console.log(go2jsMapGet(values, "alice", 0));`,

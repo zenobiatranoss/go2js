@@ -83,7 +83,7 @@ func (e *emitter) emitMultiReturnExpr(expr ast.Expr) error {
 		}
 
 		e.write(`, "`)
-		e.write(goTypeNameFromExpr(assert.Type))
+		e.write(e.typeAssertName(assert.Type))
 		e.write(`")`)
 		return nil
 	}

@@ -464,7 +464,7 @@ func (e *emitter) emitTypeAssertAssignment(stmt *ast.AssignStmt) (bool, error) {
 	}
 
 	e.write(`, "`)
-	e.write(goTypeNameFromExpr(assert.Type))
+	e.write(e.typeAssertName(assert.Type))
 	e.write(`")`)
 	e.write(";")
 	e.newline()
@@ -1004,7 +1004,7 @@ func (e *emitter) emitInlineMultiReturn(stmt *ast.AssignStmt) error {
 		}
 
 		e.write(`, "`)
-		e.write(goTypeNameFromExpr(assert.Type))
+		e.write(e.typeAssertName(assert.Type))
 		e.write(`")`)
 
 		return nil

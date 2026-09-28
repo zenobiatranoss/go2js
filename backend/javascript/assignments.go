@@ -120,7 +120,7 @@ func (e *emitter) emitTypeAssertAssignInline(stmt *ast.AssignStmt, assert *ast.T
 	}
 
 	e.write(`, "`)
-	e.write(goTypeNameFromExpr(assert.Type))
+	e.write(e.typeAssertName(assert.Type))
 	e.write(`")`)
 
 	if !e.inlineMode {

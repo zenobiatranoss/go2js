@@ -1831,6 +1831,10 @@ function go2jsTypeOf(value) {
 	}
 
 	if (value instanceof go2jsNativeMap) {
+		if (value.__go2js_type !== undefined) {
+			return value.__go2js_type;
+		}
+
 		if (value.size === 0) {
 			return "map[interface {}]interface {}";
 		}
@@ -1875,13 +1879,17 @@ function go2jsAssert(value, typeName) {
 }
 
 function go2jsAssertOK(value, typeName) {
-	if (value !== null && value !== undefined &&
-		value.__go2js_interface === true &&
-		value.type === typeName) {
-		return [value.value, true];
-	}
+    if (value !== null && value !== undefined &&
+        value.__go2js_interface === true &&
+        value.type === typeName) {
+        return [value.value, true];
+    }
 
-	return [null, false];
+    if (value !== null && value !== undefined && go2jsTypeOf(value) === typeName) {
+        return [value, true];
+    }
+
+    return [null, false];
 }
 
 function go2jsComplex(re, im) {
@@ -2073,13 +2081,29 @@ function go2jsMakeMap() {
 	return new go2jsNativeMap();
 }
 
+function go2jsMapTypeName(typeName) {
+	return String(typeName).replace(/\bany\b/g, "interface {}");
+}
+
+function go2jsMapTyped(typeName, map) {
+	if (map !== null && map !== undefined && typeName !== undefined && typeName !== null && typeName !== "") {
+		Object.defineProperty(map, "__go2js_type", {
+			value: go2jsMapTypeName(typeName),
+			writable: true,
+			configurable: true,
+			enumerable: false
+		});
+	}
+
+	return map;
+}
+
 function go2jsMap(entries) {
 	const map = new go2jsNativeMap();
 
 	if (!entries) {
 		return map;
 	}
-
 	for (const entry of entries) {
 		if (!Array.isArray(entry) || entry.length < 2) {
 			continue;
