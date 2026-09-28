@@ -2466,11 +2466,23 @@ function go2jsErrorsAs(err, target, wanted) {
 		return false;
 	}
 
-	if (wanted === undefined || wanted === null) {
-		wanted = go2jsErrorNameOf(target);
+	if (wanted === undefined || wanted === null || wanted === "" || wanted === "any") {
+		const declared = go2jsNewTypeOf(target);
+
+		wanted = declared !== "" ? declared : go2jsErrorNameOf(target);
 	}
 
 	wanted = String(wanted).replace(/^\*/, "");
+
+	if (wanted === "error" || wanted === "any" || wanted === "interface {}") {
+		for (let current = err; current !== null && current !== undefined; current = go2jsErrorsUnwrap(current)) {
+			go2jsStoreErrorTarget(target, current);
+
+			return true;
+		}
+
+		return false;
+	}
 
 	for (let current = err; current !== null && current !== undefined; current = go2jsErrorsUnwrap(current)) {
 		if (go2jsErrorNameOf(current) === wanted) {

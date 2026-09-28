@@ -478,6 +478,16 @@ function go2jsErrorsIs(err, target) {
 		return false;
 	}
 
+	if (typeof err.Is === "function" && err.Is(target) === true) {
+		return true;
+	}
+
+	if (err.__go2js_interface === true && typeof err.type === "string" && typeof go2jsMethodTable[err.type + ".Is"] === "function") {
+		if (go2jsMethodTable[err.type + ".Is"](err.value, target) === true) {
+			return true;
+		}
+	}
+
 	if (err.cause !== undefined) {
 		return go2jsErrorsIs(err.cause, target);
 	}

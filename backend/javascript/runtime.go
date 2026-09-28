@@ -1541,11 +1541,15 @@ function go2jsEmbedProxy(target, embedded) {
     });
 }
 
-function go2jsPtr(get, set) {
+function go2jsPtr(get, set, typeName) {
 	const pointer = {
 		get,
 		set
 	};
+
+	if (typeName !== undefined) {
+		pointer.__go2js_new_type = typeName;
+	}
 
 	return new Proxy(pointer, {
 		get(target, property, receiver) {
@@ -1555,6 +1559,10 @@ function go2jsPtr(get, set) {
 
 			if (property === "__go2js_pointer") {
 				return true;
+			}
+
+			if (property === "__go2js_new_type") {
+				return target.__go2js_new_type;
 			}
 
 			const value = target.get();
@@ -1621,15 +1629,30 @@ function go2jsToRune(value) {
 	return String.fromCodePoint(value);
 }
 
-function go2jsNew(value) {
+function go2jsNew(value, typeName) {
 	return go2jsPtr(
 		function() {
 			return value;
 		},
 		function(next) {
 			value = next;
-		}
+		},
+		typeName
 	);
+}
+
+function go2jsNewTypeOf(value) {
+	if (value !== null && value !== undefined && value.__go2js_new_type !== undefined) {
+		return value.__go2js_new_type;
+	}
+
+	if (value !== null && value !== undefined && value.__go2js_pointer === true) {
+		const pointed = value.get();
+
+		return pointed === null || pointed === undefined ? "" : "*" + go2jsNewTypeOf(pointed);
+	}
+
+	return "";
 }
 
 const go2jsMethodTable = Object.create(null);
@@ -1656,6 +1679,12 @@ function go2jsGoTypeName(value) {
 
 	if (value instanceof Error) {
 		return "error";
+	}
+
+	if (value.__go2js_pointer === true) {
+		const pointed = value.get();
+
+		return pointed === null || pointed === undefined ? "*nil" : "*" + go2jsGoTypeName(pointed);
 	}
 
 	if (value.__go2js_interface === true) {
@@ -1685,6 +1714,62 @@ function go2jsGoTypeName(value) {
 	}
 
 	return "interface {}";
+}
+
+function go2jsHasFormatMethod(value) {
+	const receiver = value !== null && value !== undefined && value.__go2js_pointer === true
+		? go2jsDeref(value)
+		: value;
+
+	if (receiver === null || receiver === undefined || typeof receiver !== "object") {
+		return false;
+	}
+
+	if (receiver.__go2js_interface === true || Array.isArray(receiver) || receiver instanceof go2jsNativeMap) {
+		return true;
+	}
+
+	return go2jsNamedFormatMethod(receiver, "Error") !== null || go2jsNamedFormatMethod(receiver, "String") !== null;
+}
+
+function go2jsFormatFields(value) {
+	if (value !== null && value !== undefined && value.__go2js_pointer === true) {
+		return "&" + go2jsFormatFields(go2jsDeref(value));
+	}
+
+	if (value === null || value === undefined || typeof value !== "object" || value.__go2js_interface === true) {
+		return go2jsFormat(value);
+	}
+
+	const parts = [];
+
+	for (const key of Object.keys(value)) {
+		parts.push(key + ":" + go2jsFormat(value[key]));
+	}
+
+	return "{" + parts.join(" ") + "}";
+}
+
+function go2jsNamedFormatMethod(value, name) {
+	if (value.__go2js_interface === true || value.__go2js_pointer === true) {
+		return null;
+	}
+
+	if (typeof value[name] === "function") {
+		return go2jsFormat(value[name]());
+	}
+
+	const ctor = value.constructor;
+
+	if (ctor && typeof ctor.name === "string" && ctor.name !== "Object") {
+		const registered = go2jsLookupTypeName(ctor.name);
+
+		if (registered !== undefined && typeof go2jsMethodTable[registered + "." + name] === "function") {
+			return go2jsFormat(go2jsMethodTable[registered + "." + name](value));
+		}
+	}
+
+	return null;
 }
 
 function go2jsLookupTypeName(jsName) {
@@ -1851,6 +1936,14 @@ function go2jsInterfaceCall(value, method, ...args) {
 	}
 
 	if (value.__go2js_interface !== true) {
+		if (value.__go2js_pointer === true) {
+			return go2jsInterfaceCall(value.get(), method, ...args);
+		}
+
+		if (typeof value[method] === "function") {
+			return value[method](...args);
+		}
+
 		throw new TypeError("value is not an interface");
 	}
 
@@ -1893,6 +1986,12 @@ function go2jsInterfaceCall(value, method, ...args) {
 function go2jsTypeOf(value) {
 	if (value === null || value === undefined) {
 		return "nil";
+	}
+
+	if (value.__go2js_pointer === true) {
+		const pointed = value.get();
+
+		return pointed === null || pointed === undefined ? "nil" : "*" + go2jsTypeOf(pointed);
 	}
 
 	if (value.__go2js_interface === true) {
@@ -1950,10 +2049,42 @@ function go2jsTypeOf(value) {
 	return "interface {}";
 }
 
+function go2jsShortTypeName(name) {
+	const pointer = name.startsWith("*");
+	const trimmed = pointer ? name.slice(1) : name;
+	const parts = trimmed.split(".");
+	const short = parts[parts.length - 1];
+
+	return pointer ? "*" + short : short;
+}
+
+function go2jsSwitchTypeOf(value) {
+	return go2jsShortTypeName(go2jsTypeOf(value));
+}
+
+function go2jsSameTypeName(actual, expected) {
+	if (actual === expected) {
+		return true;
+	}
+
+	if (typeof expected !== "string" || expected.includes(".")) {
+		return false;
+	}
+
+	const base = name => {
+		const trimmed = name.startsWith("*") ? name.slice(1) : name;
+		const dot = trimmed.lastIndexOf(".");
+
+		return dot === -1 ? trimmed : trimmed.slice(dot + 1);
+	};
+
+	return typeof actual === "string" && base(actual) === base(expected);
+}
+
 function go2jsAssert(value, typeName) {
 	if (value !== null && value !== undefined &&
 		value.__go2js_interface === true) {
-		if (value.type === typeName) {
+		if (go2jsSameTypeName(value.type, typeName)) {
 			return value.value;
 		}
 
@@ -1964,7 +2095,7 @@ function go2jsAssert(value, typeName) {
 
 	const actual = go2jsTypeOf(value);
 
-	if (actual === typeName) {
+	if (go2jsSameTypeName(actual, typeName)) {
 		return value;
 	}
 
@@ -1978,7 +2109,7 @@ function go2jsAssertOK(value, typeName) {
         return [value.value, true];
     }
 
-    if (value !== null && value !== undefined && go2jsTypeOf(value) === typeName) {
+    if (value !== null && value !== undefined && go2jsSameTypeName(go2jsTypeOf(value), typeName)) {
         return [value, true];
     }
 
@@ -2589,6 +2720,25 @@ function go2jsFormat(value) {
 		return value.message;
 	}
 
+	if (value.__go2js_interface !== true) {
+		const receiver = value.__go2js_pointer === true ? go2jsDeref(value) : value;
+
+		if (receiver !== null && receiver !== undefined && typeof receiver === "object" &&
+			!Array.isArray(receiver) && !(receiver instanceof go2jsNativeMap)) {
+			const named = go2jsNamedFormatMethod(receiver, "Error");
+
+			if (named !== null) {
+				return named;
+			}
+
+			const stringer = go2jsNamedFormatMethod(receiver, "String");
+
+			if (stringer !== null) {
+				return stringer;
+			}
+		}
+	}
+
 	if (value.__go2js_interface === true) {
 		if (typeof value.type === "string") {
 			const errorer = go2jsMethodTable[value.type + ".Error"];
@@ -2610,6 +2760,7 @@ function go2jsFormat(value) {
 	if (value.__go2js_pointer === true) {
 		return "&" + go2jsFormat(go2jsDeref(value));
 	}
+
 
 	if (value instanceof go2jsNativeMap) {
 		// fmt sorts map keys, so the output must be deterministic.
@@ -3155,8 +3306,17 @@ function go2jsFormatValue(verb, spec, value) {
 
 			return go2jsPad(text, parsed, false);
 		}
-		case "v": {
-			let text = flags.includes("#") ? go2jsGoSyntax(value) : go2jsFormat(value);
+		case "v":
+		case "w": {
+			let text;
+
+			if (flags.includes("#")) {
+				text = go2jsGoSyntax(value);
+			} else if (flags.includes("+") && !go2jsHasFormatMethod(value)) {
+				text = go2jsFormatFields(value);
+			} else {
+				text = go2jsFormat(value);
+			}
 
 			if (precision !== null) {
 				text = text.slice(0, precision);
@@ -3169,7 +3329,7 @@ function go2jsFormatValue(verb, spec, value) {
 				return go2jsPad(go2jsQuoteRune(value), parsed, false);
 			}
 
-			return go2jsPad(JSON.stringify(go2jsStringify(value)), parsed, false);
+			return go2jsPad(JSON.stringify(go2jsFormat(value)), parsed, false);
 		case "t":
 			return go2jsPad(value ? "true" : "false", parsed, false);
 		case "c":
@@ -3577,7 +3737,87 @@ function go2jsHexDecodedLen(s) {
 	return s.length >> 1;
 }
 
+function go2jsHexDump(src) {
+	const bytes = go2jsHexBytes(src);
+	let out = "";
+
+	for (let base = 0; base < bytes.length; base += 16) {
+		const chunk = bytes.slice(base, base + 16);
+		const left = chunk.slice(0, 8);
+		const right = chunk.slice(8);
+
+		out += base.toString(16).padStart(8, "0");
+		out += "  ";
+		out += go2jsHexColumns(left);
+		out += "  ";
+		out += go2jsHexColumns(right);
+		out += "  |";
+		out += chunk.map(b => (b >= 0x20 && b < 0x7f) ? String.fromCharCode(b) : ".").join("");
+		out += "|\n";
+	}
+
+	return out;
+}
+
+function go2jsHexColumns(chunk) {
+	return chunk
+		.map(b => b.toString(16).padStart(2, "0"))
+		.join(" ")
+		.padEnd(23, " ");
+}
+
+function go2jsHexDumper(dst) {
+	const target = go2jsHexDestination(dst);
+
+	return {
+		type: "*hex.Dumper",
+		Write(p) {
+			const bytes = go2jsHexBytes(p);
+			const text = go2jsHexDump(bytes);
+
+			if (target !== null && target !== undefined && typeof target.Write === "function") {
+				target.Write(text);
+			} else {
+				for (let i = 0; i < text.length; i++) {
+					target[i] = text.charCodeAt(i);
+				}
+			}
+
+			return [bytes.length, null];
+		},
+		Close() {
+			return null;
+		}
+	};
+}
+
+function go2jsHexDestination(dst) {
+	let value = dst;
+
+	for (let depth = 0; depth < 8; depth++) {
+		value = go2jsUnwrap(value);
+
+		if (value !== null && value !== undefined && value.__go2js_interface === true) {
+			value = value.value;
+			continue;
+		}
+
+		if (value !== null && value !== undefined && value.__go2js_pointer === true) {
+			value = go2jsDeref(value);
+			continue;
+		}
+
+		return value;
+	}
+
+	return value;
+}
+
 function go2jsHexBytes(src) {
+	if (src === null || src === undefined) {
+		return [];
+	}
+
 	if (Array.isArray(src)) {
 		return src.map((b) => b & 0xff);
 	}

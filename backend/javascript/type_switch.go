@@ -51,7 +51,7 @@ func (e *emitter) emitTypeSwitch(stmt *ast.TypeSwitchStmt) error {
 
 	e.needsRuntime = true
 	e.writeIndent()
-	e.write("switch (go2jsTypeOf(")
+	e.write("switch (go2jsSwitchTypeOf(")
 
 	if err := e.emitExpr(value); err != nil {
 		return err

@@ -273,7 +273,9 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			e.needsRuntime = true
 			e.write("go2jsNew(")
 			e.write(e.collectionZeroValue(t))
-			e.write(")")
+			e.write(`,"`)
+			e.write(concreteTypeName(t))
+			e.write(`")`)
 			return nil
 		}
 
@@ -1243,6 +1245,16 @@ func (e *emitter) emitErrorsAs(call *ast.CallExpr) error {
 	target := e.analysis.TypeOf(call.Args[1])
 	if pointer, ok := target.(*gotypes.Pointer); ok {
 		target = pointer.Elem()
+	}
+
+	if _, isInterface := target.Underlying().(*gotypes.Interface); isInterface {
+		if newCall, ok := call.Args[1].(*ast.CallExpr); ok {
+			if ident, ok := newCall.Fun.(*ast.Ident); ok && ident.Name == "new" && len(newCall.Args) == 1 {
+				if element := e.analyzedType(newCall.Args[0]); element != nil {
+					target = element
+				}
+			}
+		}
 	}
 
 	e.write(`"`)
