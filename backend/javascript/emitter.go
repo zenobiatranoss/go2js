@@ -115,6 +115,14 @@ func EmitWithContextOptionsTarget(file *ast.File, analysis *gotypes.Result, cont
 }
 
 func EmitWithContextOptionsTargetQualified(file *ast.File, analysis *gotypes.Result, context *semantic.Context, includeRuntime bool, target string, selfPackagePath string, qualifiers map[string]string) (string, error) {
+	code, _, err := EmitFile(file, analysis, context, includeRuntime, target, selfPackagePath, qualifiers)
+
+	return code, err
+}
+
+// EmitFile emits one file and reports whether the emitted code depends on the
+// shared runtime bundle, so callers can emit that bundle exactly once.
+func EmitFile(file *ast.File, analysis *gotypes.Result, context *semantic.Context, includeRuntime bool, target string, selfPackagePath string, qualifiers map[string]string) (string, bool, error) {
 	if context == nil && analysis != nil {
 		context = semantic.NewResultContext(analysis, nil)
 	}
@@ -131,17 +139,17 @@ func EmitWithContextOptionsTargetQualified(file *ast.File, analysis *gotypes.Res
 		switch d := decl.(type) {
 		case *ast.FuncDecl:
 			if err := e.emitFunc(d); err != nil {
-				return "", err
+				return "", false, err
 			}
 			e.newline()
 
 		case *ast.GenDecl:
 			if err := e.emitGenDecl(d); err != nil {
-				return "", err
+				return "", false, err
 			}
 
 		default:
-			return "", fmt.Errorf("unsupported declaration: %T", decl)
+			return "", false, fmt.Errorf("unsupported declaration: %T", decl)
 		}
 	}
 
@@ -157,32 +165,41 @@ func EmitWithContextOptionsTargetQualified(file *ast.File, analysis *gotypes.Res
 
 	prefix := ""
 	if includeRuntime && e.needsRuntime {
-		prefix = runtimeBundle(
-			e.buf.String(),
-			runtimeSource(),
-			collectionRuntimeSource(),
-			rangeRuntimeSource(),
-			genericRuntimeSource(),
-			concurrencyRuntimeSource(),
-			pathRuntimeSource(),
-			bufioRuntimeSource(),
-			randRuntimeSource(),
-			cmpRuntimeSource(),
-			errorsRuntimeSource(),
-			extendedRuntimeSource(),
-			extendedRuntimeSource2(),
-			bytesToStringRuntimeSource(),
-			osStdioRuntimeSource(),
-			runeRuntimeSource(),
-			moreRuntimeSource(),
-		)
-		prefix = lowerJavaScriptTarget(prefix, e.target)
-		if prefix != "" {
-			prefix += "\n"
-		}
+		prefix = ProgramRuntime(e.buf.String(), e.target)
 	}
 
-	return prefix + e.buf.String(), nil
+	return prefix + e.buf.String(), e.needsRuntime, nil
+}
+
+// ProgramRuntime returns the runtime bundle a program needs for the given
+// generated code, so callers that concatenate several files can emit it once.
+func ProgramRuntime(requiredSource, target string) string {
+	prefix := runtimeBundle(
+		requiredSource,
+		runtimeSource(),
+		collectionRuntimeSource(),
+		rangeRuntimeSource(),
+		genericRuntimeSource(),
+		concurrencyRuntimeSource(),
+		pathRuntimeSource(),
+		bufioRuntimeSource(),
+		randRuntimeSource(),
+		cmpRuntimeSource(),
+		errorsRuntimeSource(),
+		extendedRuntimeSource(),
+		extendedRuntimeSource2(),
+		bytesToStringRuntimeSource(),
+		osStdioRuntimeSource(),
+		runeRuntimeSource(),
+		moreRuntimeSource(),
+	)
+	prefix = lowerJavaScriptTarget(prefix, normalizeTarget(target))
+
+	if prefix != "" {
+		prefix += "\n"
+	}
+
+	return prefix
 }
 
 func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
@@ -517,7 +534,11 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 			}
 		} else {
 			e.write(" ")
-			if e.resultCount > 1 {
+			if len(s.Results) == 1 && e.resultCount > 1 && e.isMultiValueCall(s.Results[0]) {
+				if err := e.emitExpr(s.Results[0]); err != nil {
+					return err
+				}
+			} else if e.resultCount > 1 {
 				e.write("[")
 				for i, result := range s.Results {
 					if i > 0 {
@@ -872,6 +893,18 @@ func (e *emitter) emitSwitchClauses(s *ast.SwitchStmt) error {
 			}
 		}
 
+		// Each clause gets its own block so declarations stay scoped to it,
+		// matching the implicit scope of a Go case clause.
+		needsScope := !didFallthrough
+
+		if needsScope {
+			e.writeIndent()
+			e.write("{")
+			e.newline()
+			e.indent++
+			e.pushScope()
+		}
+
 		for i := 0; i < bodyCount; i++ {
 			if err := e.emitStmt(clause.Body[i]); err != nil {
 				return err
@@ -879,6 +912,14 @@ func (e *emitter) emitSwitchClauses(s *ast.SwitchStmt) error {
 		}
 
 		if !didFallthrough {
+			if needsScope {
+				e.indent--
+				e.scopes = e.scopes[:len(e.scopes)-1]
+				e.writeIndent()
+				e.write("}")
+				e.newline()
+			}
+
 			e.writeIndent()
 			e.write("break;")
 			e.newline()
@@ -1663,6 +1704,18 @@ func (e *emitter) emitConversion(call *ast.CallExpr) error {
 
 	if named, ok := namedUnderlying(target); ok {
 		return e.emitNamedConversion(call, named, typeName)
+	}
+
+	if helper, ok := sliceConversionHelper(target, e.analyzedType(call.Args[0])); ok {
+		e.needsRuntime = true
+		e.write(helper)
+
+		if err := e.emitExpr(call.Args[0]); err != nil {
+			return err
+		}
+
+		e.write(")")
+		return nil
 	}
 
 	name := conversionName(target)

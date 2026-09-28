@@ -27,6 +27,16 @@ func isSliceType(t gotypes.Type) bool {
 
 func (e *emitter) isArrayOrSliceExpr(expr ast.Expr) bool {
 	t := e.analyzedType(expr)
+
+	for {
+		pointer, ok := t.(*gotypes.Pointer)
+		if !ok {
+			break
+		}
+
+		t = pointer.Elem()
+	}
+
 	return isArrayType(t) || isSliceType(t)
 }
 

@@ -5,6 +5,7 @@ var stdlibFuncMaps = map[string]map[string]string{
 	"bytes":           bytesFuncs,
 	"cmp":             cmpFuncs,
 	"encoding":        encodingFuncs,
+	"encoding/binary": binaryFuncs,
 	"encoding/base64": base64Funcs,
 	"encoding/hex":    hexFuncs,
 	"errors":          errorsFuncs,
@@ -45,6 +46,7 @@ var stdlibPkgAliases = map[string][]string{
 	"math/rand":       {"rand"},
 	"encoding/hex":    {"hex"},
 	"encoding/base64": {"base64"},
+	"encoding/binary": {"binary"},
 	"unicode/utf16":   {"utf16"},
 }
 
@@ -154,6 +156,7 @@ var mathFuncs = map[string]string{
 }
 
 var hexFuncs = map[string]string{
+	"Encode":         "go2jsHexEncode",
 	"EncodeToString": "go2jsHexEncodeToString",
 	"DecodeString":   "go2jsHexDecodeString",
 	"EncodedLen":     "go2jsHexEncodedLen",
@@ -253,9 +256,18 @@ var httpFuncs = map[string]string{
 }
 
 var osFuncs = map[string]string{
-	"Getenv": "go2jsOSGetenv",
-	"Setenv": "go2jsOSSetenv",
-	"Stat":   "go2jsOSStat",
+	"Getenv":     "go2jsOSGetenv",
+	"Setenv":     "go2jsOSSetenv",
+	"Stat":       "go2jsOSStat",
+	"Getpid":     "go2jsOSGetpid",
+	"Getppid":    "go2jsOSGetppid",
+	"Getuid":     "go2jsOSGetuid",
+	"Geteuid":    "go2jsOSGeteuid",
+	"Getgid":     "go2jsOSGetgid",
+	"Getegid":    "go2jsOSGetegid",
+	"Hostname":   "go2jsOSHostname",
+	"Executable": "go2jsOSExecutable",
+	"Args":       "go2jsOSArgs",
 }
 
 var bytesFuncs = map[string]string{

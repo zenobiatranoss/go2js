@@ -150,7 +150,17 @@ func (e *emitter) checkSupportedPackageSelector(selector *ast.SelectorExpr) erro
 
 	position := e.positionOf(selector)
 
-	functions, supported := supportedStdlibPackages[pkg]
+	key := pkg
+
+	// Two standard library packages can share a local identifier, so prefer
+	// the resolved import path over the identifier alone.
+	if path, resolved := e.packageImportPath(selector); resolved {
+		if _, known := supportedStdlibPackages[path]; known {
+			key = path
+		}
+	}
+
+	functions, supported := supportedStdlibPackages[key]
 	if !supported {
 		return e.unsupportedStdlibError(position,
 			"package %q is not available in the JavaScript standard library; supported packages: %s",
@@ -158,7 +168,7 @@ func (e *emitter) checkSupportedPackageSelector(selector *ast.SelectorExpr) erro
 		)
 	}
 
-	if packageConstants[pkg+"."+name] != "" || packageTypes[pkg+"."+name] != "" {
+	if packageConstants[key+"."+name] != "" || packageTypes[key+"."+name] != "" {
 		return nil
 	}
 

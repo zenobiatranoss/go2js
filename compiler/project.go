@@ -3,6 +3,7 @@ package compiler
 import (
 	"fmt"
 	"go/ast"
+	"go/token"
 	"go/types"
 	"hash/fnv"
 	"os"
@@ -32,6 +33,7 @@ type project struct {
 	active         map[string]bool
 	dependencyDirs map[string]string
 	importer       *projectImporter
+	needsRuntime   bool
 }
 
 type projectImporter struct {
@@ -128,7 +130,14 @@ func compileProjectWithOptions(dir string, options Options) (string, error) {
 	mainCode, initCalls := renameInitFunctions(target.pkg, mainCode)
 	mainCode = strings.Replace(mainCode, "main();", initCalls+"main();", 1)
 	out.WriteString(mainCode)
-	return out.String(), nil
+
+	program := out.String()
+
+	if p.options.Runtime && p.needsRuntime {
+		program = javascript.ProgramRuntime(program, p.options.Target) + program
+	}
+
+	return program, nil
 }
 
 func (p *project) load(path string) (*projectPackage, error) {
@@ -315,7 +324,7 @@ func (p *project) emitNamespace(pkg *projectPackage) (string, error) {
 
 func (p *project) emitImports(out *strings.Builder, pkg *Package) error {
 	for _, imported := range pkg.Imports() {
-		if !p.isLocal(imported) {
+		if !p.isTranspilable(imported) {
 			continue
 		}
 
@@ -382,22 +391,23 @@ func (p *project) emitFiles(pkg *projectPackage) (string, error) {
 		qualifiers[imported] = alias
 	}
 
-	for _, file := range pkg.pkg.Files {
-		if file == nil || file.File == nil {
-			return "", fmt.Errorf("compiler: package %q contains invalid file", pkg.path)
-		}
+	for _, file := range orderPackageFiles(pkg.pkg) {
 
-		code, err := javascript.EmitWithContextOptionsTargetQualified(
+		code, needsRuntime, err := javascript.EmitFile(
 			file.File,
 			pkg.analysis.Types,
 			pkg.analysis.Semantic,
-			p.options.Runtime,
+			false,
 			p.options.Target,
 			pkg.path,
 			qualifiers,
 		)
 		if err != nil {
 			return "", err
+		}
+
+		if needsRuntime {
+			p.needsRuntime = true
 		}
 
 		if out.Len() > 0 {
@@ -646,7 +656,8 @@ func exportedNames(pkg *Package) []string {
 				for _, spec := range d.Specs {
 					switch s := spec.(type) {
 					case *ast.TypeSpec:
-						if s.Name != nil && ast.IsExported(s.Name.Name) && !seen[s.Name.Name] {
+						if d.Tok == token.TYPE && emitsRuntimeValue(s) && s.Name != nil &&
+							ast.IsExported(s.Name.Name) && !seen[s.Name.Name] {
 							seen[s.Name.Name] = true
 							names = append(names, s.Name.Name)
 						}
@@ -702,4 +713,243 @@ func CompileProjectWithOptions(dir string, options Options) (string, error) {
 	}
 
 	return javascript.FormatJavaScript(output, options.Minify), nil
+}
+
+func orderPackageFiles(pkg *Package) []*ParsedFile {
+	files := make([]*ParsedFile, 0, len(pkg.Files))
+	owner := make(map[string]int)
+	references := make(map[string]map[string]bool)
+	bodies := make(map[string]map[string]bool)
+
+	for index, file := range pkg.Files {
+		if file == nil || file.File == nil {
+			files = append(files, file)
+			continue
+		}
+
+		files = append(files, file)
+		collectPackageDependencies(file.File, index, owner, references, bodies)
+	}
+
+	const (
+		unvisited = 0
+		visiting  = 1
+		visited   = 2
+	)
+
+	state := make([]int, len(files))
+	ordered := make([]*ParsedFile, 0, len(files))
+
+	var resolve func(name string, seen map[string]bool) map[string]bool
+
+	resolve = func(name string, seen map[string]bool) map[string]bool {
+		if seen[name] {
+			return nil
+		}
+
+		seen[name] = true
+
+		direct := references[name]
+		resolved := make(map[string]bool, len(direct))
+
+		for reference := range direct {
+			if _, isVariable := owner[reference]; isVariable && reference != name {
+				resolved[reference] = true
+				continue
+			}
+
+			if _, isFunction := bodies[reference]; isFunction {
+				references[reference] = bodies[reference]
+			}
+
+			for nested := range resolve(reference, seen) {
+				resolved[nested] = true
+			}
+		}
+
+		return resolved
+	}
+
+	uses := make([]map[string]bool, len(files))
+
+	for index, file := range files {
+		if file == nil || file.File == nil {
+			continue
+		}
+
+		uses[index] = make(map[string]bool)
+
+		for name := range packageLevelVarNames(file.File) {
+			for dependency := range resolve(name, map[string]bool{}) {
+				uses[index][dependency] = true
+			}
+		}
+	}
+
+	var visit func(index int)
+
+	visit = func(index int) {
+		if index < 0 || index >= len(files) || state[index] != unvisited {
+			return
+		}
+
+		state[index] = visiting
+
+		for name := range uses[index] {
+			declared, ok := owner[name]
+			if !ok || declared == index {
+				continue
+			}
+
+			visit(declared)
+		}
+
+		state[index] = visited
+		ordered = append(ordered, files[index])
+	}
+
+	for index := range files {
+		visit(index)
+	}
+
+	return ordered
+}
+
+func collectPackageDependencies(
+	file *ast.File,
+	index int,
+	owner map[string]int,
+	references map[string]map[string]bool,
+	bodies map[string]map[string]bool,
+) {
+	for name := range packageLevelVarNames(file) {
+		owner[name] = index
+	}
+
+	for _, decl := range file.Decls {
+		switch declaration := decl.(type) {
+		case *ast.FuncDecl:
+			if declaration.Recv != nil || declaration.Name == nil {
+				continue
+			}
+
+			if _, seen := bodies[declaration.Name.Name]; !seen {
+				bodies[declaration.Name.Name] = make(map[string]bool)
+			}
+
+			declaredNames := declaration.Name.Name
+
+			if declaration.Body != nil {
+				for name := range referencedIdents(declaration.Body) {
+					bodies[declaredNames][name] = true
+				}
+			}
+
+		case *ast.GenDecl:
+			if declaration.Tok != token.VAR {
+				continue
+			}
+
+			for _, spec := range declaration.Specs {
+				value, ok := spec.(*ast.ValueSpec)
+				if !ok {
+					continue
+				}
+
+				used := make(map[string]bool)
+
+				for _, expr := range value.Values {
+					for name := range referencedIdents(expr) {
+						used[name] = true
+					}
+				}
+
+				for _, name := range value.Names {
+					if name != nil {
+						references[name.Name] = used
+					}
+				}
+			}
+		}
+	}
+}
+
+func referencedIdents(node ast.Node) map[string]bool {
+	found := make(map[string]bool)
+
+	ast.Inspect(node, func(current ast.Node) bool {
+		if ident, ok := current.(*ast.Ident); ok {
+			found[ident.Name] = true
+		}
+
+		return true
+	})
+
+	return found
+}
+
+func packageLevelVarNames(file *ast.File) map[string]bool {
+	names := make(map[string]bool)
+
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.VAR {
+			continue
+		}
+
+		for _, spec := range gen.Specs {
+			value, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+
+			for _, name := range value.Names {
+				if name != nil {
+					names[name.Name] = true
+				}
+			}
+		}
+	}
+
+	return names
+}
+
+func initializerReferences(file *ast.File) map[string]bool {
+	references := make(map[string]bool)
+
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.VAR {
+			continue
+		}
+
+		for _, spec := range gen.Specs {
+			value, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+
+			for _, expr := range value.Values {
+				ast.Inspect(expr, func(node ast.Node) bool {
+					if ident, ok := node.(*ast.Ident); ok {
+						references[ident.Name] = true
+					}
+
+					return true
+				})
+			}
+		}
+	}
+
+	return references
+}
+func emitsRuntimeValue(spec *ast.TypeSpec) bool {
+	switch declared := spec.Type.(type) {
+	case *ast.StructType:
+		return true
+	case *ast.InterfaceType:
+		return declared.Methods != nil && len(declared.Methods.List) > 0
+	}
+
+	return false
 }

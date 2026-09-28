@@ -203,6 +203,20 @@ func (e *emitter) emitPackageValue(selector *ast.SelectorExpr) (bool, error) {
 		return true, nil
 	}
 
+	if selector.X != nil {
+		if order, ok := selector.X.(*ast.SelectorExpr); ok && e.isBinarySelector(order) {
+			if handled, err := e.emitBinaryOrderValue(selector); handled {
+				return handled, err
+			}
+		}
+	}
+
+	if value, ok := cryptoRandValues[key]; ok {
+		e.needsRuntime = true
+		e.write(packageVarValueExpression(value))
+		return true, nil
+	}
+
 	if value, ok := packageVarValues[key]; ok {
 		e.needsRuntime = true
 		e.write(packageVarValueExpression(value))
@@ -497,6 +511,10 @@ var errorsFunctions = map[string]string{
 }
 
 func (e *emitter) emitPackageCall(call *ast.CallExpr, selector *ast.SelectorExpr) (bool, error) {
+	if order, ok := selector.X.(*ast.SelectorExpr); ok && isBinaryOrderSelector(order) {
+		return e.emitBinaryCall(call, selector)
+	}
+
 	if !e.isPackageSelector(selector) {
 		return false, nil
 	}
@@ -523,6 +541,10 @@ func (e *emitter) emitPackageCall(call *ast.CallExpr, selector *ast.SelectorExpr
 		}
 	case "atomic":
 		return e.emitAtomicCall(call, selector)
+	case "binary":
+		if handled, err := e.emitBinaryCall(call, selector); handled {
+			return handled, err
+		}
 	case "context":
 		helper, ok := contextFunctions[selector.Sel.Name]
 		if !ok {
