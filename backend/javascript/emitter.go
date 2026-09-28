@@ -238,6 +238,7 @@ func ProgramRuntime(requiredSource, target string) string {
 		netRuntimeSource(),
 		templateRuntimeSource(),
 		osFileRuntimeSource(),
+		runtimeShimRuntimeSource(),
 		sortSliceShimRuntimeSource(),
 	)
 	prefix = lowerJavaScriptTarget(prefix, normalizeTarget(target))
@@ -434,7 +435,7 @@ func (e *emitter) emitDeferredReturn(stmt *ast.ReturnStmt) error {
 			}
 
 			e.writeIndent()
-			e.write(names[i])
+			e.write(e.resolveName(names[i]))
 			e.write(" = ")
 
 			if err := e.emitReturnExpr(result, i); err != nil {
@@ -580,14 +581,14 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 				names := e.namedResultNames()
 				if len(names) == 1 {
 					e.write(" ")
-					e.write(names[0])
+					e.write(e.resolveName(names[0]))
 				} else if len(names) > 1 {
 					e.write(" [")
 					for i, name := range names {
 						if i > 0 {
 							e.write(", ")
 						}
-						e.write(name)
+						e.write(e.resolveName(name))
 					}
 					e.write("]")
 				}
@@ -1945,11 +1946,11 @@ func (e *emitter) emitStructMethodBody(fn *ast.FuncDecl, receiverType string) er
 		e.needsRuntime = true
 		e.write("go2jsRegisterMethod(")
 		e.write(strconv.Quote(receiverType + "." + fn.Name.Name))
-		e.write(", ")
+		e.write(", function(receiver, ...args) { return ")
 		e.write(receiverType)
 		e.write(".prototype.")
 		e.write(fn.Name.Name)
-		e.write(")")
+		e.write(".call(receiver, ...args); })")
 		e.write(";")
 		e.newline()
 	}

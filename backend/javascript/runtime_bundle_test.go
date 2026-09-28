@@ -129,6 +129,7 @@ func runtimeBundleSources() []string {
 		funcTypeRuntimeSource(),
 		reflectRuntimeSource(),
 		netRuntimeSource(),
+		runtimeShimRuntimeSource(),
 		templateRuntimeSource(),
 		osFileRuntimeSource(),
 	}

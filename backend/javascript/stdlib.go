@@ -235,6 +235,8 @@ var hexFuncs = map[string]string{
 	"DecodeString":   "go2jsHexDecodeString",
 	"EncodedLen":     "go2jsHexEncodedLen",
 	"DecodedLen":     "go2jsHexDecodedLen",
+	"Dump":           "go2jsHexDump",
+	"Dumper":         "go2jsHexDumper",
 }
 
 var sortFuncs = map[string]string{
