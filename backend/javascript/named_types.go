@@ -60,6 +60,10 @@ func (e *emitter) emitNamedConversion(call *ast.CallExpr, named *gotypesstd.Name
 		return fmt.Errorf("unsupported conversion")
 	}
 
+	if signature, ok := namedFuncType(named); ok {
+		return e.emitFuncTypeConversion(call, signature)
+	}
+
 	basic, ok := named.Underlying().(*gotypesstd.Basic)
 	if !ok {
 		return fmt.Errorf("unsupported conversion to %s", named.Obj().Name())
@@ -96,6 +100,8 @@ func (e *emitter) emitNamedConversion(call *ast.CallExpr, named *gotypesstd.Name
 	if name == "go2jsComplexConvert" {
 		e.needsRuntime = true
 	}
+
+	name = e.safeConversionName(name)
 
 	e.write(name)
 	e.write("(")
@@ -372,6 +378,12 @@ func (e *emitter) emitScalarNamedFuncDecl(fn *ast.FuncDecl) (bool, error) {
 	e.write(scalarNamedMethodName(typeName, fn.Name.Name))
 	e.write("(")
 	e.write(receiver.Names[0].Name)
+
+	if parameters := e.functionParameters(fn); len(parameters) > 0 {
+		e.write(", ")
+		e.emitFunctionParameters(fn)
+	}
+
 	e.write(") ")
 
 	if err := e.emitFuncBody(fn.Body); err != nil {
@@ -416,9 +428,9 @@ func (e *emitter) typeObject(name string) (gotypesstd.Object, bool) {
 }
 
 func (e *emitter) isScalarReceiverIdent(expr ast.Expr) bool {
-	ident, ok := expr.(*ast.Ident)
+	ident, isIdent := expr.(*ast.Ident)
 
-	return ok && e.scalarReceiver != "" && ident.Name == e.scalarReceiver && !e.isShadowed(ident.Name)
+	return isIdent && e.scalarReceiver != "" && ident.Name == e.scalarReceiver && !e.isShadowed(ident.Name)
 }
 
 func (e *emitter) emitPointerOperand(expr ast.Expr) error {
@@ -589,7 +601,21 @@ func (e *emitter) emitNamedAggregateMethodCall(call *ast.CallExpr, selector *ast
 	e.needsRuntime = true
 	e.write("go2jsNamedMethodCall(")
 
-	if err := e.emitExpr(selector.X); err != nil {
+	if e.needsAddressedReceiver(selector, method) {
+		e.write("go2jsPtr(() => ")
+
+		if err := e.emitExpr(selector.X); err != nil {
+			return true, err
+		}
+
+		e.write(", __go2js_assigned => ")
+
+		if err := e.emitExpr(selector.X); err != nil {
+			return true, err
+		}
+
+		e.write(" = __go2js_assigned)")
+	} else if err := e.emitExpr(selector.X); err != nil {
 		return true, err
 	}
 
@@ -607,6 +633,24 @@ func (e *emitter) emitNamedAggregateMethodCall(call *ast.CallExpr, selector *ast
 
 	e.write(")")
 	return true, nil
+}
+
+func (e *emitter) needsAddressedReceiver(selector *ast.SelectorExpr, method *gotypesstd.Func) bool {
+	signature, ok := method.Type().(*gotypesstd.Signature)
+	if !ok || signature.Recv() == nil {
+		return false
+	}
+
+	if _, ok := signature.Recv().Type().(*gotypesstd.Pointer); !ok {
+		return false
+	}
+
+	switch selector.X.(type) {
+	case *ast.Ident, *ast.SelectorExpr, *ast.IndexExpr:
+		return true
+	}
+
+	return false
 }
 
 func (e *emitter) emitNamedAggregateFuncDecl(fn *ast.FuncDecl) (bool, error) {
@@ -646,15 +690,19 @@ func (e *emitter) emitNamedAggregateFuncDecl(fn *ast.FuncDecl) (bool, error) {
 		return false, nil
 	}
 
+	aggregateReceiver := "_recv"
+
 	if len(receiver.Names) > 0 {
-		e.aggregateReceiver = receiver.Names[0].Name
+		aggregateReceiver = receiver.Names[0].Name
 	}
+
+	e.aggregateReceiver = aggregateReceiver
 
 	e.needsRuntime = true
 	e.write("function ")
 	e.write(namedAggregateMethodName(typeName, fn.Name.Name))
 	e.write("(")
-	e.write(receiver.Names[0].Name)
+	e.write(aggregateReceiver)
 
 	if parameters := e.functionParameters(fn); len(parameters) > 0 {
 		e.write(", ")

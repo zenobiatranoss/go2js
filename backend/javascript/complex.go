@@ -85,5 +85,35 @@ func integerLiteralJavaScript(lit *ast.BasicLit) (string, error) {
 		}
 	}
 
-	return lit.Value, nil
+	if value.Kind() != constant.Int {
+		return lit.Value, nil
+	}
+
+	normalized, err := normalizedIntegerLiteral(value)
+
+	if err != nil {
+		return "", err
+	}
+
+	return normalized, nil
+}
+
+func normalizedIntegerLiteral(value constant.Value) (string, error) {
+	exact := constant.ToInt(value)
+	if exact.Kind() != constant.Int {
+		return exact.ExactString(), nil
+	}
+
+	text, ok := new(big.Int).SetString(exact.ExactString(), 10)
+	if !ok {
+		return exact.ExactString(), nil
+	}
+
+	if !text.IsInt64() || text.Int64() > maxSafeIntegerLiteral || text.Int64() < -maxSafeIntegerLiteral {
+		return "", fmt.Errorf(
+			"integer literal %s exceeds the JavaScript safe integer range and cannot be represented exactly",
+			exact.ExactString())
+	}
+
+	return text.String(), nil
 }

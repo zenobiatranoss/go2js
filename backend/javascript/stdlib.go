@@ -1,5 +1,12 @@
 package javascript
 
+import (
+	"go/ast"
+	"strings"
+
+	gotypes "go/types"
+)
+
 var stdlibFuncMaps = map[string]map[string]string{
 	"bufio":           bufioFuncs,
 	"bytes":           bytesFuncs,
@@ -61,7 +68,74 @@ func stdlibFuncName(pkg, name string) (string, bool) {
 	return jsName, ok
 }
 
-// stdlibPkgPath resolves a local package identifier to its import path.
+// stdlibFuncNameForIdent resolves a package symbol through the import path of
+// the package identifier, so aliased imports of third-party packages never fall
+// back to a standard library table that happens to share their local name.
+func (e *emitter) stdlibFuncNameForIdent(pkgIdent *ast.Ident, name string) (string, bool) {
+	if pkgIdent == nil {
+		return "", false
+	}
+
+	if e.analysis != nil {
+		if alias, ok := e.analysis.Uses[pkgIdent].(*gotypes.PkgName); ok && alias.Imported() != nil {
+			functions, ok := stdlibFuncMaps[alias.Imported().Path()]
+			if ok {
+				jsName, found := functions[name]
+
+				return jsName, found
+			}
+		}
+	}
+
+	key := e.stdlibKeyForIdent(pkgIdent)
+	if key == "" {
+		return "", false
+	}
+
+	return stdlibFuncName(key, name)
+}
+
+// stdlibKeyForIdent returns the standard library table key a package identifier
+// refers to, or an empty string when the import is not a standard library
+// package. A local name alone is not enough: "github.com/spf13/pflag" is
+// commonly imported as "flag" and must not resolve to the flag shim.
+func (e *emitter) stdlibKeyForIdent(pkgIdent *ast.Ident) string {
+	if pkgIdent == nil {
+		return ""
+	}
+
+	name := pkgIdent.Name
+
+	if e.analysis == nil {
+		if _, ok := stdlibFuncMaps[name]; ok {
+			return name
+		}
+
+		return ""
+	}
+
+	alias, ok := e.analysis.Uses[pkgIdent].(*gotypes.PkgName)
+	if !ok || alias.Imported() == nil {
+		if _, ok := stdlibFuncMaps[name]; ok {
+			return name
+		}
+
+		return ""
+	}
+
+	path := alias.Imported().Path()
+
+	if stdlibPkgPath(name) == path || strings.HasSuffix(path, "/"+name) {
+		return name
+	}
+
+	if _, ok := stdlibFuncMaps[path]; ok {
+		return path
+	}
+
+	return ""
+}
+
 func stdlibPkgPath(pkg string) string {
 	for path, aliases := range stdlibPkgAliases {
 		for _, alias := range aliases {

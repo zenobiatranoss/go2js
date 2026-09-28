@@ -189,7 +189,20 @@ func (e *emitter) isTypeConversion(call *ast.CallExpr) bool {
 		return false
 	}
 
-	switch call.Fun.(type) {
+	fun := call.Fun
+
+	for {
+		paren, ok := fun.(*ast.ParenExpr)
+		if !ok {
+			break
+		}
+
+		fun = paren.X
+	}
+
+	call.Fun = fun
+
+	switch fun.(type) {
 	case *ast.ArrayType, *ast.MapType, *ast.StarExpr, *ast.ChanType, *ast.InterfaceType, *ast.StructType:
 		return e.analyzedType(call) != nil
 	}
@@ -209,6 +222,10 @@ func (e *emitter) isTypeConversion(call *ast.CallExpr) bool {
 
 		if _, ok := e.analysis.Uses[ident].(*types.TypeName); !ok {
 			return false
+		}
+
+		if e.analyzedType(call) != nil {
+			return true
 		}
 
 		return stdlibTypeConversions[e.packageKeyFor(fun)] != ""

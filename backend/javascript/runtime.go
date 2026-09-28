@@ -1429,10 +1429,6 @@ function go2jsNamedMethodCall(receiver, typeName, method, ...args) {
 		throw new TypeError("method " + typeName + "." + method + " is not implemented");
 	}
 
-	if (receiver !== null && receiver !== undefined && receiver.__go2js_pointer === true) {
-		return fn(receiver.get(), ...args);
-	}
-
 	return fn(receiver, ...args);
 }
 
@@ -1566,6 +1562,10 @@ function go2jsPtr(get, set) {
 				return undefined;
 			}
 
+			if (typeof value !== "object" && typeof value !== "function") {
+				return undefined;
+			}
+
 			return Reflect.get(value, property, value);
 		},
 
@@ -1603,6 +1603,22 @@ function go2jsStorePtr(ptr, value) {
 		throw new TypeError("value is not a pointer");
 	}
 	ptr.set(value);
+}
+
+function go2jsToString(value) {
+	return String(value);
+}
+
+function go2jsToNumber(value) {
+	return Number(value);
+}
+
+function go2jsToBool(value) {
+	return Boolean(value);
+}
+
+function go2jsToRune(value) {
+	return String.fromCodePoint(value);
 }
 
 function go2jsNew(value) {
@@ -1716,8 +1732,6 @@ function go2jsInterface(value, typeName) {
 		wrapper.__go2js_error_name = String(typeName).replace(/^\*/, "");
 	}
 
-	// Slices and arrays stay real arrays so callers can index, iterate and
-	// spread them, while still reporting their declared type.
 	if (Array.isArray(value) && typeof typeName === "string" && typeName.startsWith("[")) {
 		for (const [key, entry] of Object.entries(wrapper)) {
 			Object.defineProperty(value, key, {
@@ -1844,6 +1858,17 @@ function go2jsInterfaceCall(value, method, ...args) {
 
 	if (target === null || target === undefined) {
 		throw new TypeError("call of method on nil interface");
+	}
+
+	if (typeof value.type === "string" && target.__go2js_pointer === true) {
+		const key = value.type.startsWith("*")
+			? value.type.slice(1) + "." + method
+			: value.type + "." + method;
+		const registered = go2jsMethodTable[key];
+
+		if (typeof registered === "function") {
+			return registered(target, ...args);
+		}
 	}
 
 	let fn = target[method];
@@ -2705,14 +2730,54 @@ function go2jsSprintln(...values) {
 	return go2jsJoinOperands(values, true) + "\n";
 }
 
-function go2jsFprint(writer, values, suffix, separator) {
+function go2jsWriterMethod(writer, method) {
 	const target = go2jsUnwrap(writer);
 
-	if (target === null || target === undefined || typeof target.Write !== "function") {
+	if (target === null || target === undefined) {
+		return null;
+	}
+
+	if (target === process.stdout || target === process.stderr || target === process.stdin) {
+		return function(...args) {
+			if (method === "WriteString") {
+				target.write(go2jsBytesToString(args[0]));
+				return go2jsStringify(args[0]).length;
+			}
+
+			target.write(go2jsBytesToString(args[0]));
+			return go2jsToArray(args[0]).length;
+		};
+	}
+
+	if (typeof target[method] === "function") {
+		const own = target[method];
+		return function(...args) {
+			return own.apply(target, args);
+		};
+	}
+
+	const type = writer !== null && writer !== undefined && typeof writer.type === "string" ? writer.type : "";
+
+	if (type !== "") {
+		const registered = go2jsMethodTable[type + "." + method];
+		if (typeof registered === "function") {
+			return function(...args) {
+				return registered.call(target, ...args);
+			};
+		}
+	}
+
+	return null;
+}
+
+function go2jsFprint(writer, values, suffix, separator) {
+	const write = go2jsWriterMethod(writer, "Write");
+
+	if (write === null) {
 		throw new Error("fmt.Fprint: writer does not implement Write");
 	}
 
-	const written = target.Write(go2jsStringToBytes(go2jsOutputText(values, suffix, separator)));
+	const written = write(go2jsStringToBytes(go2jsOutputText(values, suffix, separator)));
 
 	return Array.isArray(written) ? written[0] : written;
 }
@@ -2878,8 +2943,14 @@ function go2jsVerbAccepts(verb, typeName) {
 				typeName === "uint64" || typeName === "uintptr" || typeName === "rune" ||
 				typeName === "byte" || typeName === "float32" || typeName === "float64";
 		case "s":
-		case "q":
 			return !go2jsIsBasicScalarName(typeName) || typeName === "string";
+		case "q":
+			return typeName === "int" || typeName === "int8" || typeName === "int16" ||
+				typeName === "int32" || typeName === "int64" || typeName === "uint" ||
+				typeName === "uint8" || typeName === "uint16" || typeName === "uint32" ||
+				typeName === "uint64" || typeName === "uintptr" || typeName === "rune" ||
+				typeName === "byte" || typeName === "string" ||
+				!go2jsIsBasicScalarName(typeName);
 		case "x":
 		case "X":
 			return true;
@@ -2971,6 +3042,14 @@ function go2jsQualifiedTypeName(name) {
 	}
 
 	return name;
+}
+
+function go2jsQuoteRune(code) {
+	if (code < 0 || code > 0x10FFFF || (code >= 0xD800 && code <= 0xDFFF)) {
+		return "'\\u" + code.toString(16).toUpperCase().padStart(4, "0") + "'";
+	}
+
+	return "'" + String.fromCodePoint(code) + "'";
 }
 
 function go2jsFormatValue(verb, spec, value) {
@@ -3086,6 +3165,10 @@ function go2jsFormatValue(verb, spec, value) {
 			return go2jsPad(text, parsed, false);
 		}
 		case "q":
+			if (typeof value === "number" && Number.isInteger(value)) {
+				return go2jsPad(go2jsQuoteRune(value), parsed, false);
+			}
+
 			return go2jsPad(JSON.stringify(go2jsStringify(value)), parsed, false);
 		case "t":
 			return go2jsPad(value ? "true" : "false", parsed, false);

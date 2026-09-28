@@ -250,6 +250,8 @@ func (p *project) emitNamespace(pkg *projectPackage) (string, error) {
 	out.WriteString(namespace)
 	out.WriteString(" = (() => {\n")
 
+	emittedNames := map[string]bool{}
+
 	for _, imported := range pkg.pkg.Imports() {
 		if !p.isTranspilable(imported) {
 			continue
@@ -273,20 +275,19 @@ func (p *project) emitNamespace(pkg *projectPackage) (string, error) {
 			continue
 		}
 
-		alias, err := p.alias(pkg.pkg, imported)
-		if err != nil {
-			return "", err
-		}
+		for _, alias := range p.localNames(pkg.pkg)[imported] {
+			if emittedNames[alias] {
+				continue
+			}
 
-		if alias == "" {
-			continue
-		}
+			emittedNames[alias] = true
 
-		out.WriteString("const ")
-		out.WriteString(alias)
-		out.WriteString(" = ")
-		out.WriteString(p.namespace(imported))
-		out.WriteString(";\n")
+			out.WriteString("const ")
+			out.WriteString(alias)
+			out.WriteString(" = ")
+			out.WriteString(p.namespace(imported))
+			out.WriteString(";\n")
+		}
 	}
 
 	if len(pkg.pkg.Imports()) > 0 {
@@ -323,6 +324,8 @@ func (p *project) emitNamespace(pkg *projectPackage) (string, error) {
 }
 
 func (p *project) emitImports(out *strings.Builder, pkg *Package) error {
+	emitted := map[string]bool{}
+
 	for _, imported := range pkg.Imports() {
 		if !p.isTranspilable(imported) {
 			continue
@@ -346,20 +349,19 @@ func (p *project) emitImports(out *strings.Builder, pkg *Package) error {
 			continue
 		}
 
-		alias, err := p.alias(pkg, imported)
-		if err != nil {
-			return err
-		}
+		for _, alias := range p.localNames(pkg)[imported] {
+			if emitted[alias] {
+				continue
+			}
 
-		if alias == "" {
-			continue
-		}
+			emitted[alias] = true
 
-		out.WriteString("const ")
-		out.WriteString(alias)
-		out.WriteString(" = ")
-		out.WriteString(p.namespace(imported))
-		out.WriteString(";\n")
+			out.WriteString("const ")
+			out.WriteString(alias)
+			out.WriteString(" = ")
+			out.WriteString(p.namespace(imported))
+			out.WriteString(";\n")
+		}
 	}
 
 	if len(pkg.Imports()) > 0 {
@@ -369,55 +371,157 @@ func (p *project) emitImports(out *strings.Builder, pkg *Package) error {
 	return nil
 }
 
+func moveMainFileLast(ordered []*ParsedFile) []*ParsedFile {
+	for index, file := range ordered {
+		if file == nil || !hasMainFunc(file.File) {
+			continue
+		}
+
+		if index == len(ordered)-1 {
+			return ordered
+		}
+
+		result := make([]*ParsedFile, 0, len(ordered))
+		result = append(result, ordered[:index]...)
+		result = append(result, ordered[index+1:]...)
+		result = append(result, file)
+
+		return result
+	}
+
+	return ordered
+}
+
 func (p *project) emitFiles(pkg *projectPackage) (string, error) {
 	var out strings.Builder
 
 	qualifiers := map[string]string{}
 
-	for _, imported := range pkg.pkg.Imports() {
-		if !p.isLocal(imported) {
+	locals := p.localNames(pkg.pkg)
+
+	for path, list := range locals {
+		if len(list) == 0 {
 			continue
 		}
 
-		alias, err := p.alias(pkg.pkg, imported)
-		if err != nil {
-			return "", err
-		}
-
-		if alias == "" {
-			continue
-		}
-
-		qualifiers[imported] = alias
+		qualifiers[path] = list[0]
 	}
 
-	for _, file := range orderPackageFiles(pkg.pkg) {
+	ordered := moveMainFileLast(orderPackageFiles(pkg.pkg))
 
-		code, needsRuntime, err := javascript.EmitFile(
-			file.File,
-			pkg.analysis.Types,
-			pkg.analysis.Semantic,
-			false,
-			p.options.Target,
-			pkg.path,
-			qualifiers,
-		)
-		if err != nil {
-			return "", err
+	passes := []func(*ast.File, *gotypes.Result, *semantic.Context, bool, string, string, map[string]string) (string, bool, error){
+		javascript.EmitFileTypes,
+		javascript.EmitFileBody,
+	}
+
+	for _, emit := range passes {
+		for _, file := range ordered {
+			code, needsRuntime, err := emit(
+				file.File,
+				pkg.analysis.Types,
+				pkg.analysis.Semantic,
+				false,
+				p.options.Target,
+				pkg.path,
+				qualifiers,
+			)
+			if err != nil {
+				return "", err
+			}
+
+			if needsRuntime {
+				p.needsRuntime = true
+			}
+
+			if code == "" {
+				continue
+			}
+
+			if out.Len() > 0 {
+				out.WriteString("\n")
+			}
+
+			out.WriteString(code)
 		}
-
-		if needsRuntime {
-			p.needsRuntime = true
-		}
-
-		if out.Len() > 0 {
-			out.WriteString("\n")
-		}
-
-		out.WriteString(code)
 	}
 
 	return out.String(), nil
+}
+
+func hasMainFunc(file *ast.File) bool {
+	if file == nil {
+		return false
+	}
+
+	for _, decl := range file.Decls {
+		if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv == nil && fn.Name != nil && fn.Name.Name == "main" {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (p *project) localNames(pkg *Package) map[string][]string {
+	names := map[string]map[string]bool{}
+
+	for _, file := range pkg.Files {
+		if file == nil || file.File == nil {
+			continue
+		}
+
+		for _, spec := range file.File.Imports {
+			if spec.Path == nil {
+				continue
+			}
+
+			path, err := strconv.Unquote(spec.Path.Value)
+			if err != nil || path == "" {
+				continue
+			}
+
+			if !p.isTranspilable(path) {
+				continue
+			}
+
+			local := ""
+
+			switch {
+			case spec.Name == nil:
+				loaded, err := p.load(path)
+				if err != nil || loaded.pkg.Name == "" {
+					continue
+				}
+
+				local = loaded.pkg.Name
+			case spec.Name.Name == "_" || spec.Name.Name == ".":
+				continue
+			default:
+				local = spec.Name.Name
+			}
+
+			if names[path] == nil {
+				names[path] = map[string]bool{}
+			}
+
+			names[path][local] = true
+		}
+	}
+
+	result := map[string][]string{}
+
+	for path, set := range names {
+		list := make([]string, 0, len(set))
+
+		for name := range set {
+			list = append(list, name)
+		}
+
+		sort.Strings(list)
+		result[path] = list
+	}
+
+	return result
 }
 
 func (p *project) alias(pkg *Package, path string) (string, error) {
@@ -786,6 +890,8 @@ func orderPackageFiles(pkg *Package) []*ParsedFile {
 		}
 	}
 
+	typeOwner := collectTypeDependencies(files, uses)
+
 	var visit func(index int)
 
 	visit = func(index int) {
@@ -796,7 +902,11 @@ func orderPackageFiles(pkg *Package) []*ParsedFile {
 		state[index] = visiting
 
 		for name := range uses[index] {
-			declared, ok := owner[name]
+			declared, ok := typeOwner[name]
+			if !ok {
+				declared, ok = owner[name]
+			}
+
 			if !ok || declared == index {
 				continue
 			}
@@ -813,6 +923,110 @@ func orderPackageFiles(pkg *Package) []*ParsedFile {
 	}
 
 	return ordered
+}
+
+func collectTypeDependencies(files []*ParsedFile, uses []map[string]bool) map[string]int {
+	declared := make(map[string]int)
+
+	for index, file := range files {
+		if file == nil || file.File == nil {
+			continue
+		}
+
+		for name := range packageLevelTypeNames(file.File) {
+			declared[name] = index
+		}
+	}
+
+	for index, file := range files {
+		if file == nil || file.File == nil {
+			continue
+		}
+
+		if uses[index] == nil {
+			uses[index] = make(map[string]bool)
+		}
+
+		for _, decl := range file.File.Decls {
+			function, ok := decl.(*ast.FuncDecl)
+			if !ok || function.Recv == nil || function.Name == nil {
+				continue
+			}
+
+			receiver := methodReceiverTypeName(function)
+
+			if receiver == "" {
+				continue
+			}
+
+			if target, ok := declared[receiver]; ok && target != index {
+				uses[index][receiver] = true
+				_ = target
+			}
+
+			if function.Body == nil {
+				continue
+			}
+
+			for name := range referencedIdents(function.Body) {
+				if target, ok := declared[name]; ok && target != index {
+					uses[index][name] = true
+				}
+			}
+
+			for _, parameter := range function.Type.Params.List {
+				for name := range referencedIdents(parameter.Type) {
+					if target, ok := declared[name]; ok && target != index {
+						uses[index][name] = true
+					}
+				}
+			}
+		}
+	}
+
+	return declared
+}
+
+func methodReceiverTypeName(function *ast.FuncDecl) string {
+	if function == nil || function.Recv == nil || len(function.Recv.List) != 1 {
+		return ""
+	}
+
+	return receiverTypeName(function.Recv.List[0].Type)
+}
+
+func receiverTypeName(expr ast.Expr) string {
+	switch value := expr.(type) {
+	case *ast.Ident:
+		return value.Name
+	case *ast.StarExpr:
+		return receiverTypeName(value.X)
+	case *ast.IndexExpr:
+		return receiverTypeName(value.X)
+	case *ast.IndexListExpr:
+		return receiverTypeName(value.X)
+	}
+
+	return ""
+}
+
+func packageLevelTypeNames(file *ast.File) map[string]bool {
+	names := make(map[string]bool)
+
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.TYPE {
+			continue
+		}
+
+		for _, spec := range gen.Specs {
+			if typed, ok := spec.(*ast.TypeSpec); ok && typed.Name != nil {
+				names[typed.Name.Name] = true
+			}
+		}
+	}
+
+	return names
 }
 
 func collectPackageDependencies(
