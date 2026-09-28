@@ -49,6 +49,12 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		} else if x.Name == e.aggregateReceiver && !e.isShadowed(x.Name) {
 			e.write(x.Name)
 		} else if x.Name == e.receiver && !e.isShadowed(x.Name) {
+			if e.funcLitDepth > 0 && e.receiverBinding != "" {
+				e.write(e.receiverBinding)
+
+				break
+			}
+
 			e.write("this")
 		} else if x.Name == e.scalarReceiver && !e.isShadowed(x.Name) {
 			e.needsRuntime = true
@@ -834,7 +840,13 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 
 		e.write(") ")
 
-		if err := e.emitFuncBody(x.Body); err != nil {
+		e.funcLitDepth++
+
+		err := e.emitFuncBody(x.Body)
+
+		e.funcLitDepth--
+
+		if err != nil {
 			return err
 		}
 

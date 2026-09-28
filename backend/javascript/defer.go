@@ -41,7 +41,11 @@ func (e *emitter) emitFuncBody(body *ast.BlockStmt) error {
 	}
 
 	if !hasDefer(body) {
-		return e.emitBlock(body)
+		if err := e.emitBlock(body); err != nil {
+			return err
+		}
+
+		return nil
 	}
 
 	e.needsRuntime = true

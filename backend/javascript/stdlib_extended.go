@@ -2747,12 +2747,46 @@ function go2jsOSFileMethods() {
 		return null;
 	};
 
+	const descriptor = function() {
+		return typeof this.fd === "number" ? this.fd : 0;
+	};
+
+	const attach = function(stream, label) {
+		if (stream === null || typeof stream !== "object") {
+			return;
+		}
+
+		const named = function() {
+			return label;
+		};
+
+		for (const name of ["Fd", "Name", "Close"]) {
+			if (Object.prototype.hasOwnProperty.call(stream, name)) {
+				continue;
+			}
+
+			const value = name === "Name" ? named : name === "Close" ? close : descriptor;
+
+			Object.defineProperty(stream, name, {
+				value: value,
+				enumerable: false,
+				writable: true,
+				configurable: true
+			});
+		}
+	};
+
 	for (const name of ["*os.File", "*File"]) {
 		go2jsRegisterMethod(name + ".Write", go2jsOSFileWrite);
 		go2jsRegisterMethod(name + ".WriteString", go2jsOSFileWriteString);
 		go2jsRegisterMethod(name + ".Name", go2jsOSFileName);
 		go2jsRegisterMethod(name + ".Close", close);
+		go2jsRegisterMethod(name + ".Fd", descriptor);
 	}
+
+	attach(process.stdout, "/dev/stdout");
+	attach(process.stderr, "/dev/stderr");
+	attach(process.stdin, "/dev/stdin");
 }
 
 function go2jsOSStdin() {
