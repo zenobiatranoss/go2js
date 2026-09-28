@@ -165,9 +165,71 @@ func (e *emitter) emitJSONCall(call *ast.CallExpr, selector *ast.SelectorExpr) (
 
 		e.write(", ")
 		e.write(e.emitJSONFieldMapping(e.analyzedType(call.Args[1])))
+		e.write(", ")
+		e.write(e.emitJSONDestination(e.analyzedType(call.Args[1])))
 		e.write(")")
 		return true, nil
 	}
 
 	return false, nil
+}
+
+func (e *emitter) emitJSONDestination(t gotypes.Type) string {
+	pointer, ok := t.(*gotypes.Pointer)
+	if !ok {
+		return "null"
+	}
+
+	descriptor := jsonDestination(pointer.Elem())
+	if descriptor == "" {
+		return "null"
+	}
+
+	return descriptor
+}
+
+func jsonDestination(t gotypes.Type) string {
+	if t == nil {
+		return ""
+	}
+
+	switch value := t.(type) {
+	case *gotypes.Map:
+		return `{"map":true,"value":` + strconv.Quote(jsonValueKind(value.Elem())) + `}`
+	case *gotypes.Slice:
+		if array, ok := value.Elem().Underlying().(*gotypes.Array); ok {
+			return `{"array":true,"value":` + strconv.Quote(jsonValueKind(array.Elem())) + `}`
+		}
+
+		return `{"slice":true,"value":` + strconv.Quote(jsonValueKind(value.Elem())) + `}`
+	}
+
+	return ""
+}
+
+func jsonValueKind(t gotypes.Type) string {
+	if t == nil {
+		return "any"
+	}
+
+	switch value := t.(type) {
+	case *gotypes.Basic:
+		if value.Info()&gotypes.IsString == gotypes.IsString {
+			return "string"
+		}
+
+		if value.Info()&gotypes.IsBoolean == gotypes.IsBoolean {
+			return "bool"
+		}
+
+		return "number"
+
+	case *gotypes.Interface:
+		return "any"
+
+	case *gotypes.Map, *gotypes.Slice, *gotypes.Pointer:
+		return jsonValueKind(value.Underlying())
+	}
+
+	return "any"
 }

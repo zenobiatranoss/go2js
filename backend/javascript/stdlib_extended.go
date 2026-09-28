@@ -2445,22 +2445,77 @@ function go2jsErrorsNew(value) {
 	return new Error(go2jsStringify(value));
 }
 
-function go2jsErrorsAs(err, target) {
+function go2jsErrorsAs(err, target, wanted) {
 	if (err === null || err === undefined) {
-		return null;
+		return false;
 	}
 
+	if (wanted === undefined || wanted === null) {
+		wanted = go2jsErrorNameOf(target);
+	}
+
+	wanted = String(wanted).replace(/^\*/, "");
+
+	for (let current = err; current !== null && current !== undefined; current = go2jsErrorsUnwrap(current)) {
+		if (go2jsErrorNameOf(current) === wanted) {
+			go2jsStoreErrorTarget(target, current);
+
+			return true;
+		}
+
+		if (Array.isArray(current.joined)) {
+			for (const part of current.joined) {
+				if (go2jsErrorNameOf(part) === wanted) {
+					go2jsStoreErrorTarget(target, part);
+
+					return true;
+				}
+			}
+		}
+	}
+
+	return false;
+}
+
+function go2jsErrorNameOf(value) {
+	if (value === null || value === undefined) {
+		return "";
+	}
+
+	if (value.__go2js_error_name !== undefined) {
+		return value.__go2js_error_name;
+	}
+
+	if (value.__go2js_interface === true) {
+		return value.__go2js_error_name === undefined
+			? go2jsErrorNameOf(value.value)
+			: value.__go2js_error_name;
+	}
+
+	if (value instanceof Error) {
+		return "error";
+	}
+
+	return typeof value;
+}
+
+function go2jsStoreErrorTarget(target, value) {
 	if (target === null || typeof target !== "object") {
-		return err;
+		return;
 	}
 
-	const name = target.__go2js_error_name;
+	value = go2jsUnwrap(value);
 
-	if (name !== undefined && err.name === name) {
-		return err;
+	if (typeof target.set === "function") {
+		target.set(value);
+		return;
 	}
 
-	return null;
+	try {
+		target.value = value;
+	} catch (err) {
+		void err;
+	}
 }
 
 function go2jsRandPerm(n) {

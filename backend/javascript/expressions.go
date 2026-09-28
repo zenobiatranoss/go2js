@@ -244,6 +244,10 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			return e.emitFormatCall(x)
 		}
 
+		if e.isErrorsAsCall(x) {
+			return e.emitErrorsAs(x)
+		}
+
 		if ident, ok := x.Fun.(*ast.Ident); ok && ident.Name == "new" {
 			if len(x.Args) != 1 {
 				return fmt.Errorf("invalid new argument count")
@@ -1068,4 +1072,52 @@ var stdlibMethodMultiReturn = map[string]bool{
 	"bytes.Buffer.WriteTo":    true,
 	"bytes.Buffer.ReadFrom":   true,
 	"bytes.Buffer.Read":       true,
+}
+
+func (e *emitter) isErrorsAsCall(call *ast.CallExpr) bool {
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || selector.Sel.Name != "As" || len(call.Args) != 2 {
+		return false
+	}
+
+	pkg, ok := selector.X.(*ast.Ident)
+	if !ok {
+		return false
+	}
+
+	if e.analysis != nil {
+		if resolved, ok := e.analysis.Uses[pkg].(*gotypes.PkgName); ok {
+			return resolved.Imported().Path() == "errors"
+		}
+	}
+
+	return pkg.Name == "errors"
+}
+
+func (e *emitter) emitErrorsAs(call *ast.CallExpr) error {
+	e.needsRuntime = true
+	e.write("go2jsErrorsAs(")
+
+	if err := e.emitExpr(call.Args[0]); err != nil {
+		return err
+	}
+
+	e.write(",")
+
+	if err := e.emitExpr(call.Args[1]); err != nil {
+		return err
+	}
+
+	e.write(",")
+
+	target := e.analysis.TypeOf(call.Args[1])
+	if pointer, ok := target.(*gotypes.Pointer); ok {
+		target = pointer.Elem()
+	}
+
+	e.write(`"`)
+	e.write(concreteTypeName(target))
+	e.write(`")`)
+
+	return nil
 }

@@ -313,6 +313,12 @@ func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 		e.write(".prototype.")
 		e.write(fn.Name.Name)
 		e.write(" = function(")
+
+		if err := e.emitStructMethodBody(fn, receiverType); err != nil {
+			return err
+		}
+
+		return nil
 	} else {
 		e.write("function ")
 		e.write(fn.Name.Name)
@@ -1731,4 +1737,49 @@ func go2jsByteLiteral(expr ast.Expr) (string, bool) {
 	out.WriteString("]")
 
 	return out.String(), true
+}
+
+func (e *emitter) emitStructMethodBody(fn *ast.FuncDecl, receiverType string) error {
+	e.emitFunctionParameters(fn)
+	e.write(") ")
+
+	receiver := fn.Recv.List[0]
+	if len(receiver.Names) > 0 {
+		e.receiver = receiver.Names[0].Name
+	}
+
+	if err := e.emitFuncBody(fn.Body); err != nil {
+		return err
+	}
+
+	if pointer, ok := receiver.Type.(*ast.StarExpr); ok {
+		_ = pointer
+		e.needsRuntime = true
+		e.write("go2jsRegisterMethod(")
+		e.write(strconv.Quote("*" + receiverType + "." + fn.Name.Name))
+		e.write(", function(")
+		e.write(e.receiver)
+		e.write(") { return ")
+		e.write(receiverType)
+		e.write(".prototype.")
+		e.write(fn.Name.Name)
+		e.write(".call(")
+		e.write(e.receiver)
+		e.write("); }")
+		e.write(");")
+		e.newline()
+	} else {
+		e.needsRuntime = true
+		e.write("go2jsRegisterMethod(")
+		e.write(strconv.Quote(receiverType + "." + fn.Name.Name))
+		e.write(", ")
+		e.write(receiverType)
+		e.write(".prototype.")
+		e.write(fn.Name.Name)
+		e.write(")")
+		e.write(";")
+		e.newline()
+	}
+
+	return nil
 }

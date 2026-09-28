@@ -726,7 +726,7 @@ function go2jsJSONEmpty(value) {
     return false;
 }
 
-function go2jsJSONUnmarshal(data, target, fields) {
+function go2jsJSONUnmarshal(data, target, fields, destination) {
     try {
         const value = JSON.parse(
             typeof data === "string"
@@ -734,7 +734,15 @@ function go2jsJSONUnmarshal(data, target, fields) {
                 : new TextDecoder().decode(Uint8Array.from(data))
         );
 
-        if (target !== null && target !== undefined && typeof target === "object") {
+        if (target === null || target === undefined) {
+            return null;
+        }
+
+        if (destination !== null && destination !== undefined && destination.map === true) {
+            go2jsJSONDecodeMap(value, target, destination.value);
+            return null;
+        }
+        if (typeof target === "object") {
             if (value !== null && typeof value === "object") {
                 go2jsJSONDecode(value, target, fields);
             }
@@ -744,6 +752,101 @@ function go2jsJSONUnmarshal(data, target, fields) {
         return null;
     } catch (err) {
         return err;
+    }
+}
+
+function go2jsJSONCoerceString(value) {
+    if (value === null || value === undefined) {
+        return "";
+    }
+
+    if (typeof value === "string") {
+        return value;
+    }
+
+    return String(value);
+}
+
+function go2jsJSONCoerceAny(value) {
+    if (value === null || value === undefined) {
+        return null;
+    }
+
+    if (Array.isArray(value)) {
+        return value.map(go2jsJSONCoerceAny);
+    }
+
+    if (typeof value === "object") {
+        const map = go2jsMakeMap();
+
+        for (const key of Object.keys(value)) {
+            go2jsMapSet(map, key, go2jsJSONCoerceAny(value[key]));
+        }
+
+        return map;
+    }
+
+    return value;
+}
+
+function go2jsJSONCoerce(value, kind) {
+    if (kind === "string") {
+        return go2jsJSONCoerceString(value);
+    }
+
+    if (kind === "number") {
+        if (typeof value === "number") {
+            return value;
+        }
+
+        const parsed = Number(value);
+
+        return Number.isNaN(parsed) ? 0 : parsed;
+    }
+
+    if (kind === "bool") {
+        return Boolean(value);
+    }
+
+    return go2jsJSONCoerceAny(value);
+}
+
+function go2jsJSONTargetMap(target) {
+    const direct = target instanceof go2jsNativeMap ? target : null;
+
+    if (direct !== null) {
+        return direct;
+    }
+
+    if (target !== null && target !== undefined && typeof target.get === "function") {
+        const current = target.get();
+
+        if (current instanceof go2jsNativeMap) {
+            return current;
+        }
+
+        const created = go2jsMakeMap();
+        target.set(created);
+
+        return created;
+    }
+
+    return null;
+}
+
+function go2jsJSONDecodeMap(value, target, kind) {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+        return;
+    }
+
+    const map = go2jsJSONTargetMap(target);
+
+    if (map === null) {
+        return;
+    }
+
+    for (const key of Object.keys(value)) {
+        go2jsMapSet(map, go2jsJSONCoerceString(key), go2jsJSONCoerce(value[key], kind));
     }
 }
 
@@ -1567,11 +1670,17 @@ function go2jsRegisterStructFormat(name, fields) {
 }
 
 function go2jsInterface(value, typeName) {
-	return {
+	const wrapper = {
 		__go2js_interface: true,
 		type: typeName,
 		value: value
 	};
+
+	if (typeName !== undefined && typeName !== null && typeName !== "" && value !== null && value !== undefined && typeof value === "object") {
+		wrapper.__go2js_error_name = String(typeName).replace(/^\*/, "");
+	}
+
+	return wrapper;
 }
 
 
@@ -2232,6 +2341,12 @@ function go2jsFormat(value) {
 
 	if (value.__go2js_interface === true) {
 		if (typeof value.type === "string") {
+			const errorer = go2jsMethodTable[value.type + ".Error"];
+
+			if (typeof errorer === "function") {
+				return errorer(value.value);
+			}
+
 			const stringer = go2jsMethodTable[value.type + ".String"];
 
 			if (typeof stringer === "function") {
