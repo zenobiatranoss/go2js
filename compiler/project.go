@@ -251,7 +251,7 @@ func (p *project) emitNamespace(pkg *projectPackage) (string, error) {
 	out.WriteString(" = (() => {\n")
 
 	for _, imported := range pkg.pkg.Imports() {
-		if !p.isLocal(imported) {
+		if !p.isTranspilable(imported) {
 			continue
 		}
 

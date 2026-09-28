@@ -15,6 +15,8 @@ import (
 
 type emitter struct {
 	receiver            string
+	funcLitDepth        int
+	receiverBinding     string
 	channelPairTarget   bool
 	mapLookupPairTarget bool
 	scalarReceiver      string
@@ -414,6 +416,13 @@ func (e *emitter) emitBlock(block *ast.BlockStmt) error {
 
 	e.pushScope()
 	e.indent++
+
+	if e.receiverBinding != "" && block == e.functionBody {
+		e.write("const ")
+		e.write(e.receiverBinding)
+		e.write(" = this;")
+		e.newline()
+	}
 
 	if block == e.functionBody {
 		if err := e.emitNamedResults(); err != nil {
@@ -1793,13 +1802,22 @@ func go2jsByteLiteral(expr ast.Expr) (string, bool) {
 }
 
 func (e *emitter) emitStructMethodBody(fn *ast.FuncDecl, receiverType string) error {
+	receiver := fn.Recv.List[0]
+	named := len(receiver.Names) > 0
+
+	e.receiver = ""
+	e.receiverBinding = ""
+
+	if named {
+		e.receiver = receiver.Names[0].Name
+
+		if bodyHasFuncLit(fn.Body) && !isReceiverAssigned(fn.Body, e.receiver) {
+			e.receiverBinding = "go2jsReceiver_" + javaScriptIdentifier(e.receiver)
+		}
+	}
+
 	e.emitFunctionParameters(fn)
 	e.write(") ")
-
-	receiver := fn.Recv.List[0]
-	if len(receiver.Names) > 0 {
-		e.receiver = receiver.Names[0].Name
-	}
 
 	if err := e.emitFuncBody(fn.Body); err != nil {
 		return err
@@ -1810,15 +1828,26 @@ func (e *emitter) emitStructMethodBody(fn *ast.FuncDecl, receiverType string) er
 		e.needsRuntime = true
 		e.write("go2jsRegisterMethod(")
 		e.write(strconv.Quote("*" + receiverType + "." + fn.Name.Name))
-		e.write(", function(")
-		e.write(e.receiver)
-		e.write(") { return ")
-		e.write(receiverType)
-		e.write(".prototype.")
-		e.write(fn.Name.Name)
-		e.write(".call(")
-		e.write(e.receiver)
-		e.write("); }")
+		e.write(", ")
+
+		if named {
+			e.write("function(")
+			e.write(e.receiver)
+			e.write(", ...args) { return ")
+			e.write(receiverType)
+			e.write(".prototype.")
+			e.write(fn.Name.Name)
+			e.write(".call(")
+			e.write(e.receiver)
+			e.write(", ...args); }")
+		} else {
+			e.write("function(...args) { return ")
+			e.write(receiverType)
+			e.write(".prototype.")
+			e.write(fn.Name.Name)
+			e.write(".apply(this, args); }")
+		}
+
 		e.write(");")
 		e.newline()
 	} else {
@@ -1835,4 +1864,41 @@ func (e *emitter) emitStructMethodBody(fn *ast.FuncDecl, receiverType string) er
 	}
 
 	return nil
+}
+
+func bodyHasFuncLit(body *ast.BlockStmt) bool {
+	found := false
+
+	ast.Inspect(body, func(node ast.Node) bool {
+		if _, ok := node.(*ast.FuncLit); ok {
+			found = true
+
+			return false
+		}
+
+		return !found
+	})
+
+	return found
+}
+
+func isReceiverAssigned(body *ast.BlockStmt, name string) bool {
+	declared := false
+
+	ast.Inspect(body, func(node ast.Node) bool {
+		assign, ok := node.(*ast.AssignStmt)
+		if !ok {
+			return true
+		}
+
+		for _, lhs := range assign.Lhs {
+			if ident, ok := lhs.(*ast.Ident); ok && ident.Name == name {
+				declared = true
+			}
+		}
+
+		return true
+	})
+
+	return declared
 }

@@ -1716,6 +1716,28 @@ function go2jsInterface(value, typeName) {
 		wrapper.__go2js_error_name = String(typeName).replace(/^\*/, "");
 	}
 
+	// Slices and arrays stay real arrays so callers can index, iterate and
+	// spread them, while still reporting their declared type.
+	if (Array.isArray(value) && typeof typeName === "string" && typeName.startsWith("[")) {
+		for (const [key, entry] of Object.entries(wrapper)) {
+			Object.defineProperty(value, key, {
+				value: entry,
+				enumerable: false,
+				writable: true,
+				configurable: true
+			});
+		}
+
+		Object.defineProperty(value, "value", {
+			value: value,
+			enumerable: false,
+			writable: true,
+			configurable: true
+		});
+
+		return value;
+	}
+
 	return wrapper;
 }
 
