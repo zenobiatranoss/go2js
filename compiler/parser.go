@@ -146,9 +146,6 @@ const (
 	go2jsGOARCH = "wasm"
 )
 
-// buildFileMatches reports whether a file participates in the build for the
-// JavaScript target. Packages may ship per-platform files that declare the same
-// symbols, so honouring build constraints keeps duplicate declarations out.
 func buildFileMatches(dir, path string) bool {
 	ctx := build.Default
 	ctx.GOOS = go2jsGOOS

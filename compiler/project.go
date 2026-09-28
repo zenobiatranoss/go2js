@@ -505,8 +505,6 @@ func (p *project) isTranspilable(path string) bool {
 	return ok
 }
 
-// dependencyDir resolves a module outside the main module to its source
-// directory so third-party packages can be transpiled like local ones.
 func (p *project) dependencyDir(path string) (string, bool) {
 	if path == "" || !strings.Contains(path, ".") {
 		return "", false
