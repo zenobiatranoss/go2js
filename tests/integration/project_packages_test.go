@@ -121,3 +121,53 @@ func projectRoot(t *testing.T) string {
 
 	return filepath.Join(wd, "..", "..")
 }
+
+func TestBuildConstraintsExcludeOtherPlatformFiles(t *testing.T) {
+	dir := t.TempDir()
+
+	writeFile(t, filepath.Join(dir, "go.mod"), "module example.com/tags\n\ngo 1.24\n")
+
+	writeFile(t, filepath.Join(dir, "lib.go"), `package main
+
+var _ = 1
+`)
+
+	writeFile(t, filepath.Join(dir, "lib_js.go"), `//go:build js
+
+package main
+
+func pick() string {
+	return "js"
+}
+`)
+
+	writeFile(t, filepath.Join(dir, "lib_other.go"), `//go:build !js
+
+package main
+
+func pick() string {
+	return "other"
+}
+`)
+
+	writeFile(t, filepath.Join(dir, "main.go"), `package main
+
+import "fmt"
+
+func main() {
+	fmt.Println(pick())
+}
+`)
+
+	output := filepath.Join(t.TempDir(), "out.js")
+
+	code, err := compileDirectory(t, dir, output)
+	if err != nil {
+		t.Fatalf("compiling build-constrained files: %v", err)
+	}
+
+	got := runCommand(t, dir, "node", output)
+	if want := "js\n"; got != want {
+		t.Fatalf("build constraint selection mismatch: want %q got %q\njs:\n%s", want, got, code)
+	}
+}

@@ -3,6 +3,7 @@ package compiler
 import (
 	"fmt"
 	"go/ast"
+	"go/build"
 	"go/parser"
 	"go/token"
 	"os"
@@ -140,6 +141,27 @@ func ParsePackageWithOptions(filenames []string, options ParseOptions) (*Package
 	return pkg, nil
 }
 
+const (
+	go2jsGOOS   = "js"
+	go2jsGOARCH = "wasm"
+)
+
+// buildFileMatches reports whether a file participates in the build for the
+// JavaScript target. Packages may ship per-platform files that declare the same
+// symbols, so honouring build constraints keeps duplicate declarations out.
+func buildFileMatches(dir, path string) bool {
+	ctx := build.Default
+	ctx.GOOS = go2jsGOOS
+	ctx.GOARCH = go2jsGOARCH
+
+	should, err := ctx.MatchFile(dir, path)
+	if err != nil {
+		return false
+	}
+
+	return should
+}
+
 func ParsePackageDir(dirname string) (*Package, error) {
 	return ParsePackageDirWithOptions(dirname, ParseOptions{})
 }
@@ -167,7 +189,13 @@ func ParsePackageDirWithOptions(dirname string, options ParseOptions) (*Package,
 			continue
 		}
 
-		files = append(files, filepath.Join(dirname, name))
+		full := filepath.Join(dirname, name)
+
+		if !buildFileMatches(dirname, name) {
+			continue
+		}
+
+		files = append(files, full)
 	}
 
 	sort.Strings(files)

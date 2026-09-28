@@ -6,6 +6,7 @@ import (
 	"go/types"
 	"hash/fnv"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -24,12 +25,13 @@ type projectPackage struct {
 }
 
 type project struct {
-	root     string
-	module   string
-	options  Options
-	packages map[string]*projectPackage
-	active   map[string]bool
-	importer *projectImporter
+	root           string
+	module         string
+	options        Options
+	packages       map[string]*projectPackage
+	active         map[string]bool
+	dependencyDirs map[string]string
+	importer       *projectImporter
 }
 
 type projectImporter struct {
@@ -39,6 +41,14 @@ type projectImporter struct {
 
 func (i *projectImporter) Import(path string) (*types.Package, error) {
 	if i.project.isLocal(path) {
+		pkg, err := i.project.load(path)
+		if err != nil {
+			return nil, err
+		}
+		return pkg.analysis.Types.Package, nil
+	}
+
+	if _, ok := i.project.dependencyDir(path); ok {
 		pkg, err := i.project.load(path)
 		if err != nil {
 			return nil, err
@@ -66,11 +76,12 @@ func compileProjectWithOptions(dir string, options Options) (string, error) {
 	}
 
 	p := &project{
-		options:  options.Normalize(),
-		root:     root,
-		module:   module,
-		packages: make(map[string]*projectPackage),
-		active:   make(map[string]bool),
+		options:        options.Normalize(),
+		root:           root,
+		module:         module,
+		packages:       make(map[string]*projectPackage),
+		active:         make(map[string]bool),
+		dependencyDirs: make(map[string]string),
 	}
 
 	p.importer = &projectImporter{
@@ -131,7 +142,10 @@ func (p *project) load(path string) (*projectPackage, error) {
 
 	dir, ok := p.localDir(path)
 	if !ok {
-		return nil, fmt.Errorf("compiler: local import %q cannot be resolved", path)
+		dir, ok = p.dependencyDir(path)
+		if !ok {
+			return nil, fmt.Errorf("compiler: local import %q cannot be resolved", path)
+		}
 	}
 
 	p.active[path] = true
@@ -193,10 +207,12 @@ func (p *project) order(root string) ([]string, error) {
 		active[path] = true
 
 		for _, imported := range pkg.pkg.Imports() {
-			if p.isLocal(imported) {
-				if err := visit(imported); err != nil {
-					return err
-				}
+			if !p.isTranspilable(imported) {
+				continue
+			}
+
+			if err := visit(imported); err != nil {
+				return err
 			}
 		}
 
@@ -477,6 +493,54 @@ func (p *project) dotImportNames(path string) ([]string, error) {
 
 func (p *project) isLocal(path string) bool {
 	return path == p.module || strings.HasPrefix(path, p.module+"/")
+}
+
+func (p *project) isTranspilable(path string) bool {
+	if p.isLocal(path) {
+		return true
+	}
+
+	_, ok := p.dependencyDir(path)
+
+	return ok
+}
+
+// dependencyDir resolves a module outside the main module to its source
+// directory so third-party packages can be transpiled like local ones.
+func (p *project) dependencyDir(path string) (string, bool) {
+	if path == "" || !strings.Contains(path, ".") {
+		return "", false
+	}
+
+	if dir, ok := p.dependencyDirs[path]; ok {
+		return dir, dir != ""
+	}
+
+	dir := p.lookupDependencyDir(path)
+	p.dependencyDirs[path] = dir
+
+	return dir, dir != ""
+}
+
+func (p *project) lookupDependencyDir(path string) string {
+	cmd := exec.Command("go", "list", "-f", "{{.Dir}}", path)
+	cmd.Dir = p.root
+
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+
+	dir := strings.TrimSpace(string(output))
+	if dir == "" {
+		return ""
+	}
+
+	if !strings.HasPrefix(dir, p.root) {
+		return dir
+	}
+
+	return ""
 }
 
 func (p *project) localDir(path string) (string, bool) {
