@@ -85,6 +85,18 @@ var containerListFuncs = map[string]string{
 	"New": "go2jsListNew",
 }
 
+var ioHelpers = map[string]bool{
+	"ReadAtLeast": true, "CopyN": true, "CopyBuffer": true,
+	"NewSectionReader": true, "NewOffsetWriter": true,
+}
+
+var mathHelpers = map[string]bool{
+	"Exp2": true, "Pow10": true, "RoundToEven": true, "Frexp": true,
+	"Ldexp": true, "Ilogb": true, "Nextafter": true, "Nextafter32": true,
+	"Float32bits": true, "Float64bits": true, "Float32frombits": true,
+	"Float64frombits": true,
+}
+
 func extraStringsFuncs() {
 	extendStrings := func(entries map[string]string) {
 		for name, helper := range entries {
@@ -100,6 +112,23 @@ func extraStringsFuncs() {
 	})
 
 	for name, helper := range map[string]string{
+		"Exp2":                 "go2jsMathExp2",
+		"Pow10":                "go2jsMathPow10",
+		"RoundToEven":          "go2jsMathRoundToEven",
+		"Frexp":                "go2jsMathFrexp",
+		"Ldexp":                "go2jsMathLdexp",
+		"Ilogb":                "go2jsMathIlogb",
+		"Nextafter":            "go2jsMathNextafter",
+		"Nextafter32":          "go2jsMathNextafter",
+		"Float32bits":          "go2jsMathFloat32bits",
+		"Float64bits":          "go2jsMathFloat64bits",
+		"Float32frombits":      "go2jsMathFloat32frombits",
+		"Float64frombits":      "go2jsMathFloat64frombits",
+		"ReadAtLeast":          "go2jsIOReadAtLeast",
+		"CopyN":                "go2jsIOCopyN",
+		"CopyBuffer":           "go2jsIOCopyBuffer",
+		"NewSectionReader":     "go2jsNewSectionReader",
+		"NewOffsetWriter":      "go2jsNewOffsetWriter",
 		"QuoteToGraphic":       "go2jsStrconvQuoteToGraphic",
 		"QuoteRuneToGraphic":   "go2jsStrconvQuoteRuneToGraphic",
 		"QuoteRuneToASCII":     "go2jsStrconvQuoteRuneToASCII",
@@ -110,6 +139,16 @@ func extraStringsFuncs() {
 		"CanBackquote":         "go2jsStrconvCanBackquote",
 		"QuotedPrefix":         "go2jsStrconvQuotedPrefix",
 	} {
+		if _, isIO := ioHelpers[name]; isIO {
+			ioFuncs[name] = helper
+			continue
+		}
+
+		if _, isMath := mathHelpers[name]; isMath {
+			mathFuncs[name] = helper
+			continue
+		}
+
 		strconvFuncs[name] = helper
 	}
 }
@@ -139,7 +178,349 @@ func moreStdlibFuncs() {
 }
 
 func moreRuntimeSource() string {
-	return `function go2jsStrconvQuoteToGraphic(value) {
+	return `function go2jsMathExp2(value) {
+	const x = Number(value);
+
+	if (!Number.isFinite(x)) {
+		return x > 0 ? Infinity : 0;
+	}
+
+	if (Number.isInteger(x)) {
+		return Math.pow(2, x);
+	}
+
+	const whole = Math.floor(x);
+	const fraction = x - whole;
+
+	return Math.pow(2, whole) * Math.pow(2, fraction);
+}
+
+function go2jsMathPow10(value) {
+	return Math.pow(10, Number(value));
+}
+
+function go2jsMathRoundToEven(value) {
+	const x = Number(value);
+
+	if (!Number.isFinite(x)) {
+		return x;
+	}
+
+	const rounded = Math.round(x);
+
+	if (Math.abs(x % 1) === 0.5 && rounded % 2 !== 0) {
+		return rounded - Math.sign(x);
+	}
+
+	return rounded;
+}
+
+function go2jsMathFrexp(value) {
+	const x = Number(value);
+
+	if (x === 0 || !Number.isFinite(x)) {
+		return [x, 0];
+	}
+
+	let exponent = Math.floor(Math.log2(Math.abs(x)));
+	let mantissa = x / Math.pow(2, exponent);
+
+	if (Math.abs(mantissa) >= 1) {
+		mantissa /= 2;
+		exponent++;
+	} else if (Math.abs(mantissa) < 0.5) {
+		mantissa *= 2;
+		exponent--;
+	}
+
+	return [mantissa, exponent];
+}
+
+function go2jsMathLdexp(fraction, exponent) {
+	return Number(fraction) * Math.pow(2, Number(exponent));
+}
+
+function go2jsMathIlogb(value) {
+	const x = Number(value);
+
+	if (x === 0) {
+		return -Infinity;
+	}
+
+	if (!Number.isFinite(x)) {
+		return x;
+	}
+
+	return Math.floor(Math.log2(Math.abs(x)));
+}
+
+function go2jsMathNextafter(value, toward) {
+	const x = Number(value);
+	const y = Number(toward);
+
+	if (Number.isNaN(x) || Number.isNaN(y)) {
+		return NaN;
+	}
+
+	if (x === y) {
+		return y;
+	}
+
+	if (x === 0) {
+		return y > 0 ? 5e-324 : -5e-324;
+	}
+
+	const next = x + (y > x ? 1 : -1) * Math.abs(x) * Number.EPSILON;
+
+	return y > x ? (next === x ? x * (1 + Number.EPSILON) : next) : (next === x ? x * (1 - Number.EPSILON) : next);
+}
+
+function go2jsToBigInt(value) {
+	return typeof value === "bigint" ? value : BigInt(Math.trunc(Number(value)));
+}
+
+const go2jsFloat64Buffer = new DataView(new ArrayBuffer(8));
+
+function go2jsMathFloat64bits(value) {
+	go2jsFloat64Buffer.setFloat64(0, Number(value));
+
+	return go2jsFloat64Buffer.getBigUint64(0);
+}
+
+function go2jsMathFloat64frombits(value) {
+	go2jsFloat64Buffer.setBigUint64(0, go2jsToBigInt(value));
+
+	return go2jsFloat64Buffer.getFloat64(0);
+}
+
+const go2jsFloat32Buffer = new DataView(new ArrayBuffer(4));
+
+function go2jsMathFloat32bits(value) {
+	go2jsFloat32Buffer.setFloat32(0, Number(value));
+
+	return go2jsFloat32Buffer.getUint32(0);
+}
+
+function go2jsMathFloat32frombits(value) {
+	go2jsFloat32Buffer.setUint32(0, Number(value));
+
+	return go2jsFloat32Buffer.getFloat32(0);
+}
+
+function go2jsSortReverseOf(data) {
+	return go2jsInterface({
+		Len() {
+			return go2jsLen(data);
+		},
+		Less(i, j) {
+			return go2jsCallMethod(data, "Less", j, i);
+		},
+		Swap(i, j) {
+			return go2jsCallMethod(data, "Swap", i, j);
+		},
+	}, "sort.Interface");
+}
+
+function go2jsSortSliceIsSorted(a, less) {
+	for (let index = 1; index < go2jsLen(a); index++) {
+		if (less(index, index - 1)) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+function go2jsIOReadAtLeast(reader, buffer, min) {
+	const slice = go2jsSliceState(buffer);
+	const target = slice === null ? go2jsBytesReadSlot(buffer) || go2jsToArray(buffer) : new Array(slice.length).fill(0);
+	const want = Math.max(0, Math.trunc(Number(min)));
+	let total = 0;
+
+	while (total < target.length) {
+		const chunk = new Array(target.length - total).fill(0);
+		const result = go2jsCallMethod(reader, "Read", chunk);
+		const read = Array.isArray(result) ? result[0] : Number(result);
+
+		if (!read || read <= 0) {
+			if (total >= want) {
+				return [total, null];
+			}
+
+			return [total, go2jsIOUnexpectedEOFErorror()];
+		}
+
+		for (let index = 0; index < read; index++) {
+			go2jsBytesStoreByte(buffer, total + index, chunk[index]);
+		}
+
+		total += read;
+	}
+
+	return [total, null];
+}
+
+function go2jsIOCopyN(writer, reader, count) {
+	const want = Math.max(0, Math.trunc(Number(count)));
+	const buffer = new Array(Math.min(want, 32 * 1024)).fill(0);
+	let total = 0;
+
+	while (total < want) {
+		const chunk = new Array(Math.min(want - total, buffer.length)).fill(0);
+		const result = go2jsCallMethod(reader, "Read", chunk);
+		const read = Array.isArray(result) ? result[0] : Number(result);
+
+		if (!read || read <= 0) {
+			break;
+		}
+
+		go2jsCallMethod(writer, "Write", chunk.slice(0, read));
+		total += read;
+	}
+
+	return [total, null];
+}
+
+function go2jsIOCopyBuffer(writer, reader, buffer) {
+	let target = buffer;
+
+	if (target === undefined || target === null) {
+		target = new Array(32 * 1024).fill(0);
+	}
+
+	const size = go2jsToArray(target).length;
+	let total = 0;
+
+	for (;;) {
+		const result = go2jsCallMethod(reader, "Read", target);
+		const read = Array.isArray(result) ? result[0] : Number(result);
+
+		if (!read || read <= 0) {
+			break;
+		}
+
+		go2jsCallMethod(writer, "Write", go2jsToArray(target).slice(0, read));
+		total += read;
+	}
+
+	return [total, null];
+}
+
+function go2jsNewSectionReader(reader, off, n) {
+	const start = Math.max(0, Math.trunc(Number(off)));
+	const length = Math.max(0, Math.trunc(Number(n)));
+	let position = 0;
+	let discarded = false;
+
+	function readInto(target, base) {
+		const slot = go2jsBytesReadSlot(target);
+
+		if (position >= length || !slot) {
+			return [0, go2jsIOEOF()];
+		}
+
+		const want = Math.min(slot.length, length - position);
+		let chunk = new Array(want).fill(0);
+		let read;
+
+		if (base === undefined) {
+			if (!discarded) {
+				discarded = true;
+				const skip = new Array(Math.min(start, 1 << 24)).fill(0);
+				const skipped = go2jsCallMethod(reader, "Read", skip);
+				const got = Array.isArray(skipped) ? skipped[0] : Number(skipped);
+
+				if (!got || got < start) {
+					return [0, go2jsIOEOF()];
+				}
+			}
+
+			const result = go2jsCallMethod(reader, "Read", chunk);
+			read = Array.isArray(result) ? result[0] : Number(result);
+		} else {
+			const result = go2jsCallMethod(reader, "ReadAt", chunk, start + base);
+			read = Array.isArray(result) ? result[0] : Number(result);
+		}
+
+		if (!read || read <= 0) {
+			return [0, go2jsIOEOF()];
+		}
+
+		const used = Math.min(read, want);
+
+		for (let index = 0; index < used; index++) {
+			go2jsBytesStoreByte(target, index, chunk[index]);
+		}
+
+		position += used;
+
+		return [used, null];
+	}
+
+	const section = {
+		__go2js_text: null,
+		Read: target => readInto(target),
+		ReadAt: (target, off) => readInto(target, Math.trunc(Number(off))),
+		Seek(offset, whence) {
+			const delta = Math.trunc(Number(offset));
+			const base = whence === 1 ? position : whence === 2 ? length : 0;
+			const next = base + delta;
+
+			if (next < 0) {
+				return go2jsError("bytes.Reader.Seek: negative position");
+			}
+
+			position = next;
+
+			return position;
+		},
+		ReadByte() {
+			const one = new Array(1).fill(0);
+			const result = readInto(one);
+
+			return result[0] <= 0 ? 0 : Number(one[0]);
+		},
+		Size() {
+			return length;
+		},
+	};
+
+	section.Len = section.Size;
+
+	return section;
+}
+
+function go2jsNewOffsetWriter(writer, off) {
+	const base = Math.trunc(Number(off));
+	let position = base;
+
+	return {
+		__go2js_text: null,
+		Write(p) {
+			const chunk = go2jsToArray(p);
+			const slot = go2jsBytesReadSlot(chunk);
+			const view = slot === chunk ? chunk : new Array(chunk.length).fill(0);
+
+			for (let index = 0; index < chunk.length; index++) {
+				view[index] = chunk[index];
+			}
+
+			go2jsCallMethod(writer, "WriteAt", view, position);
+			position += view.length;
+
+			return view.length;
+		},
+		Seek(offset, whence) {
+			const delta = Math.trunc(Number(offset));
+			const anchor = whence === 1 ? position : whence === 2 ? base : 0;
+			position = anchor + delta;
+
+			return position;
+		},
+	};
+}
+
+function go2jsStrconvQuoteToGraphic(value) {
 	return go2jsStrconvQuoteGraphic(go2jsStringify(value), false, false);
 }
 

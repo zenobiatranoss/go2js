@@ -920,30 +920,70 @@ go2jsBytesBuffer.prototype.AvailableBuffer = function() {
 };
 
 go2jsBytesBuffer.prototype.Read = function(target) {
-	if (this.data.length === 0) {
-		if (target && typeof target.Write === "function") {
-			return go2jsIOReadAllResult(0, null);
+	const slot = go2jsBytesReadSlot(target);
+
+	if (this.data.length === 0 || !slot) {
+		if (target) {
+			return [0, go2jsIOEOF()];
 		}
+
 		return 0;
 	}
 
-	const n = Math.min(this.data.length, target ? target.data.length : this.data.length);
+	const n = Math.min(this.data.length, slot.length);
 
 	for (let i = 0; i < n; i++) {
-		if (target) {
-			target.data[i] = this.data[i];
-		}
+		go2jsBytesStoreByte(target, i, this.data[i]);
 	}
 
 	this.data = this.data.slice(n);
 
 	if (target) {
-		return go2jsIOReadAllResult(n, null);
+		return [n, null];
 	}
 
 	return n;
 };
 
+function go2jsBytesReadSlot(target) {
+	if (!target) {
+		return null;
+	}
+
+	if (Array.isArray(target) || ArrayBuffer.isView(target)) {
+		return target;
+	}
+
+	if (Array.isArray(target.data)) {
+		return target.data;
+	}
+
+	return null;
+}
+
+function go2jsBytesStoreByte(target, index, value) {
+	if (!target) {
+		return;
+	}
+
+	const state = go2jsSliceState(target);
+
+	if (state !== null) {
+		const at = state.offset + index;
+
+		if (at >= state.offset && at < state.offset + state.length) {
+			state.data[at] = value & 255;
+		}
+
+		return;
+	}
+
+	const slot = go2jsBytesReadSlot(target);
+
+	if (slot !== null && index < slot.length) {
+		slot[index] = value & 255;
+	}
+}
 go2jsBytesBuffer.prototype.ReadRune = function() {
 	if (this.data.length === 0) {
 		return [go2jsRuneEOF, 0];

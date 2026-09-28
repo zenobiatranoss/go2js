@@ -174,6 +174,9 @@ var sortFuncs = map[string]string{
 	"IntsAreSorted":     "go2jsSortIntsAreSorted",
 	"StringsAreSorted":  "go2jsSortStringsAreSorted",
 	"Float64sAreSorted": "go2jsSortFloat64sAreSorted",
+	"Reverse":           "go2jsSortReverseOf",
+	"SliceIsSorted":     "go2jsSortSliceIsSorted",
+	"Stable":            "go2jsSortSlice",
 }
 
 var unicodeFuncs = map[string]string{
@@ -322,6 +325,10 @@ var multiReturnStdlibFuncs = map[string]bool{
 	"io.ReadAll":           true,
 	"strconv.Unquote":      true,
 	"strconv.QuotedPrefix": true,
+	"math.Frexp":           true,
+	"io.CopyBuffer":        true,
+	"io.CopyN":             true,
+	"io.ReadAtLeast":       true,
 	"strings.Cut":          true,
 	"path.Split":           true,
 	"bufio.ScanLines":      true,
