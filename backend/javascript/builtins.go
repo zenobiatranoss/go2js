@@ -5,7 +5,7 @@ import (
 	"go/token"
 )
 
-func builtinName(call *ast.CallExpr) (string, bool) {
+func (e *emitter) builtinName(call *ast.CallExpr) (string, bool) {
 	switch fn := call.Fun.(type) {
 	case *ast.Ident:
 		switch fn.Name {
@@ -59,7 +59,7 @@ func builtinName(call *ast.CallExpr) (string, bool) {
 			}
 		}
 
-		if jsName, ok := stdlibFuncName(pkg.Name, fn.Sel.Name); ok {
+		if jsName, ok := e.stdlibFuncNameForIdent(pkg, fn.Sel.Name); ok {
 			return jsName, true
 		}
 	}

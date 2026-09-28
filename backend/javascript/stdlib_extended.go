@@ -108,6 +108,8 @@ var packageVarValues = map[string]string{
 	"syscall.EPERM":  `go2jsSentinelError("operation not permitted")`,
 	"syscall.EINVAL": `go2jsSentinelError("invalid argument")`,
 
+	"os.Args": `go2jsOSArgs`,
+
 	"filepath.Separator":     `47`,
 	"path.Separator":         `47`,
 	"os.PathSeparator":       `47`,
@@ -1052,6 +1054,8 @@ var packageVarTypes = map[string]string{
 	"io.EOF":                   "error",
 	"io.ErrUnexpectedEOF":      "error",
 
+	"os.Args": "[]string",
+
 	"filepath.Separator":     "uint8",
 	"path.Separator":         "uint8",
 	"os.PathSeparator":       "uint8",
@@ -1075,6 +1079,43 @@ var packageVarPaths = map[string]string{
 	"io":      "io",
 	"log":     "log",
 	"context": "context",
+}
+
+func sortSliceShimRuntimeSource() string {
+	return `function go2jsSortSliceInPlace(values, compare) {
+	const state = go2jsSliceState(values);
+
+	if (state === null) {
+		return values;
+	}
+
+	const window = [];
+
+	for (let index = 0; index < state.length; index++) {
+		window.push(state.data[state.offset + index]);
+	}
+
+	window.sort(compare);
+
+	for (let index = 0; index < state.length; index++) {
+		state.data[state.offset + index] = window[index];
+	}
+
+	return values;
+}
+
+function go2jsSortStringSlice(values) {
+	return go2jsSortSliceInPlace(values, (left, right) => (String(left) < String(right) ? -1 : String(left) > String(right) ? 1 : 0));
+}
+
+function go2jsSortIntSlice(values) {
+	return go2jsSortSliceInPlace(values, (left, right) => (Number(left) < Number(right) ? -1 : Number(left) > Number(right) ? 1 : 0));
+}
+
+function go2jsSortFloat64Slice(values) {
+	return go2jsSortSliceInPlace(values, (left, right) => (Number(left) < Number(right) ? -1 : Number(left) > Number(right) ? 1 : 0));
+}
+`
 }
 
 func bytesToStringRuntimeSource() string {
@@ -1860,80 +1901,12 @@ function go2jsSortSearchFloat64s(a, target) {
 	return go2jsSlicesBinarySearch(a, target)[0];
 }
 
-function go2jsOSReadFile(path) {
-	try {
-		return [require("fs").readFileSync(String(path)), null];
-	} catch (err) {
-		return [null, go2jsOSError(err)];
-	}
-}
 
-function go2jsOSWriteFile(path, data) {
-	try {
-		require("fs").writeFileSync(String(path), go2jsToArray(data));
-		return null;
-	} catch (err) {
-		return go2jsOSError(err);
-	}
-}
 
-function go2jsOSOpen(name) {
-	try {
-		const handle = require("fs").openSync(String(name), "r");
 
-		return {
-			read(buffer, offset, length) {
-				const out = Buffer.alloc(length);
-				const read = require("fs").readSync(handle, out, 0, length, offset);
-				for (let index = 0; index < read; index++) {
-					buffer[offset + index] = out[index];
-				}
-				return read;
-			},
-			write(buffer) {
-				return require("fs").writeSync(handle, Buffer.from(go2jsToArray(buffer)));
-			},
-			Close() {
-				require("fs").closeSync(handle);
-			},
-			Name() {
-				return String(name);
-			},
-		};
-	} catch (err) {
-		return go2jsOSError(err);
-	}
-}
 
-function go2jsOSCreate(name) {
-	return go2jsOSOpen(name);
-}
 
-function go2jsOSRemove(name) {
-	try {
-		require("fs").unlinkSync(String(name));
-		return null;
-	} catch (err) {
-		return go2jsOSError(err);
-	}
-}
 
-function go2jsOSMkdirAll(name) {
-	try {
-		require("fs").mkdirSync(String(name), {recursive: true});
-		return null;
-	} catch (err) {
-		return go2jsOSError(err);
-	}
-}
-
-function go2jsOSTempDir() {
-	try {
-		return require("os").tmpdir();
-	} catch (err) {
-		return "/tmp";
-	}
-}
 
 function go2jsOSExit(code) {
 	process.exit(code === undefined ? 0 : Number(code));
@@ -1956,7 +1929,7 @@ function go2jsOSChdir(path) {
 		require("process").chdir(String(path));
 		return null;
 	} catch (err) {
-		return go2jsOSError(err);
+		return go2jsOSWrapNodeError(err);
 	}
 }
 
@@ -1968,7 +1941,7 @@ function go2jsOSReadDir(path) {
 	}
 }
 
-function go2jsOSError(err) {
+function go2jsOSWrapNodeError(err) {
 	const wrapped = new Error(err.message);
 
 	wrapped.code = err.code;
@@ -2706,35 +2679,6 @@ function go2jsRegexpQuoteMeta(value) {
 
 func osStdioRuntimeSource() string {
 	return `
-function go2jsOSFileWrite(file, buffer) {
-	const stream = go2jsUnwrap(file);
-
-	if (stream === process.stdout || stream === process.stderr) {
-		stream.write(go2jsBytesToString(buffer));
-	} else {
-		process.stdout.write(go2jsBytesToString(buffer));
-	}
-
-	return go2jsToArray(buffer).length;
-}
-
-function go2jsOSFileWriteString(file, value) {
-	return go2jsOSFileWrite(file, go2jsStringToBytes(value));
-}
-
-function go2jsOSFileName(file) {
-	const stream = go2jsUnwrap(file);
-
-	if (stream === process.stdout) {
-		return "/dev/stdout";
-	}
-
-	if (stream === process.stderr) {
-		return "/dev/stderr";
-	}
-
-	return "/dev/stdin";
-}
 
 function go2jsOSFileMethods() {
 	if (go2jsOSFileMethods.registered) {

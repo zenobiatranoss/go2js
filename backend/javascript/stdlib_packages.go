@@ -18,32 +18,64 @@ var atomicFuncs = map[string]string{
 }
 
 var flagFuncs = map[string]string{
-	"String":        "go2jsFlagString",
-	"StringVar":     "go2jsFlagStringVar",
-	"Int":           "go2jsFlagInt",
-	"IntVar":        "go2jsFlagIntVar",
-	"Int64":         "go2jsFlagInt64",
-	"Int64Var":      "go2jsFlagInt64Var",
-	"Uint":          "go2jsFlagUint64",
-	"UintVar":       "go2jsFlagUint64Var",
-	"Uint64":        "go2jsFlagUint64",
-	"Uint64Var":     "go2jsFlagUint64Var",
-	"Float64":       "go2jsFlagFloat64",
-	"Float64Var":    "go2jsFlagFloat64Var",
-	"Bool":          "go2jsFlagBool",
-	"BoolVar":       "go2jsFlagBoolVar",
-	"Duration":      "go2jsFlagDuration",
-	"DurationVar":   "go2jsFlagDurationVar",
-	"Parse":         "go2jsFlagParse",
-	"Parsed":        "go2jsFlagParsed",
-	"Args":          "go2jsFlagArgs",
-	"NArg":          "go2jsFlagNArg",
-	"NFlag":         "go2jsFlagNFlag",
-	"Lookup":        "go2jsFlagLookup",
-	"Set":           "go2jsFlagSet",
-	"Visit":         "go2jsFlagVisit",
-	"Var":           "go2jsFlagVar",
-	"PrintDefaults": "go2jsFlagPrintDefaults",
+	"String":          "go2jsFlagString",
+	"StringVar":       "go2jsFlagStringVar",
+	"Int":             "go2jsFlagInt",
+	"IntVar":          "go2jsFlagIntVar",
+	"Int64":           "go2jsFlagInt64",
+	"Int64Var":        "go2jsFlagInt64Var",
+	"Uint":            "go2jsFlagUint64",
+	"UintVar":         "go2jsFlagUint64Var",
+	"Uint64":          "go2jsFlagUint64",
+	"Uint64Var":       "go2jsFlagUint64Var",
+	"Float64":         "go2jsFlagFloat64",
+	"Float64Var":      "go2jsFlagFloat64Var",
+	"Bool":            "go2jsFlagBool",
+	"BoolVar":         "go2jsFlagBoolVar",
+	"Duration":        "go2jsFlagDuration",
+	"DurationVar":     "go2jsFlagDurationVar",
+	"Parse":           "go2jsFlagParse",
+	"Parsed":          "go2jsFlagParsed",
+	"Args":            "go2jsFlagArgs",
+	"NArg":            "go2jsFlagNArg",
+	"NFlag":           "go2jsFlagNFlag",
+	"Lookup":          "go2jsFlagLookup",
+	"Set":             "go2jsFlagSet",
+	"Visit":           "go2jsFlagVisit",
+	"VisitAll":        "go2jsFlagVisitAll",
+	"Var":             "go2jsFlagVar",
+	"VarP":            "go2jsFlagVarP",
+	"StringP":         "go2jsFlagStringP",
+	"StringVarP":      "go2jsFlagStringVarP",
+	"BoolP":           "go2jsFlagBoolP",
+	"BoolVarP":        "go2jsFlagBoolVarP",
+	"IntP":            "go2jsFlagIntP",
+	"IntVarP":         "go2jsFlagIntVarP",
+	"Int64P":          "go2jsFlagInt64P",
+	"Int64VarP":       "go2jsFlagInt64VarP",
+	"UintP":           "go2jsFlagUint64P",
+	"UintVarP":        "go2jsFlagUint64VarP",
+	"Uint64P":         "go2jsFlagUint64P",
+	"Uint64VarP":      "go2jsFlagUint64VarP",
+	"Float64P":        "go2jsFlagFloat64P",
+	"Float64VarP":     "go2jsFlagFloat64VarP",
+	"DurationP":       "go2jsFlagDurationP",
+	"DurationVarP":    "go2jsFlagDurationVarP",
+	"NewFlagSet":      "go2jsFlagNewFlagSet",
+	"CommandLine":     "go2jsFlagCommandLine",
+	"Changed":         "go2jsFlagChanged",
+	"ShorthandLookup": "go2jsFlagShorthandLookup",
+	"FlagUsages":      "go2jsFlagFlagUsages",
+	"SetOutput":       "go2jsFlagSetOutput",
+	"Output":          "go2jsFlagOutput",
+	"Usage":           "go2jsFlagUsage",
+	"PrintDefaults":   "go2jsFlagPrintDefaults",
+}
+
+var flagConstants = map[string]string{
+	"ContinueOnError": "0",
+	"ExitOnError":     "1",
+	"PanicOnError":    "2",
 }
 
 var sha256Funcs = map[string]string{
@@ -157,6 +189,11 @@ func moreStdlibFuncs() {
 	stdlibFuncMaps["context"] = contextFuncs
 	stdlibFuncMaps["sync/atomic"] = atomicFuncs
 	stdlibFuncMaps["flag"] = flagFuncs
+
+	for name, value := range flagConstants {
+		packageConstants["flag."+name] = value
+	}
+
 	stdlibFuncMaps["crypto/sha256"] = sha256Funcs
 	stdlibFuncMaps["crypto/sha1"] = sha1Funcs
 	stdlibFuncMaps["crypto/md5"] = md5Funcs
@@ -469,7 +506,7 @@ function go2jsNewSectionReader(reader, off, n) {
 			const next = base + delta;
 
 			if (next < 0) {
-				return go2jsError("bytes.Reader.Seek: negative position");
+				return go2jsStdlibError("bytes.Reader.Seek: negative position");
 			}
 
 			position = next;
@@ -613,11 +650,11 @@ function go2jsStrconvFormatUint(value, base) {
 	let remaining = Number(value);
 
 	if (!Number.isFinite(remaining) || remaining < 0 || Math.floor(remaining) !== remaining) {
-		throw go2jsError("strconv: invalid unsigned integer");
+		throw go2jsStdlibError("strconv: invalid unsigned integer");
 	}
 
 	if (base < 2 || base > 36) {
-		throw go2jsError("strconv: invalid base " + base);
+		throw go2jsStdlibError("strconv: invalid base " + base);
 	}
 
 	if (remaining === 0) {
@@ -1036,31 +1073,73 @@ function go2jsAtomicValueTypeCompareAndSwap(cell, oldValue, newValue) {
 	return true;
 }
 
+function go2jsFlagNewState(name, errorHandling) {
+	return {
+		name: name === undefined || name === null ? "" : String(name),
+		values: new go2jsNativeMap(),
+		order: [],
+		shorthands: [],
+		args: [],
+		parsed: false,
+		errorHandling: errorHandling === undefined || errorHandling === null ? 0 : Number(errorHandling),
+		output: null,
+		usage: null
+	};
+}
+
 function go2jsFlagState() {
 	if (go2jsFlagState.current === undefined) {
-		go2jsFlagState.current = {
-			values: new go2jsNativeMap(),
-			order: [],
-			args: [],
-			parsed: false
-		};
+		go2jsFlagState.current = go2jsFlagNewState("command line flags", 0);
 	}
 
 	return go2jsFlagState.current;
 }
 
-function go2jsFlagDeclare(name, usage, value, target) {
-	const state = go2jsFlagState();
+function go2jsFlagDeclareIn(state, name, usage, value, target, shorthand) {
+	const key = String(name);
 
-	if (!state.values.has(name)) {
-		state.order.push(name);
+	if (!state.values.has(key)) {
+		state.order.push(key);
 	}
 
-	const entry = {name: name, usage: usage, value: value, target: target || null};
+	const entry = {name: key, usage: usage, value: value, target: target || null, shorthand: "", def: value, changed: false};
 
-	state.values.set(name, entry);
+	if (shorthand !== undefined && shorthand !== null && shorthand !== "") {
+		entry.shorthand = String(shorthand)[0];
+		state.shorthands.push(entry.shorthand);
+	}
+
+	state.values.set(key, entry);
 
 	return entry;
+}
+
+function go2jsFlagDeclare(name, usage, value, target) {
+	return go2jsFlagDeclareIn(go2jsFlagState(), name, usage, value, target);
+}
+
+function go2jsFlagCoerce(kind, raw) {
+	if (kind === "bool") {
+		if (typeof raw === "boolean") {
+			return raw;
+		}
+
+		return raw === "false" || raw === "0" || raw === "FALSE" || raw === "False" ? false : true;
+	}
+
+	if (kind === "int" || kind === "int64" || kind === "uint" || kind === "uint64") {
+		return Number(raw) | 0;
+	}
+
+	if (kind === "float64") {
+		return Number(raw);
+	}
+
+	if (kind === "duration") {
+		return go2jsDuration(raw);
+	}
+
+	return String(raw);
 }
 
 function go2jsFlagBind(entry, text) {
@@ -1226,26 +1305,7 @@ function go2jsFlagNFlag() {
 }
 
 function go2jsFlagLookup(name) {
-	const entry = go2jsFlagState().values.get(String(name));
-
-	if (entry === undefined) {
-		return go2jsInterface(null, "*flag.Flag");
-	}
-
-	return go2jsInterface({
-		Name() {
-			return entry.name;
-		},
-		Usage() {
-			return entry.usage;
-		},
-		ValueString() {
-			return String(entry.value);
-		},
-		String() {
-			return String(entry.value);
-		}
-	}, "*flag.Flag");
+	return go2jsFlagLookupIn(go2jsFlagState(), name);
 }
 
 function go2jsFlagSet(name, value) {
@@ -1258,6 +1318,10 @@ function go2jsFlagSet(name, value) {
 	go2jsFlagBind(entry, typeof value === "string" ? value : String(value));
 
 	return null;
+}
+
+function go2jsStdlibError(message) {
+	return go2jsInterface(new Error(String(message)), "error");
 }
 
 function go2jsFlagCell(entry) {
@@ -1286,17 +1350,651 @@ function go2jsFlagVisit(fn) {
 	}
 }
 
-function go2jsFlagVar(value, name, usage) {
-	go2jsFlagDeclare(String(name), usage, value);
+function go2jsFlagStringP(name, shorthand, value, usage) {
+	return go2jsFlagAdd(go2jsFlagState(), "string", null, name, shorthand, value, usage);
 }
 
-function go2jsFlagPrintDefaults() {
+function go2jsFlagStringVarP(target, name, shorthand, value, usage) {
+	go2jsFlagEntryIn(go2jsFlagState(), name, "string", target, shorthand, value, usage);
+}
+
+function go2jsFlagBoolP(name, shorthand, value, usage) {
+	return go2jsFlagAdd(go2jsFlagState(), "bool", null, name, shorthand, value, usage);
+}
+
+function go2jsFlagBoolVarP(target, name, shorthand, value, usage) {
+	go2jsFlagEntryIn(go2jsFlagState(), name, "bool", target, shorthand, value, usage);
+}
+
+function go2jsFlagIntP(name, shorthand, value, usage) {
+	return go2jsFlagAdd(go2jsFlagState(), "int", null, name, shorthand, value, usage);
+}
+
+function go2jsFlagIntVarP(target, name, shorthand, value, usage) {
+	go2jsFlagEntryIn(go2jsFlagState(), name, "int", target, shorthand, value, usage);
+}
+
+function go2jsFlagInt64P(name, shorthand, value, usage) {
+	return go2jsFlagAdd(go2jsFlagState(), "int64", null, name, shorthand, value, usage);
+}
+
+function go2jsFlagInt64VarP(target, name, shorthand, value, usage) {
+	go2jsFlagEntryIn(go2jsFlagState(), name, "int64", target, shorthand, value, usage);
+}
+
+function go2jsFlagUint64P(name, shorthand, value, usage) {
+	return go2jsFlagAdd(go2jsFlagState(), "uint64", null, name, shorthand, value, usage);
+}
+
+function go2jsFlagUint64VarP(target, name, shorthand, value, usage) {
+	go2jsFlagEntryIn(go2jsFlagState(), name, "uint64", target, shorthand, value, usage);
+}
+
+function go2jsFlagFloat64P(name, shorthand, value, usage) {
+	return go2jsFlagAdd(go2jsFlagState(), "float64", null, name, shorthand, value, usage);
+}
+
+function go2jsFlagFloat64VarP(target, name, shorthand, value, usage) {
+	go2jsFlagEntryIn(go2jsFlagState(), name, "float64", target, shorthand, value, usage);
+}
+
+function go2jsFlagDurationP(name, shorthand, value, usage) {
+	return go2jsFlagAdd(go2jsFlagState(), "duration", null, name, shorthand, value, usage);
+}
+
+function go2jsFlagDurationVarP(target, name, shorthand, value, usage) {
+	go2jsFlagEntryIn(go2jsFlagState(), name, "duration", target, shorthand, value, usage);
+}
+
+function go2jsFlagVar(value, name, usage) {
+	go2jsFlagDeclareIn(go2jsFlagState(), String(name), usage, value, null, "");
+}
+
+function go2jsFlagVarP(value, name, shorthand, usage) {
+	go2jsFlagDeclareIn(go2jsFlagState(), String(name), usage, value, null, shorthand);
+}
+
+function go2jsFlagNames(state) {
+	return state.order.slice().sort();
+}
+
+function go2jsFlagVisitAll(fn) {
 	const state = go2jsFlagState();
+
+	for (const name of go2jsFlagNames(state)) {
+		fn(go2jsFlagLookupIn(state, name));
+	}
+}
+
+function go2jsFlagChanged(name) {
+	const entry = go2jsFlagState().values.get(String(name));
+
+	if (entry === undefined) {
+		return false;
+	}
+
+	return entry.changed === true;
+}
+
+function go2jsFlagShorthandLookup(letter) {
+	const state = go2jsFlagState();
+	const key = String(letter).length > 0 ? String(letter)[0] : "";
 
 	for (const name of state.order) {
 		const entry = state.values.get(name);
-		process.stderr.write("  -" + name + " " + entry.usage + "\n");
+
+		if (entry.shorthand === key) {
+			return go2jsFlagLookupIn(state, name);
+		}
 	}
+
+	return null;
+}
+
+const go2jsFlagCommandLine = go2jsFlagObject(go2jsFlagState());
+
+function go2jsFlagSetOutput(target) {
+	go2jsFlagState().output = target;
+}
+
+function go2jsFlagFail(state, message) {
+	go2jsFlagReport(state, message);
+	go2jsFlagUseUsage(state);
+
+	const failure = go2jsStdlibError(message);
+
+	if (state.errorHandling === 1) {
+		go2jsExit(2);
+
+		return failure;
+	}
+
+	if (state.errorHandling === 2) {
+		throw failure;
+	}
+
+	return failure;
+}
+
+function go2jsFlagHelp(state) {
+	go2jsFlagUseUsage(state);
+
+	if (state.errorHandling === 1) {
+		go2jsExit(0);
+	}
+
+	const failure = go2jsStdlibError("flag: help requested");
+
+	if (state.errorHandling === 2) {
+		throw failure;
+	}
+
+	return failure;
+}
+
+function go2jsFlagReport(state, message) {
+	const target = state.output === null || state.output === undefined ? process.stderr : go2jsUnwrap(state.output);
+
+	if (typeof target.write === "function") {
+		target.write(message + "\n");
+		return;
+	}
+
+	const write = go2jsWriterMethod(state.output, "Write");
+
+	if (write !== null) {
+		write(go2jsStringToBytes(message + "\n"));
+		return;
+	}
+
+	process.stderr.write(message + "\n");
+}
+
+function go2jsFlagOutput() {
+	return go2jsFlagState().output;
+}
+
+function go2jsFlagUsage(fn) {
+	go2jsFlagState().usage = fn;
+}
+
+function go2jsFlagFlagUsages() {
+	return go2jsFlagUsages(go2jsFlagState());
+}
+
+function go2jsFlagUsages(state) {
+	let out = "";
+
+	for (const name of go2jsFlagNames(state)) {
+		const entry = state.values.get(name);
+		let line = "  -" + name;
+		const typeName = go2jsFlagTypeName(entry.kind);
+
+		if (typeName !== "") {
+			line += " " + typeName;
+		}
+
+		if (line.length <= 4) {
+			line += "\t";
+		} else {
+			line += "\n    \t";
+		}
+
+		line += String(entry.usage || "").split("\n").join("\n    \t");
+
+		if (!go2jsFlagIsZeroValue(entry)) {
+			const text = go2jsFlagText(entry.def);
+
+			line += entry.kind === "string" ? " (default " + JSON.stringify(text) + ")" : " (default " + text + ")";
+		}
+
+		out += line + "\n";
+	}
+
+	return out;
+}
+
+function go2jsFlagTypeName(kind) {
+	switch (kind) {
+		case undefined:
+		case null:
+			return "value";
+		case "bool":
+			return "";
+		case "string":
+			return "string";
+		case "int":
+		case "int64":
+			return "int";
+		case "uint":
+		case "uint64":
+			return "uint";
+		case "float64":
+			return "float";
+		case "duration":
+			return "duration";
+		default:
+			return "value";
+	}
+}
+
+function go2jsFlagIsZeroValue(entry) {
+	const def = entry.def;
+
+	if (typeof def === "boolean") {
+		return def === false;
+	}
+
+	if (typeof def === "number") {
+		return def === 0;
+	}
+
+	if (def === null || def === undefined) {
+		return true;
+	}
+
+	const text = String(def);
+
+	return text === "" || text === "0" || text === "0s";
+}
+
+function go2jsFlagPrintDefaults() {
+	go2jsFlagReport(go2jsFlagState(), go2jsFlagUsages(go2jsFlagState()));
+}
+
+function go2jsFlagDefaultUsage(state) {
+	go2jsFlagReport(state, (state.name === "" ? "Usage:\n" : "Usage of " + state.name + ":\n") + go2jsFlagUsages(state));
+}
+
+function go2jsFlagUseUsage(state) {
+	if (typeof state.usage === "function") {
+		state.usage();
+
+		return;
+	}
+
+	go2jsFlagDefaultUsage(state);
+}
+
+function go2jsFlagText(value) {
+	if (typeof value === "string") {
+		return value;
+	}
+
+	if (typeof value === "boolean") {
+		return value ? "true" : "false";
+	}
+
+	return String(value);
+}
+
+function go2jsFlagEntryIn(state, name, kind, target, shorthand, value, usage) {
+	const key = String(name);
+	const initial = value === undefined ? (kind === "string" ? "" : kind === "bool" ? false : kind === "int" || kind === "int64" || kind === "uint" || kind === "uint64" ? 0 : kind === "float64" ? 0 : kind === "duration" ? 0 : "") : go2jsFlagCoerce(kind, value);
+	const entry = go2jsFlagDeclareIn(state, key, usage, initial, target, shorthand);
+	entry.kind = kind;
+
+	if (target !== null && target !== undefined) {
+		go2jsFlagSetValue(target, initial);
+	}
+
+	return entry;
+}
+
+function go2jsFlagFlagObject(entry) {
+	if (entry === null || entry === undefined) {
+		return null;
+	}
+
+	return {
+		type: "*flag.Flag",
+		Name: entry.name,
+		Usage: entry.usage,
+		Shorthand: entry.shorthand,
+		Value: go2jsInterface(go2jsFlagValueObject(entry), "flag.Value"),
+		DefValue: go2jsFlagText(entry.def),
+		Changed: entry.changed === true,
+		Hidden: false,
+		Deprecated: "",
+		NoOptDefVal: entry.kind === "bool" ? "true" : ""
+	};
+}
+
+function go2jsFlagValueObject(entry) {
+	return {
+		type: "flag.Value",
+		String() {
+			return go2jsFlagText(entry.value);
+		},
+		Set(text) {
+			go2jsFlagApply(entry, text);
+
+			return null;
+		}
+	};
+}
+
+function go2jsFlagLookupIn(state, name) {
+	const entry = state.values.get(String(name));
+
+	return go2jsFlagFlagObject(entry);
+}
+
+function go2jsFlagAdd(state, kind, target, name, shorthand, value, usage) {
+	const entry = go2jsFlagEntryIn(state, name, kind, target, shorthand, value, usage);
+
+	return kind === "string" || kind === "bool" ? go2jsFlagCell(entry) : go2jsFlagCell(entry);
+}
+
+function go2jsFlagParseIn(state, argumentsList) {
+	state.parsed = true;
+
+	if (argumentsList === undefined || argumentsList === null) {
+		state.args = [];
+		return null;
+	}
+
+	const args = go2jsToArray(argumentsList);
+	const rest = [];
+
+	for (let index = 0; index < args.length; index += 1) {
+		const token = String(args[index]);
+
+		if (token.length < 2 || token[0] !== "-") {
+			rest.push(token);
+			continue;
+		}
+
+		if (token === "--") {
+			for (let tail = index + 1; tail < args.length; tail += 1) {
+				rest.push(String(args[tail]));
+			}
+
+			break;
+		}
+
+		let name = token;
+		let text = null;
+
+		if (token.slice(0, 2) === "--") {
+			const split = token.indexOf("=");
+
+			if (split >= 0) {
+				name = token.slice(2, split);
+				text = token.slice(split + 1);
+			} else {
+				name = token.slice(2);
+			}
+		} else {
+			name = token.slice(1);
+			const split = name.indexOf("=");
+
+			if (split >= 0) {
+				text = name.slice(split + 1);
+				name = name.slice(0, split);
+			}
+		}
+
+		let entry = state.values.get(name);
+
+		if (entry === undefined && name.length === 1) {
+			for (const candidate of state.order) {
+				const current = state.values.get(candidate);
+
+				if (current.shorthand === name) {
+					entry = current;
+					break;
+				}
+			}
+		}
+
+		if (entry === undefined) {
+			if (name === "help" || name === "h") {
+				return go2jsFlagHelp(state);
+			}
+
+			return go2jsFlagFail(state, "flag provided but not defined: -" + name);
+		}
+
+		if (text === null) {
+			if (entry.kind === "bool") {
+				text = "true";
+			} else {
+				index += 1;
+
+				if (index >= args.length) {
+					return go2jsFlagFail(state, "flag needs an argument: -" + name);
+				}
+
+				text = String(args[index]);
+			}
+		}
+
+		go2jsFlagApply(entry, text);
+	}
+
+	state.args = rest;
+
+	return null;
+}
+
+function go2jsFlagApply(entry, text) {
+	const kind = entry.kind;
+	entry.value = kind === undefined ? go2jsFlagCoerce("string", text) : go2jsFlagCoerce(kind, text);
+	entry.changed = true;
+
+	const target = entry.target;
+
+	if (target !== null && target !== undefined) {
+		if (target.__go2js_pointer === true) {
+			target.set(entry.value);
+		} else {
+			target.value = entry.value;
+		}
+	}
+}
+
+function go2jsFlagObject(state) {
+	const set = state === undefined ? go2jsFlagState() : state;
+
+	const call = (kind, name, shorthand, value, usage) => go2jsFlagAdd(set, kind, null, name, shorthand, value, usage);
+	const callVar = (kind, target, name, shorthand, value, usage) => {
+		go2jsFlagEntryIn(set, name, kind, target, shorthand, value, usage);
+	};
+
+	const object = {
+		Name() {
+			return set.name;
+		},
+		ErrorHandling() {
+			return set.errorHandling;
+		},
+		Parsed() {
+			return set.parsed;
+		},
+		Parse(args) {
+			return go2jsFlagParseIn(set, args);
+		},
+		Args() {
+			return set.args.slice();
+		},
+		Arg(i) {
+			return set.args[Number(i)];
+		},
+		NArg() {
+			return set.args.length;
+		},
+		NFlag() {
+			return set.order.length;
+		},
+		Lookup(name) {
+			return go2jsFlagLookupIn(set, name);
+		},
+		ShorthandLookup(letter) {
+			const key = String(letter).length > 0 ? String(letter)[0] : "";
+
+			for (const name of set.order) {
+				if (set.values.get(name).shorthand === key) {
+					return go2jsFlagLookupIn(set, name);
+				}
+			}
+
+			return null;
+		},
+		Set(name, value) {
+			const entry = set.values.get(String(name));
+
+			if (entry === undefined) {
+				return go2jsStdlibError("no such flag -" + name);
+			}
+
+			go2jsFlagApply(entry, value);
+
+			return null;
+		},
+		Changed(name) {
+			const entry = set.values.get(String(name));
+
+			return entry === undefined ? false : entry.changed === true;
+		},
+		Visit(fn) {
+			for (const name of go2jsFlagNames(set)) {
+				if (set.values.get(name).changed === true) {
+					fn(go2jsFlagLookupIn(set, name));
+				}
+			}
+		},
+		VisitAll(fn) {
+			for (const name of set.order) {
+				fn(go2jsFlagLookupIn(set, name));
+			}
+		},
+		Var(value, name, usage) {
+			go2jsFlagEntryIn(set, name, "value", value, null, "", usage);
+		},
+		VarP(value, name, shorthand, usage) {
+			go2jsFlagEntryIn(set, name, "value", value, null, shorthand, usage);
+		},
+		String(name, value, usage) {
+			return call("string", name, "", value, usage);
+		},
+		StringP(name, shorthand, value, usage) {
+			return call("string", name, shorthand, value, usage);
+		},
+		StringVar(target, name, value, usage) {
+			callVar("string", target, name, "", value, usage);
+		},
+		StringVarP(target, name, shorthand, value, usage) {
+			callVar("string", target, name, shorthand, value, usage);
+		},
+		Int(name, value, usage) {
+			return call("int", name, "", value, usage);
+		},
+		IntP(name, shorthand, value, usage) {
+			return call("int", name, shorthand, value, usage);
+		},
+		IntVar(target, name, value, usage) {
+			callVar("int", target, name, "", value, usage);
+		},
+		IntVarP(target, name, shorthand, value, usage) {
+			callVar("int", target, name, shorthand, value, usage);
+		},
+		Int64(name, value, usage) {
+			return call("int64", name, "", value, usage);
+		},
+		Int64P(name, shorthand, value, usage) {
+			return call("int64", name, shorthand, value, usage);
+		},
+		Int64Var(target, name, value, usage) {
+			callVar("int64", target, name, "", value, usage);
+		},
+		Int64VarP(target, name, shorthand, value, usage) {
+			callVar("int64", target, name, shorthand, value, usage);
+		},
+		Uint(name, value, usage) {
+			return call("uint", name, "", value, usage);
+		},
+		UintP(name, shorthand, value, usage) {
+			return call("uint", name, shorthand, value, usage);
+		},
+		UintVar(target, name, value, usage) {
+			callVar("uint", target, name, "", value, usage);
+		},
+		UintVarP(target, name, shorthand, value, usage) {
+			callVar("uint", target, name, shorthand, value, usage);
+		},
+		Uint64(name, value, usage) {
+			return call("uint64", name, "", value, usage);
+		},
+		Uint64P(name, shorthand, value, usage) {
+			return call("uint64", name, shorthand, value, usage);
+		},
+		Uint64Var(target, name, value, usage) {
+			callVar("uint64", target, name, "", value, usage);
+		},
+		Uint64VarP(target, name, shorthand, value, usage) {
+			callVar("uint64", target, name, shorthand, value, usage);
+		},
+		Float64(name, value, usage) {
+			return call("float64", name, "", value, usage);
+		},
+		Float64P(name, shorthand, value, usage) {
+			return call("float64", name, shorthand, value, usage);
+		},
+		Float64Var(target, name, value, usage) {
+			callVar("float64", target, name, "", value, usage);
+		},
+		Float64VarP(target, name, shorthand, value, usage) {
+			callVar("float64", target, name, shorthand, value, usage);
+		},
+		Bool(name, value, usage) {
+			return call("bool", name, "", value, usage);
+		},
+		BoolP(name, shorthand, value, usage) {
+			return call("bool", name, shorthand, value, usage);
+		},
+		BoolVar(target, name, value, usage) {
+			callVar("bool", target, name, "", value, usage);
+		},
+		BoolVarP(target, name, shorthand, value, usage) {
+			callVar("bool", target, name, shorthand, value, usage);
+		},
+		Duration(name, value, usage) {
+			return call("duration", name, "", value, usage);
+		},
+		DurationP(name, shorthand, value, usage) {
+			return call("duration", name, shorthand, value, usage);
+		},
+		DurationVar(target, name, value, usage) {
+			callVar("duration", target, name, "", value, usage);
+		},
+		DurationVarP(target, name, shorthand, value, usage) {
+			callVar("duration", target, name, shorthand, value, usage);
+		},
+		FlagUsages() {
+			return go2jsFlagUsages(set);
+		},
+		PrintDefaults() {
+			process.stderr.write(go2jsFlagUsages(set));
+		},
+		SetOutput(target) {
+			set.output = target;
+		},
+		Output() {
+			return set.output;
+		},
+		Usage(fn) {
+			set.usage = fn;
+		}
+	};
+
+	object.type = "*flag.FlagSet";
+
+	return object;
+}
+
+function go2jsFlagNewFlagSet(name, errorHandling) {
+	return go2jsFlagObject(go2jsFlagNewState(name, errorHandling));
 }
 
 function go2jsSHA256Constants() {

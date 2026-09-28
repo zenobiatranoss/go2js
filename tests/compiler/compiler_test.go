@@ -249,7 +249,7 @@ func main() {
 	}
 
 	for _, want := range []string{
-		"for (const [key, value] of values.entries())",
+		"for (const [key, value] of go2jsRangeSequence(values).entries())",
 		"console.log(key);",
 		"console.log(value);",
 	} {
@@ -278,7 +278,7 @@ func main() {
 		t.Fatal(err)
 	}
 
-	if !strings.Contains(output, "for (const [index, value] of values.entries())") {
+	if !strings.Contains(output, "for (const [index, value] of go2jsRangeSequence(values).entries())") {
 		t.Fatalf("generated JavaScript missing slice range:\n%s", output)
 	}
 }

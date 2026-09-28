@@ -40,6 +40,21 @@ func (e *emitter) isArrayOrSliceExpr(expr ast.Expr) bool {
 	return isArrayType(t) || isSliceType(t)
 }
 
+func (e *emitter) isMakeSliceType(expr ast.Expr) bool {
+	if arrayType, ok := expr.(*ast.ArrayType); ok {
+		return arrayType.Len == nil
+	}
+
+	t := e.analyzedType(expr)
+	if t == nil {
+		return false
+	}
+
+	_, ok := t.Underlying().(*gotypes.Slice)
+
+	return ok
+}
+
 func collectionElementType(t gotypes.Type) gotypes.Type {
 	if t == nil {
 		return nil
@@ -246,8 +261,7 @@ func (e *emitter) emitCollectionBuiltinCall(call *ast.CallExpr) (bool, error) {
 			return true, err
 		}
 
-		arrayType, ok := call.Args[0].(*ast.ArrayType)
-		if !ok || arrayType.Len != nil {
+		if !e.isMakeSliceType(call.Args[0]) {
 			return false, nil
 		}
 

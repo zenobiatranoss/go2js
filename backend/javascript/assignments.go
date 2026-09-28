@@ -450,6 +450,12 @@ func (e *emitter) emitParallelAssignmentInline(stmt *ast.AssignStmt) (bool, erro
 }
 
 func (e *emitter) multiReturnReusesTargets(stmt *ast.AssignStmt) bool {
+	for _, lhs := range stmt.Lhs {
+		if _, ok := lhs.(*ast.Ident); !ok {
+			return true
+		}
+	}
+
 	if stmt.Tok != token.DEFINE {
 		return false
 	}

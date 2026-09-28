@@ -234,9 +234,20 @@ func (e *emitter) emitEntriesRangeStmt(stmt *ast.RangeStmt) error {
 		e.write("] of ")
 	}
 
+	switch mode.kind {
+	case rangeKeys, rangeMapValues:
+		e.needsRuntime = true
+		e.write("go2jsRangeMap(")
+	default:
+		e.needsRuntime = true
+		e.write("go2jsRangeSequence(")
+	}
+
 	if err := e.emitExpr(stmt.X); err != nil {
 		return err
 	}
+
+	e.write(")")
 
 	switch mode.kind {
 	case rangeKeys:
@@ -284,6 +295,14 @@ func (e *emitter) emitRangeBinding(lhs ast.Expr, value string, tok token.Token) 
 
 func rangeRuntimeSource() string {
 	return `
+function go2jsRangeSequence(value) {
+	return value === null || value === undefined ? [] : value;
+}
+
+function go2jsRangeMap(value) {
+	return value === null || value === undefined ? new go2jsNativeMap() : value;
+}
+
 function* go2jsRangeValue(value) {
 	if (value === null || value === undefined) {
 		return;

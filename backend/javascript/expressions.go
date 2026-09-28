@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/token"
 	gotypes "go/types"
+
 	"strconv"
 )
 
@@ -49,7 +50,7 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		} else if x.Name == e.aggregateReceiver && !e.isShadowed(x.Name) {
 			e.write(x.Name)
 		} else if x.Name == e.receiver && !e.isShadowed(x.Name) {
-			if e.funcLitDepth > 0 && e.receiverBinding != "" {
+			if e.receiverBinding != "" && (e.funcLitDepth > 0 || e.receiverMutable) {
 				e.write(e.receiverBinding)
 
 				break
@@ -158,12 +159,17 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		}
 
 	case *ast.StarExpr:
+		e.needsRuntime = true
+
+		if e.isScalarReceiverIdent(x.X) {
+			return e.emitExpr(x.X)
+		}
+
 		e.write("go2jsDeref(")
 		if err := e.emitExpr(x.X); err != nil {
 			return err
 		}
 		e.write(")")
-		e.needsRuntime = true
 
 	case *ast.UnaryExpr:
 		if x.Op == token.MUL && e.isScalarReceiverIdent(x.X) {
@@ -275,6 +281,10 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			return e.emitConversion(x)
 		}
 
+		if handled, err := e.emitReflectCall(x); handled {
+			return err
+		}
+
 		if handled, err := e.emitCollectionBuiltinCall(x); handled {
 			return err
 		}
@@ -300,12 +310,16 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				return err
 			}
 
+			if handled, err := e.emitShimValueMethodCall(x, selector); handled {
+				return err
+			}
+
 			if handled, err := e.emitSortCall(x, selector); handled {
 				return err
 			}
 
 			if pkg, ok := selector.X.(*ast.Ident); ok {
-				if name, ok := stdlibFuncName(pkg.Name, selector.Sel.Name); ok {
+				if name, ok := e.stdlibFuncNameForIdent(pkg, selector.Sel.Name); ok {
 					e.write(name)
 					if pkg.Name != "math" || selector.Sel.Name == "Signbit" || selector.Sel.Name == "IsInf" {
 						e.needsRuntime = true
@@ -368,7 +382,7 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			}
 		}
 
-		if name, ok := builtinName(x); ok {
+		if name, ok := e.builtinName(x); ok {
 			e.write(name)
 
 			if isFmtPrintBuiltin(x) {
@@ -534,10 +548,6 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 
 		if pkg, ok := x.X.(*ast.Ident); ok && pkg.Name == "os" {
 			switch x.Sel.Name {
-			case "Args":
-				e.needsRuntime = true
-				e.write("go2jsOSArgs()")
-				return nil
 			case "PathSeparator":
 				e.write(`"/"`)
 				return nil
@@ -1062,10 +1072,8 @@ func (e *emitter) isMultiReturnCall(expr ast.Expr) bool {
 			}
 		}
 
-		if function, ok := e.analysis.Uses[selector.Sel].(*gotypes.Func); ok {
-			if signature, ok := function.Type().(*gotypes.Signature); ok {
-				return signature.Results() != nil && signature.Results().Len() > 1
-			}
+		if isMultiReturnObject(e.analysis.Uses[selector.Sel]) {
+			return true
 		}
 
 		return false
@@ -1081,13 +1089,71 @@ func (e *emitter) isMultiReturnCall(expr ast.Expr) bool {
 		obj = e.analysis.Defs[ident]
 	}
 
-	function, ok := obj.(*gotypes.Func)
+	return isMultiReturnObject(obj)
+}
+
+// selectorReceiverType resolves the receiver type of a method selector whose
+// receiver is itself a call, for example template.New("t").Parse(text).
+func (e *emitter) selectorReceiverType(selector *ast.SelectorExpr) gotypes.Type {
+	call, ok := selector.X.(*ast.CallExpr)
+	if !ok || e.analysis == nil {
+		return nil
+	}
+
+	fun, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
+		return nil
+	}
+
+	ident, ok := fun.X.(*ast.Ident)
+	if !ok {
+		return nil
+	}
+
+	alias, ok := e.analysis.Uses[ident].(*gotypes.PkgName)
+	if !ok || alias.Imported() == nil {
+		return nil
+	}
+
+	name := alias.Imported().Path() + "." + fun.Sel.Name
+
+	return shimReceiverTypes[name]
+}
+
+var shimReceiverTypes = map[string]gotypes.Type{
+	"html/template.New": mustNamedType("html/template", "Template"),
+	"text/template.New": mustNamedType("text/template", "Template"),
+}
+
+func mustNamedType(path string, name string) gotypes.Type {
+	pkg := gotypes.NewPackage(path, name)
+	object := gotypes.NewTypeName(token.NoPos, pkg, name, nil)
+
+	return gotypes.NewNamed(object, nil, nil)
+}
+
+func isMultiReturnObject(obj gotypes.Object) bool {
+	if obj == nil {
 		return false
 	}
 
-	results := function.Type().(*gotypes.Signature).Results()
-	return results.Len() > 1
+	switch value := obj.(type) {
+	case *gotypes.Func:
+		return hasMultipleResults(value.Type())
+	case *gotypes.Var:
+		return hasMultipleResults(value.Type())
+	}
+
+	return false
+}
+
+func hasMultipleResults(typ gotypes.Type) bool {
+	signature, ok := typ.Underlying().(*gotypes.Signature)
+	if !ok || signature.Results() == nil {
+		return false
+	}
+
+	return signature.Results().Len() > 1
 }
 
 func (e *emitter) isStdlibMethodMultiReturn(selector *ast.SelectorExpr) bool {
@@ -1096,6 +1162,10 @@ func (e *emitter) isStdlibMethodMultiReturn(selector *ast.SelectorExpr) bool {
 	}
 
 	receiver := e.analyzedType(selector.X)
+	if receiver == nil {
+		receiver = e.selectorReceiverType(selector)
+	}
+
 	if receiver == nil {
 		return false
 	}
@@ -1123,11 +1193,15 @@ func (e *emitter) isStdlibMethodMultiReturn(selector *ast.SelectorExpr) bool {
 }
 
 var stdlibMethodMultiReturn = map[string]bool{
-	"bytes.Buffer.ReadString": true,
-	"bytes.Buffer.ReadBytes":  true,
-	"bytes.Buffer.WriteTo":    true,
-	"bytes.Buffer.ReadFrom":   true,
-	"bytes.Buffer.Read":       true,
+	"bytes.Buffer.ReadString":      true,
+	"bytes.Buffer.ReadBytes":       true,
+	"bytes.Buffer.WriteTo":         true,
+	"bytes.Buffer.ReadFrom":        true,
+	"bytes.Buffer.Read":            true,
+	"html/template.Template.Parse": true,
+	"html/template.Template.New":   true,
+	"text/template.Template.Parse": true,
+	"text/template.Template.New":   true,
 }
 
 func (e *emitter) isErrorsAsCall(call *ast.CallExpr) bool {

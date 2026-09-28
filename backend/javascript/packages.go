@@ -2,9 +2,10 @@ package javascript
 
 import (
 	"go/ast"
-	gotypesstd "go/types"
 	"strconv"
 	"strings"
+
+	gotypesstd "go/types"
 )
 
 type packageSymbol struct {
@@ -37,6 +38,23 @@ var packageConstants = map[string]string{
 	"time.Minute":             "go2jsDuration(60000000000)",
 	"time.Hour":               "go2jsDuration(3600000000000)",
 	"time.UTC":                "0",
+	"time.Layout":             strconv.Quote("01/02 03:04:05PM '06 -0700"),
+	"time.ANSIC":              strconv.Quote("Mon Jan _2 15:04:05 2006"),
+	"time.UnixDate":           strconv.Quote("Mon Jan _2 15:04:05 MST 2006"),
+	"time.RubyDate":           strconv.Quote("Mon Jan 02 15:04:05 -0700 2006"),
+	"time.RFC822":             strconv.Quote("02 Jan 06 15:04 MST"),
+	"time.RFC822Z":            strconv.Quote("02 Jan 06 15:04 -0700"),
+	"time.RFC850":             strconv.Quote("Monday, 02-Jan-06 15:04:05 MST"),
+	"time.RFC1123":            strconv.Quote("Mon, 02 Jan 2006 15:04:05 MST"),
+	"time.RFC1123Z":           strconv.Quote("Mon, 02 Jan 2006 15:04:05 -0700"),
+	"time.RFC3339":            strconv.Quote("2006-01-02T15:04:05Z07:00"),
+	"time.RFC3339Nano":        strconv.Quote("2006-01-02T15:04:05.999999999Z07:00"),
+	"time.Kitchen":            strconv.Quote("3:04PM"),
+	"time.Stamp":              strconv.Quote("Jan _2 15:04:05"),
+	"time.StampMilli":         strconv.Quote("Jan _2 15:04:05.000"),
+	"time.StampMicro":         strconv.Quote("Jan _2 15:04:05.000000"),
+	"time.StampNano":          strconv.Quote("Jan _2 15:04:05.000000000"),
+	"time.DateTime":           strconv.Quote("2006-01-02 15:04:05"),
 	"time.Local":              "1",
 	"time.January":            "1",
 	"time.February":           "2",
@@ -150,6 +168,10 @@ func (e *emitter) isPackageSelector(selector *ast.SelectorExpr) bool {
 		return false
 	}
 
+	if e.analysis != nil && e.analysis.PackageName(ident) == nil {
+		return false
+	}
+
 	return true
 }
 
@@ -182,7 +204,11 @@ func (e *emitter) emitPackageValue(selector *ast.SelectorExpr) (bool, error) {
 	pkg := ""
 
 	if ident, ok := selector.X.(*ast.Ident); ok {
-		pkg = ident.Name
+		pkg = e.stdlibKeyForIdent(ident)
+	}
+
+	if pkg == "" {
+		return false, nil
 	}
 
 	key := pkg + "." + selector.Sel.Name
@@ -224,10 +250,15 @@ func (e *emitter) emitPackageValue(selector *ast.SelectorExpr) (bool, error) {
 		return true, nil
 	}
 
-	if jsName, ok := stdlibFuncName(pkg, selector.Sel.Name); ok {
-		e.needsRuntime = true
-		e.write(jsName)
-		return true, nil
+	if ident, ok := selector.X.(*ast.Ident); ok {
+		if jsName, found := e.stdlibFuncNameForIdent(ident, selector.Sel.Name); found {
+			e.needsRuntime = true
+			e.write(jsName)
+
+			return true, nil
+		}
+
+		return false, nil
 	}
 
 	return false, nil

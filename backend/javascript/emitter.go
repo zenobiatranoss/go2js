@@ -17,6 +17,7 @@ type emitter struct {
 	receiver            string
 	funcLitDepth        int
 	receiverBinding     string
+	receiverMutable     bool
 	channelPairTarget   bool
 	mapLookupPairTarget bool
 	scalarReceiver      string
@@ -31,6 +32,8 @@ type emitter struct {
 	buf                 bytes.Buffer
 	indent              int
 	needsRuntime        bool
+	reflectTypeKeys     map[gotypesstd.Type]string
+	reflectTypeConsts   []string
 	resultCount         int
 	analysis            *gotypes.Result
 	semantic            *semantic.Context
@@ -125,6 +128,30 @@ func EmitWithContextOptionsTargetQualified(file *ast.File, analysis *gotypes.Res
 // EmitFile emits one file and reports whether the emitted code depends on the
 // shared runtime bundle, so callers can emit that bundle exactly once.
 func EmitFile(file *ast.File, analysis *gotypes.Result, context *semantic.Context, includeRuntime bool, target string, selfPackagePath string, qualifiers map[string]string) (string, bool, error) {
+	return emitFilePass(file, analysis, context, includeRuntime, target, selfPackagePath, qualifiers, emitAll)
+}
+
+// EmitFileTypes emits only the type declarations of one file, so a package can
+// declare every type before any function or method refers to it.
+func EmitFileTypes(file *ast.File, analysis *gotypes.Result, context *semantic.Context, includeRuntime bool, target string, selfPackagePath string, qualifiers map[string]string) (string, bool, error) {
+	return emitFilePass(file, analysis, context, includeRuntime, target, selfPackagePath, qualifiers, emitTypesOnly)
+}
+
+// EmitFileBody emits everything except type declarations, complementing
+// EmitFileTypes for packages that are emitted in two passes.
+func EmitFileBody(file *ast.File, analysis *gotypes.Result, context *semantic.Context, includeRuntime bool, target string, selfPackagePath string, qualifiers map[string]string) (string, bool, error) {
+	return emitFilePass(file, analysis, context, includeRuntime, target, selfPackagePath, qualifiers, emitNoTypes)
+}
+
+type emitPass int
+
+const (
+	emitAll emitPass = iota
+	emitTypesOnly
+	emitNoTypes
+)
+
+func emitFilePass(file *ast.File, analysis *gotypes.Result, context *semantic.Context, includeRuntime bool, target string, selfPackagePath string, qualifiers map[string]string, pass emitPass) (string, bool, error) {
 	if context == nil && analysis != nil {
 		context = semantic.NewResultContext(analysis, nil)
 	}
@@ -140,12 +167,24 @@ func EmitFile(file *ast.File, analysis *gotypes.Result, context *semantic.Contex
 	for _, decl := range file.Decls {
 		switch d := decl.(type) {
 		case *ast.FuncDecl:
+			if pass == emitTypesOnly {
+				continue
+			}
+
 			if err := e.emitFunc(d); err != nil {
 				return "", false, err
 			}
 			e.newline()
 
 		case *ast.GenDecl:
+			if pass == emitTypesOnly && d.Tok != token.TYPE {
+				continue
+			}
+
+			if pass == emitNoTypes && d.Tok == token.TYPE {
+				continue
+			}
+
 			if err := e.emitGenDecl(d); err != nil {
 				return "", false, err
 			}
@@ -155,9 +194,9 @@ func EmitFile(file *ast.File, analysis *gotypes.Result, context *semantic.Contex
 		}
 	}
 
-	if file.Name.Name == "main" {
+	if pass != emitTypesOnly && file.Name.Name == "main" {
 		for _, decl := range file.Decls {
-			if fn, ok := decl.(*ast.FuncDecl); ok && fn.Name.Name == "main" {
+			if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv == nil && fn.Name.Name == "main" {
 				e.write("main();")
 				e.newline()
 				break
@@ -194,6 +233,12 @@ func ProgramRuntime(requiredSource, target string) string {
 		osStdioRuntimeSource(),
 		runeRuntimeSource(),
 		moreRuntimeSource(),
+		funcTypeRuntimeSource(),
+		reflectRuntimeSource(),
+		netRuntimeSource(),
+		templateRuntimeSource(),
+		osFileRuntimeSource(),
+		sortSliceShimRuntimeSource(),
 	)
 	prefix = lowerJavaScriptTarget(prefix, normalizeTarget(target))
 
@@ -206,6 +251,7 @@ func ProgramRuntime(requiredSource, target string) string {
 
 func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 	e.receiver = ""
+	e.receiverMutable = false
 	e.channelPairTarget = false
 	e.mapLookupPairTarget = false
 	e.scalarReceiver = ""
@@ -418,7 +464,12 @@ func (e *emitter) emitBlock(block *ast.BlockStmt) error {
 	e.indent++
 
 	if e.receiverBinding != "" && block == e.functionBody {
-		e.write("const ")
+		if e.receiverMutable {
+			e.write("let ")
+		} else {
+			e.write("const ")
+		}
+
 		e.write(e.receiverBinding)
 		e.write(" = this;")
 		e.newline()
@@ -1201,6 +1252,7 @@ func (e *emitter) emitValueDecl(decl *ast.GenDecl) error {
 			}
 
 			e.write(javaScriptIdentifier(name.Name))
+			e.declare(name.Name)
 
 			if i < len(valueSpec.Values) {
 				e.write(" = ")
@@ -1389,6 +1441,19 @@ func (e *emitter) emitType(spec *ast.TypeSpec) error {
 		e.newline()
 
 	default:
+		if t := e.analyzedType(spec.Type); t != nil {
+			if _, ok := t.Underlying().(*gotypesstd.Struct); ok {
+				e.writeIndent()
+				e.write("class ")
+				e.write(spec.Name.Name)
+				e.write(" {}")
+				e.newline()
+				e.newline()
+
+				return e.emitTypeNameRegistration(spec.Name)
+			}
+		}
+
 		return nil
 	}
 
@@ -1609,6 +1674,14 @@ func (e *emitter) emitConversion(call *ast.CallExpr) error {
 		return e.emitInterfaceValue(call.Args[0], target)
 	}
 
+	if _, ok := target.Underlying().(*gotypesstd.Pointer); ok {
+		if source := e.analyzedType(call.Args[0]); source != nil {
+			if _, pointerSource := source.Underlying().(*gotypesstd.Pointer); pointerSource {
+				return e.emitExpr(call.Args[0])
+			}
+		}
+	}
+
 	if param, ok := target.(*gotypesstd.TypeParam); ok {
 		descriptor, found := e.currentGenericTypeDescriptor(param)
 		if !found {
@@ -1711,6 +1784,18 @@ func (e *emitter) emitConversion(call *ast.CallExpr) error {
 		}
 	}
 
+	if signature, ok := namedFuncType(target); ok {
+		return e.emitFuncTypeConversion(call, signature)
+	}
+
+	if named, ok := target.(*gotypesstd.Named); ok {
+		if source := e.analyzedType(call.Args[0]); source != nil {
+			if gotypesstd.Identical(source.Underlying(), named.Underlying()) {
+				return e.emitExpr(call.Args[0])
+			}
+		}
+	}
+
 	if named, ok := namedUnderlying(target); ok {
 		return e.emitNamedConversion(call, named, typeName)
 	}
@@ -1736,6 +1821,8 @@ func (e *emitter) emitConversion(call *ast.CallExpr) error {
 	if name == "String" && isIntegerType(e.analyzedType(call.Args[0])) {
 		name = "String.fromCodePoint"
 	}
+
+	name = e.safeConversionName(name)
 
 	if name == "" {
 		if typeName != nil {
@@ -1807,11 +1894,15 @@ func (e *emitter) emitStructMethodBody(fn *ast.FuncDecl, receiverType string) er
 
 	e.receiver = ""
 	e.receiverBinding = ""
+	e.receiverMutable = false
 
 	if named {
 		e.receiver = receiver.Names[0].Name
 
-		if bodyHasFuncLit(fn.Body) && !isReceiverAssigned(fn.Body, e.receiver) {
+		if isReceiverAssigned(fn.Body, e.receiver) {
+			e.receiverBinding = "go2jsReceiver_" + javaScriptIdentifier(e.receiver)
+			e.receiverMutable = true
+		} else if bodyHasFuncLit(fn.Body) {
 			e.receiverBinding = "go2jsReceiver_" + javaScriptIdentifier(e.receiver)
 		}
 	}
@@ -1901,4 +1992,51 @@ func isReceiverAssigned(body *ast.BlockStmt, name string) bool {
 	})
 
 	return declared
+}
+
+var shadowSafeConversions = map[string]string{
+	"String":               "go2jsToString",
+	"Number":               "go2jsToNumber",
+	"Boolean":              "go2jsToBool",
+	"String.fromCodePoint": "go2jsToRune",
+}
+
+// safeConversionName keeps basic conversions working when the transpiled
+// package declares its own String, Number or Boolean function.
+func (e *emitter) safeConversionName(name string) string {
+	safe, ok := shadowSafeConversions[name]
+	if !ok {
+		return name
+	}
+
+	if e.declaresPackageLevel(name) {
+		e.needsRuntime = true
+		return safe
+	}
+
+	return name
+}
+
+func (e *emitter) declaresPackageLevel(name string) bool {
+	identifier := name
+
+	if index := strings.IndexByte(identifier, '.'); index >= 0 {
+		identifier = identifier[:index]
+	}
+
+	if e.analysis == nil {
+		return false
+	}
+
+	for _, object := range e.analysis.Defs {
+		if object == nil || object.Name() != identifier || object.Pkg() == nil {
+			continue
+		}
+
+		if object.Parent() == object.Pkg().Scope() {
+			return true
+		}
+	}
+
+	return false
 }
