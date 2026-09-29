@@ -65,6 +65,18 @@ function go2jsChanTryRecv(channel) {
 	return null;
 }
 
+function go2jsChanRecvReady(channel) {
+	return channel.buffer.length > 0 || channel.closed;
+}
+
+function go2jsChanSendReady(channel) {
+	if (channel.closed) {
+		return false;
+	}
+
+	return channel.capacity === 0 || channel.buffer.length < channel.capacity;
+}
+
 function go2jsChanSend(channel, value) {
 	while (true) {
 		if (channel.closed) {
