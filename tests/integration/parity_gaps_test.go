@@ -299,3 +299,96 @@ func main() {
 }
 `)
 }
+
+func TestRegexpIndicesAreByteOffsets(t *testing.T) {
+	// Go reports UTF-8 byte offsets while JavaScript indexes UTF-16 code units,
+	// so every index method has to translate or non ASCII input is wrong.
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"regexp"
+)
+
+func main() {
+	re := regexp.MustCompile("(\\p{Han})+")
+	s := "abc汉字xyz"
+
+	fmt.Println(re.FindStringIndex(s))
+	fmt.Println(re.FindAllStringIndex(s, -1))
+	fmt.Println(re.FindStringSubmatchIndex(s))
+	fmt.Println(s[re.FindStringIndex(s)[0]:re.FindStringIndex(s)[1]])
+
+	// The byte variants must agree with the string ones.
+	b := []byte(s)
+	fmt.Println(re.FindIndex(b))
+	fmt.Println(re.FindAllIndex(b, -1))
+	fmt.Println(re.FindSubmatchIndex(b))
+
+	// Arabic letters are two bytes each.
+	ar := regexp.MustCompile("[ء-ي]+")
+	t := "abcبتثجد zyx"
+	fmt.Println(ar.FindStringIndex(t), ar.FindAllStringIndex(t, -1))
+	fmt.Println(ar.FindStringSubmatchIndex(t))
+	for _, loc := range ar.FindAllStringIndex(t, -1) {
+		fmt.Println(t[loc[0]:loc[1]])
+	}
+
+	// A four byte rune is a surrogate pair in JavaScript.
+	emoji := regexp.MustCompile("😀+")
+	u := "hi😀😀there"
+	fmt.Println(emoji.FindStringIndex(u))
+	fmt.Println(emoji.FindStringSubmatchIndex(u))
+	fmt.Println(u[emoji.FindStringIndex(u)[0]:emoji.FindStringIndex(u)[1]])
+	fmt.Println(emoji.FindIndex([]byte(u)))
+	fmt.Println(emoji.FindAllStringIndex(u, -1))
+
+	// No match stays empty rather than negative.
+	fmt.Println(emoji.FindStringIndex("none"))
+	fmt.Println(emoji.FindStringIndex("none") == nil)
+	fmt.Println(ar.FindIndex([]byte("abc")))
+
+	// Mixed ASCII and non ASCII.
+	mixed := regexp.MustCompile("(é|漢|😀)")
+	v := "aéb漢c😀d"
+	fmt.Println(mixed.FindAllStringIndex(v, -1))
+	fmt.Println(mixed.FindStringSubmatchIndex(v))
+}
+`)
+}
+
+func TestStringIndicesAndSlicesAreByteBased(t *testing.T) {
+	// len, indexing and slicing on a Go string all work in bytes.
+	runParityTest(t, `package main
+
+import "fmt"
+
+func main() {
+	s := "aé漢😀z"
+
+	fmt.Println(len(s))
+	fmt.Println(s[0], s[1], s[3], s[7], s[10])
+
+	// Bounds that land on rune boundaries round trip exactly.
+	fmt.Println(s[0:1], s[1:3], s[3:6], s[6:10], s[10:11])
+	fmt.Println(s[:], s[3:], s[:3])
+
+	for i, r := range s {
+		fmt.Println(i, r)
+	}
+
+	fmt.Println("é漢"[1], "😀"[0], "abc"[2])
+
+	// len and slicing must stay in agreement for pure ASCII too.
+	ascii := "hello"
+	fmt.Println(len(ascii), ascii[1], ascii[1:4], ascii[2:])
+
+	// Runes and byte counts differ for multibyte text. Every rune here is two
+	// bytes, so slicing on rune boundaries matches Go exactly.
+	word := "مرحبا"
+	fmt.Println(len(word), len([]rune(word)))
+	fmt.Println(word[0:2], word[2:4], word[4:6], word[6:8], word[8:10])
+	fmt.Println(word[:4], word[4:], word[6:8])
+}
+`)
+}

@@ -341,35 +341,48 @@ function go2jsTimeFormat(date, layout) {
 function go2jsRegexpNew(pattern) {
     const source = String(pattern);
 
+    // Every index method reports Go byte offsets, so the subject is decoded once
+    // per call and translated on the way out.
+    const exec = (value, flags) => {
+        const text = go2jsBytesToString(value);
+        const match = go2jsRegexpNewRegExp(source, flags).exec(text);
+
+        return { match: match, offset: go2jsByteOffsetMap(text) };
+    };
+
     return {
         pattern: source,
         MatchString(value) {
             return go2jsRegexpNewRegExp(source).test(String(value));
         },
         Find(value) {
-            const match = go2jsRegexpNewRegExp(source).exec(go2jsBytesToString(value));
-            return match === null ? null : go2jsStringToBytes(match[0]);
+            return go2jsRegexpByteSubmatch(exec(value).match);
         },
         FindString(value) {
-            const match = go2jsRegexpNewRegExp(source).exec(go2jsBytesToString(value));
+            const match = exec(value).match;
             return match === null ? "" : match[0];
         },
         FindStringIndex(value) {
-            const match = go2jsRegexpNewRegExp(source).exec(go2jsBytesToString(value));
-            return match === null ? null : [match.index, match.index + match[0].length];
+            const result = exec(value);
+            return go2jsRegexpIndex(result.match, result.offset);
+        },
+        FindIndex(value) {
+            const result = exec(value);
+            return go2jsRegexpIndex(result.match, result.offset);
         },
         FindStringSubmatch(value) {
-            return go2jsRegexpSubmatch(go2jsRegexpNewRegExp(source).exec(go2jsBytesToString(value)));
+            return go2jsRegexpSubmatch(exec(value).match);
         },
         FindStringSubmatchIndex(value) {
-            return go2jsRegexpSubmatchIndex(go2jsRegexpNewRegExp(source, "d").exec(go2jsBytesToString(value)));
+            const result = exec(value, "d");
+            return go2jsRegexpSubmatchIndex(result.match, result.offset);
         },
         FindSubmatch(value) {
-            const match = go2jsRegexpNewRegExp(source).exec(go2jsBytesToString(value));
-            return go2jsRegexpByteSubmatch(match);
+            return go2jsRegexpByteSubmatch(exec(value).match);
         },
         FindSubmatchIndex(value) {
-            return go2jsRegexpByteSubmatchIndex(go2jsRegexpNewRegExp(source, "d").exec(go2jsBytesToString(value)));
+            const result = exec(value, "d");
+            return go2jsRegexpByteSubmatchIndex(result.match, result.offset);
         },
         FindAllStringSubmatch(value, limit) {
             return go2jsRegexpFindAllSubmatch(source, value, limit);
@@ -387,25 +400,10 @@ function go2jsRegexpNew(pattern) {
             return go2jsRegexpFindAllString(source, value, limit);
         },
         FindAllStringIndex(value, limit) {
-            const regex = go2jsRegexpNewRegExp(source, "g");
-            const text = go2jsBytesToString(value);
-            const out = [];
-
-            for (;;) {
-                const match = regex.exec(text);
-
-                if (match === null) {
-                    break;
-                }
-
-                out.push([match.index, match.index + match[0].length]);
-
-                if (limit >= 0 && out.length >= limit) {
-                    break;
-                }
-            }
-
-            return out;
+            return go2jsRegexpFindAllIndex(source, value, limit);
+        },
+        FindAllIndex(value, limit) {
+            return go2jsRegexpFindAllIndex(source, value, limit);
         },
         ReplaceAllString(value, replacement) {
             return go2jsRegexpReplaceAllString(source, value, replacement);

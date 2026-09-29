@@ -650,6 +650,25 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			return e.emitGenericFunctionValue(x)
 		}
 
+		if e.isStringIndexExpr(x) {
+			e.needsRuntime = true
+			e.write("go2jsStringIndexByte(")
+
+			if err := e.emitExpr(x.X); err != nil {
+				return err
+			}
+
+			e.write(", ")
+
+			if err := e.emitExpr(x.Index); err != nil {
+				return err
+			}
+
+			e.write(")")
+
+			return nil
+		}
+
 		if e.isMapExpr(x.X) {
 			e.needsRuntime = true
 
@@ -712,6 +731,39 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 	case *ast.SliceExpr:
 		if e.isArrayOrSliceExpr(x.X) {
 			return e.emitSliceExpression(x)
+		}
+
+		if e.isStringSliceExpr(x) {
+			e.needsRuntime = true
+			e.write("go2jsStringSlice(")
+
+			if err := e.emitExpr(x.X); err != nil {
+				return err
+			}
+
+			e.write(", ")
+
+			if x.Low != nil {
+				if err := e.emitExpr(x.Low); err != nil {
+					return err
+				}
+			} else {
+				e.write("undefined")
+			}
+
+			e.write(", ")
+
+			if x.High != nil {
+				if err := e.emitExpr(x.High); err != nil {
+					return err
+				}
+			} else {
+				e.write("undefined")
+			}
+
+			e.write(")")
+
+			return nil
 		}
 
 		if err := e.emitExpr(x.X); err != nil {
@@ -1442,6 +1494,19 @@ func (e *emitter) spreadsMultiValueCall(call *ast.CallExpr, arg ast.Expr) bool {
 	}
 
 	return results == params.Len()
+}
+
+// isStringSliceExpr reports a string slice, whose bounds are byte offsets.
+func (e *emitter) isStringSliceExpr(x *ast.SliceExpr) bool {
+	t := e.analyzedType(x.X)
+
+	if t == nil {
+		return false
+	}
+
+	basic, ok := t.Underlying().(*gotypes.Basic)
+
+	return ok && basic.Info()&gotypes.IsString == gotypes.IsString
 }
 
 func (e *emitter) isStringIndexExpr(x *ast.IndexExpr) bool {
