@@ -3096,8 +3096,14 @@ function go2jsFormat(value, typeName, kind, shape, plus, nested) {
 	case "string":
 		return value;
 	case "number":
-		// Integers keep their digits so large int64 values stay readable, while
-		// fractional values follow Go's %v float formatting.
+		// A float is a float even when it holds a whole number, and Go writes
+		// 1e+15 where a whole number would say 1000000000000000. Only the
+		// integer types keep their digits, so that a large int64 stays
+		// readable instead of turning into an exponent.
+		if (go2jsIsFloatTypeName(typeName) || (kind !== null && kind !== undefined && kind !== "int" && kind !== "" && go2jsIsFloatTypeName(kind))) {
+			return go2jsFormatFloatDefault(value);
+		}
+
 		return Number.isInteger(value) ? String(value) : go2jsFormatFloatDefault(value);
 	case "boolean":
 		return String(value);
@@ -3294,6 +3300,16 @@ function go2jsSprintf(format, ...args) {
 	let walked = 0;
 	let reached = 0;
 
+	// fmt stops trusting the operand numbers once one of them names something
+	// that is not there, and every verb left in the format says so.
+	let goodArgNum = true;
+	// Once a format names its operands, fmt gives up on saying which of the
+	// operands went unused, because it cannot tell.
+	let reordered = false;
+	// True while the verb being read follows an index, which fmt only allows
+	// when the width or the precision is read from an operand of its own.
+	let afterIndex = false;
+
 	for (let i = 0; i < format.length; i++) {
 		const ch = format[i];
 
@@ -3305,29 +3321,50 @@ function go2jsSprintf(format, ...args) {
 		i++;
 		let spec = "%";
 
-		// An explicit index names the operand directly.
+		// An explicit index names the operand directly. It may stand in for the
+		// width, for the precision or for the operand the verb reads, and the
+		// place it was written in the format is what says which of them it is.
 		let explicitIndex = 0;
 		let starRead = false;
-
-		while (i + 1 < format.length && format[i] === "[" && format[i + 1] !== "]") {
-			const close = format.indexOf("]", i + 1);
-
-			if (close === -1) {
-				break;
-			}
-
-			const digits = format.slice(i + 1, close);
-
-			if (digits.length === 0 || !/^\d+$/.test(digits)) {
-				break;
-			}
-
-			explicitIndex = Number(digits);
-			i = close + 1;
-		}
+		// An index in front of the width has to stay there: digits or a dot
+		// after it would leave fmt unable to tell who they belong to.
+		let seenDot = false;
 
 		while (i < format.length) {
 			const flag = format[i];
+
+			if (flag === "[" && format[i + 1] !== "]") {
+				const close = format.indexOf("]", i + 1);
+
+				if (close === -1) {
+					break;
+				}
+
+				const digits = format.slice(i + 1, close);
+
+				if (digits.length === 0 || !/^\d+$/.test(digits)) {
+					break;
+				}
+
+				const named = Number(digits);
+				reordered = true;
+
+				if (named < 1 || named > args.length) {
+					// fmt keeps the walk where it was and stops believing the
+					// rest of the numbers, so every verb from the one here on
+					// reports a bad index.
+					goodArgNum = false;
+				} else {
+					explicitIndex = named;
+
+					if (!seenDot) {
+						afterIndex = true;
+					}
+				}
+
+				i = close + 1;
+				continue;
+			}
 
 			if ("+-# ".includes(flag)) {
 				spec += flag;
@@ -3335,13 +3372,25 @@ function go2jsSprintf(format, ...args) {
 				continue;
 			}
 
+			// A width or a precision written out in digits has to come before
+			// an index, because fmt has no way to tell which of the two the
+			// operand belongs to. "%[1]6.2f" is a bad index, not a width.
 			if (flag === "0" || (flag >= "1" && flag <= "9")) {
+				if (afterIndex) {
+					goodArgNum = false;
+				}
+
 				spec += flag;
 				i++;
 				continue;
 			}
 
 			if (flag === ".") {
+				if (afterIndex) {
+					goodArgNum = false;
+				}
+
+				seenDot = true;
 				spec += flag;
 				i++;
 				continue;
@@ -3362,14 +3411,43 @@ function go2jsSprintf(format, ...args) {
 					argIndex = 1;
 				}
 
-				const star = Math.trunc(Number(args[argIndex - 1]));
+				// A width or a precision is read as an integer and nothing else,
+				// so an operand of any other kind leaves the verb with none.
+				const read = argIndex <= args.length
+					? go2jsStarWidth(args[argIndex - 1])
+					: null;
 
-				// The verb that follows this star reads the operand after the
-				// one the star used, so the cursor is left on it already.
-				walked = 1;
-				reached = argIndex;
-				starRead = true;
-				spec += Number.isFinite(star) ? String(star) : "0";
+				if (read === null) {
+					result += seenDot ? "%!(BADPREC)" : "%!(BADWIDTH)";
+				}
+
+				if (argIndex > args.length) {
+					// The cursor stays where the star found nothing, so the verb
+					// that follows is left looking past the end of the operands
+					// as well and reports its own missing one.
+					argIndex = args.length + 1;
+					walked = 0;
+				} else {
+					// The verb that follows this star reads the operand after
+					// the one the star used, so the cursor is left on it
+					// already, whether or not the star made sense of it.
+					walked = 1;
+					reached = argIndex;
+					starRead = true;
+				}
+
+				afterIndex = false;
+
+				if (read === null) {
+					// A precision that never arrived is not a precision, so the
+					// dot in front of it goes too. A width simply never appears.
+					if (seenDot) {
+						spec = spec.replace(/\.$/, "");
+					}
+				} else if (read >= 0) {
+					spec += String(read);
+				}
+
 				i++;
 				continue;
 			}
@@ -3423,19 +3501,27 @@ function go2jsSprintf(format, ...args) {
 		// An operand past the end of the argument list is reported as missing,
 		// the way fmt words the error. An index that names an operand which is
 		// not there is a bad index instead, because fmt never walked to it.
+		if (!goodArgNum) {
+			result += "%!" + verb + "(BADINDEX)";
+			argIndex = 1;
+			afterIndex = false;
+			continue;
+		}
+
 		if (argIndex > args.length) {
 			result += "%!" + verb + "(" + (namedOperand ? "BADINDEX" : "MISSING") + ")";
 			argIndex = 1;
 			continue;
 		}
 
+		afterIndex = false;
+
 		result += go2jsFormatValue(verb, spec, arg);
 	}
 
-	// fmt reports the operands the cursor never passed. A format built purely
-	// from explicit indexes reports nothing, because an index names an operand
-	// without walking the ones in front of it.
-	if (walked > 0 && reached < args.length) {
+	// fmt reports the operands the cursor never passed, unless the format named
+	// its operands, in which case it cannot tell which ones went unused.
+	if (walked > 0 && !reordered && reached < args.length) {
 		const extra = args.slice(reached).map((value) => {
 			const text = go2jsFormat(value, go2jsTypedType(value), go2jsTypedKind(value), go2jsTypedShape(value));
 
@@ -3446,6 +3532,25 @@ function go2jsSprintf(format, ...args) {
 	}
 
 	return result;
+}
+
+// go2jsStarWidth reads an operand that stands in for a width or a precision.
+// Only an integer counts, the way fmt reads it, and the answer is null when
+// the operand is anything else, including a float that happens to be whole.
+function go2jsStarWidth(operand) {
+	const name = go2jsInferTypeName(operand, go2jsTypedType(operand));
+
+	if (!go2jsIsIntegerTypeName(name)) {
+		return null;
+	}
+
+	const value = Number(go2jsUntyped(operand));
+
+	if (!Number.isInteger(value) || Math.abs(value) > Number.MAX_SAFE_INTEGER) {
+		return null;
+	}
+
+	return value;
 }
 
 // go2jsStripWrappers reaches the value a chain of wrappers stands for. Retyping
@@ -3520,12 +3625,16 @@ function go2jsTypedKind(value) {
 	return null;
 }
 
-function go2jsFormatHexBytes(value, upper) {
-	let text = "";
+// go2jsFormatHexBytes writes bytes as two hex digits each. The space flag puts
+// a space between them, the way Go writes "% x" over a string or a byte slice.
+function go2jsFormatHexBytes(value, upper, space) {
+	const parts = [];
 
 	for (const item of go2jsToArray(value)) {
-		text += (Number(item) & 255).toString(16).padStart(2, "0");
+		parts.push((Number(item) & 255).toString(16).padStart(2, "0"));
 	}
+
+	const text = parts.join(space ? " " : "");
 
 	return upper ? text.toUpperCase() : text;
 }
@@ -3868,17 +3977,24 @@ function go2jsFormatValue(verb, spec, value) {
 			go2jsFormatValue("v", spec.replace(verb + "$", "v"), value) + ")";
 	}
 
-	// Renders the sign prefix and zero-pads the digits that follow it.
-	const numberText = (num, body, prefixOverride) => {
-		const prefix = prefixOverride !== undefined
-			? prefixOverride
-			: num < 0 || Object.is(num, -0)
-				? "-"
-				: flags.includes("+")
-					? "+"
-					: flags.includes(" ")
-						? " "
-						: "";
+	// Renders the sign prefix and zero-pads the digits that follow it. A body
+	// written in hex for a float brings its own sign with it, and bodyHasSign
+	// says so, because the sign is only added once.
+	const numberText = (num, body, prefixOverride, bodyHasSign) => {
+		const negative = num < 0 || Object.is(num, -0);
+		const sign = negative
+			? "-"
+			: flags.includes("+")
+				? "+"
+				: flags.includes(" ")
+					? " "
+					: "";
+
+		// The sign comes first even when a base prefix is written, so %# x on
+		// 255 reads " 0xff" rather than "0x ff".
+		const prefix = prefixOverride === undefined
+			? sign
+			: (bodyHasSign === true && negative ? "" : sign) + prefixOverride;
 
 		// A precision on an integer is a minimum number of digits, and the zeros
 		// go in before the base prefix, the way Go writes 0x00ff. A float spends
@@ -3949,29 +4065,29 @@ function go2jsFormatValue(verb, spec, value) {
 			return integerBody(intValue, 8, "0o");
 		case "x":
 			if (accepted !== undefined && go2jsIsFloatTypeName(accepted)) {
-				return numberText(intValue, go2jsFormatHexFloat(Number(value), precision, false), "");
+				return numberText(intValue, go2jsFormatHexFloat(Number(value), precision, false), "", true);
 			}
 
 			if ((Array.isArray(value) || value instanceof Uint8Array) && !Number.isInteger(Number(value))) {
-				return go2jsFormatHexBytes(value, false);
+				return go2jsFormatHexBytes(value, false, flags.includes(" "));
 			}
 
 			if (typeof value === "string" || typeof value === "boolean") {
-				return go2jsFormatHexBytes(go2jsStringToBytes(value), false);
+				return go2jsFormatHexBytes(go2jsStringToBytes(value), false, flags.includes(" "));
 			}
 
 			return integerBody(intValue, 16, flags.includes("#") ? "0x" : "", false);
 		case "X":
 			if (accepted !== undefined && go2jsIsFloatTypeName(accepted)) {
-				return numberText(intValue, go2jsFormatHexFloat(Number(value), precision, true), "");
+				return numberText(intValue, go2jsFormatHexFloat(Number(value), precision, true), "", true);
 			}
 
 			if ((Array.isArray(value) || value instanceof Uint8Array) && !Number.isInteger(Number(value))) {
-				return go2jsFormatHexBytes(value, true);
+				return go2jsFormatHexBytes(value, true, flags.includes(" "));
 			}
 
 			if (typeof value === "string" || typeof value === "boolean") {
-				return go2jsFormatHexBytes(go2jsStringToBytes(value), true);
+				return go2jsFormatHexBytes(go2jsStringToBytes(value), true, flags.includes(" "));
 			}
 
 			return integerBody(intValue, 16, flags.includes("#") ? "0X" : "", true);
