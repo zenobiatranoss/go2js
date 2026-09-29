@@ -1959,6 +1959,34 @@ func (e *emitter) emitConversion(call *ast.CallExpr) error {
 		return e.emitInterfaceValue(call.Args[0], target)
 	}
 
+	// A conversion from nothing has no work to do: a slice, a map, a pointer,
+	// a channel or a function that starts out nil is the empty value of its own
+	// kind, whatever the type is called. A slice of a basic type keeps the
+	// helper that already speaks for it.
+	if isNilConversionTarget(target) && isNilLiteral(call.Args[0]) {
+		_, named := namedUnderlying(target)
+		_, sliced := sliceConversionHelper(target, e.analyzedType(call.Args[0]))
+
+		// An unnamed slice of a basic type keeps the helper that already speaks
+		// for it, but a named type never reaches that helper, and a nil slice or
+		// a nil map keeps a value that knows which it is so that it still prints
+		// and answers to nil once it has been stored anywhere.
+		if named || !sliced {
+			if shape := goTypeUnderlyingShape(target); shape == "slice" || shape == "map" {
+				e.needsRuntime = true
+				e.write("go2jsNilValue(")
+				e.write(strconv.Quote(goTypeName(target)))
+				e.write(", ")
+				e.write(strconv.Quote(shape))
+				e.write(")")
+				return nil
+			}
+
+			e.write(e.zeroValue(target))
+			return nil
+		}
+	}
+
 	if _, ok := target.Underlying().(*gotypesstd.Pointer); ok {
 		if source := e.analyzedType(call.Args[0]); source != nil {
 			if _, pointerSource := source.Underlying().(*gotypesstd.Pointer); pointerSource {
@@ -2086,6 +2114,15 @@ func (e *emitter) emitConversion(call *ast.CallExpr) error {
 			if gotypesstd.Identical(source.Underlying(), target.Underlying()) {
 				return e.emitExpr(call.Args[0])
 			}
+		}
+	}
+
+	// A named type and the type it is built on are the same shape, so a
+	// conversion between them, and between slices, maps and arrays that agree,
+	// is the value it was given.
+	if source := e.analyzedType(call.Args[0]); source != nil {
+		if gotypesstd.Identical(source.Underlying(), target.Underlying()) {
+			return e.emitExpr(call.Args[0])
 		}
 	}
 

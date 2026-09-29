@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/ast"
 	gotypes "go/types"
+	"strconv"
 	"strings"
 )
 
@@ -34,6 +35,16 @@ func isInterfaceGoType(t gotypes.Type) bool {
 	default:
 		return false
 	}
+}
+
+// An alias such as any keeps its own name in the type, so it has to be looked
+// through before the type behind it can be recognised.
+func isInterfaceLikeType(t gotypes.Type) bool {
+	if t == nil {
+		return false
+	}
+
+	return isInterfaceGoType(gotypes.Unalias(t))
 }
 
 func interfaceTypeName(t gotypes.Type) string {
@@ -75,6 +86,33 @@ func (e *emitter) emitInterfaceValue(expr ast.Expr, target gotypes.Type) error {
 	if ident, ok := expr.(*ast.Ident); ok && ident.Name == "nil" {
 		e.write("null")
 		return nil
+	}
+
+	// An interface carries the type of what it holds, so a nil slice or a nil
+	// map is given a name of its own on the way in and prints as the empty
+	// literal rather than as <nil>. A type that is already boxed below keeps its
+	// own name, and only an alias such as any is left to answer for itself.
+	if isInterfaceLikeType(target) && !isInterfaceGoType(target) && e.analysis != nil {
+		if info, ok := e.analysis.Types[expr]; ok && info.Type != nil && isSliceOrMapType(info.Type) {
+			if name, ok := e.goTypeNameOfExpr(expr); ok {
+				if shape := goTypeUnderlyingShape(info.Type); shape != "" {
+					e.needsRuntime = true
+					e.write("go2jsNilInterface(")
+
+					if err := e.emitExpr(expr); err != nil {
+						return err
+					}
+
+					e.write(", ")
+					e.write(strconv.Quote(name))
+					e.write(", ")
+					e.write(strconv.Quote(shape))
+					e.write(")")
+
+					return nil
+				}
+			}
+		}
 	}
 
 	if target != nil && isArrayType(target) && e.analysis != nil {

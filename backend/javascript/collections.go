@@ -3,6 +3,7 @@ package javascript
 import (
 	"fmt"
 	"go/ast"
+	"go/token"
 	gotypes "go/types"
 	"strconv"
 )
@@ -23,6 +24,48 @@ func isSliceType(t gotypes.Type) bool {
 
 	_, ok := t.Underlying().(*gotypes.Slice)
 	return ok
+}
+
+// A nil slice or a nil map is given a value of its own once it is stored in an
+// interface, so the types that answer to that treatment are these two.
+func isSliceOrMapType(t gotypes.Type) bool {
+	return isSliceType(t) || isMapType(t)
+}
+
+// A nil slice or a nil map keeps a value of its own once it has travelled
+// through an interface, so the comparison with nil is made against that value
+// rather than against null.
+func (e *emitter) emitCollectionNilComparison(x *ast.BinaryExpr) (bool, error) {
+	if x == nil || (x.Op != token.EQL && x.Op != token.NEQ) {
+		return false, nil
+	}
+
+	var operand ast.Expr
+
+	switch {
+	case isNilLiteral(x.Y) && isSliceOrMapType(e.analyzedType(x.X)):
+		operand = x.X
+	case isNilLiteral(x.X) && isSliceOrMapType(e.analyzedType(x.Y)):
+		operand = x.Y
+	default:
+		return false, nil
+	}
+
+	e.needsRuntime = true
+
+	if x.Op == token.NEQ {
+		e.write("!go2jsIsNil(")
+	} else {
+		e.write("go2jsIsNil(")
+	}
+
+	if err := e.emitExpr(operand); err != nil {
+		return true, err
+	}
+
+	e.write(")")
+
+	return true, nil
 }
 
 func (e *emitter) isArrayOrSliceExpr(expr ast.Expr) bool {
