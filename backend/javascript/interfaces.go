@@ -137,6 +137,10 @@ func (e *emitter) emitInterfaceValue(expr ast.Expr, target gotypes.Type) error {
 		if info, ok := e.analysis.Types[expr]; ok && info.Type != nil {
 			e.write(concreteTypeName(info.Type))
 		}
+		e.write(`", "`)
+		if info, ok := e.analysis.Types[expr]; ok && info.Type != nil {
+			e.write(goTypeName(info.Type))
+		}
 		e.write(`")`)
 		return nil
 	}
@@ -152,9 +156,12 @@ func (e *emitter) emitInterfaceValue(expr ast.Expr, target gotypes.Type) error {
 
 			e.write(`, "`)
 			e.write(name)
+			e.write(`", "`)
+			e.write(goTypeName(e.analysis.Types[expr].Type))
 			e.write(`")`)
 			return nil
 		}
+
 	}
 
 	return e.emitExpr(expr)
@@ -531,7 +538,13 @@ func (e *emitter) emitFmtPrintArguments(call *ast.CallExpr) error {
 			continue
 		}
 
-		if err := e.emitCallArgument(call, i, arg); err != nil {
+		if spread || e.isMultiValueCall(arg) {
+			// A spread call forwards raw values, so the runtime keeps inferring
+			// their types.
+			if err := e.emitCallArgument(call, i, arg); err != nil {
+				return err
+			}
+		} else if err := e.emitTypedValue(arg); err != nil {
 			return err
 		}
 

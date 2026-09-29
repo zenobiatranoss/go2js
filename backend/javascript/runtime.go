@@ -344,25 +344,50 @@ function go2jsRegexpNew(pattern) {
     return {
         pattern: source,
         MatchString(value) {
-            return new RegExp(source).test(String(value));
+            return go2jsRegexpNewRegExp(source).test(String(value));
         },
         Find(value) {
-            const match = new RegExp(source).exec(go2jsBytesToString(value));
+            const match = go2jsRegexpNewRegExp(source).exec(go2jsBytesToString(value));
             return match === null ? null : go2jsStringToBytes(match[0]);
         },
         FindString(value) {
-            const match = new RegExp(source).exec(go2jsBytesToString(value));
+            const match = go2jsRegexpNewRegExp(source).exec(go2jsBytesToString(value));
             return match === null ? "" : match[0];
         },
         FindStringIndex(value) {
-            const match = new RegExp(source).exec(go2jsBytesToString(value));
+            const match = go2jsRegexpNewRegExp(source).exec(go2jsBytesToString(value));
             return match === null ? null : [match.index, match.index + match[0].length];
+        },
+        FindStringSubmatch(value) {
+            return go2jsRegexpSubmatch(go2jsRegexpNewRegExp(source).exec(go2jsBytesToString(value)));
+        },
+        FindStringSubmatchIndex(value) {
+            return go2jsRegexpSubmatchIndex(go2jsRegexpNewRegExp(source, "d").exec(go2jsBytesToString(value)));
+        },
+        FindSubmatch(value) {
+            const match = go2jsRegexpNewRegExp(source).exec(go2jsBytesToString(value));
+            return go2jsRegexpByteSubmatch(match);
+        },
+        FindSubmatchIndex(value) {
+            return go2jsRegexpByteSubmatchIndex(go2jsRegexpNewRegExp(source, "d").exec(go2jsBytesToString(value)));
+        },
+        FindAllStringSubmatch(value, limit) {
+            return go2jsRegexpFindAllSubmatch(source, value, limit);
+        },
+        FindAllStringSubmatchIndex(value, limit) {
+            return go2jsRegexpFindAllSubmatchIndex(source, value, limit);
+        },
+        FindAllSubmatch(value, limit) {
+            return go2jsRegexpFindAllByteSubmatch(source, value, limit);
+        },
+        FindAllSubmatchIndex(value, limit) {
+            return go2jsRegexpFindAllSubmatchIndex(source, value, limit);
         },
         FindAllString(value, limit) {
             return go2jsRegexpFindAllString(source, value, limit);
         },
         FindAllStringIndex(value, limit) {
-            const regex = new RegExp(source, "g");
+            const regex = go2jsRegexpNewRegExp(source, "g");
             const text = go2jsBytesToString(value);
             const out = [];
 
@@ -386,16 +411,16 @@ function go2jsRegexpNew(pattern) {
             return go2jsRegexpReplaceAllString(source, value, replacement);
         },
         ReplaceAll(value, replacement) {
-            return go2jsBytesToString(value).replace(new RegExp(source, "g"), go2jsRegexpExpand(replacement));
+            return go2jsBytesToString(value).replace(go2jsRegexpNewRegExp(source, "g"), go2jsRegexpExpand(replacement, source));
         },
         Replace(value, replacement) {
-            return go2jsStringify(value).replace(new RegExp(source), go2jsRegexpExpand(replacement));
+            return go2jsStringify(value).replace(go2jsRegexpNewRegExp(source), go2jsRegexpExpand(replacement, source));
         },
         ReplaceLiteral(value, replacement) {
-            return go2jsStringify(value).replace(new RegExp(source), () => go2jsStringify(replacement));
+            return go2jsStringify(value).replace(go2jsRegexpNewRegExp(source), () => go2jsStringify(replacement));
         },
         ReplaceAllLiteral(value, replacement) {
-            return go2jsStringify(value).replace(new RegExp(source, "g"), () => go2jsStringify(replacement));
+            return go2jsStringify(value).replace(go2jsRegexpNewRegExp(source, "g"), () => go2jsStringify(replacement));
         },
         Split(value, limit) {
             return go2jsRegexpSplit(source, value, limit);
@@ -404,8 +429,29 @@ function go2jsRegexpNew(pattern) {
             return source;
         },
         NumSubexp() {
-            return new RegExp(source + "|").exec("").length - 1;
+            return go2jsRegexpNewRegExp(source + "|").exec("").length - 1;
+        },
+        SubexpNames() {
+            return go2jsRegexpSubmatchNames(source);
+        },
+        SubexpIndex(name) {
+            const wanted = go2jsStringify(name);
+
+            if (wanted === "") {
+                return -1;
+            }
+
+            const names = go2jsRegexpSubmatchNames(source);
+
+            for (let i = 0; i < names.length; i++) {
+                if (names[i] === wanted) {
+                    return i;
+                }
+            }
+
+            return -1;
         }
+
     };
 }
 
@@ -1664,6 +1710,17 @@ function go2jsToRune(value) {
 	return String.fromCodePoint(value);
 }
 
+// go2jsMethodOn calls a pointer receiver method. Go lets the method body see a
+// nil receiver, so the call must reach the method instead of failing on a null
+// object the way a plain JavaScript property access would.
+function go2jsMethodOn(receiver, ctor, name, args) {
+	if (receiver === null || receiver === undefined) {
+		return ctor.prototype[name].apply(null, args);
+	}
+
+	return receiver[name].apply(receiver, args);
+}
+
 function go2jsNew(value, typeName) {
 	return go2jsPtr(
 		function() {
@@ -1701,6 +1758,10 @@ function go2jsRegisterTypeName(constructor, name) {
 
 // go2jsGoTypeName reports the Go type name of a value for %T.
 function go2jsGoTypeName(value) {
+	if (value !== null && value !== undefined && value.__go2js_typed === true) {
+		return value.type;
+	}
+
 	if (value === null || value === undefined) {
 		return "<nil>";
 	}
@@ -1728,6 +1789,10 @@ function go2jsGoTypeName(value) {
 	}
 
 	if (value.__go2js_interface === true) {
+		if (typeof value.__go2js_type_name === "string") {
+			return value.__go2js_type_name;
+		}
+
 		return value.type;
 	}
 
@@ -1846,12 +1911,16 @@ function go2jsRegisterStructFormat(name, fields) {
 	go2jsStructFormats[name] = fields;
 }
 
-function go2jsInterface(value, typeName) {
+function go2jsInterface(value, typeName, displayName) {
 	const wrapper = {
 		__go2js_interface: true,
 		type: typeName,
 		value: value
 	};
+
+	if (typeof displayName === "string" && displayName !== "" && displayName !== typeName) {
+		wrapper.__go2js_type_name = displayName;
+	}
 
 	if (typeName !== undefined && typeName !== null && typeName !== "" && value !== null && value !== undefined && typeof value === "object") {
 		wrapper.__go2js_error_name = String(typeName).replace(/^\*/, "");
@@ -2562,6 +2631,10 @@ function go2jsMapGetOK(map, key, zero) {
 }
 
 function go2jsMapSet(map, key, value) {
+	if (map === null || map === undefined) {
+		go2jsPanic("assignment to entry in nil map");
+	}
+
 	if (!(map instanceof go2jsNativeMap)) {
 		throw new TypeError("go2jsMapSet expects a Map");
 	}
@@ -2806,9 +2879,61 @@ function go2jsCompareValues(a, b) {
 	return left < right ? -1 : left > right ? 1 : 0;
 }
 
-function go2jsFormat(value) {
+// go2jsNumericValue coerces a value for the integer verbs without throwing on
+// non numeric operands, because the switch below is shared by every verb.
+function go2jsNumericValue(value) {
+	if (value !== null && value !== undefined && value.__go2js_pointer === true) {
+		return go2jsNumericValue(go2jsDeref(value));
+	}
+
+	if (typeof value === "number") {
+		return value;
+	}
+
+	if (typeof value === "bigint") {
+		return Number(value);
+	}
+
+	if (typeof value === "string") {
+		return Number(value);
+	}
+
+	return NaN;
+}
+
+function go2jsNilFormat(typeName, kind, shape) {
+	// A nil map and a nil slice still print as their empty literal, while nil
+	// pointers, channels and functions print as <nil>. A named type such as
+	// Buffer carries its composite kind in shape instead of a bracket in its
+	// name.
+	if (shape === "map" || (typeof typeName === "string" && typeName.startsWith("map["))) {
+		return "map[]";
+	}
+
+	if (shape === "slice" || (typeof typeName === "string" && typeName.startsWith("[]"))) {
+		return "[]";
+	}
+
+	return "<nil>";
+}
+
+function go2jsFormat(value, typeName, kind, shape) {
+	if (typeof typeName !== "string") {
+		typeName = go2jsTypedType(value);
+	}
+
+	if (typeof kind !== "string") {
+		kind = go2jsTypedKind(value);
+	}
+
+	if (typeof shape !== "string") {
+		shape = go2jsTypedShape(value);
+	}
+
+	value = go2jsUntyped(value);
+
 	if (value === null || value === undefined) {
-		return "<nil>";
+		return go2jsNilFormat(typeName, kind, shape);
 	}
 
 	if (value instanceof Error) {
@@ -2937,6 +3062,8 @@ function go2jsJoinOperands(values, alwaysSpace) {
 }
 
 function isStringOperand(value) {
+	value = go2jsUntyped(value);
+
 	if (value === null || value === undefined) {
 		return false;
 	}
@@ -3103,8 +3230,28 @@ function go2jsSprintf(format, ...args) {
 	return result;
 }
 
-function go2jsTyped(value, type) {
-	return {__go2js_typed: true, value: value, type: type};
+function go2jsTyped(value, type, kind, shape) {
+	const wrapper = {__go2js_typed: true, value: value, type: type};
+
+	if (typeof kind === "string" && kind !== "") {
+		wrapper.kind = kind;
+	}
+
+	// The shape records the composite kind of a named type, so a nil Buffer
+	// still prints as [] rather than <nil>.
+	if (typeof shape === "string" && shape !== "") {
+		wrapper.shape = shape;
+	}
+
+	return wrapper;
+}
+
+function go2jsTypedShape(value) {
+	if (value !== null && value !== undefined && value.__go2js_typed === true) {
+		return value.shape;
+	}
+
+	return null;
 }
 
 function go2jsUntyped(value) {
@@ -3118,6 +3265,15 @@ function go2jsUntyped(value) {
 function go2jsTypedType(value) {
 	if (value !== null && value !== undefined && value.__go2js_typed === true) {
 		return value.type;
+	}
+
+	return null;
+}
+
+function go2jsTypedKind(value) {
+	if (value !== null && value !== undefined && value.__go2js_typed === true &&
+		typeof value.kind === "string") {
+		return value.kind;
 	}
 
 	return null;
@@ -3335,12 +3491,17 @@ function go2jsFormatValue(verb, spec, value) {
 	const flags = parsed.flags;
 	const precision = parsed.precision;
 	const tagged = go2jsTypedType(value);
+	const original = value;
 
 	value = go2jsUntyped(value);
 	value = go2jsMaterializeValue(value);
 
-	if (verb !== "%" && !go2jsVerbAccepts(verb, go2jsInferTypeName(value, tagged))) {
-		return "%!" + verb + "(" + go2jsInferTypeName(value, tagged) + "=" + go2jsFormat(value) + ")";
+	const kind = go2jsTypedKind(original);
+	const shape = go2jsTypedShape(original);
+	const accepted = kind || go2jsInferTypeName(value, tagged);
+
+	if (verb !== "%" && !go2jsVerbAccepts(verb, accepted)) {
+		return "%!" + verb + "(" + go2jsInferTypeName(value, tagged) + "=" + go2jsFormat(value, tagged, kind, shape) + ")";
 	}
 
 	// Renders the sign prefix and zero-pads the digits that follow it.
@@ -3373,7 +3534,7 @@ function go2jsFormatValue(verb, spec, value) {
 		return numberText(num, body);
 	};
 
-	const intValue = Math.trunc(Number(value));
+	const intValue = Math.trunc(go2jsNumericValue(value));
 
 	switch (verb) {
 		case "d":
@@ -3424,7 +3585,7 @@ function go2jsFormatValue(verb, spec, value) {
 			if (tagged === "[]uint8" || (tagged === null && go2jsIsByteArray(value))) {
 				text = go2jsBytesToString(value);
 			} else {
-				text = go2jsFormat(value);
+				text = go2jsFormat(value, tagged, kind, shape);
 			}
 
 			if (precision !== null) {
@@ -3442,7 +3603,7 @@ function go2jsFormatValue(verb, spec, value) {
 			} else if (flags.includes("+") && !go2jsHasFormatMethod(value)) {
 				text = go2jsFormatFields(value);
 			} else {
-				text = go2jsFormat(value);
+				text = go2jsFormat(value, tagged, kind, shape);
 			}
 
 			if (precision !== null) {
@@ -3456,7 +3617,7 @@ function go2jsFormatValue(verb, spec, value) {
 				return go2jsPad(go2jsQuoteRune(value), parsed, false);
 			}
 
-			return go2jsPad(JSON.stringify(go2jsFormat(value)), parsed, false);
+			return go2jsPad(JSON.stringify(go2jsFormat(value, tagged, kind, shape)), parsed, false);
 		case "t":
 			return go2jsPad(value ? "true" : "false", parsed, false);
 		case "c":
@@ -3471,7 +3632,7 @@ function go2jsFormatValue(verb, spec, value) {
 			return go2jsPad("U+" + digits, parsed, false);
 		}
 		case "T":
-			return go2jsPad(go2jsGoTypeName(value), parsed, false);
+			return go2jsPad(go2jsGoTypeName(original), parsed, false);
 		default:
 			return go2jsStringify(value);
 	}

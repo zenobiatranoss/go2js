@@ -126,7 +126,7 @@ func (e *emitter) emitSprintfCall(args []ast.Expr) error {
 			}
 		}
 
-		if err := e.emitExpr(arg); err != nil {
+		if err := e.emitTypedValue(arg); err != nil {
 			return err
 		}
 	}
