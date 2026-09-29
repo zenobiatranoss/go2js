@@ -775,7 +775,7 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				}
 				e.write(", ")
 
-				if isInterfaceGoType(mapValue) {
+				if isInterfaceTarget(mapValue) {
 					if err := e.emitInterfaceValue(kv.Value, mapValue); err != nil {
 						return err
 					}
@@ -816,7 +816,7 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				e.write(", ")
 			}
 
-			if isInterfaceGoType(elementType) {
+			if isInterfaceTarget(elementType) {
 				if err := e.emitInterfaceValue(elt, elementType); err != nil {
 					return err
 				}
@@ -958,6 +958,23 @@ func (e *emitter) emitAnonymousStructLiteral(x *ast.CompositeLit, structType *go
 	return true, nil
 }
 
+// structFieldType resolves the declared type of the struct field addressed by a
+// composite literal key.
+func structFieldType(structType *gotypes.Struct, key ast.Expr) gotypes.Type {
+	ident, ok := key.(*ast.Ident)
+	if !ok || structType == nil {
+		return nil
+	}
+
+	for i := 0; i < structType.NumFields(); i++ {
+		if structType.Field(i).Name() == ident.Name {
+			return structType.Field(i).Type()
+		}
+	}
+
+	return nil
+}
+
 func (e *emitter) emitStructCompositeLit(x *ast.CompositeLit) (bool, error) {
 	if e.analysis == nil {
 		return false, nil
@@ -1043,7 +1060,8 @@ func (e *emitter) emitStructCompositeLit(x *ast.CompositeLit) (bool, error) {
 				return true, err
 			}
 			e.write(": ")
-			if err := e.emitExpr(kv.Value); err != nil {
+
+			if err := e.emitInterfaceFieldValue(kv.Value, structFieldType(structType, kv.Key)); err != nil {
 				return true, err
 			}
 			continue
@@ -1055,7 +1073,8 @@ func (e *emitter) emitStructCompositeLit(x *ast.CompositeLit) (bool, error) {
 
 		e.write(structType.Field(i).Name())
 		e.write(": ")
-		if err := e.emitExpr(elt); err != nil {
+
+		if err := e.emitInterfaceFieldValue(elt, structType.Field(i).Type()); err != nil {
 			return true, err
 		}
 	}
