@@ -4082,35 +4082,102 @@ function go2jsSortInts(values) {
 	values.sort((a, b) => a - b);
 }
 
-function go2jsSortReverse(data) {
+function go2jsSortReverse(data, typeName) {
 	this.data = data;
+	this.typeName = typeName;
+}
+
+function go2jsSortTableMethod(target, typeName, method) {
+	if (typeof typeName !== "string" || typeName === "") {
+		return undefined;
+	}
+
+	for (const key of [typeName + "." + method, "*" + typeName + "." + method]) {
+		const fn = go2jsMethodTable[key];
+
+		if (typeof fn === "function") {
+			return function(...args) { return fn(target, ...args); };
+		}
+	}
+
+	return undefined;
+}
+
+function go2jsSortMethod(target, typeName, method) {
+	if (target === null || target === undefined) {
+		return undefined;
+	}
+
+	if (target.__go2js_pointer === true) {
+		const inner = target.get();
+
+		if (inner !== null && inner !== undefined && typeof inner[method] === "function") {
+			return inner[method].bind(inner);
+		}
+
+		return go2jsSortTableMethod(target, typeName, method);
+	}
+
+	if (typeof target[method] === "function") {
+		return target[method].bind(target);
+	}
+
+	return go2jsSortTableMethod(target, typeName, method);
 }
 
 go2jsSortReverse.prototype.Len = function() {
+	const fn = go2jsSortMethod(this.data, this.typeName, "Len");
+
+	if (typeof fn === "function") {
+		return fn();
+	}
+
 	return go2jsLen(this.data);
 };
 
 go2jsSortReverse.prototype.Less = function(i, j) {
-	return go2jsRawCompare(this.data[j], this.data[i]) < 0;
+	const fn = go2jsSortMethod(this.data, this.typeName, "Less");
+
+	if (typeof fn === "function") {
+		return fn(j, i);
+	}
+
+	return go2jsCompareValues(this.data[j], this.data[i]) < 0;
 };
 
 go2jsSortReverse.prototype.Swap = function(i, j) {
+	const fn = go2jsSortMethod(this.data, this.typeName, "Swap");
+
+	if (typeof fn === "function") {
+		fn(i, j);
+		return;
+	}
+
 	const items = this.data;
 	const tmp = items[i];
 	items[i] = items[j];
 	items[j] = tmp;
 };
 
-function go2jsSortInterface(data) {
-	if (data instanceof go2jsSortReverse) {
-		const items = go2jsToArray(data.data);
+function go2jsSortInterface(data, typeName) {
+	if (data === null || data === undefined) {
+		return;
+	}
 
-		items.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-		items.reverse();
+	const length = go2jsSortMethod(data, typeName, "Len");
+	const less = go2jsSortMethod(data, typeName, "Less");
+	const swap = go2jsSortMethod(data, typeName, "Swap");
 
-		if (Array.isArray(data.data)) {
-			data.data.length = 0;
-			data.data.push(...items);
+	if (typeof length === "function" && typeof less === "function" && typeof swap === "function") {
+		const count = Number(length());
+
+		for (let index = 1; index < count; index++) {
+			let current = index;
+
+			while (current > 0 && less(current, current - 1)) {
+				swap(current, current - 1);
+				current--;
+			}
 		}
 
 		return;

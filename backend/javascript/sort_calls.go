@@ -2,6 +2,7 @@ package javascript
 
 import (
 	"go/ast"
+	"strconv"
 )
 
 func (e *emitter) emitSortCall(call *ast.CallExpr, selector *ast.SelectorExpr) (bool, error) {
@@ -34,6 +35,8 @@ func (e *emitter) emitSortCall(call *ast.CallExpr, selector *ast.SelectorExpr) (
 			return true, err
 		}
 
+		e.write(", ")
+		e.write(strconv.Quote(e.sortInterfaceTypeName(call.Args[0])))
 		e.write(")")
 		return true, nil
 
@@ -49,6 +52,8 @@ func (e *emitter) emitSortCall(call *ast.CallExpr, selector *ast.SelectorExpr) (
 			return true, err
 		}
 
+		e.write(", ")
+		e.write(strconv.Quote(e.sortInterfaceTypeName(call.Args[0])))
 		e.write(")")
 		return true, nil
 	}
@@ -78,11 +83,26 @@ func (e *emitter) emitSortData(expr ast.Expr) error {
 			return err
 		}
 
+		e.write(", ")
+		e.write(strconv.Quote(e.sortInterfaceTypeName(value.Args[0])))
 		e.write(")")
 		return nil
 	}
 
 	return e.emitExpr(expr)
+}
+
+func (e *emitter) sortInterfaceTypeName(expr ast.Expr) string {
+	if e.analysis == nil {
+		return ""
+	}
+
+	named, ok := derefNamed(e.analysis.TypeOf(expr))
+	if !ok {
+		return ""
+	}
+
+	return named.Obj().Name()
 }
 
 func isSortSliceCall(expr ast.Expr) bool {
