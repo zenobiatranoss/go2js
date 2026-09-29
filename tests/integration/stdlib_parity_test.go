@@ -23,6 +23,65 @@ func main() {
 `)
 }
 
+func TestSprintfStarWidthAndPrecision(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+func main() {
+	fmt.Printf("%*d|%-*d|%.*f|%.*f\n", 6, 42, 6, 42, 2, 3.14159, 4, 3.14159)
+	fmt.Printf("%*.*f|%0*d\n", 8, 3, 2.5, 6, 42)
+	fmt.Printf("%*s|%.*s\n", 8, "hi", 1, "hello")
+}
+`)
+}
+
+func TestSprintfUnicodeVerb(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+func main() {
+	fmt.Printf("%U %U %U\n", 65, 0x1F600, 'é')
+	fmt.Printf("%6U|%-6U|%06U\n", 65, 65, 65)
+}
+`)
+}
+
+func TestFloatConstantLiteralsBeyondSafeIntegerRange(t *testing.T) {
+	// Go float constants such as 1e100 or 1.5e300 are valid but exceed the
+	// JavaScript safe integer range, so they used to be rejected outright.
+	// Integral constants inside the safe range (1e6, 1e15) still print as plain
+	// digits because JavaScript cannot tell a float64 from an int64.
+	runParityTest(t, `package main
+
+import "fmt"
+
+func main() {
+	fmt.Println(1e21, 1e100, 1.5e300, 0.1, 0x1p-2, 1_000_000)
+	fmt.Println(1e308, 1.7976931348623157e308, 0.30000000000000004, 1e-323)
+}
+`)
+}
+
+func TestPrintFloatDefaultFormat(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+func main() {
+	values := []float64{1.2e-7, 2.5, 0.1, 1.5e300, 123456789.5, 0.000001234, -0.5, 1e-5, 1e-4, 99999.5}
+
+	for _, value := range values {
+		fmt.Println(value)
+	}
+
+	fmt.Println(100, -3, 9007199254740991)
+	fmt.Printf("%v %v %v\n", 2.5, []float64{1e-7, 2.5}, map[string]float64{"a": 1.5e-7})
+}
+`)
+}
+
 func TestMapIndexReturnsZeroValue(t *testing.T) {
 	runParityTest(t, `package main
 

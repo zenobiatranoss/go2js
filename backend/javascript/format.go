@@ -114,7 +114,9 @@ func (e *emitter) emitSprintfCall(args []ast.Expr) error {
 			continue
 		}
 
-		if !literal || verbUsesStringer(verbs[i-1]) {
+		verb, known := formatVerbForArg(verbs, i)
+
+		if literal && (!known || verbUsesStringer(verb)) {
 			if emitted, err := e.emitStringerValue(arg); emitted || err != nil {
 				if err != nil {
 					return err
@@ -141,6 +143,11 @@ func verbUsesStringer(verb byte) bool {
 
 	return false
 }
+
+// formatStarArg marks the argument consumed by a "*" width or precision such as
+// the width in %*d, so callers can line verbs up with call arguments.
+const formatStarArg byte = 0
+
 func formatStringVerbs(args []ast.Expr) ([]byte, bool) {
 	if len(args) == 0 {
 		return nil, false
@@ -173,6 +180,19 @@ func formatStringVerbs(args []ast.Expr) ([]byte, bool) {
 			i++
 		}
 
+		if i < len(format) && format[i] == '*' {
+			verbs = append(verbs, formatStarArg)
+			i++
+
+			if i < len(format) && format[i] == '.' {
+				i++
+			}
+
+			for i < len(format) && (format[i] == '.' || (format[i] >= '0' && format[i] <= '9')) {
+				i++
+			}
+		}
+
 		if i >= len(format) {
 			break
 		}
@@ -183,4 +203,19 @@ func formatStringVerbs(args []ast.Expr) ([]byte, bool) {
 	}
 
 	return verbs, true
+}
+
+// formatVerbForArg returns the verb that formats the call argument at index i,
+// where index 0 is the format string itself.
+func formatVerbForArg(verbs []byte, i int) (byte, bool) {
+	if i <= 0 || i > len(verbs) {
+		return 0, false
+	}
+
+	verb := verbs[i-1]
+	if verb == formatStarArg {
+		return 0, false
+	}
+
+	return verb, true
 }
