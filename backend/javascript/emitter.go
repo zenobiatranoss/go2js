@@ -1797,6 +1797,14 @@ func (e *emitter) emitConversion(call *ast.CallExpr) error {
 		}
 	}
 
+	if _, ok := target.Underlying().(*gotypesstd.Slice); ok {
+		if source := e.analyzedType(call.Args[0]); source != nil {
+			if gotypesstd.Identical(source.Underlying(), target.Underlying()) {
+				return e.emitExpr(call.Args[0])
+			}
+		}
+	}
+
 	if named, ok := namedUnderlying(target); ok {
 		return e.emitNamedConversion(call, named, typeName)
 	}
