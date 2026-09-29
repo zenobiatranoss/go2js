@@ -1458,6 +1458,38 @@ function go2jsInvokeMethod(receiver, method, args) {
 	return fn.apply(receiver, args);
 }
 
+// go2jsLookupMember reads a method or field from a plain value, a pointer box,
+// or an interface holder so promoted members resolve like direct ones.
+function go2jsLookupMember(target, name) {
+	if (target === null || target === undefined) {
+		return undefined;
+	}
+
+	if (target.__go2js_pointer === true) {
+		return go2jsLookupMember(target.get(), name);
+	}
+
+	if (target.__go2js_interface === true) {
+		if (typeof target.type === "string") {
+			const fn = go2jsMethodTable[target.type + "." + name];
+
+			if (typeof fn === "function") {
+				return function(...args) { return fn(target.value, ...args); };
+			}
+		}
+
+		return go2jsLookupMember(target.value, name);
+	}
+
+	const value = target[name];
+
+	if (value === undefined) {
+		return undefined;
+	}
+
+	return typeof value === "function" ? value.bind(target) : value;
+}
+
 function go2jsEmbedProxy(target, embedded) {
     return new Proxy(target, {
         get(target, property, receiver) {
@@ -1483,13 +1515,9 @@ function go2jsEmbedProxy(target, embedded) {
                     continue;
                 }
 
-                const value = current[property];
+                const value = go2jsLookupMember(current, property);
 
                 if (value !== undefined) {
-                    if (typeof value === "function") {
-                        return value.bind(current);
-                    }
-
                     return value;
                 }
             }
@@ -1663,6 +1691,7 @@ function go2jsNewTypeOf(value) {
 }
 
 const go2jsMethodTable = Object.create(null);
+const go2jsInterfaces = Object.create(null);
 const go2jsStructFormats = Object.create(null);
 const go2jsTypeNames = Object.create(null);
 
@@ -2088,11 +2117,58 @@ function go2jsSameTypeName(actual, expected) {
 	return typeof actual === "string" && base(actual) === base(expected);
 }
 
+// go2jsRegisterInterface records the method set of an interface type so a type
+// assertion can check method satisfaction instead of only exact type names.
+function go2jsRegisterInterface(name, methods) {
+	go2jsInterfaces[go2jsInterfaceKey(name)] = methods;
+}
+
+function go2jsInterfaceKey(name) {
+	if (typeof name !== "string") {
+		return "";
+	}
+
+	const trimmed = name.startsWith("*") ? name.slice(1) : name;
+	const dot = trimmed.lastIndexOf(".");
+
+	return dot === -1 ? trimmed : trimmed.slice(dot + 1);
+}
+
+function go2jsInterfaceMethods(name) {
+	const key = go2jsInterfaceKey(name);
+
+	return key === "" ? undefined : go2jsInterfaces[key];
+}
+
+function go2jsSatisfiesInterface(value, name) {
+	if (value === null || value === undefined) {
+		return false;
+	}
+
+	const methods = go2jsInterfaceMethods(name);
+
+	if (methods === undefined) {
+		return false;
+	}
+
+	for (const method of methods) {
+		if (go2jsLookupMember(value, method) === undefined) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
 function go2jsAssert(value, typeName) {
 	if (value !== null && value !== undefined &&
 		value.__go2js_interface === true) {
 		if (go2jsSameTypeName(value.type, typeName)) {
 			return value.value;
+		}
+
+		if (go2jsSatisfiesInterface(value, typeName)) {
+			return value;
 		}
 
 		throw new TypeError(
@@ -2103,6 +2179,10 @@ function go2jsAssert(value, typeName) {
 	const actual = go2jsTypeOf(value);
 
 	if (go2jsSameTypeName(actual, typeName)) {
+		return value;
+	}
+
+	if (go2jsSatisfiesInterface(value, typeName)) {
 		return value;
 	}
 
@@ -2119,6 +2199,10 @@ function go2jsAssertOK(value, typeName) {
     if (value !== null && value !== undefined && go2jsSameTypeName(go2jsTypeOf(value), typeName)) {
         return [value, true];
     }
+
+    if (go2jsSatisfiesInterface(value, typeName)) {
+		return [value, true];
+	}
 
     return [null, false];
 }

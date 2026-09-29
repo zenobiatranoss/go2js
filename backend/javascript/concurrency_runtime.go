@@ -461,6 +461,75 @@ function go2jsAtomicCompareAndSwap(cell, expected, next) {
 	return true;
 }
 
+// go2jsErrorMethodCall invokes an error chain method such as Is or Unwrap on a
+// value, a pointer box, an interface holder, or an embedded promotion proxy.
+function go2jsErrorMethodCall(err, name, ...args) {
+	if (err === null || err === undefined) {
+		return undefined;
+	}
+
+	let receiver = err;
+
+	if (err.__go2js_pointer === true) {
+		receiver = err.get();
+
+		if (receiver === null || receiver === undefined) {
+			return undefined;
+		}
+	}
+
+	if (err.__go2js_interface === true) {
+		if (typeof err.type === "string") {
+			const fn = go2jsMethodTable[err.type + "." + name];
+
+			if (typeof fn === "function") {
+				return fn.apply(null, [err.value, ...args]);
+			}
+		}
+
+		receiver = err.value;
+	}
+
+	if (receiver === null || receiver === undefined) {
+		return undefined;
+	}
+
+	if (typeof receiver === "object" || typeof receiver === "function") {
+		const fn = receiver[name];
+
+		if (typeof fn === "function") {
+			return fn.apply(receiver, args);
+		}
+	}
+
+	return undefined;
+}
+
+// go2jsErrorUnwrapAll returns the direct children of an error chain node, which
+// covers cause fields, errors.Join results, and Unwrap() returning one or many
+// errors.
+function go2jsErrorUnwrapAll(err) {
+	if (err === null || err === undefined) {
+		return [];
+	}
+
+	const unwrapped = go2jsErrorMethodCall(err, "Unwrap");
+
+	if (unwrapped !== undefined && unwrapped !== null) {
+		return Array.isArray(unwrapped) ? unwrapped.filter(item => item !== null && item !== undefined) : [unwrapped];
+	}
+
+	if (err.cause !== undefined && err.cause !== null) {
+		return [err.cause];
+	}
+
+	if (Array.isArray(err.joined)) {
+		return err.joined.filter(item => item !== null && item !== undefined);
+	}
+
+	return [];
+}
+
 function go2jsErrorsIs(err, target) {
 	if (err === target) {
 		return true;
@@ -478,25 +547,11 @@ function go2jsErrorsIs(err, target) {
 		return false;
 	}
 
-	if (typeof err.Is === "function" && err.Is(target) === true) {
+	if (go2jsErrorMethodCall(err, "Is", target) === true) {
 		return true;
 	}
 
-	if (err.__go2js_interface === true && typeof err.type === "string" && typeof go2jsMethodTable[err.type + ".Is"] === "function") {
-		if (go2jsMethodTable[err.type + ".Is"](err.value, target) === true) {
-			return true;
-		}
-	}
-
-	if (err.cause !== undefined) {
-		return go2jsErrorsIs(err.cause, target);
-	}
-
-	if (Array.isArray(err.joined)) {
-		return err.joined.some(part => go2jsErrorsIs(part, target));
-	}
-
-	return false;
+	return go2jsErrorUnwrapAll(err).some(part => go2jsErrorsIs(part, target));
 }
 
 function go2jsWrapError(format, ...args) {
@@ -522,11 +577,14 @@ function go2jsErrorsUnwrap(err) {
 		return null;
 	}
 
-	if (err.cause !== undefined) {
-		return err.cause;
+	const unwrapped = go2jsErrorUnwrapAll(err);
+
+	// errors.Unwrap reports a single error, so a joined chain unwraps to nil.
+	if (unwrapped.length !== 1) {
+		return null;
 	}
 
-	return null;
+	return unwrapped[0];
 }
 
 function go2jsErrorsJoin(...errs) {
