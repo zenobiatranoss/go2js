@@ -5,7 +5,6 @@ import (
 	"go/ast"
 	"go/constant"
 	gotypesstd "go/types"
-	"strconv"
 )
 
 func (e *emitter) emitConstDecl(decl *ast.GenDecl) error {
@@ -68,7 +67,7 @@ func (e *emitter) constLiteral(name *ast.Ident) (string, error) {
 		}
 
 		if basic.Kind() == gotypesstd.String {
-			return strconv.Quote(constant.StringVal(value)), nil
+			return javaScriptStringLiteral(constant.StringVal(value)), nil
 		}
 
 		return value.ExactString(), nil
