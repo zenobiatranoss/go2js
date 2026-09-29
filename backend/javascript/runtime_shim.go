@@ -4,6 +4,7 @@ var runtimeFuncs = map[string]string{
 	"Callers":       "go2jsRuntimeCallers",
 	"CallersFrames": "go2jsRuntimeCallersFrames",
 	"Caller":        "go2jsRuntimeCaller",
+	"FuncForPC":     "go2jsRuntimeFuncForPC",
 	"NumCPU":        "go2jsRuntimeNumCPU",
 	"GOMAXPROCS":    "go2jsRuntimeNumCPU",
 	"NumGoroutine":  "go2jsRuntimeNumGoroutine",
@@ -58,6 +59,10 @@ function go2jsRuntimeGC() {
 }
 
 function go2jsRuntimeKeepAlive(value) {
+	return null;
+}
+
+function go2jsRuntimeFuncForPC(programCounter) {
 	return null;
 }
 
