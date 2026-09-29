@@ -129,7 +129,10 @@ func main() {
 func TestNilSliceAndMapRanges(t *testing.T) {
 	runParityTest(t, `package main
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+)
 
 func main() {
 	var missing []int
@@ -151,8 +154,13 @@ func main() {
 	fmt.Println("map done", len(empty))
 
 	present := map[string]int{"a": 1, "b": 2}
-	for key, value := range present {
-		fmt.Println("present", key, value)
+	keys := make([]string, 0, len(present))
+	for key := range present {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		fmt.Println("present", key, present[key])
 	}
 
 	values := []int{10, 20, 30}

@@ -52,7 +52,7 @@ func scalarNamedTypeName(t gotypesstd.Type) (string, bool) {
 }
 
 func scalarNamedMethodName(typeName, method string) string {
-	return typeName + method
+	return typeJavaScriptName(typeName) + method
 }
 
 func (e *emitter) emitNamedConversion(call *ast.CallExpr, named *gotypesstd.Named, typeName *gotypesstd.TypeName) error {
@@ -464,7 +464,7 @@ func (e *emitter) emitTypeNameRegistration(typeIdent *ast.Ident) error {
 	e.needsRuntime = true
 	e.writeIndent()
 	e.write("go2jsRegisterTypeName(")
-	e.write(typeName.Name())
+	e.write(typeJavaScriptName(typeName.Name()))
 	e.write(", ")
 	e.write(strconv.Quote(qualified))
 	e.write(");")
@@ -726,5 +726,5 @@ func (e *emitter) emitNamedAggregateFuncDecl(fn *ast.FuncDecl) (bool, error) {
 }
 
 func namedAggregateMethodName(typeName, method string) string {
-	return "go2jsMethod" + typeName + method
+	return "go2jsMethod" + typeJavaScriptName(typeName) + method
 }
