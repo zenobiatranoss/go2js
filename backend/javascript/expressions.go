@@ -5,9 +5,51 @@ import (
 	"go/ast"
 	"go/token"
 	gotypes "go/types"
-
 	"strconv"
+	"strings"
 )
+
+// javaScriptStringLiteral renders a Go string as a JavaScript string literal.
+// Go escapes such as \a and \U0001f600 are not valid JavaScript, so the value
+// is escaped explicitly instead of reusing strconv.Quote.
+func javaScriptStringLiteral(value string) string {
+	var builder strings.Builder
+
+	builder.WriteByte('"')
+
+	for _, char := range value {
+		switch char {
+		case '"':
+			builder.WriteString(`\"`)
+		case '\\':
+			builder.WriteString(`\\`)
+		case '\n':
+			builder.WriteString(`\n`)
+		case '\r':
+			builder.WriteString(`\r`)
+		case '\t':
+			builder.WriteString(`\t`)
+		case '\b':
+			builder.WriteString(`\b`)
+		case '\f':
+			builder.WriteString(`\f`)
+		case '\v':
+			builder.WriteString(`\v`)
+		default:
+			if char < 0x20 || char == 0x7f {
+				fmt.Fprintf(&builder, `\x%02x`, char)
+			} else if char == 0x2028 || char == 0x2029 {
+				fmt.Fprintf(&builder, `\u%04x`, char)
+			} else {
+				builder.WriteRune(char)
+			}
+		}
+	}
+
+	builder.WriteByte('"')
+
+	return builder.String()
+}
 
 func (e *emitter) isGenericInstantiation(expr ast.Expr) bool {
 	if e.analysis == nil {
@@ -74,7 +116,7 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				return err
 			}
 
-			e.write(strconv.Quote(value))
+			e.write(javaScriptStringLiteral(value))
 
 		case token.CHAR:
 			value, err := strconv.Unquote(x.Value)

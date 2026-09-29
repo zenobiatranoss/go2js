@@ -3989,8 +3989,109 @@ function go2jsStrconvFormatInt(value, base) {
 	return Math.trunc(value).toString(base);
 }
 
+function go2jsStrconvHexDigit(value) {
+	return "0123456789abcdef"[value];
+}
+
+function go2jsStrconvRuneIsPrint(code) {
+	if (code === 0x20) {
+		return true;
+	}
+
+	if (code < 0x20 || code === 0x7f) {
+		return false;
+	}
+
+	const char = String.fromCodePoint(code);
+
+	return /^[\p{L}\p{M}\p{N}\p{P}\p{S}]$/u.test(char);
+}
+
+function go2jsStrconvAppendEscapedRune(out, code, quote, asciiOnly) {
+	const char = String.fromCodePoint(code);
+
+	if (char === quote || char === "\\") {
+		out.push("\\", char);
+		return;
+	}
+
+	if (asciiOnly) {
+		if (code < 0x80 && go2jsStrconvRuneIsPrint(code)) {
+			out.push(char);
+			return;
+		}
+	} else if (go2jsStrconvRuneIsPrint(code)) {
+		out.push(char);
+		return;
+	}
+
+	switch (code) {
+	case 0x07:
+		out.push("\\a");
+		return;
+	case 0x08:
+		out.push("\\b");
+		return;
+	case 0x0c:
+		out.push("\\f");
+		return;
+	case 0x0a:
+		out.push("\\n");
+		return;
+	case 0x0d:
+		out.push("\\r");
+		return;
+	case 0x09:
+		out.push("\\t");
+		return;
+	case 0x0b:
+		out.push("\\v");
+		return;
+	}
+
+	let prefix;
+	let width;
+
+	if (code < 0x20 || code === 0x7f) {
+		prefix = "\\x";
+		width = 2;
+	} else if (!Number.isInteger(code) || code < 0 || code > 0x10ffff) {
+		prefix = "\\u";
+		width = 4;
+		code = 0xfffd;
+	} else if (code < 0x10000) {
+		prefix = "\\u";
+		width = 4;
+	} else {
+		prefix = "\\U";
+		width = 8;
+	}
+
+	out.push(prefix);
+
+	for (let shift = (width - 1) * 4; shift >= 0; shift -= 4) {
+		out.push(go2jsStrconvHexDigit((code >> shift) & 0xf));
+	}
+}
+
+function go2jsStrconvQuoteWith(value, asciiOnly) {
+	const out = ['"'];
+
+	for (const char of String(value)) {
+		go2jsStrconvAppendEscapedRune(out, char.codePointAt(0), '"', asciiOnly);
+	}
+
+	out.push('"');
+
+	return out.join("");
+}
+
 function go2jsStrconvQuote(s) {
-	return JSON.stringify(s);
+	return go2jsStrconvQuoteWith(s, false);
+}
+
+function go2jsStrconvQuoteToASCII(s) {
+	return go2jsStrconvQuoteWith(s, true);
 }
 
 function go2jsStrconvUnquote(s) {

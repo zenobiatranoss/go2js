@@ -1274,7 +1274,7 @@ func extendedStdlibFuncs() {
 
 	extend(strconvFuncs, map[string]string{
 		"AppendQuote":     "go2jsStrconvAppendQuote",
-		"QuoteToASCII":    "go2jsStrconvQuote",
+		"QuoteToASCII":    "go2jsStrconvQuoteToASCII",
 		"QuoteRune":       "go2jsStrconvQuoteRune",
 		"AppendQuoteRune": "go2jsStrconvAppendQuoteRune",
 		"IsPrint":         "go2jsStrconvIsPrint",
@@ -1718,7 +1718,12 @@ function go2jsStrconvAppendQuote(target, value) {
 }
 
 function go2jsStrconvQuoteRune(value) {
-	return go2jsStrconvQuote(String.fromCodePoint(Number(value)));
+	const out = ["'"];
+
+	go2jsStrconvAppendEscapedRune(out, Number(value), "'", false);
+	out.push("'");
+
+	return out.join("");
 }
 
 function go2jsStrconvAppendQuoteRune(target, value) {
