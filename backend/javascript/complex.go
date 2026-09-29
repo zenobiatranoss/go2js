@@ -5,7 +5,10 @@ import (
 	"go/ast"
 	"go/constant"
 	"go/token"
+	"math"
 	"math/big"
+	"strconv"
+	"strings"
 )
 
 func complexLiteralJavaScript(lit string) (string, error) {
@@ -70,32 +73,37 @@ func integerLiteralJavaScript(lit *ast.BasicLit) (string, error) {
 	}
 
 	switch value.Kind() {
-	case constant.Int, constant.Float:
+	case constant.Int:
+		return normalizedIntegerLiteral(value)
+
+	case constant.Float:
+		// A decimal float literal is already valid JavaScript, so keep the source
+		// text. Only hex floats such as 0x1p-2 need rewriting.
+		if !strings.ContainsAny(lit.Value, "pP") {
+			return lit.Value, nil
+		}
+
+		// Float constants beyond the safe integer range are still valid Go, so
+		// emit them as JavaScript float literals instead of rejecting the program.
+		if f := constant.ToFloat(value); f.Kind() == constant.Float {
+			if rat, ok := constant.Val(f).(*big.Rat); ok {
+				number, _ := rat.Float64()
+
+				overflowed := math.IsInf(number, 0) || (number == 0 && rat.Sign() != 0)
+
+				if !overflowed {
+					return strconv.FormatFloat(number, 'g', -1, 64), nil
+				}
+			}
+		}
+
+		return "", fmt.Errorf(
+			"float constant %s cannot be represented as a JavaScript number",
+			lit.Value)
+
 	default:
 		return lit.Value, nil
 	}
-
-	if exact := constant.ToInt(value); exact.Kind() == constant.Int {
-		if text, ok := new(big.Int).SetString(exact.ExactString(), 10); ok {
-			if !text.IsInt64() || text.Int64() > maxSafeIntegerLiteral || text.Int64() < -maxSafeIntegerLiteral {
-				return "", fmt.Errorf(
-					"integer literal %s exceeds the JavaScript safe integer range and cannot be represented exactly",
-					lit.Value)
-			}
-		}
-	}
-
-	if value.Kind() != constant.Int {
-		return lit.Value, nil
-	}
-
-	normalized, err := normalizedIntegerLiteral(value)
-
-	if err != nil {
-		return "", err
-	}
-
-	return normalized, nil
 }
 
 func normalizedIntegerLiteral(value constant.Value) (string, error) {
