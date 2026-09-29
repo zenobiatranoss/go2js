@@ -10,6 +10,14 @@ import (
 // goTypeName renders a type the way fmt's %T verb does. go/types prints "byte"
 // for the byte alias, while %T always reports the underlying "uint8".
 func goTypeName(t gotypes.Type) string {
+	if t == nil {
+		return ""
+	}
+
+	// An alias is the type it stands for as far as %T is concerned, and the
+	// predeclared any is spelled out as the interface it names.
+	t = gotypes.Unalias(t)
+
 	switch value := t.(type) {
 	case nil:
 		return ""

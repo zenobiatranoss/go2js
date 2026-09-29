@@ -1955,7 +1955,9 @@ func (e *emitter) emitConversion(call *ast.CallExpr) error {
 		}
 	}
 
-	if isInterfaceGoType(target) {
+	// A conversion to an interface stores the value in a box, which the alias
+	// any needs as much as interface{} does.
+	if isInterfaceLikeType(target) {
 		return e.emitInterfaceValue(call.Args[0], target)
 	}
 
