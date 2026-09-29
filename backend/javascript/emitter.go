@@ -34,6 +34,9 @@ type emitter struct {
 	needsRuntime        bool
 	reflectTypeKeys     map[gotypesstd.Type]string
 	reflectTypeConsts   []string
+	addressNeeded       map[gotypesstd.Object]bool
+	addressNames        map[gotypesstd.Object]string
+	addressStack        []map[gotypesstd.Object]string
 	resultCount         int
 	analysis            *gotypes.Result
 	semantic            *semantic.Context
@@ -488,6 +491,32 @@ func (e *emitter) emitBlock(block *ast.BlockStmt) error {
 		e.write(" = this;")
 		e.newline()
 	}
+
+	// Every variable this block declares and hands an address to gets a pointer
+	// variable of its own, set up afresh on every entry so that a loop body
+	// hands out a new pointer each turn the way the variable itself is new.
+	blockAddresses := map[gotypesstd.Object]string{}
+
+	for _, object := range e.blockAddressObjects(block) {
+		name := e.reserveAddressBinding(object)
+
+		if name == "" {
+			continue
+		}
+
+		blockAddresses[object] = name
+		e.writeIndent()
+		e.write("let ")
+		e.write(name)
+		e.write(" = null;")
+		e.newline()
+	}
+
+	e.addressStack = append(e.addressStack, blockAddresses)
+
+	defer func() {
+		e.addressStack = e.addressStack[:len(e.addressStack)-1]
+	}()
 
 	if block == e.functionBody {
 		if err := e.emitNamedResults(); err != nil {
@@ -1406,8 +1435,26 @@ func (e *emitter) emitType(spec *ast.TypeSpec) error {
 
 		e.indent++
 
+		// Every field is declared, embedded ones included and in the order the
+		// struct wrote them, because a class field is created when the object is
+		// built and the order they come out in is the order a struct prints.
 		if t.Fields != nil {
 			for _, field := range t.Fields.List {
+				if len(field.Names) == 0 {
+					name := embeddedFieldName(field.Type)
+
+					if name == "" {
+						continue
+					}
+
+					e.writeIndent()
+					e.write(name)
+					e.write(";")
+					e.newline()
+
+					continue
+				}
+
 				for _, name := range field.Names {
 					e.writeIndent()
 					e.write(name.Name)

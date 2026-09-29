@@ -1853,22 +1853,10 @@ function go2jsHasFormatMethod(value) {
 	return go2jsNamedFormatMethod(receiver, "Error") !== null || go2jsNamedFormatMethod(receiver, "String") !== null;
 }
 
+// go2jsFormatFields writes a value the way %+v does, which is the plain walk
+// with a name in front of every field.
 function go2jsFormatFields(value) {
-	if (value !== null && value !== undefined && value.__go2js_pointer === true) {
-		return "&" + go2jsFormatFields(go2jsDeref(value));
-	}
-
-	if (value === null || value === undefined || typeof value !== "object" || value.__go2js_interface === true) {
-		return go2jsFormat(value);
-	}
-
-	const parts = [];
-
-	for (const key of Object.keys(value)) {
-		parts.push(key + ":" + go2jsFormat(value[key]));
-	}
-
-	return "{" + parts.join(" ") + "}";
+	return go2jsFormat(value, null, null, null, true, false);
 }
 
 function go2jsNamedFormatMethod(value, name) {
@@ -1925,6 +1913,45 @@ function go2jsRegisterMethod(name, fn) {
 
 function go2jsRegisterStructFormat(name, fields) {
 	go2jsStructFormats[name] = fields;
+}
+
+// go2jsPointerAddress gives a pointer a stable address to print. A real Go
+// address is the one thing a translation cannot reproduce, so each pointer is
+// handed a number of its own that stays the same for the life of the value,
+// which is what lets a printed address still be compared with the next one.
+const go2jsPointerAddresses = new WeakMap();
+
+let go2jsPointerAddressCount = 0;
+
+function go2jsPointerAddress(pointer) {
+	let address = go2jsPointerAddresses.get(pointer);
+
+	if (address === undefined) {
+		go2jsPointerAddressCount++;
+		address = go2jsPointerAddressCount;
+		go2jsPointerAddresses.set(pointer, address);
+	}
+
+	// Go writes a heap address in twelve hex digits, so the same width is used
+	// here to keep the shape of the output right.
+	let text = (0xc000000000 + address * 8).toString(16);
+
+	return "0x" + text.padStart(12, "0");
+}
+
+// go2jsPointerTargets reports whether a pointer names a struct, an array, a
+// slice or a map, which are the ones fmt writes with a leading & rather than as
+// a bare address.
+function go2jsPointerTargets(pointer) {
+	let value;
+
+	try {
+		value = pointer.get();
+	} catch (error) {
+		return false;
+	}
+
+	return value !== null && value !== undefined && typeof value === "object";
 }
 
 function go2jsInterface(value, typeName, displayName) {
@@ -2933,7 +2960,11 @@ function go2jsNilFormat(typeName, kind, shape) {
 	return "<nil>";
 }
 
-function go2jsFormat(value, typeName, kind, shape) {
+// go2jsFormat writes a value the way %v does, or the way %+v does when plus is
+// set, which is the flag that puts a name in front of every field. The nested
+// flag says the value sits inside another one, and that is what decides whether
+// a pointer is written as an address or with a leading &.
+function go2jsFormat(value, typeName, kind, shape, plus, nested) {
 	if (typeof typeName !== "string") {
 		typeName = go2jsTypedType(value);
 	}
@@ -2975,7 +3006,10 @@ function go2jsFormat(value, typeName, kind, shape) {
 		}
 	}
 
-	if (value.__go2js_interface === true) {
+	// A slice or an array carries the wrapper on itself, so there is nothing
+	// left to unwrap and it formats as the composite it is rather than as a
+	// value pointing at itself.
+	if (value.__go2js_interface === true && value.value !== value) {
 		if (typeof value.type === "string") {
 			const errorer = go2jsMethodTable[value.type + ".Error"];
 
@@ -2990,11 +3024,19 @@ function go2jsFormat(value, typeName, kind, shape) {
 			}
 		}
 
-		return go2jsFormat(value.value);
+		return go2jsFormat(value.value, null, null, null, plus, nested);
 	}
 
 	if (value.__go2js_pointer === true) {
-		return "&" + go2jsFormat(go2jsDeref(value));
+		// fmt writes a pointer to a struct, an array, a slice or a map with a
+		// leading &, but a pointer that sits inside a struct, an array, a slice
+		// or a map is written as a bare address, because &{} there would be
+		// ambiguous with the value it points at.
+		if (nested || !go2jsPointerTargets(value)) {
+			return go2jsPointerAddress(value);
+		}
+
+		return "&" + go2jsFormat(go2jsDeref(value), null, null, null, plus, false);
 	}
 
 
@@ -3011,7 +3053,7 @@ function go2jsFormat(value, typeName, kind, shape) {
 		const entries = Array.from(value.entries());
 		entries.sort((a, b) => go2jsCompareValues(a[0], b[0]));
 
-		const parts = entries.map(([key, item]) => go2jsFormat(key) + ":" + go2jsFormat(item));
+		const parts = entries.map(([key, item]) => go2jsFormat(key, null, null, null, plus, true) + ":" + go2jsFormat(item, null, null, null, plus, true));
 
 		return "map[" + parts.join(" ") + "]";
 	}
@@ -3020,7 +3062,7 @@ function go2jsFormat(value, typeName, kind, shape) {
 		const parts = [];
 
 		for (let i = 0; i < value.length; i++) {
-			parts.push(go2jsFormat(value[i]));
+			parts.push(go2jsFormat(value[i], null, null, null, plus, true));
 		}
 
 		return "[" + parts.join(" ") + "]";
@@ -3059,7 +3101,9 @@ function go2jsFormat(value, typeName, kind, shape) {
 			}
 		}
 
-		parts.push(go2jsFormat(value[key]));
+		const text = go2jsFormat(value[key], null, null, null, plus, true);
+
+		parts.push(plus === true ? key + ":" + text : text);
 	}
 
 	return "{" + parts.join(" ") + "}";
@@ -3380,7 +3424,30 @@ function go2jsSprintf(format, ...args) {
 	return result;
 }
 
+// go2jsStripWrappers reaches the value a chain of wrappers stands for. Retyping
+// an already wrapped value has to go all the way in, because a wrapper whose
+// own value is a wrapper of itself sends every walk of it round in circles.
+function go2jsStripWrappers(value) {
+	let current = value;
+
+	while (current !== null && typeof current === "object" && (current.__go2js_typed === true || current.__go2js_interface === true)) {
+		// A slice or an array is its own interface wrapper, so following its
+		// value once more would come back to where this started.
+		if (current.value === current) {
+			break;
+		}
+
+		current = current.value;
+	}
+
+	return current;
+}
+
 function go2jsTyped(value, type, kind, shape) {
+	if (value !== null && typeof value === "object" && (value.__go2js_typed === true || value.__go2js_interface === true)) {
+		value = go2jsStripWrappers(value);
+	}
+
 	const wrapper = {__go2js_typed: true, value: value, type: type};
 
 	if (typeof kind === "string" && kind !== "") {
@@ -3611,6 +3678,10 @@ function go2jsIsBasicScalarName(typeName) {
 function go2jsGoSyntax(value) {
 	if (value === null || value === undefined) {
 		return "<nil>";
+	}
+
+	if (value.__go2js_pointer === true) {
+		return "(" + go2jsGoTypeName(value) + ")(" + go2jsPointerAddress(value) + ")";
 	}
 
 	if (value instanceof Error) {

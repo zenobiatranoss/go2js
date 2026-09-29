@@ -103,6 +103,13 @@ func (e *emitter) emitGotoBody(body *ast.BlockStmt) error {
 	e.newline()
 	e.indent++
 
+	// The dispatcher stands in for the function body block, so it owns the
+	// scope that the body's own declarations are recorded in.
+	e.pushScope()
+	defer func() {
+		e.scopes = e.scopes[:len(e.scopes)-1]
+	}()
+
 	e.writeIndent()
 	e.write("let go2jsPC = 0;")
 	e.newline()
@@ -180,4 +187,14 @@ func (e *emitter) emitDeclarationKeyword() string {
 		return "var "
 	}
 	return "let "
+}
+
+// emitConstantKeyword writes a constant. A constant declared in a function that
+// a goto dispatches would otherwise be scoped to the one case it was written
+// in, where a later case could not read it, so there it is hoisted instead.
+func (e *emitter) emitConstantKeyword() string {
+	if e.gotoMode && e.gotoStmtDepth == 1 {
+		return "var "
+	}
+	return "const "
 }
