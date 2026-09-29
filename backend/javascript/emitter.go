@@ -215,6 +215,13 @@ func emitFilePass(file *ast.File, analysis *gotypes.Result, context *semantic.Co
 		prefix = ProgramRuntime(e.buf.String(), e.target)
 	}
 
+	// The reflect type descriptors are discovered while the body is emitted, so
+	// they are declared after the runtime bundle and before the code that uses
+	// them.
+	if len(e.reflectTypeConsts) > 0 {
+		prefix += strings.Join(e.reflectTypeConsts, "\n") + "\n"
+	}
+
 	return prefix + e.buf.String(), e.needsRuntime, nil
 }
 

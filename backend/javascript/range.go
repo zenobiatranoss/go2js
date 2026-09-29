@@ -34,8 +34,19 @@ func (e *emitter) emitRangeStmt(stmt *ast.RangeStmt) error {
 	e.write(temp)
 	e.write(" of go2jsRangeValue(")
 
-	if err := e.emitExpr(stmt.X); err != nil {
-		return err
+	// The subject is written after the loop variable but belongs to the
+	// enclosing scope, so it is rendered with the header scope popped; a range
+	// over a variable the loop then redeclares must still see the outer one.
+	headerScope := e.scopes[len(e.scopes)-1]
+	e.scopes = e.scopes[:len(e.scopes)-1]
+
+	subjectErr := e.emitExpr(stmt.X)
+
+	e.scopes = append(e.scopes, headerScope)
+
+	if subjectErr != nil {
+		e.scopes = e.scopes[:len(e.scopes)-1]
+		return subjectErr
 	}
 
 	e.write(")) {")
@@ -101,6 +112,20 @@ func (e *emitter) rangeEntryMode(stmt *ast.RangeStmt) rangeIteration {
 
 	isMap := e.rangeSubjectIsMap(stmt)
 
+	// The loop variable is written straight into the for-of header, so it has
+	// to be the scoped name rather than the Go name: a target called "in" or
+	// "of" would otherwise produce an unparsable header. Only := introduces a
+	// new binding; with = the variable already exists in an outer scope.
+	if stmt.Tok == token.DEFINE {
+		for _, expr := range targets {
+			if !isBlankIdent(expr) {
+				e.declare(e.identName(expr))
+			}
+		}
+	}
+
+	name := func(expr ast.Expr) string { return e.resolveName(e.identName(expr)) }
+
 	if used == 0 {
 		return rangeIteration{kind: rangeSkip, name: e.nextTemp("item")}
 	}
@@ -109,7 +134,7 @@ func (e *emitter) rangeEntryMode(stmt *ast.RangeStmt) rangeIteration {
 		if used == 2 {
 			names := make([]string, len(targets))
 			for i, expr := range targets {
-				names[i] = e.identName(expr)
+				names[i] = name(expr)
 			}
 			return rangeIteration{
 				kind: rangeEntries,
@@ -119,29 +144,29 @@ func (e *emitter) rangeEntryMode(stmt *ast.RangeStmt) rangeIteration {
 
 		if stmt.Value != nil && (stmt.Key == nil || isBlankIdent(stmt.Key)) {
 			if isMap {
-				return rangeIteration{kind: rangeMapValues, name: e.identName(stmt.Value)}
+				return rangeIteration{kind: rangeMapValues, name: name(stmt.Value)}
 			}
-			return rangeIteration{kind: rangeValues, name: e.identName(stmt.Value)}
+			return rangeIteration{kind: rangeValues, name: name(stmt.Value)}
 		}
 
 		if isMap {
-			return rangeIteration{kind: rangeKeys, name: e.identName(stmt.Key)}
+			return rangeIteration{kind: rangeKeys, name: name(stmt.Key)}
 		}
 
 		return rangeIteration{kind: rangeKeys, name: e.identName(stmt.Key)}
 	}
 
-	name := e.identName(targets[0])
+	single := name(targets[0])
 
 	if stmt.Value != nil {
-		return rangeIteration{kind: rangeValues, name: name}
+		return rangeIteration{kind: rangeValues, name: single}
 	}
 
 	if isMap {
-		return rangeIteration{kind: rangeKeys, name: name}
+		return rangeIteration{kind: rangeKeys, name: single}
 	}
 
-	return rangeIteration{kind: rangeKeys, name: name}
+	return rangeIteration{kind: rangeKeys, name: single}
 }
 
 func (e *emitter) rangeSubjectIsMap(stmt *ast.RangeStmt) bool {
@@ -190,21 +215,18 @@ func (e *emitter) rangeUsesEntries(stmt *ast.RangeStmt) bool {
 func (e *emitter) emitEntriesRangeStmt(stmt *ast.RangeStmt) error {
 	e.needsRuntime = true
 
+	// The loop targets live in a scope of their own: the body block is only
+	// entered after the header has been written, so a := target that reuses an
+	// outer name would otherwise resolve to that outer binding and shadow it
+	// incorrectly.
+	e.pushScope()
+
 	mode := e.rangeEntryMode(stmt)
 
 	binding := "const "
 
 	if stmt.Tok == token.ASSIGN {
 		binding = ""
-
-		switch mode.kind {
-		case rangeEntries:
-			for _, name := range strings.Split(mode.name, ", ") {
-				e.declare(name)
-			}
-		default:
-			e.declare(mode.name)
-		}
 	}
 
 	e.writeIndent()
@@ -243,8 +265,20 @@ func (e *emitter) emitEntriesRangeStmt(stmt *ast.RangeStmt) error {
 		e.write("go2jsRangeSequence(")
 	}
 
-	if err := e.emitExpr(stmt.X); err != nil {
-		return err
+	// The subject is written after the loop variable but belongs to the
+	// enclosing scope, so it is rendered with the header scope popped: ranging
+	// over a variable that the loop then redeclares must still see the outer
+	// binding.
+	headerScope := e.scopes[len(e.scopes)-1]
+	e.scopes = e.scopes[:len(e.scopes)-1]
+
+	subjectErr := e.emitExpr(stmt.X)
+
+	e.scopes = append(e.scopes, headerScope)
+
+	if subjectErr != nil {
+		e.scopes = e.scopes[:len(e.scopes)-1]
+		return subjectErr
 	}
 
 	e.write(")")
@@ -260,7 +294,11 @@ func (e *emitter) emitEntriesRangeStmt(stmt *ast.RangeStmt) error {
 		e.write(") ")
 	}
 
-	return e.emitBlock(stmt.Body)
+	blockErr := e.emitBlock(stmt.Body)
+
+	e.scopes = e.scopes[:len(e.scopes)-1]
+
+	return blockErr
 }
 
 func (e *emitter) emitRangeBinding(lhs ast.Expr, value string, tok token.Token) error {
