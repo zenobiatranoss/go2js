@@ -77,6 +77,40 @@ func main() {
 `)
 }
 
+func TestReservedWordTypeNamesParity(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+type try struct {
+	class string
+}
+
+type in int
+
+func (t *try) delete() string { return t.class }
+
+func (i in) typeof() int { return int(i) }
+
+func main() {
+	t := &try{class: "c"}
+	fmt.Println(t.class, t.delete())
+
+	var i in = 4
+	fmt.Println(i, i.typeof())
+
+	anon := struct {
+		class string
+		delete int
+	}{class: "a", delete: 2}
+	fmt.Println(anon.class, anon.delete)
+
+	values := []in{3, 1, 2}
+	fmt.Println(values, len(values))
+}
+`)
+}
+
 func TestErrorsAsInvalidTargetPanicParity(t *testing.T) {
 	runParityTest(t, `package main
 

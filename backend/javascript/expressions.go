@@ -928,7 +928,9 @@ func (e *emitter) emitAnonymousStructLiteral(x *ast.CompositeLit, structType *go
 		}
 
 		if kv, ok := elt.(*ast.KeyValueExpr); ok {
-			if err := e.emitExpr(kv.Key); err != nil {
+			if ident, ok := kv.Key.(*ast.Ident); ok {
+				e.write(ident.Name)
+			} else if err := e.emitExpr(kv.Key); err != nil {
 				return true, err
 			}
 
