@@ -254,3 +254,98 @@ func main() {
 }
 `)
 }
+
+func TestAsTargetIsJudgedByItsType(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"errors"
+	"fmt"
+)
+
+type wrapped struct {
+	inner error
+}
+
+func (w *wrapped) Error() string { return "wrapped: " + w.inner.Error() }
+
+func (w *wrapped) Unwrap() error { return w.inner }
+
+type pointerOnly struct{ code int }
+
+func (p *pointerOnly) Error() string { return fmt.Sprint("pointer only ", p.code) }
+
+type byValue struct{ code int }
+
+func (b byValue) Error() string { return fmt.Sprint("by value ", b.code) }
+
+type plain struct{ n int }
+
+func try(name string, f func() bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println(name, "panic:", r)
+		}
+	}()
+
+	fmt.Println(name, "=>", f())
+}
+
+func asWrapper(err error, target any) bool {
+	return errors.As(err, target)
+}
+
+func main() {
+	inner := &wrapped{inner: errors.New("inner")}
+
+	// A pointer to a type that can hold an error, whichever way it is spelled.
+	fmt.Println("new pointer", asWrapper(inner, new(*wrapped)))
+	fmt.Println("new interface", asWrapper(inner, new(error)))
+	fmt.Println("new other", asWrapper(inner, new(*pointerOnly)))
+	var address *pointerOnly
+	fmt.Println("address", asWrapper(inner, &address))
+
+	// A type whose Error method belongs to its pointer cannot be filled in
+	// through a pointer to it, because Go does not take the address.
+	try("value type behind pointer", func() bool {
+		var target plain
+		return errors.As(inner, &target)
+	})
+	try("new value type", func() bool { return errors.As(inner, new(plain)) })
+	try("new plain struct", func() bool { return errors.As(inner, new(plain)) })
+	try("string behind pointer", func() bool {
+		var target string
+		return errors.As(inner, &target)
+	})
+
+	// A target that is not a pointer at all.
+	try("int", func() bool { return errors.As(inner, 7) })
+	try("struct", func() bool { return errors.As(inner, plain{n: 1}) })
+
+	// A pointer standing for nothing, which Go asks about first.
+	try("nil pointer", func() bool {
+		var target *pointerOnly
+		return errors.As(inner, target)
+	})
+	try("nil literal", func() bool { return errors.As(inner, nil) })
+
+	// A value of interface type carries its own type with it.
+	try("interface value", func() bool {
+		var target error = inner
+		return errors.As(inner, target)
+	})
+
+	// A value receiver works from either side of the pointer.
+	var holder *byValue
+	fmt.Println("by value", errors.As(inner, &holder), holder == nil)
+	fmt.Println("by value new", errors.As(inner, new(byValue)))
+
+	// A pointer to a pointer to a type with a pointer receiver.
+	boxed := &holder
+	fmt.Println("boxed", errors.As(inner, boxed))
+
+	// The checks above must leave the error itself alone.
+	fmt.Println(errors.Is(inner, inner.Unwrap()))
+}
+`)
+}
