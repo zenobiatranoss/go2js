@@ -21,20 +21,22 @@ func run(args []string, stdout, stderr io.Writer) error {
 	fs.SetOutput(stderr)
 
 	var (
-		output      string
-		module      string
-		target      string
-		packageName string
-		minify      bool
-		runtime     bool
-		strict      bool
+		output    string
+		module    string
+		target    string
+		minify    bool
+		pretty    bool
+		sourceMap bool
+		runtime   bool
+		strict    bool
 	)
 
 	fs.StringVar(&output, "o", "", "write output to file")
 	fs.StringVar(&module, "module", "esm", "module format: esm, commonjs, iife")
 	fs.StringVar(&target, "target", "es2022", "JavaScript target")
-	fs.StringVar(&packageName, "package", "", "package name")
 	fs.BoolVar(&minify, "minify", false, "minify JavaScript output")
+	fs.BoolVar(&pretty, "pretty", true, "pretty print JavaScript output")
+	fs.BoolVar(&sourceMap, "sourcemap", false, "append an inline source map")
 	fs.BoolVar(&runtime, "runtime", true, "include runtime helpers")
 	fs.BoolVar(&strict, "strict", true, "emit strict mode")
 
@@ -49,8 +51,9 @@ func run(args []string, stdout, stderr io.Writer) error {
 	options := compiler.DefaultOptions().
 		WithModule(module).
 		WithTarget(target).
-		WithPackageName(packageName).
+		WithPretty(pretty).
 		WithMinify(minify).
+		WithSourceMap(sourceMap).
 		WithRuntime(runtime).
 		WithStrict(strict)
 
