@@ -1483,6 +1483,10 @@ func (e *emitter) isStructEmbed(fieldType ast.Expr) bool {
 		return true
 	}
 
+	if pointer, ok := t.(*gotypesstd.Pointer); ok {
+		t = pointer.Elem()
+	}
+
 	_, ok := t.Underlying().(*gotypesstd.Struct)
 
 	return ok

@@ -1461,9 +1461,16 @@ function go2jsInvokeMethod(receiver, method, args) {
 function go2jsEmbedProxy(target, embedded) {
     return new Proxy(target, {
         get(target, property, receiver) {
-            if (property === "__go2js_embedded") {
-                return embedded;
-            }
+		if (property === "__go2js_embedded") {
+			return embedded;
+		}
+
+		// Marker flags describe the outer value, so an embedded pointer must
+		// not leak its own __go2js_pointer through the promotion proxy.
+		if (typeof property === "string" && property.startsWith("__go2js")) {
+			return Reflect.get(target, property, receiver);
+		}
+
 
             if (Reflect.has(target, property)) {
                 return Reflect.get(target, property, receiver);
