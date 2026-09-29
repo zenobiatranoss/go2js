@@ -280,7 +280,9 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 						return err
 					}
 
-					e.write(" = value))")
+					e.write(" = value")
+					e.write(e.pointeeTypeNameArgument(x.X))
+					e.write("))")
 					return nil
 				}
 			}
@@ -293,7 +295,9 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			if err := e.emitExpr(x.X); err != nil {
 				return err
 			}
-			e.write(" = value)")
+			e.write(" = value")
+			e.write(e.pointeeTypeNameArgument(x.X))
+			e.write(")")
 			return nil
 		case token.ARROW:
 			if e.isChannelExpr(x.X) {
@@ -1661,4 +1665,31 @@ func (e *emitter) isStringIndexExpr(x *ast.IndexExpr) bool {
 	basic, ok := t.Underlying().(*gotypes.Basic)
 
 	return ok && basic.Info()&gotypes.IsString == gotypes.IsString
+}
+
+// pointeeTypeNameArgument writes the declared type of the value a pointer is
+// taken to. errors.As judges its target by the type it points at, and an
+// interface variable is empty at first, so the name has to travel with the
+// address itself rather than be read back out of the value.
+func (e *emitter) pointeeTypeNameArgument(expr ast.Expr) string {
+	if e.analysis == nil || expr == nil {
+		return ""
+	}
+
+	info, ok := e.analysis.Types[expr]
+	if !ok || info.Type == nil {
+		return ""
+	}
+
+	if !isInterfaceLikeType(info.Type) {
+		return ""
+	}
+
+	name := goTypeName(info.Type)
+
+	if name == "" {
+		return ""
+	}
+
+	return ", " + strconv.Quote(name)
 }
