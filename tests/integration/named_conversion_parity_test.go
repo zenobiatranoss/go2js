@@ -61,6 +61,37 @@ func main() {
 `)
 }
 
+func TestTypeNameThroughEmptyInterface(t *testing.T) {
+	// %T reports the type a value really has, not the name of the empty
+	// interface it was stored in, whether the interface was written as any or
+	// as interface{}.
+	runParityTest(t, `package main
+
+import "fmt"
+
+type Table map[string]int
+
+func show(v any) { fmt.Printf("%T %v %q\n", v, v, v) }
+
+func main() {
+	for _, v := range []any{[]int{1}, []int(nil), map[string]int{"k": 1}, Table{"a": 1}} {
+		show(v)
+	}
+
+	for _, v := range []interface{}{[]int{1}, []int(nil), map[string]int{"k": 1}, Table{"a": 1}} {
+		show(v)
+	}
+
+	var s []int
+	var m map[string]int
+
+	show(s)
+	show(m)
+	fmt.Println(any(s) == nil, s == nil, m == nil)
+}
+`)
+}
+
 func TestConversionFromNothing(t *testing.T) {
 	// A conversion from nothing gives the empty value of its own kind, whatever
 	// the type is called.

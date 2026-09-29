@@ -2052,10 +2052,12 @@ function go2jsEqual(a, b) {
 			return false;
 		}
 
-		return go2jsEqual(a.value, b.value);
-	}
-
-	if (ai || bi) {
+		// An array that is its own interface wrapper keeps its elements
+		// directly, so unwrapping would only arrive back at the same object.
+		if (a.value !== a && b.value !== b) {
+			return go2jsEqual(a.value, b.value);
+		}
+	} else if (ai || bi) {
 		return false;
 	}
 
@@ -3689,7 +3691,9 @@ function go2jsNilValue(typeName, shape) {
 }
 
 // go2jsNilInterface gives the type to a nil slice or a nil map on its way into
-// an interface. Anything that is not nil is handed straight back.
+// an interface, and keeps the name for a slice or a map that is really there so
+// that %T can report it. A bare array or Map cannot recover its element type on
+// its own, so a non-nil value is boxed the same way an interface{} value is.
 function go2jsNilInterface(value, typeName, shape) {
 	if (value === null || value === undefined) {
 		return go2jsNilValue(typeName, shape);
@@ -3697,11 +3701,19 @@ function go2jsNilInterface(value, typeName, shape) {
 
 	// A nil that already has a value of its own is named here, because this is
 	// the point that knows what the program called it.
-	if (typeof value === "object" && value.__go2js_nil === true && (typeof value.type !== "string" || value.type === "")) {
-		value.type = typeName;
+	if (typeof value === "object" && value.__go2js_nil === true) {
+		if (typeof value.type !== "string" || value.type === "") {
+			value.type = typeName;
+		}
+
+		return value;
 	}
 
-	return value;
+	if (typeof value === "object" && (value.__go2js_interface === true || value.__go2js_typed === true)) {
+		return value;
+	}
+
+	return go2jsInterface(value, typeName, typeName);
 }
 
 function go2jsIsNil(value) {
@@ -3725,7 +3737,7 @@ function go2jsTyped(value, type, kind, shape) {
 	if (value !== null && typeof value === "object" && (value.__go2js_typed === true || value.__go2js_interface === true)) {
 		// An interface carries no name of its own, so a type that arrived with
 		// the value says more than the name of the interface it sits in.
-		if (type === "" || type === "any" || type === "interface{}") {
+		if (type === "" || type === "any" || type === "interface{}" || type === "interface {}") {
 			if (typeof value.type === "string" && value.type !== "") {
 				return value;
 			}

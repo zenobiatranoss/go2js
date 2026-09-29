@@ -88,6 +88,12 @@ func (e *emitter) emitInterfaceValue(expr ast.Expr, target gotypes.Type) error {
 		return nil
 	}
 
+	// A call that yields more than one result is spread into the arguments of
+	// the call it sits in, so its tuple must not be boxed as a single value.
+	if e.isMultiValueCall(expr) {
+		return e.emitExpr(expr)
+	}
+
 	// An interface carries the type of what it holds, so a nil slice or a nil
 	// map is given a name of its own on the way in and prints as the empty
 	// literal rather than as <nil>. A type that is already boxed below keeps its
