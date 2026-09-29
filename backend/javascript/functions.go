@@ -13,12 +13,22 @@ type functionInfo struct {
 }
 
 func countResults(fn *ast.FuncDecl) int {
-	if fn == nil || fn.Type == nil || fn.Type.Results == nil {
+	if fn == nil {
+		return 0
+	}
+
+	return funcTypeResultCount(fn.Type)
+}
+
+// funcTypeResultCount counts the values a signature hands back, where a field
+// without a name still stands for one value.
+func funcTypeResultCount(typ *ast.FuncType) int {
+	if typ == nil || typ.Results == nil {
 		return 0
 	}
 
 	count := 0
-	for _, field := range fn.Type.Results.List {
+	for _, field := range typ.Results.List {
 		if len(field.Names) == 0 {
 			count++
 			continue

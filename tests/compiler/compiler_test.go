@@ -299,7 +299,7 @@ func main() {
 		t.Fatal(err)
 	}
 
-	if !strings.Contains(output, "Math.trunc((7 / 2))") {
+	if !strings.Contains(output, "go2jsDivide(7, 2)") {
 		t.Fatalf("integer division was not lowered correctly:\n%s", output)
 	}
 }
