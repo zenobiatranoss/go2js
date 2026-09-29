@@ -2881,6 +2881,9 @@ function go2jsFormat(value) {
 	case "string":
 		return value;
 	case "number":
+		// Integers keep their digits so large int64 values stay readable, while
+		// fractional values follow Go's %v float formatting.
+		return Number.isInteger(value) ? String(value) : go2jsFormatFloatDefault(value);
 	case "boolean":
 		return String(value);
 	}
@@ -3051,9 +3054,37 @@ function go2jsSprintf(format, ...args) {
 		i++;
 		let spec = "%";
 
-		while (i < format.length && "+-# 0123456789.".includes(format[i])) {
-			spec += format[i];
-			i++;
+		while (i < format.length) {
+			const flag = format[i];
+
+			if ("+-# ".includes(flag)) {
+				spec += flag;
+				i++;
+				continue;
+			}
+
+			if (flag === "0" || (flag >= "1" && flag <= "9")) {
+				spec += flag;
+				i++;
+				continue;
+			}
+
+			if (flag === ".") {
+				spec += flag;
+				i++;
+				continue;
+			}
+
+			// A "*" width or precision takes its value from the next argument.
+			if (flag === "*") {
+				const star = Math.trunc(Number(args[argIndex]));
+				argIndex++;
+				spec += Number.isFinite(star) ? String(star) : "0";
+				i++;
+				continue;
+			}
+
+			break;
 		}
 
 		const verb = format[i];
@@ -3172,6 +3203,7 @@ function go2jsVerbAccepts(verb, typeName) {
 		case "b":
 		case "o":
 		case "c":
+		case "U":
 			return typeName === "int" || typeName === "int8" || typeName === "int16" ||
 				typeName === "int32" || typeName === "int64" || typeName === "uint" ||
 				typeName === "uint8" || typeName === "uint16" || typeName === "uint32" ||
@@ -3429,6 +3461,15 @@ function go2jsFormatValue(verb, spec, value) {
 			return go2jsPad(value ? "true" : "false", parsed, false);
 		case "c":
 			return go2jsPad(String.fromCharCode(value), parsed, false);
+		case "U": {
+			let digits = Math.trunc(Number(value)).toString(16).toUpperCase();
+
+			while (digits.length < 4) {
+				digits = "0" + digits;
+			}
+
+			return go2jsPad("U+" + digits, parsed, false);
+		}
 		case "T":
 			return go2jsPad(go2jsGoTypeName(value), parsed, false);
 		default:
@@ -3510,6 +3551,57 @@ function go2jsPadNumber(text, prefix, body, parsed) {
 	}
 
 	return " ".repeat(fill) + text;
+}
+
+// go2jsFormatFloatDefault mirrors fmt's %v rule for float64: the shortest
+// round-trip digits, switching to scientific notation when the decimal exponent
+// is below -4 or at least 6.
+function go2jsFormatFloatDefault(value) {
+	const num = Number(value);
+
+	if (Number.isNaN(num)) {
+		return "NaN";
+	}
+
+	if (num === Infinity) {
+		return "+Inf";
+	}
+
+	if (num === -Infinity) {
+		return "-Inf";
+	}
+
+	if (num === 0) {
+		return Object.is(num, -0) ? "-0" : "0";
+	}
+
+	const parts = Math.abs(num).toExponential().split("e");
+	const digits = parts[0].replace(".", "");
+	const exp10 = parseInt(parts[1], 10);
+	const sign = num < 0 ? "-" : "";
+
+	if (exp10 < -4 || exp10 >= 6) {
+		let body = digits[0];
+
+		if (digits.length > 1) {
+			body += "." + digits.slice(1);
+		}
+
+		const exponentSign = exp10 < 0 ? "-" : "+";
+		const exponent = String(Math.abs(exp10)).padStart(2, "0");
+
+		return sign + body + "e" + exponentSign + exponent;
+	}
+
+	if (exp10 >= 0) {
+		if (digits.length > exp10 + 1) {
+			return sign + digits.slice(0, exp10 + 1) + "." + digits.slice(exp10 + 1);
+		}
+
+		return sign + digits + "0".repeat(exp10 + 1 - digits.length);
+	}
+
+	return sign + "0." + "0".repeat(-exp10 - 1) + digits;
 }
 
 function go2jsFormatE(value, precision, parsed) {
