@@ -132,6 +132,7 @@ func runtimeBundleSources() []string {
 		runtimeShimRuntimeSource(),
 		templateRuntimeSource(),
 		osFileRuntimeSource(),
+		sortSliceShimRuntimeSource(),
 	}
 }
 
