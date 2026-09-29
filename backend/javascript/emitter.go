@@ -55,8 +55,14 @@ type emitter struct {
 	qualifiers       map[string]string
 }
 
+// typeJavaScriptName maps a Go type name onto a legal JavaScript identifier so
+// types such as "try" or "class" do not produce invalid class declarations.
+func typeJavaScriptName(name string) string {
+	return javaScriptIdentifier(name)
+}
+
 func (e *emitter) typeReference(named *gotypesstd.Named) string {
-	name := named.Obj().Name()
+	name := typeJavaScriptName(named.Obj().Name())
 
 	obj := named.Obj()
 	if obj == nil || obj.Pkg() == nil {
@@ -328,40 +334,40 @@ func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 
 		switch t := receiver.Type.(type) {
 		case *ast.Ident:
-			receiverType = t.Name
+			receiverType = typeJavaScriptName(t.Name)
 
 		case *ast.IndexExpr:
 			ident, ok := t.X.(*ast.Ident)
 			if !ok {
 				return fmt.Errorf("unsupported generic receiver type")
 			}
-			receiverType = ident.Name
+			receiverType = typeJavaScriptName(ident.Name)
 
 		case *ast.IndexListExpr:
 			ident, ok := t.X.(*ast.Ident)
 			if !ok {
 				return fmt.Errorf("unsupported generic receiver type")
 			}
-			receiverType = ident.Name
+			receiverType = typeJavaScriptName(ident.Name)
 
 		case *ast.StarExpr:
 			switch x := t.X.(type) {
 			case *ast.Ident:
-				receiverType = x.Name
+				receiverType = typeJavaScriptName(x.Name)
 
 			case *ast.IndexExpr:
 				ident, ok := x.X.(*ast.Ident)
 				if !ok {
 					return fmt.Errorf("unsupported generic pointer receiver type")
 				}
-				receiverType = ident.Name
+				receiverType = typeJavaScriptName(ident.Name)
 
 			case *ast.IndexListExpr:
 				ident, ok := x.X.(*ast.Ident)
 				if !ok {
 					return fmt.Errorf("unsupported generic pointer receiver type")
 				}
-				receiverType = ident.Name
+				receiverType = typeJavaScriptName(ident.Name)
 
 			default:
 				return fmt.Errorf("unsupported receiver type")
@@ -1377,7 +1383,7 @@ func (e *emitter) emitType(spec *ast.TypeSpec) error {
 		}
 		e.writeIndent()
 		e.write("class ")
-		e.write(spec.Name.Name)
+		e.write(typeJavaScriptName(spec.Name.Name))
 		e.write(" {}")
 		e.newline()
 		e.newline()
@@ -1387,7 +1393,7 @@ func (e *emitter) emitType(spec *ast.TypeSpec) error {
 	case *ast.StructType:
 		e.writeIndent()
 		e.write("class ")
-		e.write(spec.Name.Name)
+		e.write(typeJavaScriptName(spec.Name.Name))
 		e.write(" {")
 		e.newline()
 
@@ -1506,7 +1512,7 @@ func (e *emitter) emitType(spec *ast.TypeSpec) error {
 			if _, ok := t.Underlying().(*gotypesstd.Struct); ok {
 				e.writeIndent()
 				e.write("class ")
-				e.write(spec.Name.Name)
+				e.write(typeJavaScriptName(spec.Name.Name))
 				e.write(" {}")
 				e.newline()
 				e.newline()
