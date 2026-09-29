@@ -539,14 +539,6 @@ function go2jsErrorsIs(err, target) {
 		return err === target;
 	}
 
-	if (err instanceof Error && target instanceof Error && err.message === target.message) {
-		return true;
-	}
-
-	if (err === null || err === undefined) {
-		return false;
-	}
-
 	if (go2jsErrorMethodCall(err, "Is", target) === true) {
 		return true;
 	}
