@@ -146,6 +146,12 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			return err
 		}
 
+		// A nil slice or a nil map keeps a value of its own, so asking whether
+		// one is nil has to be answered by the runtime.
+		if handled, err := e.emitCollectionNilComparison(x); handled {
+			return err
+		}
+
 		if e.isComplexExpr(x) {
 			return e.emitComplexBinary(x)
 		}
@@ -861,7 +867,9 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			return err
 		}
 
-		if _, ok := x.Type.(*ast.MapType); ok {
+		// A map type may be written under any name it has been given, so the
+		// type decides rather than the words used to spell it.
+		if isMapType(e.analyzedType(x)) {
 			mapValue := e.mapLiteralValueType(x)
 			mapType := e.analyzedType(x)
 
