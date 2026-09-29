@@ -5,6 +5,10 @@ func runtimeSource() string {
 const go2jsNativeMap = globalThis.Map;
 const go2jsNativeSet = globalThis.Set;
 const go2jsNativeDate = globalThis.Date;
+const go2jsNativeTypeError = globalThis.TypeError;
+
+// The words Go puts in front of every fault it raises on its own.
+const go2jsRuntimeErrorPrefix = "runtime error: ";
 
 function go2jsFloat(value) {
 	if (Number.isNaN(value)) {
@@ -2104,7 +2108,7 @@ function go2jsInterfaceValue(value) {
 
 function go2jsInterfaceCall(value, method, ...args) {
 	if (value === null || value === undefined) {
-		throw new TypeError("call of method on nil interface");
+		throw new TypeError(go2jsRuntimeErrorPrefix + "invalid memory address or nil pointer dereference");
 	}
 
 	if (value instanceof Error && method === "Error") {
@@ -2126,7 +2130,7 @@ function go2jsInterfaceCall(value, method, ...args) {
 	const target = value.value;
 
 	if (target === null || target === undefined) {
-		throw new TypeError("call of method on nil interface");
+		throw new TypeError(go2jsRuntimeErrorPrefix + "invalid memory address or nil pointer dereference");
 	}
 
 	if (typeof value.type === "string" && target.__go2js_pointer === true) {
@@ -2839,6 +2843,51 @@ function go2jsRange(value) {
 	return Object.entries(value || {});
 }
 
+// go2jsIndex reads one element of a slice or an array the way Go does, which
+// means refusing an index that is not there rather than answering undefined.
+function go2jsIndex(value, index) {
+	const position = Math.trunc(Number(index));
+
+	if (position < 0) {
+		throw new RangeError(go2jsRuntimeErrorPrefix + "index out of range [" + position + "]");
+	}
+
+	const length = go2jsLen(value);
+
+	if (position >= length) {
+		throw new RangeError(go2jsRuntimeErrorPrefix + "index out of range [" + position + "] with length " + length);
+	}
+
+	return value[position];
+}
+
+// go2jsIndexCheck guards an assignment to a slice or an array element, where
+// the check has to stand beside the assignment rather than inside it.
+function go2jsIndexCheck(value, index) {
+	go2jsIndex(value, index);
+}
+
+// go2jsDivide keeps an integer division honest: a divisor of zero stops the
+// program where Go stops it rather than answering Infinity or NaN.
+function go2jsDivide(left, right) {
+	if (right === 0) {
+		throw new RangeError(go2jsRuntimeErrorPrefix + "integer divide by zero");
+	}
+
+	return Math.trunc(left / right);
+}
+
+// go2jsMod takes the remainder the way Go does, which is the one left over
+// after a quotient cut off toward zero, rather than the JavaScript remainder
+// that keeps the sign of the dividend.
+function go2jsMod(left, right) {
+	if (right === 0) {
+		throw new RangeError(go2jsRuntimeErrorPrefix + "integer divide by zero");
+	}
+
+	return left - Math.trunc(left / right) * right;
+}
+
 function go2jsStringByteAt(value, index) {
 	if (typeof value !== "string") {
 		return value[Math.trunc(index)];
@@ -2886,9 +2935,39 @@ function go2jsPanic(value) {
 	throw error;
 }
 
+// Go says a runtime fault in the same words however it was reached, so a
+// JavaScript error about a missing value is given Go's wording on the way out.
+function go2jsRuntimeErrorText(value) {
+	if (!(value instanceof go2jsNativeTypeError)) {
+		return null;
+	}
+
+	const message = String(value.message === undefined ? "" : value.message);
+
+	if (/^Cannot (read|set) propert(?:y|ies) of (null|undefined)/.test(message)) {
+		return go2jsRuntimeErrorPrefix + "invalid memory address or nil pointer dereference";
+	}
+
+	if (/^\w+ is not a function$/.test(message) || /of undefined$/.test(message)) {
+		return go2jsRuntimeErrorPrefix + "invalid memory address or nil pointer dereference";
+	}
+
+	if (message.startsWith("index out of range") || message.startsWith("integer divide by zero")) {
+		return go2jsRuntimeErrorPrefix + message;
+	}
+
+	return null;
+}
+
 function go2jsPanicPayload(value) {
 	if (value !== null && value !== undefined && value.__go2js_panic_value !== undefined) {
 		return value.__go2js_panic_value;
+	}
+
+	const reworded = go2jsRuntimeErrorText(value);
+
+	if (reworded !== null) {
+		return reworded;
 	}
 
 	return value;

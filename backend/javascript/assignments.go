@@ -352,7 +352,7 @@ func (e *emitter) emitParallelAssignment(stmt *ast.AssignStmt) (bool, error) {
 			continue
 		}
 
-		if err := e.emitExpr(lhs); err != nil {
+		if err := e.emitTargetExpr(lhs); err != nil {
 			return true, err
 		}
 	}
@@ -417,7 +417,7 @@ func (e *emitter) emitParallelAssignmentInline(stmt *ast.AssignStmt) (bool, erro
 			continue
 		}
 
-		if err := e.emitExpr(lhs); err != nil {
+		if err := e.emitTargetExpr(lhs); err != nil {
 			return true, err
 		}
 	}
@@ -538,7 +538,7 @@ func (e *emitter) emitMultiReturnWithTemps(stmt *ast.AssignStmt) error {
 			e.write(e.emitDeclarationKeyword())
 		}
 
-		if err := e.emitExpr(lhs); err != nil {
+		if err := e.emitTargetExpr(lhs); err != nil {
 			return err
 		}
 
@@ -631,7 +631,7 @@ func (e *emitter) emitParallelAssignmentWithTemps(stmt *ast.AssignStmt) error {
 			e.write(e.emitDeclarationKeyword())
 		}
 
-		if err := e.emitExpr(lhs); err != nil {
+		if err := e.emitTargetExpr(lhs); err != nil {
 			return err
 		}
 
