@@ -133,3 +133,57 @@ func main() {
 		t.Fatal("expected invalid module error")
 	}
 }
+
+func TestRunSourceMap(t *testing.T) {
+	dir := t.TempDir()
+	input := filepath.Join(dir, "main.go")
+
+	source := `package main
+
+func main() {
+	println("hello")
+}
+`
+
+	if err := os.WriteFile(input, []byte(source), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	if err := run([]string{"-sourcemap", input}, &stdout, &stderr); err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(stdout.String(), "sourceMappingURL=data:application/json") {
+		t.Fatalf("missing inline source map:\n%s", stdout.String())
+	}
+}
+
+func TestRunPrettyFlagIgnoredByMinify(t *testing.T) {
+	dir := t.TempDir()
+	input := filepath.Join(dir, "main.go")
+
+	source := `package main
+
+func main() {
+	println("hello")
+}
+`
+
+	if err := os.WriteFile(input, []byte(source), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	if err := run([]string{"-minify", "-pretty=false", input}, &stdout, &stderr); err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.Contains(stdout.String(), "\n") {
+		t.Fatal("expected minified output")
+	}
+}
