@@ -44,11 +44,11 @@ func (e *emitter) emitFormatCall(call *ast.CallExpr) error {
 
 	switch name {
 	case "Sprintf":
-		return e.emitSprintfCall(call.Args)
+		return e.emitSprintfCall(call)
 
 	case "Printf":
 		e.write("process.stdout.write(")
-		if err := e.emitSprintfCall(call.Args); err != nil {
+		if err := e.emitSprintfCall(call); err != nil {
 			return err
 		}
 		e.write(")")
@@ -95,9 +95,15 @@ func (e *emitter) emitErrorfCall(call *ast.CallExpr) error {
 	return nil
 }
 
-func (e *emitter) emitSprintfCall(args []ast.Expr) error {
+func (e *emitter) emitSprintfCall(call *ast.CallExpr) error {
 	e.needsRuntime = true
 	e.write("go2jsSprintf(")
+
+	args := call.Args
+
+	// A trailing ... passes the slice through as separate operands, which is
+	// what lets "%v %v" consume the elements one after the other.
+	spread := call.Ellipsis.IsValid()
 
 	verbs, literal := formatStringVerbs(args)
 
@@ -124,6 +130,20 @@ func (e *emitter) emitSprintfCall(args []ast.Expr) error {
 
 				continue
 			}
+		}
+
+		if spread && i == len(args)-1 {
+			// The slice is handed over as a marked rest argument so the runtime
+			// can line its elements up with the verbs that follow.
+			e.needsRuntime = true
+			e.write("go2jsSpreadArgs(")
+
+			if err := e.emitExpr(arg); err != nil {
+				return err
+			}
+
+			e.write(")")
+			continue
 		}
 
 		if err := e.emitTypedValue(arg); err != nil {

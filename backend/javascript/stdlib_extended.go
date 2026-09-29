@@ -2660,12 +2660,104 @@ const go2jsRegexpClassCategories = new Set([
 	"C", "Cc", "Cf", "Co", "Cs", "Cn"
 ]);
 
-function go2jsRegexpClassName(all, name) {
+function go2jsRegexpPropertyName(name) {
 	if (go2jsRegexpClassCategories.has(name)) {
-		return "\\p{General_Category=" + name + "}";
+		return "General_Category=" + name;
 	}
 
-	return "\\p{Script=" + name + "}";
+	return "Script=" + name;
+}
+
+// RE2 spells the ASCII classes with escapes, and JavaScript agrees on \d and
+// \w but not on \s, which in JavaScript also covers Unicode spaces.
+const go2jsRegexpAsciiSpace = "\\t\\n\\f\\r ";
+
+const go2jsRegexpPosixClasses = {
+	"[:alpha:]": "A-Za-z",
+	"[:digit:]": "0-9",
+	"[:alnum:]": "A-Za-z0-9",
+	"[:upper:]": "A-Z",
+	"[:lower:]": "a-z",
+	"[:space:]": "\\t\\n\\f\\r ",
+	"[:blank:]": "\\t ",
+	"[:punct:]": "!-/:-@\\[-\\x60{-~",
+	"[:print:]": "\\x20-\\x7e",
+	"[:graph:]": "\\x21-\\x7e",
+	"[:cntrl:]": "\\x00-\\x1f\\x7f",
+	"[:xdigit:]": "0-9A-Fa-f"
+};
+
+function go2jsRegexpPosixClass(name) {
+	return go2jsRegexpPosixClasses[name];
+}
+
+// go2jsRegexpASCIIClasses rewrites the classes where RE2 and JavaScript
+// disagree, tracking whether the pattern is inside a bracket expression so the
+// replacement can omit the brackets.
+function go2jsRegexpASCIIClasses(source) {
+	let out = "";
+	let inClass = false;
+
+	for (let i = 0; i < source.length; i++) {
+		const ch = source[i];
+
+		if (ch === "\\" && i + 1 < source.length) {
+			const next = source[i + 1];
+
+			if (next === "s" || next === "S") {
+				const body = go2jsRegexpAsciiSpace;
+
+				if (next === "S") {
+					out += inClass ? "\\\\S" : "[^" + body + "]";
+				} else {
+					out += inClass ? body : "[" + body + "]";
+				}
+
+				i++;
+				continue;
+			}
+
+			if (next === "d" || next === "D" || next === "w" || next === "W") {
+				// The u flag already keeps \d and \w ASCII only.
+				out += ch + next;
+				i++;
+				continue;
+			}
+
+			out += ch + next;
+			i++;
+			continue;
+		}
+
+		if (ch === "[") {
+			// [[:alpha:]] is a bracket expression holding a POSIX class.
+			if (source[i + 1] === "[" && source[i + 2] === ":") {
+				const close = source.indexOf(":]" + "]", i + 3);
+				const name = close === -1 ? "" : source.slice(i + 1, close + 2);
+				const body = go2jsRegexpPosixClass(name);
+
+				if (body !== undefined) {
+					out += "[" + body + "]";
+					i = close + 2;
+					continue;
+				}
+			}
+
+			inClass = true;
+			out += ch;
+			continue;
+		}
+
+		if (ch === "]" && inClass) {
+			inClass = false;
+			out += ch;
+			continue;
+		}
+
+		out += ch;
+	}
+
+	return out;
 }
 
 // go2jsRegexpPattern rewrites RE2 constructs that JavaScript does not accept.
@@ -2689,7 +2781,10 @@ function go2jsRegexpPattern(pattern) {
 	// (?P<name>re) is RE2 syntax for the named group (?<name>re).
 	source = source.replace(/\(\?P</g, "(?<");
 	source = source.replace(/\\A/g, "^").replace(/\\z/g, "$").replace(/\\Z/g, "$");
-	source = source.replace(/\\p\{([^}=]+)\}/g, go2jsRegexpClassName);
+	// RE2 also accepts the single letter shorthand \pL for \p{L}.
+	source = source.replace(/\\([pP])([A-Za-z])(?![A-Za-z{])/g, (all, kind, name) => "\\" + kind + "{" + name + "}");
+	source = source.replace(/\\([pP])\{([^}=]+)\}/g, (all, kind, name) => "\\" + kind + "{" + go2jsRegexpPropertyName(name) + "}");
+	source = go2jsRegexpASCIIClasses(source);
 
 	return {source: source, flags: flags};
 }

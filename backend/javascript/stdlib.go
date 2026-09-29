@@ -341,7 +341,7 @@ var filepathFuncs = map[string]string{
 }
 
 var regexpFuncs = map[string]string{
-	"Compile":     "go2jsRegexpMustCompile",
+	"Compile":     "go2jsRegexpCompile",
 	"MustCompile": "go2jsRegexpMustCompile",
 	"MatchString": "go2jsRegexpMatchString",
 	"QuoteMeta":   "go2jsRegexpQuoteMeta",
