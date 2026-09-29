@@ -141,7 +141,63 @@ func (e *emitter) emitInterfaceValue(expr ast.Expr, target gotypes.Type) error {
 		return nil
 	}
 
+	if isInterfaceTarget(target) && e.analysis != nil {
+		if name, ok := namedBasicTypeName(e.analysis.Types[expr].Type); ok {
+			e.needsRuntime = true
+			e.write("go2jsInterface(")
+
+			if err := e.emitExpr(expr); err != nil {
+				return err
+			}
+
+			e.write(`, "`)
+			e.write(name)
+			e.write(`")`)
+			return nil
+		}
+	}
+
 	return e.emitExpr(expr)
+}
+
+// isInterfaceTarget reports whether t is an interface type, including the
+// predeclared any alias that go/types represents as *types.Alias.
+func isInterfaceTarget(t gotypes.Type) bool {
+	if t == nil {
+		return false
+	}
+
+	if alias, ok := t.(*gotypes.Alias); ok {
+		t = gotypes.Unalias(alias)
+	}
+
+	return isInterfaceGoType(t)
+}
+
+// namedBasicTypeName reports the name of a defined (non-alias) type whose
+// underlying type is a basic type. JavaScript erases that identity, so such
+// values must be boxed before they are stored in an interface to keep type
+// assertions and type switches faithful to Go.
+func namedBasicTypeName(t gotypes.Type) (string, bool) {
+	if t == nil {
+		return "", false
+	}
+
+	named, ok := t.(*gotypes.Named)
+	if !ok {
+		return "", false
+	}
+
+	if _, ok := named.Underlying().(*gotypes.Basic); !ok {
+		return "", false
+	}
+
+	object := named.Obj()
+	if object == nil || object.Pkg() == nil {
+		return "", false
+	}
+
+	return object.Name(), true
 }
 
 func (e *emitter) emitReturnExpr(expr ast.Expr, index int) error {

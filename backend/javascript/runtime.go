@@ -1709,7 +1709,11 @@ function go2jsGoTypeName(value) {
 		return "bool";
 	}
 
-	if (typeof value === "number") {
+	if (typeof value === "string" || value instanceof String) {
+		return "string";
+	}
+
+	if (typeof value === "number" || value instanceof Number) {
 		return Number.isInteger(value) ? "int" : "float64";
 	}
 
