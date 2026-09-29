@@ -1325,7 +1325,8 @@ func (e *emitter) emitType(spec *ast.TypeSpec) error {
 		e.write(" {}")
 		e.newline()
 		e.newline()
-		return nil
+
+		return e.emitInterfaceRegistration(spec)
 
 	case *ast.StructType:
 		e.writeIndent()
@@ -1365,8 +1366,9 @@ func (e *emitter) emitType(spec *ast.TypeSpec) error {
 						e.write(name)
 						e.write(" = ")
 
-						// Only struct types get a nested instance and method
-						// promotion; embedded named scalars stay plain values.
+						// Struct embeds get a nested instance while other
+						// named embeds keep their own zero value, and every
+						// named embed forwards its methods and fields.
 						if e.isStructEmbed(field.Type) {
 							switch value := field.Type.(type) {
 							case *ast.Ident:
@@ -1383,10 +1385,12 @@ func (e *emitter) emitType(spec *ast.TypeSpec) error {
 									e.write("null")
 								}
 							}
-
-							embedded = append(embedded, name)
 						} else {
 							e.write(e.fieldZeroValue(field.Type))
+						}
+
+						if e.isPromotableEmbed(field.Type) {
+							embedded = append(embedded, name)
 						}
 
 						e.write(";")
@@ -1459,6 +1463,82 @@ func (e *emitter) emitType(spec *ast.TypeSpec) error {
 	}
 
 	return nil
+}
+
+// emitInterfaceRegistration records the method set of an interface type so a
+// type assertion can succeed for any type that provides those methods.
+func (e *emitter) emitInterfaceRegistration(spec *ast.TypeSpec) error {
+	e.needsRuntime = true
+	e.writeIndent()
+	e.write("go2jsRegisterInterface(")
+	e.write(strconv.Quote(e.typeAssertName(spec.Name)))
+	e.write(", [")
+
+	methods := e.interfaceMethodNames(spec.Type)
+
+	for i, method := range methods {
+		if i > 0 {
+			e.write(", ")
+		}
+
+		e.write(strconv.Quote(method))
+	}
+
+	e.write("]);")
+	e.newline()
+
+	return nil
+}
+
+func (e *emitter) interfaceMethodNames(expr ast.Expr) []string {
+	t := e.analyzedType(expr)
+
+	if t == nil {
+		return nil
+	}
+
+	iface, ok := t.Underlying().(*gotypesstd.Interface)
+	if !ok {
+		return nil
+	}
+
+	iface.Complete()
+
+	methods := make([]string, 0, iface.NumMethods())
+
+	for i := 0; i < iface.NumMethods(); i++ {
+		methods = append(methods, iface.Method(i).Name())
+	}
+
+	return methods
+}
+
+// isPromotableEmbed reports whether an embedded field names a type that can
+// contribute methods or fields to the outer type, which includes embedded
+// interfaces such as error.
+func (e *emitter) isPromotableEmbed(fieldType ast.Expr) bool {
+	t := e.analyzedType(fieldType)
+
+	for {
+		pointer, ok := t.(*gotypesstd.Pointer)
+		if !ok {
+			break
+		}
+
+		t = pointer.Elem()
+	}
+
+	if t == nil {
+		return true
+	}
+
+	switch underlying := t.Underlying().(type) {
+	case *gotypesstd.Basic, *gotypesstd.Struct, *gotypesstd.Slice, *gotypesstd.Map, *gotypesstd.Chan, *gotypesstd.Interface, *gotypesstd.Pointer:
+		_ = underlying
+		return true
+	}
+
+	return false
 }
 
 func embeddedFieldName(fieldType ast.Expr) string {

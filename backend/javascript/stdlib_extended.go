@@ -2475,34 +2475,18 @@ function go2jsErrorsAs(err, target, wanted) {
 	wanted = String(wanted).replace(/^\*/, "");
 
 	if (wanted === "error" || wanted === "any" || wanted === "interface {}") {
-		for (let current = err; current !== null && current !== undefined; current = go2jsErrorsUnwrap(current)) {
-			go2jsStoreErrorTarget(target, current);
+		go2jsStoreErrorTarget(target, err);
 
-			return true;
-		}
-
-		return false;
+		return true;
 	}
 
-	for (let current = err; current !== null && current !== undefined; current = go2jsErrorsUnwrap(current)) {
-		if (go2jsErrorNameOf(current) === wanted) {
-			go2jsStoreErrorTarget(target, current);
+	if (go2jsSameTypeName(go2jsErrorNameOf(err), wanted)) {
+		go2jsStoreErrorTarget(target, err);
 
-			return true;
-		}
-
-		if (Array.isArray(current.joined)) {
-			for (const part of current.joined) {
-				if (go2jsErrorNameOf(part) === wanted) {
-					go2jsStoreErrorTarget(target, part);
-
-					return true;
-				}
-			}
-		}
+		return true;
 	}
 
-	return false;
+	return go2jsErrorUnwrapAll(err).some(part => go2jsErrorsAs(part, target, wanted));
 }
 
 function go2jsErrorNameOf(value) {
@@ -2522,6 +2506,18 @@ function go2jsErrorNameOf(value) {
 
 	if (value instanceof Error) {
 		return "error";
+	}
+
+	if (typeof value === "object") {
+		const ctor = value.constructor;
+
+		if (ctor && typeof ctor.name === "string" && ctor.name !== "Object") {
+			const registered = go2jsLookupTypeName(ctor.name);
+
+			if (registered !== undefined) {
+				return String(registered).replace(/^\*/, "");
+			}
+		}
 	}
 
 	return typeof value;
