@@ -6,6 +6,7 @@ const go2jsNativeMap = globalThis.Map;
 const go2jsNativeSet = globalThis.Set;
 const go2jsNativeDate = globalThis.Date;
 const go2jsNativeTypeError = globalThis.TypeError;
+const go2jsNativeError = globalThis.Error;
 
 // The words Go puts in front of every fault it raises on its own.
 const go2jsRuntimeErrorPrefix = "runtime error: ";

@@ -1439,12 +1439,20 @@ func (e *emitter) isErrorsAsCall(call *ast.CallExpr) bool {
 func (e *emitter) emitErrorsAs(call *ast.CallExpr) error {
 	e.needsRuntime = true
 
-	if message := e.errorsAsTargetPanic(call); message != "" {
-		e.write("go2jsPanic(")
-		e.write(strconv.Quote(message))
-		e.write(")")
+	// A target whose type only the value carries is judged at the call, and one
+	// that is plainly wrong is refused before the program runs at all.
+	checkedTarget := e.errorsAsTargetPanic(call) == errorsAsRuntimeTarget
 
-		return nil
+	if message := e.errorsAsTargetPanic(call); message != "" {
+		if !checkedTarget {
+			e.write("go2jsPanic(")
+			e.write(strconv.Quote(message))
+			e.write(")")
+
+			return nil
+		}
+
+		e.needsRuntime = true
 	}
 
 	e.write("go2jsErrorsAs(")
@@ -1455,8 +1463,16 @@ func (e *emitter) emitErrorsAs(call *ast.CallExpr) error {
 
 	e.write(",")
 
+	if checkedTarget {
+		e.write("go2jsErrorsAsCheckTarget(")
+	}
+
 	if err := e.emitExpr(call.Args[1]); err != nil {
 		return err
+	}
+
+	if checkedTarget {
+		e.write(")")
 	}
 
 	e.write(",")
@@ -1483,6 +1499,16 @@ func (e *emitter) emitErrorsAs(call *ast.CallExpr) error {
 	return nil
 }
 
+// The two complaints Go's errors.As makes about a target it cannot fill in.
+const (
+	nonPointerTargetMessage = "errors: target must be a non-nil pointer"
+	errorTargetMessage      = "errors: *target must be interface or implement error"
+
+	// errorsAsRuntimeTarget stands for a target whose type is only known once
+	// the call runs, so it is handed to the runtime to judge.
+	errorsAsRuntimeTarget = "\x00runtime"
+)
+
 // errorsAsTargetPanic reports the panic message Go's errors.As raises for an
 // invalid target, or "" when the target is a non-nil pointer to an interface or
 // to a type implementing error.
@@ -1500,42 +1526,62 @@ func (e *emitter) errorsAsTargetPanic(call *ast.CallExpr) string {
 		return ""
 	}
 
+	// The address of a variable is the one target whose value cannot be read
+	// here, so a pointer to an interface is left to the existing runtime
+	// behaviour. Every other target is judged on its own type.
+	if address, ok := argument.(*ast.UnaryExpr); ok && address.Op == token.AND {
+		element := e.analyzedType(address.X)
+
+		if isInterfaceTarget(element) {
+			return ""
+		}
+
+		if implementsErrorType(element) {
+			return ""
+		}
+
+		return errorTargetMessage
+	}
+
+	// Anything else has to reach the call as a non-nil pointer, and what the
+	// pointer points at has to be able to hold an error. Whether the pointer is
+	// nil is a question about the value, so that is left to the runtime.
+	newCall, isNew := argument.(*ast.CallExpr)
+	if isNew {
+		ident, ok := newCall.Fun.(*ast.Ident)
+
+		if !ok || ident.Name != "new" || len(newCall.Args) != 1 {
+			return nonPointerTargetMessage
+		}
+
+		if implementsErrorType(e.analyzedType(newCall.Args[0])) {
+			return ""
+		}
+
+		return errorTargetMessage
+	}
+
 	target := e.analyzedType(argument)
 
-	// A target whose static type is an interface can only be validated when the
-	// call runs, so leave those to the existing runtime behaviour.
-	if isInterfaceTarget(target) {
-		return ""
-	}
-
-	var element gotypes.Type
-
-	switch typed := target.(type) {
-	case *gotypes.Pointer:
-		element = typed.Elem()
-
-	case nil:
-		return ""
-
-	default:
-		newCall, ok := argument.(*ast.CallExpr)
-		if !ok {
-			return "errors: *target must be interface or implement error"
+	pointer, ok := target.(*gotypes.Pointer)
+	if !ok {
+		// A value of an interface type carries its own type with it, so which
+		// of the two complaints Go makes is a question for the moment the call
+		// runs rather than for the type of the variable.
+		if isInterfaceTarget(target) {
+			return errorsAsRuntimeTarget
 		}
 
-		ident, ok := newCall.Fun.(*ast.Ident)
-		if !ok || ident.Name != "new" || len(newCall.Args) != 1 {
-			return "errors: *target must be interface or implement error"
-		}
-
-		element = e.analyzedType(newCall.Args[0])
+		return nonPointerTargetMessage
 	}
 
-	if implementsErrorType(element) {
+	if implementsErrorType(pointer.Elem()) {
 		return ""
 	}
 
-	return "errors: *target must be interface or implement error"
+	// A pointer handed over as a value may still be standing for nothing, and
+	// Go complains about that before it complains about the type behind it.
+	return errorsAsRuntimeTarget
 }
 
 func implementsErrorType(t gotypes.Type) bool {
@@ -1557,7 +1603,9 @@ func implementsErrorType(t gotypes.Type) bool {
 		return false
 	}
 
-	return gotypes.Implements(t, iface) || gotypes.Implements(gotypes.NewPointer(t), iface)
+	// errors.As does not take the address for the caller, so a type whose
+	// Error method has a pointer receiver is not a type it can fill in.
+	return gotypes.Implements(t, iface)
 }
 
 func (e *emitter) spreadsMultiValueCall(call *ast.CallExpr, arg ast.Expr) bool {

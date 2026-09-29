@@ -2583,6 +2583,12 @@ function go2jsErrorsAs(err, target, wanted) {
 		return false;
 	}
 
+	// A target that is not a pointer, or a pointer standing for nothing, is
+	// refused before anything is looked at in the error.
+	if (go2jsIsNilTarget(target)) {
+		throw new TypeError("errors: target must be a non-nil pointer");
+	}
+
 	if (wanted === undefined || wanted === null || wanted === "" || wanted === "any") {
 		const declared = go2jsNewTypeOf(target);
 
@@ -2604,6 +2610,76 @@ function go2jsErrorsAs(err, target, wanted) {
 	}
 
 	return go2jsErrorUnwrapAll(err).some(part => go2jsErrorsAs(part, target, wanted));
+}
+
+// go2jsErrorsAsCheckTarget judges a target whose type only the value carries.
+// Go looks at the type the value actually has, so a plain value, a pointer
+// standing for nothing, and a pointer to a type that cannot hold an error each
+// draw their own complaint. A target that is none of those is handed back
+// untouched, and the call goes on with it.
+function go2jsErrorsAsCheckTarget(target) {
+	if (go2jsIsNilTarget(target)) {
+		throw new TypeError("errors: target must be a non-nil pointer");
+	}
+
+	const pointer = target.__go2js_pointer === true;
+	let declared = go2jsNewTypeOf(target);
+
+	// A value of interface type carries the name of its own type with it, and
+	// that is the type Go judges the target by.
+	if ((declared === "" || declared === undefined) && target.__go2js_interface === true) {
+		declared = typeof target.type === "string" ? target.type : target.__go2js_type_name;
+	}
+
+	if (declared === "" || declared === undefined) {
+		if (pointer) {
+			// The address of a variable says nothing about what is in it yet.
+			return target;
+		}
+
+		declared = go2jsErrorNameOf(target);
+	}
+
+	if (typeof declared !== "string" || declared === "") {
+		return target;
+	}
+
+	let element = declared;
+
+	if (element.startsWith("*")) {
+		element = element.slice(1);
+	} else if (!pointer) {
+		// Whatever it is, it is not a pointer, and Go asks for one.
+		throw new TypeError("errors: target must be a non-nil pointer");
+	}
+
+	// What the pointer points at is the type that has to hold an error, and it
+	// has to be that type itself: Go does not take an address on the way in. A
+	// pointer to a pointer is one JavaScript value here, so for one of those the
+	// method on the type behind it is the one that counts.
+	if (go2jsMethodTable[element + ".Error"] !== undefined) {
+		return target;
+	}
+
+	if (pointer && go2jsMethodTable["*" + element + ".Error"] !== undefined) {
+		return target;
+	}
+
+	throw new TypeError("errors: *target must be interface or implement error");
+}
+
+// go2jsIsNilTarget reports whether a target handed to errors.As is missing,
+// which covers a nil interface as well as a nil pointer of any depth.
+function go2jsIsNilTarget(target) {
+	if (target === null || target === undefined) {
+		return true;
+	}
+
+	if (target.__go2js_pointer === true) {
+		return target.get === undefined && target.value === null;
+	}
+
+	return false;
 }
 
 function go2jsErrorNameOf(value) {
