@@ -3017,8 +3017,12 @@ function go2jsStringIndexByte(value, offset) {
 	const bytes = go2jsStringToBytes(go2jsBytesToString(value));
 	const position = Math.trunc(offset);
 
-	if (position < 0 || position >= bytes.length) {
-		throw new RangeError("index out of range [" + position + "] with length " + bytes.length);
+	if (position < 0) {
+		throw new RangeError(go2jsRuntimeErrorPrefix + "index out of range [" + position + "]");
+	}
+
+	if (position >= bytes.length) {
+		throw new RangeError(go2jsRuntimeErrorPrefix + "index out of range [" + position + "] with length " + bytes.length);
 	}
 
 	return bytes[position];

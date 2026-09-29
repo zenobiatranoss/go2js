@@ -150,16 +150,28 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			return e.emitComplexBinary(x)
 		}
 
-		if x.Op == token.QUO && e.isIntegerExpr(x.X) && e.isIntegerExpr(x.Y) {
-			e.write("Math.trunc((")
+		// A divisor of zero has to stop the program, and a remainder by zero
+		// stops it the same way, so both are read through the runtime.
+		if (x.Op == token.QUO || x.Op == token.REM) && e.isIntegerExpr(x.X) && e.isIntegerExpr(x.Y) {
+			e.needsRuntime = true
+
+			if x.Op == token.REM {
+				e.write("go2jsMod(")
+			} else {
+				e.write("go2jsDivide(")
+			}
+
 			if err := e.emitExpr(x.X); err != nil {
 				return err
 			}
-			e.write(" / ")
+
+			e.write(", ")
+
 			if err := e.emitExpr(x.Y); err != nil {
 				return err
 			}
-			e.write("))")
+
+			e.write(")")
 			return nil
 		}
 
@@ -735,6 +747,29 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			return nil
 		}
 
+		// Reading past the end of a slice or an array is a runtime fault in Go,
+		// while JavaScript would answer undefined or quietly grow the array.
+		// A target is left alone, because a check cannot stand where the
+		// assignment needs a plain reference.
+		if !e.inTarget && e.isArrayOrSliceExpr(x.X) {
+			e.needsRuntime = true
+			e.write("go2jsIndex(")
+
+			if err := e.emitExpr(x.X); err != nil {
+				return err
+			}
+
+			e.write(", ")
+
+			if err := e.emitExpr(x.Index); err != nil {
+				return err
+			}
+
+			e.write(")")
+
+			return nil
+		}
+
 		if err := e.emitExpr(x.X); err != nil {
 			return err
 		}
@@ -977,7 +1012,7 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 
 		e.funcLitDepth++
 
-		err := e.emitFuncBody(x.Body)
+		err := e.emitFuncLiteralBody(x)
 
 		e.funcLitDepth--
 
@@ -990,6 +1025,33 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 	}
 
 	return nil
+}
+
+// emitFuncLiteralBody writes the body of an anonymous function, which brings
+// results and named results of its own rather than borrowing the ones of the
+// function around it.
+func (e *emitter) emitFuncLiteralBody(literal *ast.FuncLit) error {
+	previousNamed := e.namedResultsBody
+	previousSignature := e.currentSignature
+	previousCount := e.resultCount
+
+	defer func() {
+		e.namedResultsBody = previousNamed
+		e.currentSignature = previousSignature
+		e.resultCount = previousCount
+	}()
+
+	e.namedResultsBody = literal.Body
+	e.resultCount = funcTypeResultCount(literal.Type)
+	e.currentSignature = nil
+
+	if e.analysis != nil {
+		if signature, ok := e.analysis.TypeOf(literal).(*gotypes.Signature); ok {
+			e.currentSignature = signature
+		}
+	}
+
+	return e.emitFuncBody(literal.Body)
 }
 
 func (e *emitter) packageTypeConstructor(named *gotypes.Named) string {

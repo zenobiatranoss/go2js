@@ -46,16 +46,69 @@ type emitter struct {
 	tempID              int
 	genericParams       map[*gotypesstd.TypeParam]string
 
-	functionBody     *ast.BlockStmt
+	functionBody *ast.BlockStmt
+
+	// The body that has to declare its named results. A named function and an
+	// anonymous one each have their own, and the receiver binding belongs only
+	// to the named one.
+	namedResultsBody *ast.BlockStmt
 	deferNamedReturn bool
 	localStructTypes map[string]bool
-	gotoMode         bool
-	gotoLabels       map[string]int
-	gotoDispatcher   string
-	gotoStmtDepth    int
-	inlineMode       bool
-	selfPackagePath  string
-	qualifiers       map[string]string
+
+	// True while an expression that is about to be assigned to is being
+	// written, where a bounds check has no room to stand.
+	inTarget        bool
+	gotoMode        bool
+	gotoLabels      map[string]int
+	gotoDispatcher  string
+	gotoStmtDepth   int
+	inlineMode      bool
+	selfPackagePath string
+	qualifiers      map[string]string
+}
+
+// emitTargetIndexChecks writes the bounds check that writing to a slice or an
+// array element needs. A check cannot sit inside the target itself, because an
+// assignment needs a plain reference there, so each one is written first as a
+// statement of its own.
+func (e *emitter) emitTargetIndexChecks(targets []ast.Expr) error {
+	for _, target := range targets {
+		index, ok := target.(*ast.IndexExpr)
+
+		if !ok || !e.isArrayOrSliceExpr(index.X) {
+			continue
+		}
+
+		e.needsRuntime = true
+		e.writeIndent()
+		e.write("go2jsIndexCheck(")
+
+		if err := e.emitExpr(index.X); err != nil {
+			return err
+		}
+
+		e.write(", ")
+
+		if err := e.emitExpr(index.Index); err != nil {
+			return err
+		}
+
+		e.write(");")
+		e.newline()
+	}
+
+	return nil
+}
+
+// emitTargetExpr writes an expression that is about to be assigned to, where a
+// runtime check in the middle of it would not be JavaScript at all.
+func (e *emitter) emitTargetExpr(expr ast.Expr) error {
+	previous := e.inTarget
+	e.inTarget = true
+	err := e.emitExpr(expr)
+	e.inTarget = previous
+
+	return err
 }
 
 // typeJavaScriptName maps a Go type name onto a legal JavaScript identifier so
@@ -286,8 +339,10 @@ func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 	e.resultCount = e.functionResultCount(fn)
 	e.currentSignature = nil
 	e.functionBody = fn.Body
+	e.namedResultsBody = fn.Body
 	defer func() {
 		e.functionBody = nil
+		e.namedResultsBody = nil
 		e.currentSignature = nil
 	}()
 
@@ -518,7 +573,7 @@ func (e *emitter) emitBlock(block *ast.BlockStmt) error {
 		e.addressStack = e.addressStack[:len(e.addressStack)-1]
 	}()
 
-	if block == e.functionBody {
+	if block == e.namedResultsBody {
 		if err := e.emitNamedResults(); err != nil {
 			e.indent--
 			e.scopes = e.scopes[:len(e.scopes)-1]
@@ -573,7 +628,7 @@ func (e *emitter) emitTypeAssertAssignment(stmt *ast.AssignStmt) (bool, error) {
 			e.declare(ident.Name)
 		}
 
-		if err := e.emitExpr(lhs); err != nil {
+		if err := e.emitTargetExpr(lhs); err != nil {
 			return true, err
 		}
 	}
@@ -692,6 +747,11 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 		return e.emitGoStmt(s)
 
 	case *ast.AssignStmt:
+		// The check comes first, because an assignment target cannot hold it.
+		if err := e.emitTargetIndexChecks(s.Lhs); err != nil {
+			return err
+		}
+
 		if handled, err := e.emitTypeAssertAssignment(s); handled {
 			return err
 		}
@@ -730,7 +790,7 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 				if ident, ok := lhs.(*ast.Ident); ok && ident.Name == "_" {
 					continue
 				}
-				if err := e.emitExpr(lhs); err != nil {
+				if err := e.emitTargetExpr(lhs); err != nil {
 					return err
 				}
 			}
@@ -799,7 +859,7 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 				e.write(", ")
 			}
 
-			if err := e.emitExpr(lhs); err != nil {
+			if err := e.emitTargetExpr(lhs); err != nil {
 				return err
 			}
 		}
@@ -869,9 +929,13 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 		return e.emitRangeStmt(s)
 
 	case *ast.IncDecStmt:
+		if err := e.emitTargetIndexChecks([]ast.Expr{s.X}); err != nil {
+			return err
+		}
+
 		e.writeIndent()
 
-		if err := e.emitExpr(s.X); err != nil {
+		if err := e.emitTargetExpr(s.X); err != nil {
 			return err
 		}
 
@@ -1188,7 +1252,7 @@ func (e *emitter) emitInlineMultiReturn(stmt *ast.AssignStmt) error {
 			e.write(", ")
 		}
 
-		if err := e.emitExpr(lhs); err != nil {
+		if err := e.emitTargetExpr(lhs); err != nil {
 			return err
 		}
 	}
@@ -1255,7 +1319,7 @@ func (e *emitter) emitInlineStmt(stmt ast.Stmt) error {
 				e.write(", ")
 			}
 
-			if err := e.emitExpr(lhs); err != nil {
+			if err := e.emitTargetExpr(lhs); err != nil {
 				return err
 			}
 		}
