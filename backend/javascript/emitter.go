@@ -387,7 +387,7 @@ func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 		return nil
 	} else {
 		e.write("function ")
-		e.write(fn.Name.Name)
+		e.write(e.resolveName(fn.Name.Name))
 		e.write("(")
 	}
 

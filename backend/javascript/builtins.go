@@ -8,6 +8,10 @@ import (
 func (e *emitter) builtinName(call *ast.CallExpr) (string, bool) {
 	switch fn := call.Fun.(type) {
 	case *ast.Ident:
+		if e.isShadowed(fn.Name) || e.declaresPackageLevel(fn.Name) {
+			return "", false
+		}
+
 		switch fn.Name {
 		case "println":
 			return "console.log", true

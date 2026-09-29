@@ -1056,7 +1056,11 @@ func (e *emitter) emitStructCompositeLit(x *ast.CompositeLit) (bool, error) {
 		}
 
 		if kv, ok := elt.(*ast.KeyValueExpr); ok {
-			if err := e.emitExpr(kv.Key); err != nil {
+			// JavaScript object keys may be reserved words, so the declared field
+			// name is written verbatim to match how field reads are emitted.
+			if ident, ok := kv.Key.(*ast.Ident); ok {
+				e.write(ident.Name)
+			} else if err := e.emitExpr(kv.Key); err != nil {
 				return true, err
 			}
 			e.write(": ")
@@ -1289,6 +1293,15 @@ func (e *emitter) isErrorsAsCall(call *ast.CallExpr) bool {
 
 func (e *emitter) emitErrorsAs(call *ast.CallExpr) error {
 	e.needsRuntime = true
+
+	if message := e.errorsAsTargetPanic(call); message != "" {
+		e.write("go2jsPanic(")
+		e.write(strconv.Quote(message))
+		e.write(")")
+
+		return nil
+	}
+
 	e.write("go2jsErrorsAs(")
 
 	if err := e.emitExpr(call.Args[0]); err != nil {
@@ -1323,6 +1336,83 @@ func (e *emitter) emitErrorsAs(call *ast.CallExpr) error {
 	e.write(`")`)
 
 	return nil
+}
+
+// errorsAsTargetPanic reports the panic message Go's errors.As raises for an
+// invalid target, or "" when the target is a non-nil pointer to an interface or
+// to a type implementing error.
+func (e *emitter) errorsAsTargetPanic(call *ast.CallExpr) string {
+	if call == nil || len(call.Args) < 2 {
+		return ""
+	}
+
+	argument := call.Args[1]
+	if ident, ok := argument.(*ast.Ident); ok && ident.Name == "nil" && ident.Obj == nil {
+		return "errors: target cannot be nil"
+	}
+
+	if e.analysis == nil {
+		return ""
+	}
+
+	target := e.analyzedType(argument)
+
+	// A target whose static type is an interface can only be validated when the
+	// call runs, so leave those to the existing runtime behaviour.
+	if isInterfaceTarget(target) {
+		return ""
+	}
+
+	var element gotypes.Type
+
+	switch typed := target.(type) {
+	case *gotypes.Pointer:
+		element = typed.Elem()
+
+	case nil:
+		return ""
+
+	default:
+		newCall, ok := argument.(*ast.CallExpr)
+		if !ok {
+			return "errors: *target must be interface or implement error"
+		}
+
+		ident, ok := newCall.Fun.(*ast.Ident)
+		if !ok || ident.Name != "new" || len(newCall.Args) != 1 {
+			return "errors: *target must be interface or implement error"
+		}
+
+		element = e.analyzedType(newCall.Args[0])
+	}
+
+	if implementsErrorType(element) {
+		return ""
+	}
+
+	return "errors: *target must be interface or implement error"
+}
+
+func implementsErrorType(t gotypes.Type) bool {
+	if t == nil {
+		return false
+	}
+
+	if isInterfaceTarget(t) {
+		return true
+	}
+
+	declared := gotypes.Universe.Lookup("error")
+	if declared == nil {
+		return false
+	}
+
+	iface, ok := declared.Type().Underlying().(*gotypes.Interface)
+	if !ok {
+		return false
+	}
+
+	return gotypes.Implements(t, iface) || gotypes.Implements(gotypes.NewPointer(t), iface)
 }
 
 func (e *emitter) spreadsMultiValueCall(call *ast.CallExpr, arg ast.Expr) bool {
