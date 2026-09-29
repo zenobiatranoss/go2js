@@ -399,6 +399,10 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				return e.emitInterfaceCall(x, selector)
 			}
 			if e.isDirectMethodCall(selector) {
+				if handled, err := e.emitNilSafeMethodCall(x, selector); handled {
+					return err
+				}
+
 				if handled, err := e.emitScalarNamedMethodCall(x, selector); handled {
 					return err
 				}
