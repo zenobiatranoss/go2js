@@ -209,3 +209,98 @@ func main() {
 		t.Fatalf("a declaration shadowed a global:\n%s", got)
 	}
 }
+
+func TestWholeFloatValuesKeepFloatForm(t *testing.T) {
+	source := `package main
+
+import "fmt"
+
+func main() {
+	fmt.Println(1e15)
+	fmt.Println(100000.0)
+	fmt.Println(1e6)
+	fmt.Println(123456.0)
+	fmt.Println(0.000001)
+	fmt.Println(0.0000001)
+	fmt.Println(1e21)
+	fmt.Println(3.0)
+
+	var whole float64 = 4
+	fmt.Println(whole)
+
+	var small float32 = 1e-7
+	fmt.Println(small)
+
+	var big int64 = 1000000000000000
+	fmt.Println(big)
+
+	var count int32 = 100000
+	fmt.Println(count)
+}
+`
+
+	requireGoNodeParity(t, source)
+}
+
+func TestHexVerbsSeparateBytesWithTheSpaceFlag(t *testing.T) {
+	source := `package main
+
+import "fmt"
+
+func main() {
+	bytes := []byte("abc")
+
+	fmt.Printf("[% x]\n", bytes)
+	fmt.Printf("[% X]\n", bytes)
+	fmt.Printf("[% x]\n", "abc")
+	fmt.Printf("[%X]\n", "hi")
+	fmt.Printf("[% x]\n", []byte{1, 2, 255})
+	fmt.Printf("[% x]\n", 255)
+	fmt.Printf("[% x]\n", -255)
+	fmt.Printf("[%# x]\n", 255)
+	fmt.Printf("[%#08X]\n", 255)
+	fmt.Printf("[% d]\n", 7)
+	fmt.Printf("[%+d]\n", 7)
+}
+`
+
+	requireGoNodeParity(t, source)
+}
+
+func TestOperandIndexesAndStarWidths(t *testing.T) {
+	source := `package main
+
+import "fmt"
+
+func main() {
+	fmt.Printf("1:[%d %d]\n", 1, 2)
+	fmt.Printf("2:[%[2]d %[1]d]\n", 1, 2)
+	fmt.Printf("3:[%*d]\n", 5, 42)
+	fmt.Printf("4:[%.*f]\n", 2, 3.14159)
+	fmt.Printf("5:[%[2]*d]\n", 42, 5)
+	fmt.Printf("6:[%[2]*d]\n", 42)
+	fmt.Printf("7:[%*d]\n", 42)
+	fmt.Printf("8:[%[1]6.2f]\n", 3.14159)
+	fmt.Printf("9:[%[1]d]\n", 7)
+	fmt.Printf("10:[%[1].2f]\n", 3.14159)
+	fmt.Printf("11:[%[3]d]\n", 1, 2, 3)
+	fmt.Printf("12:[%[1]*d]\n", 4, 7)
+	fmt.Printf("13:[%d %[3]d]\n", 1, 2, 3)
+	fmt.Printf("14:[%*d %d]\n", 4, 7, 8)
+	fmt.Printf("15:[%[2]d %[1]d %[2]d]\n", "a", "b")
+	fmt.Printf("16:[%d %d]\n", 1, 2, 3)
+	fmt.Printf("17:[%[2]*.[2]*f]\n", 3.14159, 2, 2)
+	fmt.Printf("18:[%[1]d]\n")
+	fmt.Printf("19:[%.*f]\n", 3.14159)
+	fmt.Printf("20:[%.*f]\n", 2.5, 3.14159)
+	fmt.Printf("21:[%*d]\n", 3.5, 42)
+	fmt.Printf("22:[%*d]\n", int8(4), 42)
+	fmt.Printf("23:[%*.*f]\n", 8, 2, 3.14159)
+	fmt.Printf("24:[%5.2f]\n", 3.14159)
+	fmt.Printf("25:[%-*d]\n", 6, 42)
+	fmt.Printf("26:[%*d]\n", "nope", 7)
+}
+`
+
+	requireGoNodeParity(t, source)
+}
