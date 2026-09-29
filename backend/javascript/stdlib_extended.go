@@ -97,16 +97,17 @@ var packageVarValues = map[string]string{
 	"io.EOF":                   "go2jsIOEOFError",
 	"io.ErrUnexpectedEOF":      `go2jsSentinelError("unexpected EOF")`,
 
-	"os.ErrNotExist":   `go2jsSentinelError("file does not exist")`,
-	"os.ErrExist":      `go2jsSentinelError("file already exists")`,
-	"os.ErrClosed":     `go2jsSentinelError("file already closed")`,
-	"os.ErrPermission": `go2jsSentinelError("permission denied")`,
+	"os.ErrNotExist":         `go2jsSentinelError("file does not exist")`,
+	"os.ErrExist":            `go2jsSentinelError("file already exists")`,
+	"os.ErrClosed":           `go2jsSentinelError("file already closed")`,
+	"os.ErrPermission":       `go2jsSentinelError("permission denied")`,
+	"os.ErrDeadlineExceeded": `go2jsSentinelError("i/o timeout")`,
 
-	"syscall.ENOENT": `go2jsSentinelError("no such file or directory")`,
-	"syscall.EEXIST": `go2jsSentinelError("file exists")`,
-	"syscall.EACCES": `go2jsSentinelError("permission denied")`,
-	"syscall.EPERM":  `go2jsSentinelError("operation not permitted")`,
-	"syscall.EINVAL": `go2jsSentinelError("invalid argument")`,
+	"syscall.ENOENT": `go2jsSentinelError("no such file or directory", "syscall.Errno")`,
+	"syscall.EEXIST": `go2jsSentinelError("file exists", "syscall.Errno")`,
+	"syscall.EACCES": `go2jsSentinelError("permission denied", "syscall.Errno")`,
+	"syscall.EPERM":  `go2jsSentinelError("operation not permitted", "syscall.Errno")`,
+	"syscall.EINVAL": `go2jsSentinelError("invalid argument", "syscall.Errno")`,
 
 	"os.Args": `go2jsOSArgs`,
 
@@ -1062,10 +1063,11 @@ var packageVarTypes = map[string]string{
 	"filepath.ListSeparator": "uint8",
 	"os.PathListSeparator":   "uint8",
 
-	"os.ErrNotExist":   "error",
-	"os.ErrExist":      "error",
-	"os.ErrClosed":     "error",
-	"os.ErrPermission": "error",
+	"os.ErrNotExist":         "error",
+	"os.ErrExist":            "error",
+	"os.ErrDeadlineExceeded": "error",
+	"os.ErrClosed":           "error",
+	"os.ErrPermission":       "error",
 
 	"syscall.ENOENT": "error",
 	"syscall.EEXIST": "error",
@@ -1339,27 +1341,30 @@ func extendedStdlibFuncs() {
 	})
 
 	extend(osFuncs, map[string]string{
-		"ReadFile":   "go2jsOSReadFile",
-		"WriteFile":  "go2jsOSWriteFile",
-		"Open":       "go2jsOSOpen",
-		"OpenFile":   "go2jsOSOpenFile",
-		"Create":     "go2jsOSCreate",
-		"Remove":     "go2jsOSRemove",
-		"RemoveAll":  "go2jsOSRemoveAll",
-		"Rename":     "go2jsOSRename",
-		"CreateTemp": "go2jsOSCreateTemp",
-		"MkdirTemp":  "go2jsOSMkdirTemp",
-		"MkdirAll":   "go2jsOSMkdirAll",
-		"Hostname":   "go2jsOSHostname",
-		"Executable": "go2jsOSExecutable",
-		"TempDir":    "go2jsOSTempDir",
-		"Getpid":     "go2jsOSGetpid",
-		"Exit":       "go2jsOSExit",
-		"IsNotExist": "go2jsOSIsNotExist",
-		"Getwd":      "go2jsOSGetwd",
-		"Chdir":      "go2jsOSChdir",
-		"ReadDir":    "go2jsOSReadDir",
-		"Mkdir":      "go2jsOSMkdir",
+		"ReadFile":     "go2jsOSReadFile",
+		"WriteFile":    "go2jsOSWriteFile",
+		"Open":         "go2jsOSOpen",
+		"OpenFile":     "go2jsOSOpenFile",
+		"Create":       "go2jsOSCreate",
+		"Remove":       "go2jsOSRemove",
+		"RemoveAll":    "go2jsOSRemoveAll",
+		"Rename":       "go2jsOSRename",
+		"CreateTemp":   "go2jsOSCreateTemp",
+		"MkdirTemp":    "go2jsOSMkdirTemp",
+		"MkdirAll":     "go2jsOSMkdirAll",
+		"Hostname":     "go2jsOSHostname",
+		"Executable":   "go2jsOSExecutable",
+		"TempDir":      "go2jsOSTempDir",
+		"Getpid":       "go2jsOSGetpid",
+		"Exit":         "go2jsOSExit",
+		"IsNotExist":   "go2jsOSIsNotExist",
+		"IsPermission": "go2jsOSIsPermission",
+		"IsExist":      "go2jsOSIsExist",
+		"IsTimeout":    "go2jsOSIsTimeout",
+		"Getwd":        "go2jsOSGetwd",
+		"Chdir":        "go2jsOSChdir",
+		"ReadDir":      "go2jsOSReadDir",
+		"Mkdir":        "go2jsOSMkdir",
 	})
 
 	extend(bytesFuncs, map[string]string{
@@ -1922,6 +1927,11 @@ function go2jsOSExit(code) {
 	process.exit(code === undefined ? 0 : Number(code));
 }
 
+const go2jsErrNotExistMessage = "file does not exist";
+const go2jsErrPermissionMessage = "permission denied";
+const go2jsErrExistMessage = "file already exists";
+const go2jsErrDeadlineMessage = "i/o timeout";
+
 function go2jsOSIsNotExist(err) {
 	if (err === null || err === undefined) {
 		return false;
@@ -1933,7 +1943,69 @@ function go2jsOSIsNotExist(err) {
 		return false;
 	}
 
-	return value.code === "ENOENT" || value.errno === 2 || value.errno === -2;
+	if (value.code === "ENOENT" || value.errno === 2 || value.errno === -2) {
+		return true;
+	}
+
+	return go2jsErrorMessage(value) === go2jsErrNotExistMessage;
+}
+
+function go2jsOSIsPermission(err) {
+	if (err === null || err === undefined) {
+		return false;
+	}
+
+	const value = go2jsUnwrap(err);
+
+	if (value === null || value === undefined) {
+		return false;
+	}
+
+	if (value.code === "EACCES" || value.code === "EPERM" || value.errno === 13 || value.errno === -13) {
+		return true;
+	}
+
+	return go2jsErrorMessage(value) === go2jsErrPermissionMessage;
+}
+
+function go2jsOSIsExist(err) {
+	if (err === null || err === undefined) {
+		return false;
+	}
+
+	const value = go2jsUnwrap(err);
+
+	if (value === null || value === undefined) {
+		return false;
+	}
+
+	if (value.code === "EEXIST" || value.errno === 17 || value.errno === -17) {
+		return true;
+	}
+
+	return go2jsErrorMessage(value) === go2jsErrExistMessage;
+}
+
+function go2jsOSIsTimeout(err) {
+	if (err === null || err === undefined) {
+		return false;
+	}
+
+	const value = go2jsUnwrap(err);
+
+	if (value === null || value === undefined) {
+		return false;
+	}
+
+	if (value.code === "ETIMEDOUT" || value.errno === 110 || value.errno === -110) {
+		return true;
+	}
+
+	if (value.timeout === true) {
+		return true;
+	}
+
+	return go2jsErrorMessage(value) === go2jsErrDeadlineMessage;
 }
 
 function go2jsOSGetwd() {
@@ -2419,17 +2491,31 @@ function go2jsCryptoRandReader() {
 }
 
 function go2jsIOEOFError() {
-	return "EOF";
+	return go2jsIOEOF();
 }
 
-function go2jsSentinelError(message) {
+// A sentinel is one value that every name for it stands for, so os.ErrNotExist
+// and fs.ErrNotExist compare equal and errors.Is finds one inside a chain. They
+// are kept by their message, which is the one thing all the names agree on.
+const go2jsSentinelErrors = new Map();
+
+function go2jsSentinelError(message, typeName) {
 	return function go2jsSentinelErrorValue() {
-		return message;
+		const name = typeName === undefined || typeName === null || typeName === "" ? "*errors.errorString" : typeName;
+		const key = name + "\u0000" + message;
+		let error = go2jsSentinelErrors.get(key);
+
+		if (error === undefined) {
+			error = go2jsNameError(new Error(message), name);
+			go2jsSentinelErrors.set(key, error);
+		}
+
+		return error;
 	};
 }
 
 function go2jsIOEOF() {
-	return "EOF";
+	return go2jsSentinelError("EOF")();
 }
 
 function go2jsIODiscard() {
@@ -2477,8 +2563,19 @@ function go2jsIOUnexpectedEOFErorror() {
 	return new Error("unexpected EOF");
 }
 
+// go2jsNameError records the Go type an error value really has, because a
+// translation has one Error for them all and %T would otherwise report the same
+// name for every one of them.
+function go2jsNameError(err, typeName) {
+	if (err !== null && err !== undefined && (typeof err === "object" || typeof err === "function")) {
+		err.__go2js_error_name = typeName;
+	}
+
+	return err;
+}
+
 function go2jsErrorsNew(value) {
-	return new Error(go2jsStringify(value));
+	return go2jsNameError(new Error(go2jsStringify(value)), "*errors.errorString");
 }
 
 function go2jsErrorsAs(err, target, wanted) {
@@ -2635,16 +2732,22 @@ function go2jsTimeSub(left, right) {
 	);
 }
 
+// go2jsTimeAfter returns a channel that carries the moment it comes due. The
+// channel starts empty and only becomes ready at that moment, so a select that
+// has real work waiting chooses the work rather than the deadline.
 function go2jsTimeAfter(d) {
 	const channel = go2jsChannel(1);
+	const due = go2jsTimeAdd(go2jsTimeNow(), d);
 
-	go2jsChanSend(channel, go2jsTimeAdd(go2jsTimeNow(), d));
+	channel.timerDeadline = go2jsTimeDateOf(due).getTime();
+	channel.timerDue = due;
+	go2jsTimers.set(channel, due);
 
 	return channel;
 }
 
 function go2jsTimeTick(d) {
-	return go2jsTimeNow();
+	return go2jsTimeAfter(d);
 }
 
 // go2jsRegexpClassCategories lists the one and two letter general category

@@ -949,7 +949,7 @@ var go2jsContextDeadlineExceededError = null;
 
 function go2jsContextCanceled() {
 	if (go2jsContextCanceledError === null) {
-		go2jsContextCanceledError = go2jsInterface(new Error("context canceled"), "error");
+		go2jsContextCanceledError = go2jsInterface(go2jsNameError(new Error("context canceled"), "*errors.errorString"), "error");
 	}
 
 	return go2jsContextCanceledError;
@@ -957,7 +957,7 @@ function go2jsContextCanceled() {
 
 function go2jsContextDeadlineExceeded() {
 	if (go2jsContextDeadlineExceededError === null) {
-		go2jsContextDeadlineExceededError = go2jsInterface(new Error("context deadline exceeded"), "error");
+		go2jsContextDeadlineExceededError = go2jsInterface(go2jsNameError(new Error("context deadline exceeded"), "context.deadlineExceededError"), "error");
 	}
 
 	return go2jsContextDeadlineExceededError;
@@ -2504,7 +2504,7 @@ function go2jsCSVNewReader(text) {
 
 	reader.Read = function() {
 		if (reader.index >= reader.rows.length) {
-			return [null, "EOF"];
+			return [null, go2jsIOEOF()];
 		}
 
 		return [go2jsCSVRecord(reader.rows[reader.index++]), null];
@@ -2517,7 +2517,7 @@ function go2jsCSVNewReader(text) {
 			const result = reader.Read();
 
 			if (result[0] === null) {
-				if (result[1] === "EOF") {
+				if (result[1] === go2jsIOEOF()) {
 					return [out, null];
 				}
 

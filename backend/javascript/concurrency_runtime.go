@@ -29,9 +29,66 @@ function go2jsChannelClosedPanic(operation) {
 	throw new Error("send on closed channel");
 }
 
+// go2jsTimers holds the channels a timer is waiting on, so that a select with
+// nothing else to do can wait for the moment one of them comes due rather than
+// declaring every goroutine asleep.
+const go2jsTimers = new Map();
+
+// go2jsTimerDue says whether a timer has come due. A channel that stands for a
+// timer is not ready until the moment it names, which is what lets a select
+// choose the work that finished over the one that merely has a deadline.
+function go2jsTimerDue(channel) {
+	if (channel.timerDeadline === undefined) {
+		return false;
+	}
+
+	if (Date.now() < channel.timerDeadline) {
+		return false;
+	}
+
+	go2jsTimers.delete(channel);
+	channel.timerDeadline = undefined;
+	channel.buffer.push(go2jsTimeValue(new Date(channel.timerDue)));
+
+	return true;
+}
+
+function go2jsWaitForEarliestTimer() {
+	let earliest = Infinity;
+
+	for (const channel of go2jsTimers.keys()) {
+		if (channel.timerDeadline < earliest) {
+			earliest = channel.timerDeadline;
+		}
+	}
+
+	if (!isFinite(earliest)) {
+		return false;
+	}
+
+	const wait = earliest - Date.now();
+
+	if (wait > 0) {
+		try {
+			require("child_process").execFileSync("sleep", [String(wait / 1000)]);
+		} catch (err) {
+			// A wait that could not be taken still leaves the deadline to be
+			// reached, and the loop comes back round to it.
+		}
+	}
+
+	return true;
+}
+
 function go2jsChanRecvPair(channel) {
 	while (true) {
 		if (channel.buffer.length > 0) {
+			const value = channel.buffer.shift();
+			go2jsChannelPump(channel);
+			return [value, true];
+		}
+
+		if (go2jsTimerDue(channel)) {
 			const value = channel.buffer.shift();
 			go2jsChannelPump(channel);
 			return [value, true];
@@ -41,7 +98,7 @@ function go2jsChanRecvPair(channel) {
 			return [go2jsChannelZero, false];
 		}
 
-		if (!go2jsProgress()) {
+		if (!go2jsProgress() && !go2jsWaitForEarliestTimer()) {
 			throw new Error("go2js: no goroutine can unblock this channel receive");
 		}
 	}
@@ -66,7 +123,7 @@ function go2jsChanTryRecv(channel) {
 }
 
 function go2jsChanRecvReady(channel) {
-	return channel.buffer.length > 0 || channel.closed;
+	return channel.buffer.length > 0 || channel.closed || go2jsTimerDue(channel);
 }
 
 function go2jsChanSendReady(channel) {
@@ -248,12 +305,16 @@ function go2jsGo(task) {
 	});
 }
 
+// go2jsProgress lets the goroutines that are runnable run, and says whether any
+// of them did. A goroutine waiting on a timer is runnable once its moment comes,
+// so a select with nothing else to do waits for the earliest one rather than
+// reporting that every goroutine is asleep.
 function go2jsProgress() {
-	if (go2jsTasks.length === 0) {
-		return false;
+	if (go2jsTasks.length > 0 && go2jsRunTasks() > 0) {
+		return true;
 	}
 
-	return go2jsRunTasks() > 0;
+	return go2jsWaitForEarliestTimer();
 }
 
 function go2jsWaitGroupWait(group) {
@@ -569,6 +630,11 @@ function go2jsErrorsIs(err, target) {
 
 function go2jsWrapError(format, ...args) {
 	const error = new Error(go2jsSprintf(format, ...args));
+	// fmt.Errorf names its result after how many errors it wraps: one gives a
+	// wrapError, more than one gives a wrapErrors that wraps them all.
+	const wrapped = (String(format).match(/%[+#0 -.]*[0-9.]*w/g) || []).length;
+
+	go2jsNameError(error, wrapped === 0 ? "*errors.errorString" : wrapped === 1 ? "*fmt.wrapError" : "*fmt.wrapErrors");
 
 	for (let i = 0; i < args.length; i++) {
 		if (format.includes("%w")) {
@@ -614,7 +680,7 @@ function go2jsErrorsJoin(...errs) {
 	const error = new Error(parts.map(part => go2jsErrorMessage(part)).join("\n"));
 	error.joined = parts;
 
-	return error;
+	return go2jsNameError(error, "*errors.joinError");
 }
 
 function go2jsErrorMessage(err) {

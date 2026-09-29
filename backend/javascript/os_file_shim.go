@@ -260,7 +260,7 @@ function go2jsOSFileRead(file, buffer) {
 		view[index] = bytes[index] === undefined ? 0 : bytes[index];
 	}
 
-	return [read, read === 0 ? go2jsOSError("EOF", "read", target.path) : null];
+	return [read, read === 0 ? go2jsOSError(go2jsIOEOF().message, "read", target.path) : null];
 }
 
 function go2jsOSFileReadFile(file) {

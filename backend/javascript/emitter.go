@@ -1757,6 +1757,26 @@ var javaScriptReservedNames = map[string]bool{
 	"try": true, "typeof": true, "var": true,
 	"void": true, "while": true, "with": true, "yield": true,
 	"NaN": true, "Infinity": true, "undefined": true,
+
+	// The runtime is one bundle with the program, so a declaration of one of
+	// these would stand in front of the built in it is meant to reach, and the
+	// program would break in a way that has nothing to do with its own logic.
+	// Only the names a declaration can take are listed: a field is written as it
+	// is, so a struct may still have a field called Map, and Buffer is left out
+	// because bytes.Buffer keeps the name its own class was given.
+	"Array": true, "ArrayBuffer": true, "BigInt": true, "Boolean": true,
+	"Date": true, "Error": true, "EvalError": true,
+	"Intl": true, "JSON": true, "Map": true, "Math": true, "Number": true,
+	"Object": true, "Promise": true, "Proxy": true, "RangeError": true,
+	"ReferenceError": true, "Reflect": true, "RegExp": true, "Set": true,
+	"String": true, "Symbol": true, "SyntaxError": true, "TypeError": true,
+	"URIError": true, "URL": true, "WeakMap": true, "WeakSet": true,
+	"clearTimeout": true, "console": true, "decodeURIComponent": true,
+	"encodeURIComponent": true, "fetch": true, "globalThis": true,
+	"isFinite": true, "isNaN": true, "parseFloat": true, "parseInt": true,
+	"process": true, "queueMicrotask": true, "require": true,
+	"setTimeout": true, "structuredClone": true, "TextDecoder": true,
+	"TextEncoder": true,
 }
 
 func javaScriptIdentifier(name string) string {
