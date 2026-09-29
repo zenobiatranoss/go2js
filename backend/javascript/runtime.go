@@ -4,6 +4,7 @@ func runtimeSource() string {
 	return `
 const go2jsNativeMap = globalThis.Map;
 const go2jsNativeSet = globalThis.Set;
+const go2jsNativeDate = globalThis.Date;
 
 function go2jsFloat(value) {
 	if (Number.isNaN(value)) {
@@ -108,7 +109,7 @@ function go2jsStringsNewReader(value) {
         __go2js_text: text,
         Read: function(buffer) {
             if (position >= text.length) {
-                return [0, "EOF"];
+                return [0, go2jsIOEOF()];
             }
 
             const count = Math.min(buffer.length, text.length - position);
@@ -148,7 +149,7 @@ function go2jsIOReadAll(reader) {
         }
 
         if (result[1] !== null && result[1] !== undefined) {
-            if (result[1] === "EOF") {
+            if (result[1] === go2jsIOEOF()) {
                 break;
             }
 
@@ -1795,7 +1796,9 @@ function go2jsGoTypeName(value) {
 	}
 
 	if (value instanceof Error) {
-		return "error";
+		// An error carries the name of the Go type that made it, because one
+		// Error stands for all of them here.
+		return value.__go2js_error_name !== undefined ? value.__go2js_error_name : "error";
 	}
 
 	if (value.__go2js_pointer === true) {
@@ -1805,6 +1808,16 @@ function go2jsGoTypeName(value) {
 	}
 
 	if (value.__go2js_interface === true) {
+		// The error interface says only "error". What %T wants to know is what is
+		// really inside it, and context.DeadlineExceeded is not a plain error.
+		if (value.type === "error") {
+			const inner = go2jsInterfaceValue(value);
+
+			if (inner !== null && inner instanceof Error && typeof inner.__go2js_error_name === "string" && inner.__go2js_error_name !== "") {
+				return inner.__go2js_error_name;
+			}
+		}
+
 		if (typeof value.__go2js_type_name === "string") {
 			return value.__go2js_type_name;
 		}
@@ -1966,7 +1979,18 @@ function go2jsInterface(value, typeName, displayName) {
 	}
 
 	if (typeName !== undefined && typeName !== null && typeName !== "" && value !== null && value !== undefined && typeof value === "object") {
-		wrapper.__go2js_error_name = String(typeName).replace(/^\*/, "");
+		// A value that already knows what it really is gives the better answer to
+		// %T than the interface it is being dressed up for. Wrapping
+		// context.DeadlineExceeded as an error must not turn it back into a plain
+		// error, the way a hand wrapped in a box is still a hand.
+		const inner = go2jsInterfaceValue(value);
+		const known = inner !== null && typeof inner === "object" ? inner.__go2js_error_name : undefined;
+
+		if (known === undefined || known === null || known === "") {
+			wrapper.__go2js_error_name = String(typeName).replace(/^\*/, "");
+		} else {
+			wrapper.__go2js_error_name = known;
+		}
 	}
 
 	if (Array.isArray(value) && typeof typeName === "string" && typeName.startsWith("[")) {

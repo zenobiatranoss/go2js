@@ -14,6 +14,17 @@ import (
 func requireGoNodeParity(t *testing.T, source string) string {
 	t.Helper()
 
+	_, js := requireGoNodeOutput(t, source)
+
+	return js
+}
+
+// requireGoNodeOutput is the same comparison, but it hands back what the program
+// printed rather than the JavaScript it was turned into, so a test can say more
+// than "the two agreed".
+func requireGoNodeOutput(t *testing.T, source string) (string, string) {
+	t.Helper()
+
 	dir := t.TempDir()
 	input := filepath.Join(dir, "main.go")
 	output := filepath.Join(dir, "main.js")
@@ -58,7 +69,7 @@ func requireGoNodeParity(t *testing.T, source string) string {
 		t.Fatalf("output mismatch\nwant:\n%s\ngot:\n%s", want, got)
 	}
 
-	return js
+	return want, js
 }
 
 func TestNamedScalarTypeMethods(t *testing.T) {

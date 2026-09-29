@@ -78,6 +78,15 @@ func (e *emitter) zeroValue(t types.Type) string {
 		if named, ok := t.(*types.Named); ok {
 			obj := named.Obj()
 
+			// A type from the runtime has one constructor, whatever the program
+			// happens to call its own things. The bare name is no good here:
+			// sync.Map is a struct whose name reads like a JavaScript global.
+			if obj != nil && obj.Pkg() != nil {
+				if constructor, found := packageTypes[obj.Pkg().Name()+"."+obj.Name()]; found {
+					return constructor + "()"
+				}
+			}
+
 			if _, isStruct := named.Underlying().(*types.Struct); isStruct && obj != nil {
 				if e.localStructTypes[obj.Name()] {
 					return "new " + javaScriptIdentifier(obj.Name()) + "()"
