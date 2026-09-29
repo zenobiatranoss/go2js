@@ -136,13 +136,42 @@ func (e *emitter) stdlibKeyForIdent(pkgIdent *ast.Ident) string {
 	return ""
 }
 
+// stdlibAliasPreference resolves local package names that several import paths
+// share (both crypto/rand and math/rand are used as "rand") deterministically.
+// Type information still wins when available; this only stabilises the fallback.
+var stdlibAliasPreference = map[string]string{
+	"rand": "math/rand",
+}
+
 func stdlibPkgPath(pkg string) string {
+	if _, ok := stdlibFuncMaps[pkg]; ok {
+		return pkg
+	}
+
+	preferred := stdlibAliasPreference[pkg]
+	found := ""
+	matches := false
+
 	for path, aliases := range stdlibPkgAliases {
 		for _, alias := range aliases {
-			if alias == pkg {
+			if alias != pkg {
+				continue
+			}
+
+			if path == preferred {
 				return path
 			}
+
+			if !matches || path < found {
+				found = path
+			}
+
+			matches = true
 		}
+	}
+
+	if matches {
+		return found
 	}
 
 	return pkg
