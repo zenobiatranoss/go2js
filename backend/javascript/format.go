@@ -58,12 +58,17 @@ func (e *emitter) emitFormatCall(call *ast.CallExpr) error {
 		return e.emitErrorfCall(call)
 
 	case "errors.New":
-		e.write("new Error(")
+		// The runtime helper is used rather than a bare Error so the value keeps
+		// the name errors.New gives it, which is what %T reports.
+		e.needsRuntime = true
+		e.write("go2jsErrorsNew(")
+
 		if len(call.Args) > 0 {
 			if err := e.emitExpr(call.Args[0]); err != nil {
 				return err
 			}
 		}
+
 		e.write(")")
 		return nil
 	}

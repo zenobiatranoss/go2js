@@ -704,6 +704,13 @@ function go2jsStructCopy(value) {
 		return value;
 	}
 
+	// A date keeps its value inside itself, where a copy cannot reach it, so a
+	// copied date stops being one the moment the copy is made. It is already
+	// the value it stands for, so there is nothing here to copy.
+	if (value instanceof go2jsNativeDate) {
+		return value;
+	}
+
 	const embedded = typeof value.__go2js_embedded === "undefined"
 		? null
 		: value.__go2js_embedded;
