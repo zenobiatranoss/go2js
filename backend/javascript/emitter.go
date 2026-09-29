@@ -856,6 +856,9 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 	case *ast.SwitchStmt:
 		return e.emitSwitchStmt(s)
 
+	case *ast.SelectStmt:
+		return e.emitSelectStmt(s)
+
 	default:
 		return fmt.Errorf("unsupported statement: %T", stmt)
 	}
