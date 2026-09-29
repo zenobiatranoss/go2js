@@ -242,6 +242,31 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				return nil
 			}
 
+			// A pointer to the same variable is the same address every time, so
+			// it is kept in a variable of its own and handed out again rather
+			// than built afresh, which is what lets two pointers to one variable
+			// compare equal and lets a copy of a pointer stay the same pointer.
+			if base, _, ok := addressBase(x.X); ok {
+				if binding := e.addressBinding(e.addressKey(base)); binding != "" {
+					e.write("(")
+					e.write(binding)
+					e.write(" ??= go2jsPtr(() => ")
+
+					if err := e.emitExpr(x.X); err != nil {
+						return err
+					}
+
+					e.write(", value => ")
+
+					if err := e.emitExpr(x.X); err != nil {
+						return err
+					}
+
+					e.write(" = value))")
+					return nil
+				}
+			}
+
 			e.write("go2jsPtr(() => ")
 			if err := e.emitExpr(x.X); err != nil {
 				return err
