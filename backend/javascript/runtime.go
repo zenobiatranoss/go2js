@@ -341,6 +341,10 @@ function go2jsTimeFormat(date, layout) {
 function go2jsRegexpNew(pattern) {
     const source = String(pattern);
 
+    // Go validates the pattern when it is compiled, so an invalid expression has
+    // to fail here rather than on first use.
+    go2jsRegexpNewRegExp(source);
+
     // Every index method reports Go byte offsets, so the subject is decoded once
     // per call and translated on the way out.
     const exec = (value, flags) => {
@@ -454,7 +458,21 @@ function go2jsRegexpNew(pattern) {
 }
 
 function go2jsRegexpMustCompile(pattern) {
-    return go2jsRegexpNew(pattern);
+    try {
+        return go2jsRegexpNew(pattern);
+    } catch (cause) {
+        throw new Error("regexp: Compile(" + JSON.stringify(go2jsStringify(pattern)) + "): " + go2jsStringify(cause.message));
+    }
+}
+
+// go2jsRegexpCompile mirrors regexp.Compile, which reports a bad pattern as an
+// error rather than panicking.
+function go2jsRegexpCompile(pattern) {
+    try {
+        return [go2jsRegexpNew(pattern), null];
+    } catch (cause) {
+        return [null, new Error("error parsing regexp: " + go2jsStringify(cause.message))];
+    }
 }
 
 function go2jsFilepathClean(value) {
@@ -2980,6 +2998,14 @@ function go2jsFormat(value, typeName, kind, shape) {
 	}
 
 
+	// A complex operand is a pair of parts, so %v writes it in parentheses with
+	// an i rather than as the struct its two fields would otherwise make.
+	if (go2jsIsComplexTypeName(typeName)) {
+		const { re, im } = go2jsComplexValue(value);
+
+		return go2jsFormatComplexText("v", null, re, im, "", null);
+	}
+
 	if (value instanceof go2jsNativeMap) {
 		// fmt sorts map keys, so the output must be deterministic.
 		const entries = Array.from(value.entries());
@@ -3164,9 +3190,41 @@ function go2jsFprintln(writer, values) {
 	return go2jsFprint(writer, values, "\n", " ");
 }
 
+// go2jsSpreadArgs marks a variadic slice so go2jsSprintf can splice its elements
+// into the operand list, which is what a trailing ... means in Go.
+function go2jsSpreadArgs(slice) {
+	return {__go2js_spread: true, slice: slice};
+}
+
+// go2jsSpreadValues unwraps the interface elements of a spread operand, which
+// the emitter boxes so their dynamic type survives.
+function go2jsSpreadValues(slice) {
+	if (!Array.isArray(slice)) {
+		return [slice];
+	}
+
+	return slice.map((element) => (element !== null && typeof element === "object" &&
+		element.__go2js_interface === true ? element.value : element));
+}
+
 function go2jsSprintf(format, ...args) {
 	let result = "";
+
+	// A trailing ... hands over a marked slice; its elements become the operands
+	// that follow the ones already given.
+	if (args.length > 0 && args[args.length - 1] !== null &&
+		typeof args[args.length - 1] === "object" && args[args.length - 1].__go2js_spread === true) {
+		const last = args.pop();
+
+		args = args.concat(go2jsSpreadValues(last.slice));
+	}
+
+	// The one based operand number the next verb will read, counting down as
+	// fmt does: the first unindexed verb lands on operand one. claimed records
+	// which operands the verbs have used, so the unused ones can be reported.
 	let argIndex = 0;
+	let walked = 0;
+	let reached = 0;
 
 	for (let i = 0; i < format.length; i++) {
 		const ch = format[i];
@@ -3178,6 +3236,27 @@ function go2jsSprintf(format, ...args) {
 
 		i++;
 		let spec = "%";
+
+		// An explicit index names the operand directly.
+		let explicitIndex = 0;
+		let starRead = false;
+
+		while (i + 1 < format.length && format[i] === "[" && format[i + 1] !== "]") {
+			const close = format.indexOf("]", i + 1);
+
+			if (close === -1) {
+				break;
+			}
+
+			const digits = format.slice(i + 1, close);
+
+			if (digits.length === 0 || !/^\d+$/.test(digits)) {
+				break;
+			}
+
+			explicitIndex = Number(digits);
+			i = close + 1;
+		}
 
 		while (i < format.length) {
 			const flag = format[i];
@@ -3200,10 +3279,28 @@ function go2jsSprintf(format, ...args) {
 				continue;
 			}
 
-			// A "*" width or precision takes its value from the next argument.
+			// A "*" width or precision reads its operand from the cursor and
+			// leaves the cursor on the next one, so the verb that follows reads
+			// the operand after the star.
 			if (flag === "*") {
-				const star = Math.trunc(Number(args[argIndex]));
-				argIndex++;
+				if (explicitIndex > 0) {
+					argIndex = explicitIndex;
+					explicitIndex = 0;
+				} else {
+					argIndex++;
+				}
+
+				if (argIndex < 1) {
+					argIndex = 1;
+				}
+
+				const star = Math.trunc(Number(args[argIndex - 1]));
+
+				// The verb that follows this star reads the operand after the
+				// one the star used, so the cursor is left on it already.
+				walked = 1;
+				reached = argIndex;
+				starRead = true;
 				spec += Number.isFinite(star) ? String(star) : "0";
 				i++;
 				continue;
@@ -3215,14 +3312,69 @@ function go2jsSprintf(format, ...args) {
 		const verb = format[i];
 		spec += verb;
 
+		starRead = false;
+
 		if (verb === "%") {
 			result += "%";
 			continue;
 		}
 
-		const arg = args[argIndex];
-		argIndex++;
+		// fmt walks the operands with a cursor that holds the operand the next
+		// verb reads. A verb with no index consumes the current one and moves
+		// on, while an explicit index points the cursor at that operand and
+		// leaves it there, so "%d %d" walks forwards and "%d %[1]d" repeats the
+		// first operand.
+		let namedOperand = false;
+
+		if (explicitIndex > 0) {
+			// An explicit index points the cursor at that operand. Naming one
+			// also discards the walk, because fmt then has no way to know which
+			// operands the unindexed verbs in between consumed.
+			argIndex = explicitIndex;
+			explicitIndex = 0;
+			walked = 0;
+			namedOperand = true;
+		} else if (!starRead) {
+			argIndex++;
+			walked = 1;
+		}
+
+		if (argIndex < 1) {
+			argIndex = 1;
+		}
+
+		// The reach follows the cursor rather than the highest index seen: an
+		// explicit index that points back at an earlier operand rewinds it, so
+		// "%d %[1]d" leaves the operands past the cursor looking unused again.
+		reached = argIndex;
+
+		// The rest parameter holds the operands only, so the one based operand
+		// number N lives at args[N-1].
+		const arg = args[argIndex - 1];
+
+		// An operand past the end of the argument list is reported as missing,
+		// the way fmt words the error. An index that names an operand which is
+		// not there is a bad index instead, because fmt never walked to it.
+		if (argIndex > args.length) {
+			result += "%!" + verb + "(" + (namedOperand ? "BADINDEX" : "MISSING") + ")";
+			argIndex = 1;
+			continue;
+		}
+
 		result += go2jsFormatValue(verb, spec, arg);
+	}
+
+	// fmt reports the operands the cursor never passed. A format built purely
+	// from explicit indexes reports nothing, because an index names an operand
+	// without walking the ones in front of it.
+	if (walked > 0 && reached < args.length) {
+		const extra = args.slice(reached).map((value) => {
+			const text = go2jsFormat(value, go2jsTypedType(value), go2jsTypedKind(value), go2jsTypedShape(value));
+
+			return go2jsInferTypeName(value, go2jsTypedType(value)) + "=" + text;
+		});
+
+		result += "%!(EXTRA " + extra.join(", ") + ")";
 	}
 
 	return result;
@@ -3351,51 +3503,83 @@ function go2jsInferTypeName(value, tagged) {
 	return "interface {}";
 }
 
-function go2jsVerbAccepts(verb, typeName) {
-	switch (verb) {
-		case "d":
-		case "b":
-		case "o":
-		case "c":
-		case "U":
-			return typeName === "int" || typeName === "int8" || typeName === "int16" ||
-				typeName === "int32" || typeName === "int64" || typeName === "uint" ||
-				typeName === "uint8" || typeName === "uint16" || typeName === "uint32" ||
-				typeName === "uint64" || typeName === "uintptr" || typeName === "rune" ||
-				typeName === "byte";
-		case "e":
-		case "E":
-		case "f":
-		case "F":
-		case "g":
-		case "G":
-			return typeName === "int" || typeName === "int8" || typeName === "int16" ||
-				typeName === "int32" || typeName === "int64" || typeName === "uint" ||
-				typeName === "uint8" || typeName === "uint16" || typeName === "uint32" ||
-				typeName === "uint64" || typeName === "uintptr" || typeName === "rune" ||
-				typeName === "byte" || typeName === "float32" || typeName === "float64";
-		case "s":
-			return !go2jsIsBasicScalarName(typeName) || typeName === "string";
-		case "q":
-			return typeName === "int" || typeName === "int8" || typeName === "int16" ||
-				typeName === "int32" || typeName === "int64" || typeName === "uint" ||
-				typeName === "uint8" || typeName === "uint16" || typeName === "uint32" ||
-				typeName === "uint64" || typeName === "uintptr" || typeName === "rune" ||
-				typeName === "byte" || typeName === "string" ||
-				!go2jsIsBasicScalarName(typeName);
-		case "x":
-		case "X":
-			return true;
-		case "v":
-		case "T":
-			return true;
-		case "t":
-			return typeName === "bool";
-		default:
-			return true;
+// go2jsIsIntegerTypeName reports whether a Go type name is one of the integer
+// kinds, which includes rune and byte.
+function go2jsIsIntegerTypeName(typeName) {
+	switch (typeName) {
+	case "int":
+	case "int8":
+	case "int16":
+	case "int32":
+	case "int64":
+	case "uint":
+	case "uint8":
+	case "uint16":
+	case "uint32":
+	case "uint64":
+	case "uintptr":
+	case "rune":
+	case "byte":
+		return true;
+	default:
+		return false;
 	}
 }
 
+// go2jsIsFloatTypeName reports whether a Go type name is one of the float kinds.
+function go2jsIsFloatTypeName(typeName) {
+	return typeName === "float32" || typeName === "float64";
+}
+
+// go2jsIsComplexTypeName reports whether a Go type name is one of the complex
+// kinds.
+function go2jsIsComplexTypeName(typeName) {
+	return typeName === "complex64" || typeName === "complex128";
+}
+
+// go2jsVerbAccepts reports whether a verb is defined for a Go type. The table
+// below lists, for each operand kind, the verbs fmt refuses; a verb that is not
+// named accepts everything. A compound operand is never refused as a whole,
+// because fmt expands it and then formats each element with the verb.
+function go2jsVerbAccepts(verb, typeName) {
+	if (!go2jsIsBasicScalarName(typeName)) {
+		return true;
+	}
+
+	if (typeName === "<nil>") {
+		// A nil operand only has %v and %T, so every other verb is a bad verb.
+		return verb === "v" || verb === "T";
+	}
+
+	if (go2jsIsIntegerTypeName(typeName)) {
+		return go2jsVerbInSet(verb, "bcdoOqxUXvT");
+	}
+
+	if (go2jsIsFloatTypeName(typeName) || go2jsIsComplexTypeName(typeName)) {
+		return go2jsVerbInSet(verb, "befgEFGXxXvT");
+	}
+
+	if (typeName === "string") {
+		return go2jsVerbInSet(verb, "qsxXvT");
+	}
+
+	if (typeName === "bool") {
+		return go2jsVerbInSet(verb, "tvT");
+	}
+
+	return verb === "v" || verb === "T";
+}
+
+// go2jsVerbInSet reports whether a one character verb appears in a set of
+// accepted verbs.
+function go2jsVerbInSet(verb, accepted) {
+	return verb !== "" && accepted.indexOf(verb) >= 0;
+}
+
+// go2jsIsBasicScalarName reports whether a Go type name is one fmt formats
+// directly, as opposed to a compound operand that fmt expands first. A string
+// and a nil operand are both formatted directly, and a verb that does not fit
+// either of them is a bad verb.
 function go2jsIsBasicScalarName(typeName) {
 	switch (typeName) {
 	case "bool":
@@ -3416,6 +3600,8 @@ function go2jsIsBasicScalarName(typeName) {
 	case "complex128":
 	case "rune":
 	case "byte":
+	case "string":
+	case "<nil>":
 		return true;
 	default:
 		return false;
@@ -3476,12 +3662,88 @@ function go2jsQualifiedTypeName(name) {
 	return name;
 }
 
-function go2jsQuoteRune(code) {
-	if (code < 0 || code > 0x10FFFF || (code >= 0xD800 && code <= 0xDFFF)) {
-		return "'\\u" + code.toString(16).toUpperCase().padStart(4, "0") + "'";
+const go2jsRuneShortEscapes = {
+	0x07: "\\a", 0x08: "\\b", 0x0C: "\\f", 0x0A: "\\n",
+	0x0D: "\\r", 0x09: "\\t", 0x0B: "\\v"
+};
+
+// go2jsRuneIsPrintable mirrors the rule strconv uses to decide whether a rune
+// can be shown literally or has to be escaped. Only ASCII is printable as a
+// whole; above that a rune counts only when it belongs to a letter, mark,
+// number, punctuation or symbol category, which keeps the space separators and
+// the format characters escaped exactly as Go escapes them.
+function go2jsRuneIsPrintable(code) {
+	if (code === 0x20) {
+		return true;
 	}
 
-	return "'" + String.fromCodePoint(code) + "'";
+	if (code < 0x20 || code === 0x7F) {
+		return false;
+	}
+
+	if (code < 0x7F) {
+		return true;
+	}
+
+	const category = (String.fromCodePoint(code) || "").replace(/[\p{L}\p{M}\p{N}\p{P}\p{S}]/u, "");
+
+	return category.length === 0;
+}
+
+// go2jsQuoteRuneBody renders a rune the way strconv.QuoteRune does, using the
+// short escapes Go prefers before falling back to \u.
+function go2jsQuoteRuneBody(code) {
+	if (code < 0 || code > 0x10FFFF || (code >= 0xD800 && code <= 0xDFFF) ||
+		!go2jsRuneIsPrintable(code)) {
+		const short = go2jsRuneShortEscapes[code];
+
+		if (short !== undefined) {
+			return short;
+		}
+
+		// strconv escapes an ASCII control as \xNN, anything else below the
+		// supplementary planes as \uNNNN and the rest as \UNNNNNNNN, always
+		// with lower case hex digits.
+		if (code < 0x20 || code === 0x7F) {
+			return "\\x" + code.toString(16).padStart(2, "0");
+		}
+
+		if (code > 0xFFFF) {
+			return "\\U" + code.toString(16).padStart(8, "0");
+		}
+
+		return "\\u" + code.toString(16).padStart(4, "0");
+	}
+
+	const ch = String.fromCodePoint(code);
+
+	// Go escapes the quote and the backslash so the result stays unambiguous.
+	if (ch === "'" || ch === "\\") {
+		return "\\" + ch;
+	}
+
+	return ch;
+}
+
+function go2jsQuoteRune(code) {
+	return "'" + go2jsQuoteRuneBody(code) + "'";
+}
+
+// go2jsIsGoStructType reports whether a resolved Go type name denotes a struct,
+// which is the only shape fmt expands into a braced field list for %q.
+function go2jsIsGoStructType(typeName) {
+	if (typeof typeName !== "string" || typeName === "") {
+		return false;
+	}
+
+	return typeName.startsWith("struct") || /^[A-Za-z_][A-Za-z0-9_.]*\.[A-Za-z_][A-Za-z0-9_]*$/.test(typeName) ||
+		typeName.includes("struct {");
+}
+
+// go2jsStructHasNoStringMethod keeps a struct that defines String from being
+// expanded field by field: fmt quotes the result of the method instead.
+function go2jsStructHasNoStringMethod(value) {
+	return typeof value.String !== "function" && typeof value.Error !== "function";
 }
 
 function go2jsFormatValue(verb, spec, value) {
@@ -3499,14 +3761,23 @@ function go2jsFormatValue(verb, spec, value) {
 	const accepted = kind || go2jsInferTypeName(value, tagged);
 
 	if (verb !== "%" && !go2jsVerbAccepts(verb, accepted)) {
-		return "%!" + verb + "(" + go2jsInferTypeName(value, tagged) + "=" + go2jsFormat(value, tagged, kind, shape) + ")";
+		// A nil operand has no value to show, so fmt names the type alone.
+		if (accepted === "<nil>") {
+			return "%!" + verb + "(<nil>)";
+		}
+
+		// fmt shows the rejected operand with %v while keeping the width and the
+		// precision the verb was written with. A rune is named int32, because
+		// that is the type fmt reflects on.
+		return "%!" + verb + "(" + (accepted === "rune" ? "int32" : accepted) + "=" +
+			go2jsFormatValue("v", spec.replace(verb + "$", "v"), value) + ")";
 	}
 
 	// Renders the sign prefix and zero-pads the digits that follow it.
 	const numberText = (num, body, prefixOverride) => {
 		const prefix = prefixOverride !== undefined
 			? prefixOverride
-			: num < 0
+			: num < 0 || Object.is(num, -0)
 				? "-"
 				: flags.includes("+")
 					? "+"
@@ -3514,7 +3785,14 @@ function go2jsFormatValue(verb, spec, value) {
 						? " "
 						: "";
 
-		return go2jsPadNumber(prefix + body, prefix, body, parsed);
+		// A precision on an integer is a minimum number of digits, and the zeros
+		// go in before the base prefix, the way Go writes 0x00ff. A float spends
+		// its precision on the fraction it was already rendered with, so the
+		// digits are left as they are.
+		const isInteger = go2jsIsIntegerTypeName(accepted);
+		const digits = precision !== null && isInteger ? go2jsZeroPadDigits(body, precision) : body;
+
+		return go2jsPadNumber(prefix + digits, prefix, digits, parsed, isInteger);
 	};
 
 	const integerBody = (num, base, prefix, upper) => {
@@ -3525,23 +3803,60 @@ function go2jsFormatValue(verb, spec, value) {
 			body = body.toUpperCase();
 		}
 
-		if (prefix !== "") {
-			body = prefix + body;
-		}
-
-		return numberText(num, body);
+		// The width counts the base prefix, so a prefixed body is padded through
+		// its full length rather than the digits alone.
+		return numberText(num, body, prefix === "" ? undefined : prefix);
 	};
 
 	const intValue = Math.trunc(go2jsNumericValue(value));
+
+	// A slice or an array applies the verb to each element and joins the results,
+	// so it is answered before the verb's own case sees the whole value. A byte
+	// slice is the exception: the quoted verbs and the hex verbs read it as a
+	// string rather than as a list of numbers.
+	const isBytes = go2jsIsByteCompound(accepted);
+	// %T and %p answer for the whole operand, so they never reach the elements.
+	const compound = verb === "T" || verb === "p" || (isBytes && go2jsVerbInSet(verb, "qsxX"))
+		? null
+		: go2jsCompoundElements(value, accepted);
+
+	if (compound !== null) {
+		const inner = "%" + flags + (precision === null ? "" : "." + precision) + verb;
+		// An element keeps the element type of the compound, so a verb that is
+		// refused reports uint8 rather than the int a bare number would infer.
+		const element = go2jsCompoundElementType(accepted);
+		const parts = compound.map((item) => go2jsFormatValue(verb, inner, element === null ? item : go2jsTyped(item, element)));
+
+		return go2jsPad("[" + parts.join(" ") + "]", parsed, false);
+	}
+
+	// A complex operand formats each of its parts with the verb and joins them
+	// with a plus, the way fmt writes (re+imi), so it is answered first.
+	if (go2jsIsComplexOperand(value, accepted)) {
+		return go2jsFormatComplex(verb, parsed, value, accepted, flags, precision);
+	}
 
 	switch (verb) {
 		case "d":
 			return numberText(intValue, String(Math.abs(intValue)));
 		case "b":
+			// A float formatted with %b is its IEEE754 expansion: the leading
+			// bit of the significand, then the exponent as a power of two.
+			if (accepted !== undefined && go2jsIsFloatTypeName(accepted)) {
+				return go2jsFormatFloatBits(Number(value), accepted);
+			}
+
 			return integerBody(intValue, 2, flags.includes("#") ? "0b" : "");
 		case "o":
 			return integerBody(intValue, 8, flags.includes("#") ? "0" : "");
+		case "O":
+			// %O always carries the 0o prefix, while %o only does with #.
+			return integerBody(intValue, 8, "0o");
 		case "x":
+			if (accepted !== undefined && go2jsIsFloatTypeName(accepted)) {
+				return numberText(intValue, go2jsFormatHexFloat(Number(value), precision, false), "");
+			}
+
 			if ((Array.isArray(value) || value instanceof Uint8Array) && !Number.isInteger(Number(value))) {
 				return go2jsFormatHexBytes(value, false);
 			}
@@ -3552,6 +3867,10 @@ function go2jsFormatValue(verb, spec, value) {
 
 			return integerBody(intValue, 16, flags.includes("#") ? "0x" : "", false);
 		case "X":
+			if (accepted !== undefined && go2jsIsFloatTypeName(accepted)) {
+				return numberText(intValue, go2jsFormatHexFloat(Number(value), precision, true), "");
+			}
+
 			if ((Array.isArray(value) || value instanceof Uint8Array) && !Number.isInteger(Number(value))) {
 				return go2jsFormatHexBytes(value, true);
 			}
@@ -3561,16 +3880,33 @@ function go2jsFormatValue(verb, spec, value) {
 			}
 
 			return integerBody(intValue, 16, flags.includes("#") ? "0X" : "", true);
-		case "f": {
+		case "f":
+		case "F": {
+			// %F is %f spelled in upper case; it has no exponent form to fold, so
+			// the two share everything but the letter.
 			const num = Number(value);
-			const body = Math.abs(num).toFixed(precision === null ? 6 : precision);
+			const special = go2jsSpecialFloatText(num);
 
-			return numberText(num, body);
+			if (special !== "") {
+				return go2jsPad(special, parsed, false);
+			}
+
+			return numberText(num, go2jsFormatFixed(Math.abs(num), precision === null ? 6 : precision));
 		}
 		case "e":
-			return go2jsFormatE(Number(value), precision === null ? 6 : precision, parsed);
 		case "E": {
-			const upper = go2jsFormatE(Number(value), precision === null ? 6 : precision, parsed);
+			const num = Number(value);
+			const special = go2jsSpecialFloatText(num);
+
+			if (special !== "") {
+				return go2jsPad(special, parsed, false);
+			}
+
+			if (verb === "e") {
+				return go2jsFormatE(num, precision === null ? 6 : precision, parsed);
+			}
+
+			const upper = go2jsFormatE(num, precision === null ? 6 : precision, parsed);
 			const exponent = upper.indexOf("e");
 
 			return exponent === -1 ? upper : upper.slice(0, exponent) + "E" + upper.slice(exponent + 1);
@@ -3580,7 +3916,7 @@ function go2jsFormatValue(verb, spec, value) {
 		case "s": {
 			let text;
 
-			if (tagged === "[]uint8" || (tagged === null && go2jsIsByteArray(value))) {
+			if (go2jsIsByteCompound(tagged) || (tagged === null && go2jsIsByteArray(value))) {
 				text = go2jsBytesToString(value);
 			} else {
 				text = go2jsFormat(value, tagged, kind, shape);
@@ -3604,18 +3940,108 @@ function go2jsFormatValue(verb, spec, value) {
 				text = go2jsFormat(value, tagged, kind, shape);
 			}
 
+			// A precision means a minimum number of digits for an integer, a
+			// truncation for a string, and nothing at all for the other kinds.
+			const isInteger = go2jsIsIntegerTypeName(accepted);
+
 			if (precision !== null) {
-				text = text.slice(0, precision);
+				if (accepted === "string") {
+					text = text.slice(0, precision);
+				} else if (isInteger && go2jsDigitsOf(text) < precision) {
+					text = go2jsZeroPadDigits(text, precision);
+				}
 			}
 
-			return go2jsPad(text, parsed, false);
+			return go2jsPad(text, parsed, isInteger);
 		}
-		case "q":
+		case "q": {
+			// A compound operand is formatted element by element, the way fmt
+			// applies the verb to each field rather than to the whole value.
+			const inner = "%" + flags + (precision === null ? "" : "." + precision) + "q";
+			const quoteElement = (element) => (typeof element === "number" && Number.isInteger(element)
+				? go2jsQuoteRune(element)
+				: go2jsFormatValue("q", inner, element));
+
+			if (value instanceof go2jsNativeMap) {
+				const parts = [];
+
+				for (const key of value.keys()) {
+					parts.push(go2jsStrconvQuote(go2jsBytesToString(key)) + ":" + go2jsFormatValue("q", inner, value.get(key)));
+				}
+
+				return go2jsPad("map[" + parts.join(" ") + "]", parsed, false);
+			}
+
+			// Go treats a byte slice as a string for the quoted verbs, and a byte
+			// that is not part of a valid UTF8 sequence is written as \xNN rather
+			// than being replaced the way a decoded string would be.
+			if (go2jsIsByteCompound(accepted)) {
+				return go2jsPad(go2jsQuoteBytes(value), parsed, false);
+			}
+
+			if (Array.isArray(value)) {
+				const parts = [];
+
+				for (const element of value) {
+					parts.push(quoteElement(element));
+				}
+
+				return go2jsPad("[" + parts.join(" ") + "]", parsed, false);
+			}
+
+			// A struct value is a class instance whose fields were assigned in
+			// declaration order, which is the order fmt reports them in. Only a
+			// real struct takes this path: a Stringer, an interface wrapper or a
+			// plain map-like object is formatted through its own String method.
+			if (value !== null && typeof value === "object" && !(value instanceof Error) &&
+				!(value instanceof go2jsNativeSet) && !value.__go2js_interface &&
+				!value.__go2js_pointer && go2jsIsGoStructType(accepted) &&
+				go2jsStructHasNoStringMethod(value)) {
+				const parts = [];
+
+				for (const key of Object.keys(value)) {
+					parts.push(quoteElement(value[key]));
+				}
+
+				return go2jsPad("{" + parts.join(" ") + "}", parsed, false);
+			}
+
 			if (typeof value === "number" && Number.isInteger(value)) {
 				return go2jsPad(go2jsQuoteRune(value), parsed, false);
 			}
 
-			return go2jsPad(JSON.stringify(go2jsFormat(value, tagged, kind, shape)), parsed, false);
+			// An interface operand is quoted as the dynamic value it holds, the
+			// way fmt reaches through the interface before applying the verb.
+			if (value !== null && typeof value === "object" && value.__go2js_interface === true) {
+				return go2jsFormatValue("q", "%" + flags + (precision === null ? "" : "." + precision) + "q",
+					value.value);
+			}
+
+			// A named function type can still carry a String method, and Go
+			// quotes what that method returns rather than the function itself.
+			if (typeof value === "function") {
+				const named = go2jsNamedFormatMethod(value, "String");
+
+				if (named !== null) {
+					return go2jsPad(go2jsStrconvQuote(go2jsBytesToString(named)), parsed, false);
+				}
+			}
+
+			// An error or Stringer is quoted through its own method, which is
+			// what fmt does for a pointer or interface operand.
+			if (value !== null && typeof value === "object" &&
+				!(value instanceof go2jsNativeMap) && !Array.isArray(value) &&
+				!(value instanceof Uint8Array)) {
+				const receiver = value.__go2js_pointer === true ? go2jsDeref(value) : value;
+				const named = go2jsNamedFormatMethod(receiver, "Error") ?? go2jsNamedFormatMethod(receiver, "String");
+
+				if (named !== null) {
+					return go2jsPad(go2jsStrconvQuote(go2jsBytesToString(named)), parsed, false);
+				}
+			}
+
+			return go2jsPad(go2jsStrconvQuote(go2jsBytesToString(value)), parsed, false);
+		}
 		case "t":
 			return go2jsPad(value ? "true" : "false", parsed, false);
 		case "c":
@@ -3675,7 +4101,12 @@ function go2jsParseFormatSpec(spec) {
 	};
 }
 
-function go2jsPad(text, parsed, numeric) {
+// go2jsPad widens a rendered value to the width the verb asked for. A zero flag
+// fills with zeros in front of the digits but behind any sign, so a negative
+// value reads -0042 rather than 00-42. An integer that was given a precision
+// takes spaces instead, because a precision and a zero flag together leave the
+// flag with nothing to say: %05.3d of 42 is "  042" while %05d is "00042".
+function go2jsPad(text, parsed, integer) {
 	if (parsed.width <= text.length) {
 		return text;
 	}
@@ -3686,26 +4117,331 @@ function go2jsPad(text, parsed, numeric) {
 		return text + " ".repeat(fill);
 	}
 
-	if (numeric && parsed.flags.includes("0")) {
-		return text.padStart(parsed.width, "0");
+	if (parsed.flags.includes("0") && !(integer === true && parsed.precision !== null)) {
+		const sign = text.startsWith("-") || text.startsWith("+") ? text[0] : "";
+
+		return sign + text.slice(sign.length).padStart(text.length - sign.length + fill, "0");
 	}
 
 	return " ".repeat(fill) + text;
 }
 
-// go2jsPadNumber keeps any sign or base prefix in front of the zero padding.
-function go2jsPadNumber(text, prefix, body, parsed) {
-	if (parsed.width <= text.length) {
+// go2jsFormatComplex writes a complex value the way fmt does: both parts take
+// the verb, the imaginary part is written with an explicit sign in front of its
+// magnitude, and the pair is wrapped in parentheses with an i.
+function go2jsFormatComplex(verb, parsed, value, accepted, flags, precision) {
+	const typeName = go2jsIsComplexTypeName(accepted) ? accepted : "complex128";
+	const { re, im } = go2jsComplexValue(value);
+
+	if (!go2jsVerbAccepts(verb, typeName)) {
+		// A refused verb reports the operand the way %v would write it.
+		return "%!" + verb + "(" + typeName + "=" + go2jsFormatComplexText("v", parsed, re, im, "", null) + ")";
+	}
+
+	return go2jsPad(go2jsFormatComplexText(verb, parsed, re, im, flags, precision), parsed, false);
+}
+
+// go2jsFormatComplexText writes the (re+imi) body. The imaginary part is written
+// as a magnitude with its sign kept out of the part itself, because the sign
+// joins the two parts rather than belonging to the imaginary one. A width, a
+// sign and a sharp flag belong to the whole value, so neither part carries them.
+function go2jsFormatComplexText(verb, parsed, re, im, flags, precision) {
+	// %v and %g write each part in its shortest form and ignore a precision,
+	// which is how a complex reads in Go.
+	const part = verb === "v" || verb === "g" || verb === "G" ? "v" : verb;
+	const spec = part === "v" || precision === null ? "%v" : "%." + precision + part;
+	// Both parts are floats in Go, so they are tagged as one, which is what lets
+	// the float verbs accept them instead of refusing the part.
+	const asFloat = (part) => go2jsTyped(part, "float64");
+	const real = go2jsFormatValue(part, spec, asFloat(re));
+	const negative = im < 0 || Object.is(im, -0);
+	const magnitude = negative ? -im : im;
+	const imaginary = go2jsFormatValue(part, spec, asFloat(magnitude));
+
+	return "(" + real + (negative ? "-" : "+") + imaginary + "i)";
+}
+
+// go2jsIsSliceTypeName reports whether a type name names a slice, and
+// go2jsIsArrayTypeName whether it names an array.
+function go2jsIsSliceTypeName(typeName) {
+	return typeName !== null && typeName !== undefined && typeName.startsWith("[]");
+}
+
+function go2jsIsArrayTypeName(typeName) {
+	return typeName !== null && typeName !== undefined && /^\[\d+\]/.test(typeName);
+}
+
+// go2jsIsComplexOperand reports whether an operand is a complex value, which is
+// a pair of a real and an imaginary part.
+function go2jsIsComplexOperand(value, accepted) {
+	if (go2jsIsComplexTypeName(accepted)) {
+		return true;
+	}
+
+	return value !== null && typeof value === "object" && "re" in value && "im" in value;
+}
+
+// go2jsIsByteCompound reports whether a type name is a slice or an array of
+// bytes, which Go treats as a string for the quoted verbs and the hex verbs.
+function go2jsIsByteCompound(accepted) {
+	return accepted === "[]byte" || accepted === "[]uint8" ||
+		accepted !== null && accepted !== undefined && /^\[\d+\](byte|uint8)$/.test(accepted);
+}
+
+// go2jsCompoundElementType returns the element type of a slice or an array type
+// name, so an element can keep the type the compound declared it with.
+function go2jsCompoundElementType(accepted) {
+	if (go2jsIsSliceTypeName(accepted)) {
+		return accepted.slice(2);
+	}
+
+	const array = accepted !== null && accepted !== undefined ? /^\[(\d+)\](.*)$/.exec(accepted) : null;
+
+	return array === null ? null : array[2];
+}
+
+// go2jsCompoundElements returns the elements of a slice or an array operand, or
+// null when the operand is not one, so a verb can be applied to each of them the
+// way fmt expands a compound operand before formatting.
+function go2jsCompoundElements(value, accepted) {
+	if (Array.isArray(value) || value instanceof Uint8Array) {
+		return Array.from(value);
+	}
+
+	if (go2jsIsSliceTypeName(accepted) || go2jsIsArrayTypeName(accepted)) {
+		return value === null || value === undefined ? null : [];
+	}
+
+	return null;
+}
+
+// go2jsFloatBits splits a double into the parts the hex and binary verbs need.
+// The words are read big endian so the sign, the exponent and the top of the
+// mantissa all sit in the first word, which keeps the bit layout obvious.
+function go2jsFloatBits(num) {
+	const buffer = new DataView(new ArrayBuffer(8));
+
+	buffer.setFloat64(0, num, false);
+
+	const high = buffer.getUint32(0, false);
+	const low = buffer.getUint32(4, false);
+
+	return {
+		negative: (high & 0x80000000) !== 0,
+		rawExponent: (high >>> 20) & 0x7ff,
+		mantissa: (BigInt(high & 0xfffff) << 32n) | BigInt(low),
+	};
+}
+
+// go2jsSpecialFloatText writes the text Go uses for a value that is not finite.
+// An infinity keeps its sign, a NaN does not.
+function go2jsSpecialFloatText(num) {
+	return Number.isNaN(num) ? "NaN" : num === Infinity ? "+Inf" : num === -Infinity ? "-Inf" : "";
+}
+
+// go2jsFormatFixed writes a number in positional notation with a fixed number of
+// fraction digits. Above 1e21 toFixed falls back to an exponent, so the value is
+// written out from the shortest form that reads back as the same float, which is
+// what Go prints before it pads the fraction.
+function go2jsFormatFixed(abs, precision) {
+	if (abs < 1e21) {
+		return abs.toFixed(precision);
+	}
+
+	const { rawExponent, mantissa } = go2jsFloatBits(abs);
+	const significand = rawExponent === 0 ? mantissa : mantissa | (1n << 52n);
+	const scale = (rawExponent === 0 ? 1 : rawExponent) - 1023 - 52;
+	const shift = scale < 0 ? BigInt(-scale) : 0n;
+	const units = 10n ** BigInt(precision);
+
+	// The value is the significand scaled by a power of two, so a value with a
+	// negative scale has digits left over after the point.
+	let whole = shift === 0n ? significand << BigInt(scale) : significand >> shift;
+	let below = shift === 0n ? 0n : (significand & ((1n << shift) - 1n)) * units;
+	const guard = shift === 0n ? 0n : 1n << shift;
+	let rounded = below >> shift;
+
+	// The digits that do not fit are rounded off, half away from zero, and a
+	// round that carries past the point moves the whole number up.
+	if (shift > 0n && below - (rounded << shift) >= guard / 2n) {
+		rounded += 1n;
+	}
+
+	if (rounded >= units) {
+		rounded -= units;
+		whole += 1n;
+	}
+
+	return precision === 0
+		? whole.toString()
+		: whole.toString() + "." + rounded.toString().padStart(precision, "0");
+}
+
+// magnitude returns the value without its sign, which is what a fraction and an
+// exponent are written against.
+function magnitude(num) {
+	return num < 0 || Object.is(num, -0) ? -num : num;
+}
+
+// go2jsHexFraction writes the bits below a value's leading 1 as the hex digits
+// they occupy, with the trailing zeros that carry no value left off.
+function go2jsHexFraction(below, top) {
+	if (below === 0n) {
+		return "";
+	}
+
+	const digits = Math.ceil(top / 4);
+	let text = (below << BigInt(4 * digits - top)).toString(16);
+
+	while (text.length > 0 && text.endsWith("0")) {
+		text = text.slice(0, -1);
+	}
+
+	return text;
+}
+
+// go2jsFormatHexFloat writes a float the way C99 and Go write it for %x and %X:
+// a leading 1, a dot, the fraction digits and the exponent in binary with a p
+// marker. Without a precision the fraction is the value's own bits, so it is
+// exact; with one it is that many digits, rounded.
+function go2jsFormatHexFloat(num, precision, upper) {
+	const special = go2jsSpecialFloatText(num);
+
+	if (special !== "") {
+		return special;
+	}
+
+	const sign = num < 0 || Object.is(num, -0) ? "-" : "";
+	const value = magnitude(num);
+	const { rawExponent, mantissa } = go2jsFloatBits(value);
+
+	// A double is its 52 bit significand times a power of two. A normal value
+	// keeps the hidden leading bit, a subnormal does not and so starts one binade
+	// lower, and a zero has no significand at all.
+	const scale = (rawExponent === 0 ? 1 : rawExponent) - 1023 - 52;
+
+	// A normal value keeps a hidden leading bit, so a zero mantissa is not a zero
+	// value: 1.0 has a mantissa of nothing and reads 0x1p+00.
+	if (magnitude(num) === 0) {
+		const body = sign + "0x0" + (precision === null || precision === 0 ? "" : "." + "0".repeat(precision)) + "p+00";
+
+		return upper ? body.toUpperCase() : body;
+	}
+
+	// A normal value carries a hidden leading bit, so the significand is the
+	// mantissa with that bit added back, and the leading 1 of the literal is the
+	// highest bit it holds. Everything below that bit is the fraction.
+	const significand = rawExponent === 0 ? mantissa : mantissa | (1n << 52n);
+	const top = significand.toString(2).length - 1;
+	let exponent = scale + top;
+	let text;
+
+	if (precision === null) {
+		text = go2jsHexFraction(significand - (1n << BigInt(top)), top);
+	} else {
+		const units = Math.pow(2, precision * 4);
+		const rounded = Math.round((value / Math.pow(2, exponent) - 1) * units);
+
+		// A round that carries past the leading 1 moves the point instead.
+		if (rounded >= units) {
+			exponent += 1;
+			text = "0".repeat(precision);
+		} else {
+			text = rounded === 0 ? "0".repeat(precision) : BigInt(rounded).toString(16).padStart(precision, "0");
+		}
+	}
+
+	const body = sign + "0x1" + (text === "" ? "" : "." + text) + "p" + (exponent < 0 ? "-" : "+") +
+		(Math.abs(exponent) < 10 ? "0" : "") + Math.abs(exponent);
+
+	return upper ? body.toUpperCase() : body;
+}
+
+// go2jsFloat32Bits splits a float32 into its exponent and mantissa, which are
+// narrower than a double's and so report different significands.
+function go2jsFloat32Bits(value) {
+	const buffer = new DataView(new ArrayBuffer(4));
+
+	buffer.setFloat32(0, Math.fround(value), false);
+
+	const word = buffer.getUint32(0, false);
+
+	return {
+		rawExponent: (word >>> 23) & 0xff,
+		mantissa: BigInt(word & 0x7fffff),
+	};
+}
+
+// go2jsFormatFloatBits writes the IEEE754 expansion of a float: its significand
+// as a decimal count of the units the exponent names.
+function go2jsFormatFloatBits(num, typeName) {
+	const special = go2jsSpecialFloatText(num);
+
+	if (special !== "") {
+		return special;
+	}
+
+	// A float32 is written from its own 24 bit significand and exponent rather
+	// than from the 52 bit ones a double would report.
+	const single = typeName === "float32";
+	const parts = single ? go2jsFloat32Bits(magnitude(num)) : go2jsFloatBits(magnitude(num));
+	const { rawExponent, mantissa } = parts;
+	const width = single ? 23 : 52;
+	const bias = single ? 127 : 1023;
+
+	// The significand is the mantissa with the hidden leading bit a normal value
+	// keeps, and the exponent is the power of two the value is scaled by, which is
+	// the stored exponent minus the bias and the width of the mantissa. A
+	// subnormal and a zero start one binade lower because they have no hidden bit.
+	const hidden = 1n << BigInt(width);
+	const significand = rawExponent === 0 ? mantissa : mantissa | hidden;
+	const scale = (rawExponent === 0 ? 1 : rawExponent) - bias - width;
+	const sign = num < 0 || Object.is(num, -0) ? "-" : "";
+
+	return sign + significand.toString(10) + "p" + (scale < 0 ? "-" : "+") + Math.abs(scale).toString(10);
+}
+
+// go2jsDigitsOf counts the digits of a rendered integer, ignoring the sign and
+// any base prefix.
+function go2jsDigitsOf(text) {
+	const digits = text.replace(/^[-+ ]/, "").replace(/^0[xXobB]/, "");
+
+	return digits.length;
+}
+
+// go2jsZeroPadDigits pads an already rendered integer with leading zeros until
+// it has at least the wanted number of digits.
+function go2jsZeroPadDigits(text, wanted) {
+	const sign = text.startsWith("-") ? "-" : "";
+	const body = sign === "" ? text : text.slice(1);
+	const prefixMatch = body.match(/^0[xXobB]/);
+	const prefix = prefixMatch === null ? "" : prefixMatch[0];
+	const digits = prefix === "" ? body : body.slice(prefix.length);
+
+	return sign + prefix + digits.padStart(wanted, "0");
+}
+
+// go2jsPadNumber pads a rendered number out to its width. A zero flag fills with
+// zeros in front of the digits but behind any sign or base prefix, which is how
+// Go writes -003.142 and 0x00ff. An integer that was given a precision takes
+// spaces instead, because a precision and a zero flag together leave the flag
+// with nothing to say: %05.3d of 42 is "  042" while %05d is "00042".
+function go2jsPadNumber(text, prefix, body, parsed, integer) {
+	// A base prefix sits outside the width, so %08x with a sharp flag writes
+	// 0x000000ff, which is the eight digits with the prefix in front of them.
+	const digits = /^[0][xXoObB]/.test(prefix) ? body.length : text.length;
+
+	if (parsed.width <= digits) {
 		return text;
 	}
 
-	const fill = parsed.width - text.length;
+	const fill = parsed.width - digits;
 
 	if (parsed.flags.includes("-")) {
 		return text + " ".repeat(fill);
 	}
 
-	if (parsed.flags.includes("0")) {
+	if (parsed.flags.includes("0") && !(integer === true && parsed.precision !== null)) {
 		return prefix + body.padStart(body.length + fill, "0");
 	}
 
@@ -3773,7 +4509,7 @@ function go2jsFormatE(value, precision, parsed) {
 	const expSign = exp < 0 ? "-" : "+";
 	const expDigits = String(Math.abs(exp)).padStart(2, "0");
 	const body = mantissa + "e" + expSign + expDigits;
-	const prefix = value < 0 ? "-" : parsed.flags.includes("+") ? "+" : parsed.flags.includes(" ") ? " " : "";
+	const prefix = value < 0 || Object.is(value, -0) ? "-" : parsed.flags.includes("+") ? "+" : parsed.flags.includes(" ") ? " " : "";
 
 	return go2jsPadNumber(prefix + body, prefix, body, parsed);
 }
@@ -4327,6 +5063,96 @@ function go2jsStrconvAppendEscapedRune(out, code, quote, asciiOnly) {
 	for (let shift = (width - 1) * 4; shift >= 0; shift -= 4) {
 		out.push(go2jsStrconvHexDigit((code >> shift) & 0xf));
 	}
+}
+
+// go2jsUtf8Rune decodes the UTF8 sequence of a given width that starts at a
+// byte, or returns 0 when the sequence is one a rune cannot stand for: an
+// overlong encoding, a surrogate or a value past the last rune.
+function go2jsUtf8Rune(bytes, at, width) {
+	const head = bytes[at];
+	const tail = (index) => bytes[at + index] & 0x3f;
+	let rune;
+
+	if (width === 1) {
+		return head;
+	}
+
+	if (width === 2) {
+		rune = ((head & 0x1f) << 6) | tail(1);
+	} else if (width === 3) {
+		rune = ((head & 0x0f) << 12) | (tail(1) << 6) | tail(2);
+	} else {
+		rune = ((head & 0x07) << 18) | (tail(1) << 12) | (tail(2) << 6) | tail(3);
+	}
+
+	const shortest = width === 2 ? 0x80 : width === 3 ? 0x800 : 0x10000;
+
+	return rune < shortest || rune > 0x10ffff || rune >= 0xd800 && rune <= 0xdfff ? 0 : rune;
+}
+
+// go2jsQuoteBytes writes a byte slice the way %q writes a string: each rune is
+// escaped on its own, and a byte that does not begin a valid UTF8 sequence is
+// written as \xNN because it stands for no rune at all.
+function go2jsQuoteBytes(value) {
+	const bytes = Array.from(value, (item) => Number(item) & 255);
+	const out = ['"'];
+
+	for (let i = 0; i < bytes.length;) {
+		const width = go2jsUtf8Width(bytes, i);
+		let rune;
+
+		if (width === 0) {
+			out.push("\\x" + bytes[i].toString(16).padStart(2, "0"));
+			i += 1;
+			continue;
+		}
+
+		rune = go2jsUtf8Rune(bytes, i, width);
+
+		// A sequence that decodes to a value a rune cannot hold stands for no
+		// rune, so each of its bytes is written on its own.
+		if (rune === 0) {
+			for (let j = 0; j < width; j++) {
+				out.push("\\x" + bytes[i + j].toString(16).padStart(2, "0"));
+			}
+
+			i += width;
+			continue;
+		}
+
+		go2jsStrconvAppendEscapedRune(out, rune, '"', false);
+		i += width;
+	}
+
+	out.push('"');
+
+	return out.join("");
+}
+
+// go2jsUtf8Width returns the length of the UTF8 sequence that starts at a byte,
+// or 0 when the byte does not begin one.
+function go2jsUtf8Width(bytes, at) {
+	const first = bytes[at];
+
+	if (first < 0x80) {
+		return 1;
+	}
+
+	const width = first >= 0xf0 ? 4 : first >= 0xe0 ? 3 : first >= 0xc0 ? 2 : 0;
+
+	if (width === 0 || at + width > bytes.length) {
+		return 0;
+	}
+
+	for (let i = 1; i < width; i++) {
+		if ((bytes[at + i] & 0xc0) !== 0x80) {
+			return 0;
+		}
+	}
+
+	// A sequence that is well formed but names a rune Go cannot encode is still
+	// a sequence, and the escaper decides what to write for it.
+	return width;
 }
 
 function go2jsStrconvQuoteWith(value, asciiOnly) {
