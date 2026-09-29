@@ -40,6 +40,24 @@ func (e *emitter) emitSortCall(call *ast.CallExpr, selector *ast.SelectorExpr) (
 		e.write(")")
 		return true, nil
 
+	case "IsSorted":
+		if len(call.Args) != 1 {
+			return false, nil
+		}
+
+		e.needsRuntime = true
+		e.write("go2jsSortIsSortedInterface(")
+
+		if err := e.emitSortData(call.Args[0]); err != nil {
+			return true, err
+		}
+
+		e.write(", ")
+		e.write(strconv.Quote(e.sortInterfaceTypeName(call.Args[0])))
+		e.write(")")
+
+		return true, nil
+
 	case "Sort", "Stable":
 		if len(call.Args) != 1 {
 			return false, nil

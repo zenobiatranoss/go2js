@@ -1348,8 +1348,14 @@ function go2jsEOFError() {
 }
 
 function go2jsBytesEqual(a, b) {
-    if (a === null || a === undefined || b === null || b === undefined) {
-        return a === b;
+    // A nil byte slice is an empty one, so equality is decided by the bytes and
+    // not by which of the two spellings of nothing was used.
+    if (a === null || a === undefined) {
+        a = [];
+    }
+
+    if (b === null || b === undefined) {
+        b = [];
     }
 
     if (ArrayBuffer.isView(a)) {
@@ -2707,6 +2713,10 @@ function go2jsMapSet(map, key, value) {
 		go2jsPanic("assignment to entry in nil map");
 	}
 
+	if (map.__go2js_nil === true) {
+		go2jsPanic("assignment to entry in nil map");
+	}
+
 	if (!(map instanceof go2jsNativeMap)) {
 		throw new TypeError("go2jsMapSet expects a Map");
 	}
@@ -3082,6 +3092,13 @@ function go2jsFormat(value, typeName, kind, shape, plus, nested) {
 	}
 
 	value = go2jsUntyped(value);
+
+	// A nil slice or a nil map is given an empty value of its own so its type
+	// can travel, but it is still nil, and nil is what the verbs are written
+	// against.
+	if (value !== null && typeof value === "object" && value.__go2js_nil === true) {
+		value = null;
+	}
 
 	if (value === null || value === undefined) {
 		return go2jsNilFormat(typeName, kind, shape);
@@ -3652,8 +3669,68 @@ function go2jsStripWrappers(value) {
 	return current;
 }
 
+// go2jsNilValue gives a nil slice or a nil map a value of its own. An
+// interface carries the type of what it holds, so a nil that has travelled
+// through one still has to print as [] or map[] rather than <nil>. A plain
+// array or Map keeps every slice and map operation working: both are empty,
+// and writing through them throws first.
+function go2jsNilValue(typeName, shape) {
+	const value = shape === "map" ? new go2jsNativeMap() : [];
+
+	value.__go2js_nil = true;
+	value.__go2js_typed = true;
+	value.type = typeName;
+	value.shape = shape;
+	// The value is its own wrapper, so anything that follows a wrapper through
+	// to its value lands back on the slice or map rather than on nothing.
+	value.value = value;
+
+	return value;
+}
+
+// go2jsNilInterface gives the type to a nil slice or a nil map on its way into
+// an interface. Anything that is not nil is handed straight back.
+function go2jsNilInterface(value, typeName, shape) {
+	if (value === null || value === undefined) {
+		return go2jsNilValue(typeName, shape);
+	}
+
+	// A nil that already has a value of its own is named here, because this is
+	// the point that knows what the program called it.
+	if (typeof value === "object" && value.__go2js_nil === true && (typeof value.type !== "string" || value.type === "")) {
+		value.type = typeName;
+	}
+
+	return value;
+}
+
+function go2jsIsNil(value) {
+	if (value === null || value === undefined) {
+		return true;
+	}
+
+	return value.__go2js_nil === true;
+}
+
 function go2jsTyped(value, type, kind, shape) {
+	// A nil slice or a nil map is nil, and the empty value it carries says only
+	// what it is, so the name asked for here is the one that gets written down.
+	if (value !== null && typeof value === "object" && value.__go2js_nil === true) {
+		const named = typeof value.type === "string" && value.type !== "" ? value.type : type;
+		const shaped = typeof shape === "string" && shape !== "" ? shape : value.shape;
+
+		return {__go2js_typed: true, value: null, type: named, shape: shaped};
+	}
+
 	if (value !== null && typeof value === "object" && (value.__go2js_typed === true || value.__go2js_interface === true)) {
+		// An interface carries no name of its own, so a type that arrived with
+		// the value says more than the name of the interface it sits in.
+		if (type === "" || type === "any" || type === "interface{}") {
+			if (typeof value.type === "string" && value.type !== "") {
+				return value;
+			}
+		}
+
 		value = go2jsStripWrappers(value);
 	}
 
@@ -4246,6 +4323,21 @@ function go2jsFormatValue(verb, spec, value) {
 			return go2jsPad(text, parsed, isInteger);
 		}
 		case "q": {
+			// A nil slice or a nil map still prints as its empty literal under
+			// the quoted verbs, but a nil byte slice is quoted like the empty
+			// string it is, and a nil pointer keeps its <nil>.
+			if (value === null || value === undefined) {
+				if (go2jsIsByteCompound(accepted)) {
+					return go2jsPad(go2jsStrconvQuote(""), parsed, false);
+				}
+
+				const nilText = go2jsNilFormat(accepted, kind, shape);
+
+				if (nilText !== "<nil>") {
+					return go2jsPad(nilText, parsed, false);
+				}
+			}
+
 			// A compound operand is formatted element by element, the way fmt
 			// applies the verb to each field rather than to the whole value.
 			const inner = "%" + flags + (precision === null ? "" : "." + precision) + "q";
@@ -5664,6 +5756,23 @@ function go2jsSortInterface(data, typeName) {
 		data.length = 0;
 		data.push(...items);
 	}
+}
+
+function go2jsSortIsSortedInterface(data, typeName) {
+	const less = go2jsSortMethod(data, typeName, "Less");
+	const items = go2jsToArray(data);
+
+	for (let index = 1; index < items.length; index++) {
+		const outOfOrder = typeof less === "function"
+			? less(index, index - 1)
+			: items[index] < items[index - 1];
+
+		if (outOfOrder) {
+			return false;
+		}
+	}
+
+	return true;
 }
 
 function go2jsSortSearch(values, target, less) {

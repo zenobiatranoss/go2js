@@ -728,3 +728,28 @@ func (e *emitter) emitNamedAggregateFuncDecl(fn *ast.FuncDecl) (bool, error) {
 func namedAggregateMethodName(typeName, method string) string {
 	return "go2jsMethod" + typeJavaScriptName(typeName) + method
 }
+
+// isNilConversionTarget reports whether a type can hold nothing, which is what
+// a conversion from nil is asking for.
+func isNilConversionTarget(t gotypesstd.Type) bool {
+	if t == nil {
+		return false
+	}
+
+	switch t.Underlying().(type) {
+	case *gotypesstd.Slice, *gotypesstd.Map, *gotypesstd.Pointer, *gotypesstd.Chan, *gotypesstd.Signature:
+		return true
+	}
+
+	return false
+}
+
+// isNilLiteral reports whether an expression is the untyped nil.
+func isNilLiteral(expr ast.Expr) bool {
+	ident, ok := expr.(*ast.Ident)
+	if !ok {
+		return false
+	}
+
+	return ident.Name == "nil" && ident.Obj == nil
+}

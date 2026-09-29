@@ -1179,12 +1179,15 @@ function go2jsStringToRunes(value) {
 	return Array.from(go2jsRawText(value)).map(char => char.codePointAt(0));
 }
 
+// A slice converted from nothing is nil, and nil answers to the question, so
+// the empty value it is given says that much while it still behaves as the
+// slice it is.
 function go2jsNilBytes() {
-	return new Uint8Array(0);
+	return go2jsNilValue("", "slice");
 }
 
 function go2jsNilSlice() {
-	return [];
+	return go2jsNilValue("", "slice");
 }
 
 function go2jsStringToUTF16(value) {
