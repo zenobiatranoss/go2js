@@ -619,6 +619,11 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 		e.write(";")
 		e.newline()
 
+	case *ast.EmptyStmt:
+		e.writeIndent()
+		e.write(";")
+		e.newline()
+
 	case *ast.ExprStmt:
 		e.writeIndent()
 
