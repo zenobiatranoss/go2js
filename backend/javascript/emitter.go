@@ -1074,11 +1074,59 @@ func (e *emitter) emitIfBody(stmt *ast.IfStmt) error {
 
 func (e *emitter) emitInlineMultiReturn(stmt *ast.AssignStmt) error {
 	if stmt.Tok == token.DEFINE {
-		e.write(e.emitDeclarationKeyword())
+		// A short declaration only declares names that are not already in
+		// scope, so existing names must be assigned rather than redeclared.
+		fresh := make([]bool, len(stmt.Lhs))
+		allFresh := true
 
-		for _, lhs := range stmt.Lhs {
-			if ident, ok := lhs.(*ast.Ident); ok && ident.Name != blankIdentifier {
+		for i, lhs := range stmt.Lhs {
+			ident, ok := lhs.(*ast.Ident)
+
+			if !ok || ident.Name == blankIdentifier {
+				continue
+			}
+
+			if e.isDeclaredHere(ident.Name) {
+				allFresh = false
+
+				continue
+			}
+
+			fresh[i] = true
+		}
+
+		if allFresh {
+			e.write(e.emitDeclarationKeyword())
+
+			for _, lhs := range stmt.Lhs {
+				if ident, ok := lhs.(*ast.Ident); ok && ident.Name != blankIdentifier {
+					e.declare(ident.Name)
+				}
+			}
+		} else {
+			declared := 0
+
+			for i, lhs := range stmt.Lhs {
+				if !fresh[i] {
+					continue
+				}
+
+				ident := lhs.(*ast.Ident)
+
+				if declared > 0 {
+					e.write(", ")
+				}
+
+				e.write(ident.Name)
 				e.declare(ident.Name)
+
+				declared++
+			}
+
+			if declared > 0 {
+				e.write(";")
+				e.newline()
+				e.writeIndent()
 			}
 		}
 	}
