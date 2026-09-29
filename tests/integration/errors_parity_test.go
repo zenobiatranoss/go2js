@@ -107,6 +107,44 @@ func (c *customTarget) Error() string {
 `)
 }
 
+func TestAsThroughAddressOfInterfaceTarget(t *testing.T) {
+	// The address of an interface variable carries the name of the interface,
+	// which is the type errors.As judges the target by even while the variable
+	// is still empty.
+	runParityTest(t, `package main
+
+import (
+	"errors"
+	"fmt"
+)
+
+type wrapped struct{ inner error }
+
+func (w *wrapped) Error() string { return "wrapped: " + w.inner.Error() }
+func (w *wrapped) Unwrap() error { return w.inner }
+
+func asWrapper(err error, target any) bool { return errors.As(err, target) }
+
+func main() {
+	inner := &wrapped{inner: errors.New("inner")}
+
+	var ifaceTarget error
+	fmt.Println(asWrapper(inner, &ifaceTarget), ifaceTarget != nil)
+	fmt.Println(asWrapper(inner, &ifaceTarget), ifaceTarget.Error())
+
+	var missing *customTarget
+	fmt.Println(asWrapper(inner, &missing), missing == nil)
+
+	var empty error
+	fmt.Println(asWrapper(inner, &empty))
+}
+
+type customTarget struct{}
+
+func (c *customTarget) Error() string { return "custom target" }
+`)
+}
+
 func TestReservedWordNamedResults(t *testing.T) {
 	runParityTest(t, `package main
 
