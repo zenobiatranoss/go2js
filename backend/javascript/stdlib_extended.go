@@ -2647,6 +2647,27 @@ function go2jsTimeTick(d) {
 	return go2jsTimeNow();
 }
 
+// go2jsRegexpClassCategories lists the one and two letter general category
+// codes RE2 accepts. Everything else after \p{ is a script name, which
+// JavaScript spells Script=Name.
+const go2jsRegexpClassCategories = new Set([
+	"L", "Lu", "Ll", "Lt", "Lm", "Lo",
+	"M", "Mn", "Mc", "Me",
+	"N", "Nd", "Nl", "No",
+	"P", "Pc", "Pd", "Ps", "Pe", "Pi", "Pf", "Po",
+	"S", "Sm", "Sc", "Sk", "So",
+	"Z", "Zl", "Zp", "Zs",
+	"C", "Cc", "Cf", "Co", "Cs", "Cn"
+]);
+
+function go2jsRegexpClassName(all, name) {
+	if (go2jsRegexpClassCategories.has(name)) {
+		return "\\p{General_Category=" + name + "}";
+	}
+
+	return "\\p{Script=" + name + "}";
+}
+
 // go2jsRegexpPattern rewrites RE2 constructs that JavaScript does not accept.
 function go2jsRegexpPattern(pattern) {
 	let source = go2jsStringify(pattern);
@@ -2668,6 +2689,7 @@ function go2jsRegexpPattern(pattern) {
 	// (?P<name>re) is RE2 syntax for the named group (?<name>re).
 	source = source.replace(/\(\?P</g, "(?<");
 	source = source.replace(/\\A/g, "^").replace(/\\z/g, "$").replace(/\\Z/g, "$");
+	source = source.replace(/\\p\{([^}=]+)\}/g, go2jsRegexpClassName);
 
 	return {source: source, flags: flags};
 }
@@ -2679,7 +2701,7 @@ function go2jsRegexpNewRegExp(pattern, flags) {
 		flags = "";
 	}
 
-	let merged = parsed.flags;
+	let merged = "u" + parsed.flags;
 
 	for (const flag of flags) {
 		if (!merged.includes(flag)) {
@@ -2731,6 +2753,150 @@ function go2jsRegexpFindAllString(pattern, value, limit) {
 	return out;
 }
 
+// go2jsStringIndexMap relates Go byte offsets to JavaScript UTF-16 positions.
+function go2jsStringIndexMap(text) {
+	let ascii = true;
+
+	for (let i = 0; i < text.length; i++) {
+		if (text.charCodeAt(i) > 0x7f) {
+			ascii = false;
+			break;
+		}
+	}
+
+	if (ascii) {
+		return { byteLength: text.length, index: (offset) => offset };
+	}
+
+	const starts = new Map();
+	let byte = 0;
+	let i = 0;
+
+	while (i < text.length) {
+		const codePoint = text.codePointAt(i);
+
+		starts.set(byte, i);
+		byte += go2jsUtf8Length(codePoint);
+		i += codePoint > 0xffff ? 2 : 1;
+	}
+
+	starts.set(byte, text.length);
+
+	return {
+		byteLength: byte,
+		// A JavaScript string cannot hold half a UTF-8 sequence, so an offset
+		// inside a rune rounds down to the start of that rune.
+		index(offset) {
+			let candidate = offset;
+
+			while (candidate > 0 && !starts.has(candidate)) {
+				candidate--;
+			}
+
+			return starts.get(candidate);
+		}
+	};
+}
+
+// go2jsStringSlice slices on Go byte offsets. Working on the decoded bytes
+// keeps the result aligned with Go even when a bound lands inside a rune.
+function go2jsStringSlice(value, low, high) {
+	const bytes = go2jsStringToBytes(go2jsBytesToString(value));
+	const start = low === undefined ? 0 : Math.trunc(low);
+	const end = high === undefined ? bytes.length : Math.trunc(high);
+
+	if (start < 0 || end < start || end > bytes.length) {
+		throw new RangeError("slice bounds out of range");
+	}
+
+	return go2jsBytesToString(bytes.slice(start, end));
+}
+
+// go2jsStringIndexByte returns the byte at a Go string offset. Indexing a string
+// in Go yields a byte, not a rune, so an offset inside a multi byte character
+// returns that character's intermediate byte.
+function go2jsStringIndexByte(value, offset) {
+	const bytes = go2jsStringToBytes(go2jsBytesToString(value));
+	const position = Math.trunc(offset);
+
+	if (position < 0 || position >= bytes.length) {
+		throw new RangeError("index out of range [" + position + "] with length " + bytes.length);
+	}
+
+	return bytes[position];
+}
+
+function go2jsUtf8Length(codePoint) {
+	if (codePoint < 0x80) {
+		return 1;
+	}
+
+	if (codePoint < 0x800) {
+		return 2;
+	}
+
+	if (codePoint < 0x10000) {
+		return 3;
+	}
+
+	return 4;
+}
+
+// go2jsByteOffsetMap converts a JavaScript UTF-16 index into the UTF-8 byte
+// offset Go reports. JavaScript strings are UTF-16, so any match that touches a
+// non ASCII rune is offset by a different amount than Go would report.
+function go2jsByteOffsetMap(text) {
+	let ascii = true;
+
+	for (let i = 0; i < text.length; i++) {
+		if (text.charCodeAt(i) > 0x7f) {
+			ascii = false;
+			break;
+		}
+	}
+
+	// Plain ASCII text needs no translation at all.
+	if (ascii) {
+		return (index) => index;
+	}
+
+	const offsets = new Int32Array(text.length + 1);
+	let byte = 0;
+	let i = 0;
+
+	while (i < text.length) {
+		const codePoint = text.codePointAt(i);
+		const width = codePoint > 0xffff ? 2 : 1;
+
+		offsets[i] = byte;
+		byte += go2jsUtf8Length(codePoint);
+
+		if (width === 2) {
+			// A match can never start or end between the two halves of a
+			// surrogate pair, but the slot still has to hold a value.
+			offsets[i + 1] = byte;
+		}
+
+		i += width;
+	}
+
+	offsets[text.length] = byte;
+
+	return (index) => (index >= 0 && index < offsets.length ? offsets[index] : -1);
+}
+
+function go2jsRegexpIndex(match, offset) {
+	if (match === null || match === undefined) {
+		return null;
+	}
+
+	if (offset === undefined) {
+		offset = (index) => index;
+	}
+
+	return [offset(match.index), offset(match.index + match[0].length)];
+}
+
 function go2jsRegexpSubmatch(match) {
 	// A match without capture groups still reports the whole match.
 	if (match === null || match === undefined) {
@@ -2746,13 +2912,17 @@ function go2jsRegexpSubmatch(match) {
 	return out;
 }
 
-function go2jsRegexpSubmatchIndex(match) {
+function go2jsRegexpSubmatchIndex(match, offset) {
 	// Requires a regexp built with the "d" flag so capture offsets are available.
 	if (match === null || match === undefined) {
 		return null;
 	}
 
-	const out = [match.index, match.index + match[0].length];
+	if (offset === undefined) {
+		offset = (index) => index;
+	}
+
+	const out = [offset(match.index), offset(match.index + match[0].length)];
 	const indices = match.indices || [];
 
 	for (let i = 1; i < match.length; i++) {
@@ -2761,7 +2931,7 @@ function go2jsRegexpSubmatchIndex(match) {
 			continue;
 		}
 
-		out.push(indices[i][0], indices[i][1]);
+		out.push(offset(indices[i][0]), offset(indices[i][1]));
 	}
 
 	return out;
@@ -2777,8 +2947,10 @@ function go2jsRegexpByteSubmatch(match) {
 	return groups.map((group) => go2jsStringToBytes(group));
 }
 
-function go2jsRegexpByteSubmatchIndex(match) {
-	return go2jsRegexpSubmatchIndex(match);
+function go2jsRegexpByteSubmatchIndex(match, offset) {
+	// Byte and string variants share the offsets, because the subject was
+	// decoded from the same bytes the caller passed in.
+	return go2jsRegexpSubmatchIndex(match, offset);
 }
 
 function go2jsRegexpFindAllSubmatch(pattern, value, limit) {
@@ -2805,6 +2977,7 @@ function go2jsRegexpFindAllSubmatch(pattern, value, limit) {
 
 function go2jsRegexpFindAllSubmatchIndex(pattern, value, limit) {
 	const source = go2jsBytesToString(value);
+	const offset = go2jsByteOffsetMap(source);
 	const regex = go2jsRegexpNewRegExp(pattern, "gd");
 	const out = [];
 
@@ -2815,7 +2988,31 @@ function go2jsRegexpFindAllSubmatchIndex(pattern, value, limit) {
 			break;
 		}
 
-		out.push(go2jsRegexpSubmatchIndex(match));
+		out.push(go2jsRegexpSubmatchIndex(match, offset));
+
+		if (limit !== undefined && limit >= 0 && out.length >= limit) {
+			break;
+		}
+	}
+
+	return out;
+}
+
+// go2jsRegexpFindAllIndex backs FindAllStringIndex and its byte counterparts.
+function go2jsRegexpFindAllIndex(pattern, value, limit) {
+	const source = go2jsBytesToString(value);
+	const offset = go2jsByteOffsetMap(source);
+	const regex = go2jsRegexpNewRegExp(pattern, "g");
+	const out = [];
+
+	for (;;) {
+		const match = regex.exec(source);
+
+		if (match === null) {
+			break;
+		}
+
+		out.push(go2jsRegexpIndex(match, offset));
 
 		if (limit !== undefined && limit >= 0 && out.length >= limit) {
 			break;
