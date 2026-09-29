@@ -30,7 +30,7 @@ var osFileConstants = map[string]string{
 var osFileMethods = map[string]string{
 	"os.File.Read":        "go2jsOSFileRead",
 	"os.File.ReadFile":    "go2jsOSFileReadFile",
-	"os.File.Sync":        "go2jsOSFileClose",
+	"os.File.Sync":        "go2jsOSFileSync",
 	"os.File.Write":       "go2jsOSFileWrite",
 	"os.File.WriteString": "go2jsOSFileWriteString",
 	"os.File.Name":        "go2jsOSFileName",
@@ -67,13 +67,16 @@ func init() {
 }
 
 func osFileRuntimeSource() string {
-	return `function go2jsOSError(code, syscall, path, target) {
-	const error = new Error("open " + String(path) + ": " + code);
+	return `function go2jsOSError(message, syscall, path, target) {
+	const text = String(message);
+	const notExist = /no such file or directory|not exist|ENOENT/i.test(text);
+	const error = new Error("open " + String(path) + ": " + text);
+
 	error.__go2js_errno = true;
-	error.code = code;
+	error.code = notExist ? "ENOENT" : text;
 	error.syscall = syscall;
 	error.path = String(path);
-	error.errno = -2;
+	error.errno = notExist ? 2 : 0;
 
 	return error;
 }
@@ -93,12 +96,40 @@ function go2jsOSFileOf(value) {
 function go2jsOSOpenFile(path, flags, perm) {
 	const fs = require("fs");
 	const target = String(path);
+	const access = flags & 3;
+	const append = (flags & 1024) !== 0;
+	const truncate = (flags & 512) !== 0;
+	const create = (flags & 64) !== 0;
+	const exclusive = (flags & 128) !== 0;
+	let mode;
+
+	if (access === 0) {
+		mode = "r";
+	} else if (append) {
+		mode = access === 2 ? "a+" : "a";
+	} else if (truncate) {
+		mode = access === 2 ? "w+" : "w";
+	} else {
+		mode = "r+";
+	}
+
+	if (exclusive && create && access !== 0) {
+		mode += "x";
+	}
 
 	try {
-		const handle = fs.openSync(target, (flags & 3) === 0 ? "r" : ((flags & 3) === 1 ? "w" : "r+"));
+		const handle = fs.openSync(target, mode, perm);
 
-		return go2jsOSWrapFile(handle, target);
+		return [go2jsOSWrapFile(handle, target), null];
 	} catch (err) {
+		if (err.code === "ENOENT" && create && access !== 0) {
+			try {
+				return [go2jsOSWrapFile(fs.openSync(target, access === 2 ? "w+" : "w", perm), target), null];
+			} catch (retry) {
+				return [null, go2jsOSError(String(retry.message), "open", target)];
+			}
+		}
+
 		return [null, go2jsOSError(err.code === "ENOENT" ? "no such file or directory" : String(err.message), "open", target)];
 	}
 }
@@ -112,7 +143,7 @@ function go2jsOSCreate(path) {
 	const target = String(path);
 
 	try {
-		return go2jsOSWrapFile(fs.openSync(target, "w"), target);
+		return [go2jsOSWrapFile(fs.openSync(target, "w"), target), null];
 	} catch (err) {
 		return [null, go2jsOSError(String(err.message), "open", target)];
 	}
@@ -137,19 +168,35 @@ function go2jsOSFileWrite(file, buffer) {
 
 	if (stream !== null) {
 		stream.write(go2jsBytesToString(buffer));
-		return bytes.length;
+		return [bytes.length, null];
 	}
 
 	const target = go2jsOSFileOf(value);
 
 	if (target === null) {
 		process.stdout.write(go2jsBytesToString(buffer));
-		return bytes.length;
+		return [bytes.length, null];
 	}
 
-	require("fs").writeSync(target.fd, bytes);
+	require("fs").writeSync(target.fd, Buffer.from(bytes));
 
-	return bytes.length;
+	return [bytes.length, null];
+}
+
+function go2jsOSFileSync(file) {
+	const target = go2jsOSFileOf(go2jsUnwrap(file));
+
+	if (target === null) {
+		return null;
+	}
+
+	try {
+		require("fs").fsyncSync(target.fd);
+	} catch (err) {
+		return go2jsOSError(String(err.message), "fsync", target.path);
+	}
+
+	return null;
 }
 
 function go2jsOSFileWriteString(file, value) {
@@ -235,10 +282,15 @@ function go2jsOSFileStat(file) {
 
 	try {
 		const stat = require("fs").fstatSync(target === null ? 1 : target.fd);
+		const info = {
+			name: target === null ? "/dev/stdout" : target.path,
+			size: stat.size,
+			isDir: stat.isDirectory()
+		};
 
-		return {name: target === null ? "/dev/stdout" : target.path, size: stat.size, isDir: stat.isDirectory()};
+		return [info, null];
 	} catch (err) {
-		return null;
+		return [null, go2jsOSError(String(err.message), "stat", target === null ? "" : target.path)];
 	}
 }
 
@@ -314,32 +366,51 @@ function go2jsOSTempDir() {
 	return require("os").tmpdir();
 }
 
-function go2jsOSTempPattern(dir, pattern) {
+function go2jsOSTempCandidate(dir, pattern, attempt) {
 	const base = dir === undefined || dir === null || dir === "" ? go2jsOSTempDir() : String(dir);
 	const wanted = pattern === undefined || pattern === "" ? "*" : String(pattern);
+	const suffix = String(Date.now()) + String(process.pid) + String(attempt);
+	const name = wanted.includes("*") ? wanted.replace("*", suffix) : wanted + suffix;
 
-	return base.replace(/\/+$/, "") + "/" + wanted;
+	return base.replace(/\/+$/, "") + "/" + name;
 }
 
 function go2jsOSCreateTemp(dir, pattern) {
 	const fs = require("fs");
-	const target = go2jsOSTempPattern(dir, pattern).replace("*", String(Date.now()) + String(process.pid));
 
-	try {
-		return go2jsOSWrapFile(fs.openSync(target, "wx"), target);
-	} catch (err) {
-		const fallback = go2jsOSTempPattern(dir, pattern).replace("*", String(Math.floor(Math.random() * 1e9)));
+	for (let attempt = 0; attempt < 100; attempt++) {
+		const target = go2jsOSTempCandidate(dir, pattern, attempt);
 
-		return go2jsOSWrapFile(fs.openSync(fallback, "wx"), fallback);
+		try {
+			return [go2jsOSWrapFile(fs.openSync(target, "wx"), target), null];
+		} catch (err) {
+			if (err.code !== "EEXIST") {
+				return [null, go2jsOSError(String(err.message), "open", target)];
+			}
+		}
 	}
+
+	return [null, go2jsOSError("cannot create temporary file", "open", String(dir))];
 }
 
 function go2jsOSMkdirTemp(dir, pattern) {
-	const target = go2jsOSTempPattern(dir, pattern).replace("*", String(Date.now()) + String(process.pid));
+	const fs = require("fs");
 
-	require("fs").mkdirSync(target, {recursive: true});
+	for (let attempt = 0; attempt < 100; attempt++) {
+		const target = go2jsOSTempCandidate(dir, pattern, attempt);
 
-	return target;
+		try {
+			fs.mkdirSync(target);
+
+			return [target, null];
+		} catch (err) {
+			if (err.code !== "EEXIST") {
+				return [null, go2jsOSError(String(err.message), "mkdir", target)];
+			}
+		}
+	}
+
+	return [null, go2jsOSError("cannot create temporary directory", "mkdir", String(dir))];
 }
 `
 }
