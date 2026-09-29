@@ -41,3 +41,19 @@ func TestMultiReturnStdlibFuncs(t *testing.T) {
 		}
 	}
 }
+
+func TestStdlibPkgPathDeterministic(t *testing.T) {
+	for i := 0; i < 50; i++ {
+		if got := stdlibPkgPath("rand"); got != "math/rand" {
+			t.Fatalf("stdlibPkgPath(rand) = %q, want math/rand", got)
+		}
+	}
+
+	if got := stdlibPkgPath("hex"); got != "encoding/hex" {
+		t.Fatalf("stdlibPkgPath(hex) = %q, want encoding/hex", got)
+	}
+
+	if got := stdlibPkgPath("math/rand"); got != "math/rand" {
+		t.Fatalf("stdlibPkgPath(math/rand) = %q, want math/rand", got)
+	}
+}
