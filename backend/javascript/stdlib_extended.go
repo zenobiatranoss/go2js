@@ -2647,15 +2647,71 @@ function go2jsTimeTick(d) {
 	return go2jsTimeNow();
 }
 
+// go2jsRegexpPattern rewrites RE2 constructs that JavaScript does not accept.
+function go2jsRegexpPattern(pattern) {
+	let source = go2jsStringify(pattern);
+	let flags = "";
+
+	// Leading and embedded flag groups such as (?i) become regexp flags.
+	source = source.replace(/\(\?([imsU]+)\)/g, (all, group) => {
+		for (const flag of group) {
+			if (flag === "i" || flag === "m" || flag === "s") {
+				if (!flags.includes(flag)) {
+					flags += flag;
+				}
+			}
+		}
+
+		return "";
+	});
+
+	// (?P<name>re) is RE2 syntax for the named group (?<name>re).
+	source = source.replace(/\(\?P</g, "(?<");
+	source = source.replace(/\\A/g, "^").replace(/\\z/g, "$").replace(/\\Z/g, "$");
+
+	return {source: source, flags: flags};
+}
+
+function go2jsRegexpNewRegExp(pattern, flags) {
+	const parsed = go2jsRegexpPattern(pattern);
+
+	if (flags === undefined || flags === null) {
+		flags = "";
+	}
+
+	let merged = parsed.flags;
+
+	for (const flag of flags) {
+		if (!merged.includes(flag)) {
+			merged += flag;
+		}
+	}
+
+	return new RegExp(parsed.source, merged);
+}
+
+function go2jsRegexpSubmatchNames(pattern) {
+	const names = [""];
+
+	go2jsRegexpPattern(pattern).source.replace(/\(\?<([A-Za-z_][A-Za-z0-9_]*)>/g, (all, name) => {
+		names.push(name);
+		return all;
+	});
+
+	return names;
+}
+
+// go2jsRegexpMatchString mirrors regexp.MatchString, which returns a bool and an
+// error, so the shim uses the [value, error] tuple convention.
 function go2jsRegexpMatchString(pattern, value) {
-	return new RegExp(go2jsStringify(pattern)).test(go2jsStringify(value));
+	return [go2jsRegexpNewRegExp(pattern).test(go2jsStringify(value)), null];
 }
 
 
 
 function go2jsRegexpFindAllString(pattern, value, limit) {
 	const source = go2jsStringify(value);
-	const regex = new RegExp(go2jsStringify(pattern), "g");
+	const regex = go2jsRegexpNewRegExp(pattern, "g");
 	const out = [];
 
 	for (;;) {
@@ -2675,27 +2731,166 @@ function go2jsRegexpFindAllString(pattern, value, limit) {
 	return out;
 }
 
+function go2jsRegexpSubmatch(match) {
+	// A match without capture groups still reports the whole match.
+	if (match === null || match === undefined) {
+		return null;
+	}
+
+	const out = [match[0]];
+
+	for (let i = 1; i < match.length; i++) {
+		out.push(match[i] === undefined ? "" : match[i]);
+	}
+
+	return out;
+}
+
+function go2jsRegexpSubmatchIndex(match) {
+	// Requires a regexp built with the "d" flag so capture offsets are available.
+	if (match === null || match === undefined) {
+		return null;
+	}
+
+	const out = [match.index, match.index + match[0].length];
+	const indices = match.indices || [];
+
+	for (let i = 1; i < match.length; i++) {
+		if (indices[i] === undefined) {
+			out.push(-1, -1);
+			continue;
+		}
+
+		out.push(indices[i][0], indices[i][1]);
+	}
+
+	return out;
+}
+
+function go2jsRegexpByteSubmatch(match) {
+	const groups = go2jsRegexpSubmatch(match);
+
+	if (groups === null) {
+		return null;
+	}
+
+	return groups.map((group) => go2jsStringToBytes(group));
+}
+
+function go2jsRegexpByteSubmatchIndex(match) {
+	return go2jsRegexpSubmatchIndex(match);
+}
+
+function go2jsRegexpFindAllSubmatch(pattern, value, limit) {
+	const source = go2jsBytesToString(value);
+	const regex = go2jsRegexpNewRegExp(pattern, "g");
+	const out = [];
+
+	for (;;) {
+		const match = regex.exec(source);
+
+		if (match === null) {
+			break;
+		}
+
+		out.push(go2jsRegexpSubmatch(match));
+
+		if (limit !== undefined && limit >= 0 && out.length >= limit) {
+			break;
+		}
+	}
+
+	return out;
+}
+
+function go2jsRegexpFindAllSubmatchIndex(pattern, value, limit) {
+	const source = go2jsBytesToString(value);
+	const regex = go2jsRegexpNewRegExp(pattern, "gd");
+	const out = [];
+
+	for (;;) {
+		const match = regex.exec(source);
+
+		if (match === null) {
+			break;
+		}
+
+		out.push(go2jsRegexpSubmatchIndex(match));
+
+		if (limit !== undefined && limit >= 0 && out.length >= limit) {
+			break;
+		}
+	}
+
+	return out;
+}
+
+function go2jsRegexpFindAllByteSubmatch(pattern, value, limit) {
+	return go2jsRegexpFindAllSubmatch(pattern, value, limit).map((groups) =>
+		groups.map((group) => go2jsStringToBytes(group)));
+}
+
 function go2jsRegexpReplaceAllString(pattern, value, replacement) {
 	return go2jsStringify(value).replace(
-		new RegExp(go2jsStringify(pattern), "g"),
-		go2jsRegexpExpand(go2jsStringify(replacement))
+		go2jsRegexpNewRegExp(pattern, "g"),
+		go2jsRegexpExpand(go2jsStringify(replacement), pattern)
 	);
 }
 
-function go2jsRegexpExpand(replacement) {
-	return go2jsStringify(replacement)
+function go2jsRegexpExpand(replacement, pattern) {
+	let text = go2jsStringify(replacement)
 		.replace(/\$(\d+)/g, (match, index) => "$" + (Number(index) === 0 ? "&" : index))
 		.replace(/\$\{(\w+)\}/g, (match, name) => "$" + (name === "0" ? "&" : name));
+
+	// Go spells a named group as $name, while JavaScript needs $<name>.
+	if (typeof pattern === "string" && pattern !== "") {
+		const names = go2jsRegexpSubmatchNames(pattern);
+
+		for (const name of names) {
+			if (name === "" || /^\d+$/.test(name)) {
+				continue;
+			}
+
+			text = text.split("$" + name).join("$<" + name + ">");
+		}
+	}
+
+	return text;
 }
 
 function go2jsRegexpSplit(pattern, value, limit) {
-	const parts = go2jsStringify(value).split(new RegExp(go2jsStringify(pattern)));
+	const text = go2jsBytesToString(value);
 
-	if (limit === undefined || limit < 0) {
-		return parts;
+	if (limit === 0) {
+		return [];
 	}
 
-	return parts.slice(0, limit);
+	// A positive limit keeps the trailing remainder in one piece, so the split
+	// is done by hand instead of with String.prototype.split.
+	const regex = go2jsRegexpNewRegExp(pattern, "gd");
+	const parts = [];
+
+	let last = 0;
+	let match = regex.exec(text);
+
+	while (match !== null) {
+		const start = match.indices[0][0];
+		const end = match.indices[0][1];
+
+		parts.push(text.slice(last, start));
+
+		if (limit > 0 && parts.length === limit - 1) {
+			parts.push(text.slice(end));
+			return parts;
+		}
+
+		last = end;
+		match = regex.exec(text);
+	}
+
+	parts.push(text.slice(last));
+
+	return parts;
 }
 
 function go2jsRegexpQuoteMeta(value) {

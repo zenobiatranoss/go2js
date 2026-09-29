@@ -156,20 +156,29 @@ function go2jsChannelRange(channel) {
 		[Symbol.iterator]() {
 			return {
 				next() {
-					const result = go2jsChanTryRecv(channel);
+					for (;;) {
+						const result = go2jsChanTryRecv(channel);
 
-					if (result === null) {
-						if (channel.closed) {
+						if (result === null) {
+							// The channel is open but empty, so a producer goroutine
+							// has to run before the receive can be retried.
+							if (!go2jsProgress()) {
+								if (go2jsChanTryRecv(channel) === null && !channel.closed) {
+									throw new Error("go2js: no goroutine can unblock this channel receive");
+								}
+
+								continue;
+							}
+
+							continue;
+						}
+
+						if (result[1] === false) {
 							return { done: true, value: undefined };
 						}
-						return { done: false, value: undefined };
-					}
 
-					if (result[1] === false) {
-						return { done: true, value: undefined };
+						return { done: false, value: result[0] };
 					}
-
-					return { done: false, value: result[0] };
 				}
 			};
 		}
