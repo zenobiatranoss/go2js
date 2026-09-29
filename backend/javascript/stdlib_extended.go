@@ -1342,8 +1342,13 @@ func extendedStdlibFuncs() {
 		"ReadFile":   "go2jsOSReadFile",
 		"WriteFile":  "go2jsOSWriteFile",
 		"Open":       "go2jsOSOpen",
+		"OpenFile":   "go2jsOSOpenFile",
 		"Create":     "go2jsOSCreate",
 		"Remove":     "go2jsOSRemove",
+		"RemoveAll":  "go2jsOSRemoveAll",
+		"Rename":     "go2jsOSRename",
+		"CreateTemp": "go2jsOSCreateTemp",
+		"MkdirTemp":  "go2jsOSMkdirTemp",
 		"MkdirAll":   "go2jsOSMkdirAll",
 		"Hostname":   "go2jsOSHostname",
 		"Executable": "go2jsOSExecutable",
@@ -1354,7 +1359,7 @@ func extendedStdlibFuncs() {
 		"Getwd":      "go2jsOSGetwd",
 		"Chdir":      "go2jsOSChdir",
 		"ReadDir":    "go2jsOSReadDir",
-		"Mkdir":      "go2jsOSMkdirAll",
+		"Mkdir":      "go2jsOSMkdir",
 	})
 
 	extend(bytesFuncs, map[string]string{
@@ -1913,7 +1918,17 @@ function go2jsOSExit(code) {
 }
 
 function go2jsOSIsNotExist(err) {
-	return err !== null && err !== undefined && err.code === "ENOENT";
+	if (err === null || err === undefined) {
+		return false;
+	}
+
+	const value = go2jsUnwrap(err);
+
+	if (value === null || value === undefined) {
+		return false;
+	}
+
+	return value.code === "ENOENT" || value.errno === 2 || value.errno === -2;
 }
 
 function go2jsOSGetwd() {
