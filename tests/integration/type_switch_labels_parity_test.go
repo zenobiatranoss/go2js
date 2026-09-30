@@ -91,3 +91,43 @@ func main() {
 }
 `)
 }
+
+// A value that is taken out of an interface by a type switch has still lost
+// nothing: what a case does not claim is reported by its own type, and a map or
+// a slice says what it was declared to hold even when there is nothing in it to
+// be read for that.
+func TestTypeSwitchKeepsWhatAValueIs(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+type myMap map[string]int
+
+func main() {
+	values := []any{[]int{}, []string{"a"}, map[string]int{}, map[string]any{}, myMap{"k": 1}}
+
+	for _, v := range values {
+		switch x := v.(type) {
+		default:
+			fmt.Printf("%T ", x)
+		}
+	}
+
+	fmt.Println()
+
+	for _, v := range values {
+		fmt.Printf("%T ", v)
+	}
+
+	fmt.Println()
+
+	// A map with something in it is read for the key and the value it holds.
+	full := map[string]float64{"a": 1.5}
+	fmt.Printf("%T %T\n", full, []float64{1.5})
+
+	// A map of a named type keeps the name it was declared with.
+	var named myMap
+	fmt.Printf("%T %v\n", named, named == nil)
+}
+`)
+}
