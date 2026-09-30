@@ -67,10 +67,12 @@ func init() {
 }
 
 func osFileRuntimeSource() string {
-	return `function go2jsOSError(message, syscall, path, target) {
+	return `// An error from a file is told by what was being done to which path, which is
+// how one error is told from another that reads the same.
+function go2jsOSError(message, syscall, path, target) {
 	const text = String(message);
 	const notExist = /no such file or directory|not exist|ENOENT/i.test(text);
-	const error = new Error("open " + String(path) + ": " + text);
+	const error = new Error(String(syscall) + " " + String(path) + ": " + text);
 
 	error.__go2js_errno = true;
 	error.code = notExist ? "ENOENT" : text;
@@ -82,7 +84,44 @@ func osFileRuntimeSource() string {
 }
 
 function go2jsOSWrapFile(fd, path) {
-	return {__go2js_osfile: true, fd: fd, path: String(path), closed: false};
+	// A file is a writer and a reader before it is anything else, and it says
+	// so here rather than only through the method of its own type, because what
+	// writes to a file is rarely written as that type.
+	const file = {__go2js_osfile: true, fd: fd, path: String(path), closed: false};
+
+	file.Write = function (buffer) {
+		return go2jsOSFileWrite(file, buffer);
+	};
+
+	file.WriteString = function (text) {
+		return go2jsOSFileWriteString(file, text);
+	};
+
+	file.WriteByte = function (value) {
+		go2jsOSFileWrite(file, [value & 255]);
+
+		return null;
+	};
+
+	// A reader that is given a file reads from where the file is, which is what
+	// the whole of what is left of it says.
+	file.__go2js_readAll = function () {
+		return go2jsOSFileReadAll(file);
+	};
+
+	return file;
+}
+
+// A file that was never opened is not a file, and everything asked of it is
+// refused the same way Go refuses it: with the error that stands for an
+// argument that is not one.
+function go2jsOSFileInvalid() {
+	const error = new Error("invalid argument");
+
+	error.__go2js_errno = true;
+	error.errno = 0;
+
+	return error;
 }
 
 function go2jsOSFileOf(value) {
@@ -174,7 +213,14 @@ function go2jsOSFileWrite(file, buffer) {
 	const target = go2jsOSFileOf(value);
 
 	if (target === null) {
+		// A file that is not there is refused, where the streams of the process
+		// take what they are given when no file was named at all.
+		if (file !== null && file !== undefined) {
+			return [0, go2jsOSFileInvalid()];
+		}
+
 		process.stdout.write(go2jsBytesToString(buffer));
+
 		return [bytes.length, null];
 	}
 
@@ -187,7 +233,7 @@ function go2jsOSFileSync(file) {
 	const target = go2jsOSFileOf(go2jsUnwrap(file));
 
 	if (target === null) {
-		return null;
+		return go2jsOSFileInvalid();
 	}
 
 	try {
@@ -228,8 +274,12 @@ function go2jsOSFileFd(file) {
 function go2jsOSFileClose(file) {
 	const target = go2jsOSFileOf(go2jsUnwrap(file));
 
-	if (target === null || target.closed) {
-		return null;
+	if (target === null) {
+		return go2jsOSFileInvalid();
+	}
+
+	if (target.closed) {
+		return go2jsOSError("file already closed", "close", target.path);
 	}
 
 	target.closed = true;
@@ -247,7 +297,7 @@ function go2jsOSFileRead(file, buffer) {
 	const target = go2jsOSFileOf(go2jsUnwrap(file));
 
 	if (target === null) {
-		return [0, null];
+		return [0, go2jsOSFileInvalid()];
 	}
 
 	const size = buffer === undefined || buffer === null ? 512 : go2jsToArray(buffer).length;
@@ -267,7 +317,7 @@ function go2jsOSFileReadFile(file) {
 	const target = go2jsOSFileOf(go2jsUnwrap(file));
 
 	if (target === null) {
-		return [null, go2jsOSError("invalid file", "read", "/dev/stdin")];
+		return [null, go2jsOSFileInvalid()];
 	}
 
 	try {
@@ -275,6 +325,31 @@ function go2jsOSFileReadFile(file) {
 	} catch (err) {
 		return [null, go2jsOSError(String(err.message), "read", target.path)];
 	}
+}
+
+function go2jsOSFileReadAll(file) {
+	const target = go2jsOSFileOf(go2jsUnwrap(file));
+
+	if (target === null) {
+		return "";
+	}
+
+
+	const fs = require("fs");
+	const parts = [];
+	const chunk = Buffer.alloc(4096);
+
+	for (;;) {
+		const read = fs.readSync(target.fd, chunk, 0, chunk.length, null);
+
+		if (read === 0) {
+			break;
+		}
+
+		parts.push(Buffer.from(chunk.subarray(0, read)).toString("utf8"));
+	}
+
+	return parts.join("");
 }
 
 function go2jsOSFileStat(file) {

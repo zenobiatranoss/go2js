@@ -329,7 +329,27 @@ var jsonFuncs = map[string]string{
 }
 
 var urlFuncs = map[string]string{
-	"Parse": "go2jsURLParse",
+	"Parse":           "go2jsURLParse",
+	"ParseQuery":      "go2jsURLParseQuery",
+	"ParseRequestURI": "go2jsURLParseRequestURI",
+	"JoinPath":        "go2jsURLJoinPath",
+	"QueryEscape":     "go2jsURLQueryEscape",
+	"QueryUnescape":   "go2jsURLQueryUnescape",
+	"PathEscape":      "go2jsURLPathEscape",
+	"PathUnescape":    "go2jsURLPathUnescape",
+	"FragmentEscape":  "go2jsURLFragmentEscape",
+	"User":            "go2jsURLUser",
+	"UserPassword":    "go2jsURLUserPassword",
+}
+
+var urlTypes = map[string]string{
+	"URL": "go2jsURL",
+}
+
+// A URL is a value the runtime builds out of its parts, so a literal of one
+// builds that value rather than a class the program never declares.
+func init() {
+	packageTypes["url.URL"] = urlTypes["URL"]
 }
 
 var filepathFuncs = map[string]string{

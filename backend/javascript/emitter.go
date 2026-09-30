@@ -310,6 +310,7 @@ func ProgramRuntime(requiredSource, target string) string {
 		httptestRuntimeSource(),
 		netRuntimeSource(),
 		templateRuntimeSource(),
+		htmlRuntimeSource(),
 		osFileRuntimeSource(),
 		runtimeShimRuntimeSource(),
 		sortSliceShimRuntimeSource(),
