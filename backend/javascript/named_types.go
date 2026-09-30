@@ -469,24 +469,64 @@ func (e *emitter) emitTypeNameRegistration(typeIdent *ast.Ident) error {
 	e.write(", ")
 	e.write(strconv.Quote(qualified))
 
-	// The method set goes with the name, so that a type reflect describes from
-	// a value rather than from the program can still answer Implements.
-	if methods := reflectMethodNames(typeName.Type()); len(methods) > 0 {
-		quoted := make([]string, 0, len(methods))
+	// The method set and the field names go with the name, because a type that
+	// reflect describes from a value rather than from the program has to be told
+	// what it can do and what it holds. The method set comes first, so an empty
+	// one is written out as an empty list rather than left out, which would put
+	// the field names where the method set belongs.
+	methods := reflectMethodNames(typeName.Type())
+	fields := structFieldNames(typeName.Type())
 
-		for _, method := range methods {
-			quoted = append(quoted, strconv.Quote(method))
-		}
+	if len(methods) > 0 || len(fields) > 0 {
+		e.write(", ")
+		e.write(quoteList(methods))
+	}
 
-		e.write(", [")
-		e.write(strings.Join(quoted, ", "))
-		e.write("]")
+	if len(fields) > 0 {
+		e.write(", ")
+		e.write(quoteList(fields))
 	}
 
 	e.write(");")
 	e.newline()
 
 	return nil
+}
+
+// quoteList writes a list of names as a JavaScript array of strings.
+func quoteList(names []string) string {
+	quoted := make([]string, 0, len(names))
+
+	for _, name := range names {
+		quoted = append(quoted, strconv.Quote(name))
+	}
+
+	return "[" + strings.Join(quoted, ", ") + "]"
+}
+
+// structFieldNames names the fields a struct type carries, in the order they are
+// declared, which is the order reflect reports them in. A type that is not a
+// struct names none.
+func structFieldNames(t gotypesstd.Type) []string {
+	named, ok := t.(*gotypesstd.Named)
+
+	if !ok {
+		return nil
+	}
+
+	underlying, ok := named.Underlying().(*gotypesstd.Struct)
+
+	if !ok {
+		return nil
+	}
+
+	names := make([]string, 0, underlying.NumFields())
+
+	for index := range underlying.NumFields() {
+		names = append(names, underlying.Field(index).Name())
+	}
+
+	return names
 }
 
 func (e *emitter) emitStructFieldStringers(typeName string, structType *ast.StructType) error {

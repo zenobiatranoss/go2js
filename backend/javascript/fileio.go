@@ -193,6 +193,14 @@ func (e *emitter) emitFileCall(call *ast.CallExpr, selector *ast.SelectorExpr) (
 			if i > 0 {
 				e.write(", ")
 			}
+
+			// The operands of a print call are an array, so a trailing ...
+			// splices its elements into that array rather than nesting the slice
+			// as one operand of its own.
+			if i == len(call.Args)-2 && call.Ellipsis.IsValid() {
+				e.write("...")
+			}
+
 			if err := e.emitFormatArgument(arg); err != nil {
 				return true, err
 			}
