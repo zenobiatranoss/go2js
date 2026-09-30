@@ -615,23 +615,129 @@ function go2jsFilepathToSlash(value) {
 	return String(value).split("\\").join("/");
 }
 
+// A pattern names the files it matches with the marks of a shell, and each of
+// them stands for one thing: a star stands for any run of characters that are
+// not a separator, a question for one such character, and a class for one of
+// the characters it lists. The pattern is written as a pattern of the same
+// shape rather than matched a mark at a time, because the marks are only ever
+// matched together.
 function go2jsFilepathMatch(pattern, name) {
-	const source = String(pattern)
-		.split("")
-		.map(char => {
-			if (char === "*") {
-				return ".*";
+	let source = "^";
+
+	for (let index = 0; index < pattern.length; index++) {
+		const char = pattern[index];
+
+		if (char === "*") {
+			source += "[^/]*";
+			continue;
+		}
+
+		if (char === "?") {
+			source += "[^/]";
+			continue;
+		}
+
+		if (char === "\\") {
+			if (index + 1 >= pattern.length) {
+				return [false, go2jsErrorsNew("syntax error in pattern")];
 			}
 
-			if ("\\.[]{}()+-^$|?+".indexOf(char) >= 0) {
-				return "\\" + char;
+			source += go2jsFilepathQuote(pattern[index + 1]);
+			index++;
+			continue;
+		}
+
+		if (char === "[") {
+			let cursor = index + 1;
+			let negated = false;
+			let body = "";
+
+			if (pattern[cursor] === "^") {
+				negated = true;
+				cursor++;
 			}
 
-			return char;
-		})
-		.join("");
+			// A class is a list of characters and of ranges between them, and a
+			// range is written with a mark between its ends. A mark that has
+			// nothing to end is not a range, and neither is a class with nothing
+			// in it, because there is nothing a single character could be told
+			// apart from.
+			for (let ranges = 0; ; ranges++) {
+				if (pattern[cursor] === "]" && ranges > 0) {
+					cursor++;
+					break;
+				}
 
-	return new RegExp("^" + source + "$").test(String(name));
+				const lo = go2jsFilepathClassChar(pattern, cursor);
+
+				if (lo === null) {
+					return [false, go2jsErrorsNew("syntax error in pattern")];
+				}
+
+				cursor += Number(lo[0].slice(1));
+				let piece = lo[1];
+
+				if (pattern[cursor] === "-") {
+					const hi = go2jsFilepathClassChar(pattern, cursor + 1);
+
+					if (hi === null) {
+						return [false, go2jsErrorsNew("syntax error in pattern")];
+					}
+
+					cursor += 1 + Number(hi[0].slice(1));
+					piece += "-" + hi[1];
+				}
+
+				body += piece;
+			}
+
+			source += "[" + (negated ? "^" : "") + body + "]";
+			index = cursor - 1;
+			continue;
+		}
+
+		source += go2jsFilepathQuote(char);
+	}
+
+	source += "$";
+
+	return [new RegExp(source).test(go2jsStringify(name)), null];
+}
+
+// go2jsFilepathClassChar reads one character of a class as it was written,
+// which may be a mark that stands for the character after it, and reports what
+// to write for it along with how much of the pattern it took. A mark that
+// stands for the end of the class, or for a range, is not a character, because
+// neither is a thing a class can hold.
+function go2jsFilepathClassChar(pattern, index) {
+	const char = pattern[index];
+
+	if (char === undefined || char === "]" || char === "-") {
+		return null;
+	}
+
+	if (char === "\\" && pattern[index + 1] === undefined) {
+		return null;
+	}
+
+	const taken = char === "\\" ? 2 : 1;
+
+	if (taken === 2) {
+		return ["\u00002", go2jsFilepathClassQuote(pattern[index + 1])];
+	}
+
+	return ["\u00001", go2jsFilepathClassQuote(char)];
+}
+
+// go2jsFilepathClassQuote writes one character of a class, where a character
+// that closes the class, or starts it, or is a mark of its own stands for
+// itself.
+function go2jsFilepathClassQuote(char) {
+	return "]$^-^\\".indexOf(char) === -1 ? char : "\\" + char;
+}
+
+function go2jsFilepathQuote(char) {
+	return /[.*+?^${}()|[\]\\]/.test(char) ? "\\" + char : char;
 }
 
 function go2jsFilepathVolumeName(value) {
@@ -688,92 +794,746 @@ function go2jsFilepathExt(value) {
     return base.slice(index);
 }
 
-function go2jsURLParse(value) {
-    try {
-        const parsed = new URL(value);
+// A URL is written out of the parts it is made of, so the parts are kept as
+// they were given and the whole is assembled from them, the way the language
+// writes a URL from a scheme, a user, a host, a path, a query and a fragment.
+function go2jsURL() {
+	const url = {
+		Scheme: "",
+		Opaque: "",
+		User: null,
+		Host: "",
+		Path: "",
+		RawPath: "",
+		ForceQuery: false,
+		RawQuery: "",
+		Fragment: "",
+		RawFragment: ""
+	};
 
-        return [{
-            Scheme: parsed.protocol.replace(/:$/, ""),
-            Host: parsed.host,
-            Path: parsed.pathname,
-            RawQuery: parsed.search.replace(/^\?/, ""),
-            Query: function() {
-                return go2jsURLValuesFromSearchParams(parsed.searchParams);
-            }
-        }, null];
-    } catch (err) {
-        return [null, err];
-    }
+	url.IsAbs = function() {
+		return url.Scheme !== "";
+	};
+
+	url.EscapedPath = function() {
+		return go2jsURLEscapedPath(url);
+	};
+
+	url.Hostname = function() {
+		// An address written in full keeps its brackets around the host in a
+		// URL, and a name is asked for without them.
+		const name = go2jsURLHostPort(url.Host)[0];
+
+		return name.startsWith("[") && name.endsWith("]") ? name.slice(1, -1) : name;
+	};
+
+	url.Port = function() {
+		return go2jsURLHostPort(url.Host)[1];
+	};
+
+	url.Query = function() {
+		return go2jsURLQueryFromRaw(url.RawQuery, null);
+	};
+
+	url.String = function() {
+		return go2jsURLString(url);
+	};
+
+	// A password is a secret, so a URL written for reading shows where one was
+	// without saying what it was.
+	url.Redacted = function() {
+		const shown = go2jsURLCopy(url);
+
+		if (shown.User !== null && shown.User.Password() !== "") {
+			shown.User = go2jsURLUserinfo(shown.User.Username(), "xxxxx", true);
+		}
+
+		return go2jsURLString(shown);
+	};
+
+	url.JoinPath = function(...elems) {
+		const joined = go2jsURL();
+		const parts = [go2jsURLEscapedPath(url)].concat(elems.map((part) => go2jsStringify(part)));
+		let path = parts[0];
+
+		if (!path.startsWith("/")) {
+			path = "/" + path;
+		}
+
+		// The elements are joined and then cleaned, so a step that walks back
+		// out of a directory takes the directory with it.
+		const kept = [];
+
+		for (const segment of path.split("/")) {
+			if (segment === "" || segment === ".") {
+				continue;
+			}
+
+			if (segment === "..") {
+				kept.pop();
+				continue;
+			}
+
+			kept.push(segment);
+		}
+
+		path = "/" + kept.join("/");
+
+		// A path written to end at a separator keeps it, because that is where
+		// the last element was added.
+		if (go2jsStringify(parts[parts.length - 1]).endsWith("/") && !path.endsWith("/")) {
+			path += "/";
+		}
+
+		for (let index = 1; index < parts.length; index++) {
+			const element = go2jsStringify(parts[index]);
+
+			if (element === "") {
+				continue;
+			}
+
+			path = path.replace(/\/$/, "") + "/" + element;
+		}
+
+		joined.Scheme = url.Scheme;
+		joined.Opaque = url.Opaque;
+		joined.User = url.User;
+		joined.Host = url.Host;
+		joined.RawQuery = url.RawQuery;
+		joined.ForceQuery = url.ForceQuery;
+		joined.Fragment = url.Fragment;
+		joined.RawFragment = url.RawFragment;
+
+		const [escaped, decoded] = go2jsURLSetPath(joined, path);
+
+		joined.Path = decoded;
+		joined.RawPath = escaped;
+
+		return joined;
+	};
+
+	return url;
 }
 
-function go2jsURLValuesFromSearchParams(params) {
-    const values = {};
+function go2jsURLCopy(url) {
+	const copy = go2jsURL();
 
-    for (const [key, value] of params.entries()) {
-        if (!values[key]) {
-            values[key] = [];
-        }
-        values[key].push(value);
-    }
+	for (const field of ["Scheme", "Opaque", "User", "Host", "Path", "RawPath",
+		"ForceQuery", "RawQuery", "Fragment", "RawFragment"]) {
+		copy[field] = url[field];
+	}
 
-    values.Get = function(key) {
-        const value = values[key];
-        return value && value.length > 0 ? value[0] : "";
-    };
+	return copy;
+}
 
-    values.Set = function(key, value) {
-        values[key] = [String(value)];
-    };
+// go2jsURLShouldEscape reports whether a character has to be written as the
+// bytes of its name, which depends on where in the URL it stands: a path keeps
+// the marks a path is written with, a query keeps none of them, and a host
+// keeps the ones a host is allowed to hold.
+function go2jsURLShouldEscape(char, mode) {
+	if (/[A-Za-z0-9]/.test(char)) {
+		return false;
+	}
 
-    values.Encode = function() {
-        const params = new URLSearchParams();
+	if (char === "-" || char === "_" || char === "." || char === "~") {
+		return false;
+	}
 
-        for (const key of Object.keys(values)) {
-            if (key === "Get" || key === "Set" || key === "Encode") {
-                continue;
-            }
+	if (mode === "host" || mode === "zone") {
+		return "!$&'()*+,;=:[]<>\"".indexOf(char) === -1;
+	}
 
-            for (const value of values[key]) {
-                params.append(key, value);
-            }
-        }
+	if ("$&+,/:;=?@".indexOf(char) !== -1) {
+		if (mode === "path") {
+			return char === "?";
+		}
 
-        return params.toString();
-    };
+		if (mode === "segment") {
+			return char === "/" || char === ";" || char === "," || char === "?";
+		}
 
-    return values;
+		if (mode === "user") {
+			return char === "@" || char === "/" || char === "?" || char === ":";
+		}
+
+		return mode === "query";
+	}
+
+	if (mode === "fragment") {
+		return char !== "!" && char !== "(" && char !== ")" && char !== "*";
+	}
+
+	return true;
+}
+
+function go2jsURLEncode(value, mode) {
+	const text = go2jsStringify(value);
+	let out = "";
+
+	// A character outside the basic plane stands for several bytes, and each of
+	// them is written by name.
+	for (const char of text) {
+		if (mode === "query" && char === " ") {
+			out += "+";
+			continue;
+		}
+
+		if (!go2jsURLShouldEscape(char, mode)) {
+			out += char;
+			continue;
+		}
+
+		for (const byte of new TextEncoder().encode(char)) {
+			out += "%" + byte.toString(16).toUpperCase().padStart(2, "0");
+		}
+	}
+
+	return out;
+}
+
+// go2jsURLDecode undoes the writing by name. The bytes are gathered first and
+// read as text at the end, because a name written one byte at a time is a
+// character rather than the bytes of one.
+function go2jsURLDecode(value, mode) {
+	const text = go2jsStringify(value);
+	const bytes = [];
+	let index = 0;
+
+	while (index < text.length) {
+		const char = text[index];
+
+		if (char === "%") {
+			const named = text.slice(index + 1, index + 3);
+
+			if (named.length < 2 || !/^[0-9A-Fa-f]{2}$/.test(named)) {
+				return ["", go2jsNameError(
+					new Error("invalid URL escape " + JSON.stringify(text.slice(index, index + 3))),
+					"url.EscapeError")];
+			}
+
+			bytes.push(parseInt(named, 16));
+			index += 3;
+			continue;
+		}
+
+		// A space is written as a plus in a query, because that is how a query is
+		// written, and nowhere else.
+		if (char === "+" && mode === "query") {
+			bytes.push(0x20);
+			index++;
+			continue;
+		}
+
+		for (const byte of new TextEncoder().encode(char)) {
+			bytes.push(byte);
+		}
+
+		index++;
+	}
+
+	return [new TextDecoder().decode(new Uint8Array(bytes)), null];
+}
+
+function go2jsURLQueryEscape(value) {
+	return go2jsURLEncode(value, "query");
+}
+
+function go2jsURLPathEscape(value) {
+	return go2jsURLEncode(value, "segment");
+}
+
+function go2jsURLFragmentEscape(value) {
+	return go2jsURLEncode(value, "fragment");
+}
+
+function go2jsURLQueryUnescape(value) {
+	return go2jsURLDecode(value, "query");
+}
+
+function go2jsURLPathUnescape(value) {
+	return go2jsURLDecode(value, "segment");
+}
+
+function go2jsURLEscapedPath(url) {
+	if (url.RawPath !== "" && go2jsURLValidEncoded(url.RawPath, "path")) {
+		const [path, err] = go2jsURLDecode(url.RawPath, "path");
+
+		if (err === null && path === url.Path) {
+			return url.RawPath;
+		}
+	}
+
+	if (url.Path === "*") {
+		return "*";
+	}
+
+	return go2jsURLEncode(url.Path, "path");
+}
+
+// go2jsURLValidEncoded reports whether text is written the way the mode writes
+// it, which is what tells a path that was written on purpose from one that was
+// written by escaping a path.
+function go2jsURLValidEncoded(text, mode) {
+	for (const char of text) {
+		if (go2jsURLShouldEscape(char, mode)) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+function go2jsURLString(url) {
+	let out = "";
+
+	if (url.Scheme !== "") {
+		out += url.Scheme + ":";
+	}
+
+	if (url.Opaque !== "") {
+		out += url.Opaque;
+	} else {
+		if (url.Scheme !== "" || url.Host !== "" || url.User !== null) {
+			if (url.Host !== "" || url.Path !== "" || url.User !== null) {
+				out += "//";
+			}
+
+			if (url.User !== null && url.User !== undefined) {
+				out += go2jsURLUserinfoString(url.User) + "@";
+			}
+
+			if (url.Host !== "") {
+				out += go2jsURLEncode(url.Host, "host");
+			}
+		}
+
+		const path = go2jsURLEscapedPath(url);
+
+		// A host is followed by a path that starts at a separator, and a path
+		// whose first segment names a scheme is told from a file name by the
+		// directory in front of it.
+		if (path !== "" && path[0] !== "/" && url.Host !== "") {
+			out += "/";
+		}
+
+		if (out === "" && path.split("/")[0].indexOf(":") !== -1) {
+			out += "./";
+		}
+
+		out += path;
+	}
+
+	if (url.ForceQuery === true || url.RawQuery !== "") {
+		out += "?" + url.RawQuery;
+	}
+
+	if (url.Fragment !== "") {
+		out += "#" + (url.RawFragment !== "" ? url.RawFragment : go2jsURLFragmentEscape(url.Fragment));
+	}
+
+	return out;
+}
+
+// go2jsURLHostPort splits a host into the name and the port, keeping the
+// brackets of an address that is written in full around the name.
+function go2jsURLHostPort(host) {
+	const text = go2jsStringify(host);
+
+	if (text.startsWith("[")) {
+		const close = text.indexOf("]");
+
+		if (close === -1) {
+			return [text, ""];
+		}
+
+		const name = text.slice(0, close + 1);
+		const rest = text.slice(close + 1);
+
+		return rest.startsWith(":") ? [name, rest.slice(1)] : [name, ""];
+	}
+
+	const colon = text.lastIndexOf(":");
+
+	if (colon === -1) {
+		return [text, ""];
+	}
+
+	return [text.slice(0, colon), text.slice(colon + 1)];
+}
+
+function go2jsURLInvalidHost(host) {
+	const text = go2jsStringify(host);
+	const [, port] = go2jsURLHostPort(text);
+
+	if (port !== "" && !/^[0-9]*$/.test(port)) {
+		return go2jsNameError(new Error("invalid port " + JSON.stringify(port === "" ? ":" : ":" + port) + " after host"),
+			"*url.Error");
+	}
+
+	if (text.indexOf("[") !== -1 || text.indexOf("]") !== -1) {
+		if (!/^\[[0-9A-Fa-f:.]+\]/.test(text)) {
+			return go2jsNameError(new Error("invalid character in host name"), "*url.Error");
+		}
+	}
+
+	return null;
+}
+
+function go2jsURLParse(value) {
+	const text = go2jsStringify(value);
+	const url = go2jsURL();
+
+	if (text === "") {
+		return [url, null];
+	}
+
+	let rest = text;
+	const hash = rest.indexOf("#");
+
+	if (hash !== -1) {
+		const written = rest.slice(hash + 1);
+
+		rest = rest.slice(0, hash);
+
+		const [fragment, fragmentErr] = go2jsURLDecode(written, "fragment");
+
+		if (fragmentErr !== null) {
+			return [null, go2jsURLError("parse", text, fragmentErr)];
+		}
+
+		url.Fragment = fragment;
+		url.RawFragment = go2jsURLFragmentEscape(fragment) === written ? "" : written;
+	}
+
+	// A scheme is the name in front of the first colon, as long as the colon
+	// comes before any separator and the name is one a scheme may be spelled
+	// with. A name in capitals is a path rather than a scheme, because schemes
+	// are written in small letters.
+	const colon = rest.indexOf(":");
+	const separator = rest.search(/[/?#]/);
+	let scheme = "";
+
+	if (colon !== -1 && (separator === -1 || colon < separator)) {
+		const candidate = rest.slice(0, colon);
+
+		if (/^[A-Za-z][A-Za-z0-9+\-.]*$/.test(candidate) && candidate === candidate.toLowerCase()) {
+			scheme = candidate;
+			rest = rest.slice(colon + 1);
+		}
+	}
+
+	url.Scheme = scheme;
+
+	if (rest.startsWith("//")) {
+		rest = rest.slice(2);
+
+		let end = rest.length;
+
+		for (let index = 0; index < rest.length; index++) {
+			if (rest[index] === "/" || rest[index] === "?") {
+				end = index;
+				break;
+			}
+		}
+
+		const authority = rest.slice(0, end);
+
+		rest = rest.slice(end);
+
+		// The user is written before the last at sign, because a host may hold
+		// an at sign of its own inside a name.
+		const at = authority.lastIndexOf("@");
+
+		if (at !== -1) {
+			url.User = go2jsURLParseUserinfo(authority.slice(0, at));
+			url.Host = authority.slice(at + 1);
+		} else {
+			url.Host = authority;
+		}
+
+		const invalid = go2jsURLInvalidHost(url.Host);
+
+		if (invalid !== null) {
+			return [null, go2jsURLError("parse", text, invalid)];
+		}
+	} else if (!rest.startsWith("/")) {
+		if (scheme !== "") {
+			// What stands behind a scheme with no separator before it says what
+			// the URL is about rather than where it leads, so it is kept whole.
+			url.Opaque = rest;
+
+			return [url, null];
+		}
+
+		if (rest.split("/")[0].indexOf(":") !== -1) {
+			return [null, go2jsURLError("parse", text,
+				go2jsNameError(new Error("first path segment in URL cannot contain colon"), "*url.Error"))];
+		}
+	}
+
+	const question = rest.indexOf("?");
+
+	if (question !== -1) {
+		url.ForceQuery = true;
+		url.RawQuery = rest.slice(question + 1);
+		rest = rest.slice(0, question);
+	}
+
+	const [escaped, path, pathErr] = go2jsURLPathParts(rest);
+
+	if (pathErr !== null) {
+		return [null, go2jsURLError("parse", text, pathErr)];
+	}
+
+	url.RawPath = escaped;
+	url.Path = path;
+
+	return [url, null];
+}
+
+// go2jsURLPathParts reads a path as it was written and as it reads, and reports
+// which of the two to keep: the writing is kept when it says something the
+// escaping would not have said on its own.
+function go2jsURLPathParts(raw) {
+	if (raw === "") {
+		return ["", "", null];
+	}
+
+	const [path, err] = go2jsURLDecode(raw, "path");
+
+	if (err !== null) {
+		return ["", "", err];
+	}
+
+	return [go2jsURLEncode(path, "path") === raw ? "" : raw, path, null];
+}
+
+function go2jsURLSetPath(url, raw) {
+	const [escaped, path, err] = go2jsURLPathParts(raw);
+
+	if (err !== null) {
+		throw err;
+	}
+
+	return [escaped, path];
+}
+
+function go2jsURLError(op, url, err) {
+	return go2jsNameError(new Error(op + " " + JSON.stringify(url) + ": " + go2jsStringify(err && err.message ? err.message : err)), "*url.Error");
+}
+
+function go2jsURLParseUserinfo(text) {
+	const colon = text.indexOf(":");
+
+	if (colon === -1) {
+		return go2jsURLUserinfo(text, "", false);
+	}
+
+	return go2jsURLUserinfo(text.slice(0, colon), text.slice(colon + 1), true);
+}
+
+function go2jsURLUser(name) {
+	return go2jsURLUserinfo(go2jsStringify(name), "", false);
+}
+
+function go2jsURLUserPassword(name, password) {
+	return go2jsURLUserinfo(go2jsStringify(name), go2jsStringify(password), true);
+}
+
+function go2jsURLUserinfo(name, password, hasPassword) {
+	const info = {
+		name: name,
+		password: password,
+		hasPassword: hasPassword
+	};
+
+	// The name and the password are held as they were written and are given
+	// back as they read, which is the other way round for a URL.
+	info.Username = function() {
+		const [decoded, err] = go2jsURLDecode(name, "user");
+
+		return err === null ? decoded : name;
+	};
+
+	info.Password = function() {
+		if (!hasPassword) {
+			return "";
+		}
+
+		const [decoded, err] = go2jsURLDecode(password, "user");
+
+		return err === null ? decoded : password;
+	};
+
+	info.String = function() {
+		let out = go2jsURLEncode(name, "user");
+
+		if (hasPassword) {
+			out += ":" + go2jsURLEncode(password, "user");
+		}
+
+		return out;
+	};
+
+	return info;
+}
+
+function go2jsURLUserinfoString(info) {
+	if (info === null || info === undefined) {
+		return "";
+	}
+
+	return typeof info.String === "function" ? info.String() : go2jsStringify(info);
+}
+
+// go2jsURLQueryFromRaw reads a query into a set of values, and leaves out any
+// pair that does not read, the way a query is read: a pair that cannot be read
+// is no pair at all.
+function go2jsURLQueryFromRaw(raw, fail) {
+	const values = go2jsURLValues();
+	const text = go2jsStringify(raw);
+
+	if (text === "") {
+		return values;
+	}
+
+	for (const pair of text.split("&")) {
+		if (pair === "") {
+			continue;
+		}
+
+		// A semicolon separated a pair once, and is refused now rather than
+		// taken for a separator.
+		if (pair.indexOf(";") !== -1) {
+			if (typeof fail === "function") {
+				fail("invalid semicolon separator in query");
+			}
+
+			continue;
+		}
+
+		const equals = pair.indexOf("=");
+		const rawKey = equals === -1 ? pair : pair.slice(0, equals);
+		const rawValue = equals === -1 ? "" : pair.slice(equals + 1);
+		const [key, keyErr] = go2jsURLQueryUnescape(rawKey);
+		const [value, valueErr] = go2jsURLQueryUnescape(rawValue);
+
+		if (keyErr !== null || valueErr !== null) {
+			if (typeof fail === "function") {
+				fail(keyErr !== null ? keyErr.message : valueErr.message);
+			}
+
+			continue;
+		}
+
+		go2jsURLValuesAdd(values, key, value);
+	}
+
+	return values;
+}
+
+// A request that names what it wants is either an absolute URL or a path from
+// the root, so a URI is read the same way and then asked whether it is one.
+function go2jsURLParseRequestURI(value) {
+	const parsed = go2jsURLParse(value);
+	const url = parsed[0];
+
+	if (parsed[1] !== null) {
+		return parsed;
+	}
+
+	if (url.Scheme === "" && !go2jsStringify(value).startsWith("/")) {
+		return [null, go2jsNameError(
+			new Error("parse " + JSON.stringify(go2jsStringify(value)) +
+				": invalid URI for request"), "*url.Error")];
+	}
+
+	return [url, null];
+}
+
+function go2jsURLParseQuery(raw) {
+	let failure = null;
+	const values = go2jsURLQueryFromRaw(raw, (message) => {
+		if (failure === null) {
+			failure = message;
+		}
+	});
+
+	if (failure !== null) {
+		return [values, go2jsErrorsNew(failure)];
+	}
+
+	return [values, null];
+}
+
+// Joining a path to a URL gives the URL back as it is written, so what is
+// returned here is the whole of it rather than the URL.
+function go2jsURLJoinPath(base, ...elems) {
+	const [url, err] = go2jsURLParse(base);
+
+	if (err !== null) {
+		return ["", go2jsURLError("parse", go2jsStringify(base), err)];
+	}
+
+	return [go2jsURLString(url.JoinPath(...elems)), null];
 }
 
 function go2jsURLValues() {
-    const values = {};
-
-    values.Get = function(key) {
-        const value = values[key];
-        return value && value.length > 0 ? value[0] : "";
-    };
-
-    values.Set = function(key, value) {
-        values[key] = [String(value)];
-    };
-
-    values.Encode = function() {
-        const params = new URLSearchParams();
-
-        for (const key of Object.keys(values)) {
-            if (key === "Get" || key === "Set" || key === "Encode") {
-                continue;
-            }
-
-            for (const value of values[key]) {
-                params.append(key, value);
-            }
-        }
-
-        return params.toString();
-    };
-
-    return values;
+	return go2jsMapTyped("net/url.Values", go2jsMap([]));
 }
+
+function go2jsURLValuesGet(values, key) {
+	const list = go2jsMapGet(values, go2jsStringify(key), null);
+
+	return Array.isArray(list) && list.length > 0 ? go2jsStringify(list[0]) : "";
+}
+
+function go2jsURLValuesSet(values, key, value) {
+	go2jsMapSet(values, go2jsStringify(key), [go2jsStringify(value)]);
+}
+
+function go2jsURLValuesAdd(values, key, value) {
+	const name = go2jsStringify(key);
+	const list = go2jsMapGet(values, name, null);
+
+	if (!Array.isArray(list)) {
+		go2jsMapSet(values, name, [go2jsStringify(value)]);
+		return;
+	}
+
+	list.push(go2jsStringify(value));
+}
+
+function go2jsURLValuesDel(values, key) {
+	go2jsMapDelete(values, go2jsStringify(key));
+}
+
+function go2jsURLValuesHas(values, key) {
+	return go2jsMapHas(values, go2jsStringify(key));
+}
+
+// A query is written with its keys in order, because a query that reads the
+// same has to be written the same way.
+function go2jsURLValuesEncode(values) {
+	const keys = go2jsMapKeys(values).map((key) => go2jsStringify(key)).sort();
+	let out = "";
+
+	for (const key of keys) {
+		const list = go2jsMapGet(values, key, []);
+		const pairs = Array.isArray(list) ? list : [list];
+
+		for (const value of pairs) {
+			if (out !== "") {
+				out += "&";
+			}
+
+			out += go2jsURLQueryEscape(key) + "=" + go2jsURLQueryEscape(value);
+		}
+	}
+
+	return out;
+}
+
 
 function go2jsJSONMarshal(value, fields, omitEmpty) {
     try {
@@ -1026,24 +1786,27 @@ function go2jsStringsBuilder() {
     this.parts = [];
 }
 
+// A builder is told how much of what it was given it took, and never has any
+// reason to refuse it, so the writing methods answer with a count and nothing
+// to complain about.
 go2jsStringsBuilder.prototype.WriteString = function(value) {
     this.parts.push(String(value));
-    return this.parts.length;
+    return [go2jsStringByteLength(String(value)), null];
 };
 
 go2jsStringsBuilder.prototype.Write = function(value) {
     this.parts.push(go2jsBytesToString(value));
-    return go2jsToArray(value).length;
+    return [go2jsToArray(value).length, null];
 };
 
 go2jsStringsBuilder.prototype.WriteRune = function(value) {
     this.parts.push(String.fromCodePoint(Number(value)));
-    return 1;
+    return [go2jsStringByteLength(String.fromCodePoint(Number(value))), null];
 };
 
 go2jsStringsBuilder.prototype.WriteByte = function(value) {
     this.parts.push(String.fromCharCode(Number(value) & 255));
-    return 1;
+    return null;
 };
 
 go2jsStringsBuilder.prototype.String = function() {
@@ -1077,7 +1840,7 @@ function go2jsBytesBuffer(initial) {
 
 go2jsBytesBuffer.prototype.Write = function(value) {
     if (value === null || value === undefined) {
-        return 0;
+        return [0, null];
     }
 
     if (typeof value === "string") {
@@ -1091,7 +1854,7 @@ go2jsBytesBuffer.prototype.Write = function(value) {
     }
 
     this.data.push(...value);
-    return value.length;
+    return [value.length, null];
 };
 
 go2jsBytesBuffer.prototype.String = function() {
@@ -1108,16 +1871,17 @@ go2jsBytesBuffer.prototype.Reset = function() {
 
 go2jsBytesBuffer.prototype.WriteString = function(value) {
     this.Write(value);
-    return go2jsStringByteLength(go2jsStringify(value));
+    return [go2jsStringByteLength(go2jsStringify(value)), null];
 };
 
 go2jsBytesBuffer.prototype.WriteByte = function(value) {
     this.data.push(value & 0xff);
-    return 1;
+    return null;
 };
 
 go2jsBytesBuffer.prototype.WriteRune = function(value) {
-    return this.WriteString(String.fromCodePoint(value));
+    this.WriteString(String.fromCodePoint(value));
+    return [go2jsStringByteLength(String.fromCodePoint(value)), null];
 };
 
 go2jsBytesBuffer.prototype.Len = function() {
@@ -1843,6 +2607,15 @@ function go2jsRunInitializers() {
 }
 
 const go2jsMethodTable = Object.create(null);
+
+// A set of query values is a map, so what it holds is read and written as one,
+// and what the language asks of it is answered from there.
+go2jsRegisterMethod("Values.Get", go2jsURLValuesGet);
+go2jsRegisterMethod("Values.Set", go2jsURLValuesSet);
+go2jsRegisterMethod("Values.Add", go2jsURLValuesAdd);
+go2jsRegisterMethod("Values.Del", go2jsURLValuesDel);
+go2jsRegisterMethod("Values.Has", go2jsURLValuesHas);
+go2jsRegisterMethod("Values.Encode", go2jsURLValuesEncode);
 const go2jsInterfaces = Object.create(null);
 const go2jsStructFormats = Object.create(null);
 const go2jsTypeNames = Object.create(null);
