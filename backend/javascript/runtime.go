@@ -2766,8 +2766,9 @@ const go2jsStructFormats = Object.create(null);
 const go2jsTypeNames = Object.create(null);
 const go2jsMethodSets = Object.create(null);
 const go2jsStructFields = Object.create(null);
+const go2jsTypeKinds = Object.create(null);
 
-function go2jsRegisterTypeName(constructor, name, methods, fields) {
+function go2jsRegisterTypeName(constructor, name, methods, fields, kind) {
 	go2jsTypeNames[name] = constructor;
 
 	// The method set travels with the name, because a type that reflect reads
@@ -2776,10 +2777,21 @@ function go2jsRegisterTypeName(constructor, name, methods, fields) {
 		go2jsMethodSets[name] = methods;
 	}
 
-	// The field names travel with it for the same reason: NumField and Field
-	// have nothing else to answer with for a type read off a value.
+	// What the fields are travels with it for the same reason: NumField and
+	// Field have nothing else to answer with for a type read off a value. A
+	// field is more than a name, because a program reads a tag, a package path
+	// and a type off one, so a descriptor is kept whole and a bare name is
+	// turned into one that says only the name.
 	if (Array.isArray(fields)) {
-		go2jsStructFields[name] = fields;
+		go2jsStructFields[name] = fields.map((field) =>
+			(typeof field === "string" ? {Name: field, Tag: "", PkgPath: "", Anonymous: false, Type: "", Kind: ""} : field));
+	}
+
+	// The kind travels with it for the same reason as well: a type reached
+	// through a name rather than through a value has no value to read a kind
+	// from, and reflect answers about the kind of everything it is given.
+	if (typeof kind === "string" && kind !== "") {
+		go2jsTypeKinds[name] = kind;
 	}
 }
 
@@ -3112,6 +3124,25 @@ function go2jsInterface(value, typeName, displayName) {
 }
 
 
+// go2jsSameReflectType reports whether two type descriptors describe one type.
+// The kind, the name, the length and what the type is made of are all of what
+// makes a type the type it is.
+function go2jsSameReflectType(left, right) {
+	if (left === right) {
+		return true;
+	}
+
+	if (left === null || left === undefined || right === null || right === undefined) {
+		return false;
+	}
+
+	return left.kind === right.kind &&
+		(left.name || "") === (right.name || "") &&
+		(left.len === null ? null : left.len) === (right.len === null ? null : right.len) &&
+		go2jsSameReflectType(left.elem, right.elem) &&
+		go2jsSameReflectType(left.key, right.key);
+}
+
 function go2jsEqual(a, b) {
 	const aNil = a === null || a === undefined;
 	const bNil = b === null || b === undefined;
@@ -3126,6 +3157,13 @@ function go2jsEqual(a, b) {
 
 	if (a === b) {
 		return true;
+	}
+
+	// A type read off a value is not the very object the program declared, so
+	// two types are compared by what they describe, which is what decides
+	// whether they are one type.
+	if (a.__go2js_reflectType === true && b.__go2js_reflectType === true) {
+		return go2jsSameReflectType(a, b);
 	}
 
 	const ai = a.__go2js_interface === true;
@@ -4119,6 +4157,47 @@ function go2jsRange(value) {
 
 // go2jsIndex reads one element of a slice or an array the way Go does, which
 // means refusing an index that is not there rather than answering undefined.
+// go2jsIndexPtr is the address of one element of a slice or an array. The
+// element and the index it was reached by are both read where the address is
+// taken, because that is where Go reads them, and a program that holds the
+// address afterwards reads and writes that element rather than whichever one
+// sits at the index later on.
+function go2jsIndexPtr(owner, index, typeName) {
+	const array = go2jsMaterializeValue(go2jsUnwrap(owner));
+	const at = Math.trunc(Number(index));
+
+	return go2jsPtr(
+		function() {
+			return go2jsIndex(array, at);
+		},
+		function(next) {
+			go2jsIndexSet(array, at, next);
+		},
+		typeName
+	);
+}
+
+// go2jsIndexSet writes one element of a slice or an array, which is the other
+// half of reading one by go2jsIndex.
+function go2jsIndexSet(value, index, next) {
+	const position = Math.trunc(Number(index));
+
+	if (position < 0) {
+		throw new RangeError(go2jsRuntimeErrorPrefix + "index out of range [" + position + "]");
+	}
+
+	if (position >= go2jsLen(value)) {
+		throw new RangeError(go2jsRuntimeErrorPrefix + "index out of range [" + position + "] with length " + go2jsLen(value));
+	}
+
+	if (value instanceof Uint8Array) {
+		value[position] = Number(next) & 0xff;
+		return;
+	}
+
+	value[position] = next;
+}
+
 function go2jsIndex(value, index) {
 	const position = Math.trunc(Number(index));
 
@@ -4367,6 +4446,17 @@ function go2jsFormat(value, typeName, kind, shape, plus, nested, raw) {
 
 	if (value === null || value === undefined) {
 		return go2jsNilFormat(typeName, kind, shape);
+	}
+
+	// A value reflect made is a window onto a value rather than a value of its
+	// own, so it is written as what the window holds, which is what a verb over
+	// a reflect.Value shows in Go.
+	if (value !== null && value !== undefined && value.__go2js_reflectValue === true) {
+		return go2jsFormat(typeof value.get === "function" ? value.get() : value.v, null, null, null, plus, nested, raw);
+	}
+
+	if (value !== null && value !== undefined && value.__go2js_reflectType === true) {
+		return typeof value.String === "function" ? value.String() : "";
 	}
 
 	if (value instanceof Error) {
@@ -5644,6 +5734,20 @@ function go2jsFormatValue(verb, spec, value, raw) {
 
 	value = go2jsUnwrap(go2jsUntyped(value));
 	value = go2jsMaterializeValue(value);
+
+	// A value reflect made is a window onto a value rather than a value of its
+	// own, so a verb is answered by what the window holds, and %T names the
+	// window rather than what it looks through.
+	if (value !== null && value !== undefined && value.__go2js_reflectValue === true) {
+		if (verb === "T") {
+			return "reflect.Value";
+		}
+
+		value = typeof value.get === "function" ? value.get() : value.v;
+		value = go2jsMaterializeValue(go2jsUnwrap(go2jsUntyped(value)));
+	} else if (value !== null && value !== undefined && value.__go2js_reflectType === true) {
+		return typeof value.String === "function" ? value.String() : "";
+	}
 
 	const kind = go2jsTypedKind(original);
 	const shape = go2jsTypedShape(original);

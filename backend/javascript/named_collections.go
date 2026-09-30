@@ -110,7 +110,11 @@ func (e *emitter) emitNamedCollectionLiteral(x *ast.CompositeLit, elem types.Typ
 		e.write(fmt.Sprintf("%d", item.index))
 		e.write("] = ")
 
-		if err := e.emitInterfaceValue(item.value, elem); err != nil {
+		// An element of a slice or an array is a value of the element type, so
+		// one that is a struct is a copy of that struct rather than the struct
+		// itself. Two elements written from the same one are then two structs,
+		// which is what a slice of records built from a template depends on.
+		if err := e.emitStructFieldValue(item.value, elem); err != nil {
 			return false, err
 		}
 

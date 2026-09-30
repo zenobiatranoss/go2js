@@ -35,7 +35,7 @@ func (e *emitter) targetNameList(lhs []ast.Expr) string {
 		if isBlankIdent(expr) {
 			continue
 		}
-		names = append(names, e.identName(expr))
+		names = append(names, e.declaredName(expr))
 	}
 	return strings.Join(names, ", ")
 }
@@ -46,13 +46,22 @@ func (e *emitter) blankDestructuringPattern(lhs []ast.Expr) string {
 
 func (e *emitter) positionalTargetPattern(lhs []ast.Expr) string {
 	names := make([]string, len(lhs))
+	kept := 0
+
 	for i, expr := range lhs {
 		if isBlankIdent(expr) {
 			continue
 		}
-		names[i] = e.identName(expr)
+
+		names[i] = e.declaredName(expr)
+		kept = i + 1
 	}
-	return strings.Join(names, ", ")
+
+	// A blank at the end of the pattern is left out rather than written as an
+	// empty slot, because a comma after the name that precedes it is not a
+	// pattern JavaScript reads. A blank between two names keeps its place,
+	// which is what the value it stands for is counted by.
+	return strings.Join(names[:kept], ", ")
 }
 
 func (e *emitter) identName(expr ast.Expr) string {
@@ -73,6 +82,15 @@ func (e *emitter) identName(expr ast.Expr) string {
 	default:
 		return exprString(expr)
 	}
+}
+
+// declaredName is the name to write for an identifier that the emitted code
+// declares, such as one named by a destructuring pattern. A name is written the
+// way JavaScript spells it, which is not always the way the program wrote it,
+// and a name of its own in an inner scope is written under the name it was
+// given there rather than under the name it has outside.
+func (e *emitter) declaredName(expr ast.Expr) string {
+	return e.resolveName(e.identName(expr))
 }
 
 func (e *emitter) declareFromLhs(lhs []ast.Expr) {
@@ -371,7 +389,7 @@ func (e *emitter) blankAssignmentList(lhs []ast.Expr, rhs []ast.Expr) string {
 		if isBlankIdent(target) {
 			continue
 		}
-		parts = append(parts, e.identName(target)+" = "+exprString(rhs[i]))
+		parts = append(parts, e.declaredName(target)+" = "+exprString(rhs[i]))
 	}
 
 	return strings.Join(parts, ", ")
