@@ -3,7 +3,10 @@ package javascript
 import (
 	"fmt"
 	"go/ast"
+	"go/constant"
+	"go/token"
 	gotypesstd "go/types"
+	"math/big"
 	"strconv"
 	"strings"
 )
@@ -93,6 +96,32 @@ func (e *emitter) emitNamedConversion(call *ast.CallExpr, named *gotypesstd.Name
 		return nil
 	}
 
+	// A whole number with more digits in it than a double keeps is turned into
+	// the type it is going into by the runtime, which reads both kinds of whole
+	// number and gives back whichever the answer is one of. A conversion to a
+	// plain number of digits is the same work either way, so the plain operator
+	// is left for everything a double covers.
+	if name := wideConversionName(basic); name != "" && e.conversionNeedsWide(call) {
+		e.needsRuntime = true
+		e.write(name)
+		e.write("(")
+
+		if err := e.emitExpr(call.Args[0]); err != nil {
+			return err
+		}
+
+		// a conversion to a number with a width is given the name of that width,
+		// since a number of digits is chosen by the type rather than by the
+		// value it is converting
+		if basic.Info()&gotypesstd.IsInteger != 0 && basic.Kind() != gotypesstd.UntypedInt && basic.Kind() != gotypesstd.UntypedRune {
+			e.write(", ")
+			e.write(strconv.Quote(basic.Name()))
+		}
+
+		e.write(")")
+		return nil
+	}
+
 	name := basicConversionName(basic)
 	if name == "" {
 		return fmt.Errorf("unsupported conversion to %s", named.Obj().Name())
@@ -113,6 +142,115 @@ func (e *emitter) emitNamedConversion(call *ast.CallExpr, named *gotypesstd.Name
 
 	e.write(")")
 	return nil
+}
+
+// basicOf gives back the plain number type behind a type, or nothing when the
+// type is not one of them.
+func basicOf(t gotypesstd.Type) *gotypesstd.Basic {
+	if t == nil {
+		return nil
+	}
+
+	basic, _ := t.Underlying().(*gotypesstd.Basic)
+
+	return basic
+}
+
+// isSizedIntegerKind reports whether a whole number type has a width of its
+// own, which is what a conversion needs to be told apart from a plain one.
+func isSizedIntegerKind(kind gotypesstd.BasicKind) bool {
+	switch kind {
+	case gotypesstd.Int8, gotypesstd.Int16, gotypesstd.Int32, gotypesstd.Int64,
+		gotypesstd.Uint8, gotypesstd.Uint16, gotypesstd.Uint32, gotypesstd.Uint64,
+		gotypesstd.Uintptr:
+		return true
+	default:
+		return false
+	}
+}
+
+// wideConversionName names the runtime function that turns a whole number into
+// the type a program is asking for, for the types where a double cannot be
+// trusted with the digits. Everything else is a plain conversion.
+func wideConversionName(basic *gotypesstd.Basic) string {
+	if basic == nil {
+		return ""
+	}
+
+	switch basic.Kind() {
+	case gotypesstd.Float32, gotypesstd.Float64, gotypesstd.UntypedFloat:
+		return "go2jsWideFloat"
+
+	case gotypesstd.Int, gotypesstd.Int64, gotypesstd.UntypedInt, gotypesstd.UntypedRune:
+		return "go2jsWideToSigned"
+	case gotypesstd.Int8, gotypesstd.Int16, gotypesstd.Int32:
+		return "go2jsWideToSigned"
+	case gotypesstd.Uint, gotypesstd.Uint64, gotypesstd.Uintptr:
+		return "go2jsWideToUnsigned"
+	case gotypesstd.Uint8, gotypesstd.Uint16, gotypesstd.Uint32:
+		return "go2jsWideToUnsigned"
+
+	default:
+		return ""
+	}
+}
+
+// conversionNeedsWide reports whether a conversion is asked for at a point where
+// one of its sides is a whole number too wide for a double. A conversion between
+// narrow types, or one between numbers that both fit, is left alone so a program
+// that never reaches the wide range pays nothing for it. A number read back out
+// of a double is read through the runtime as well, since a double only carries
+// the digits it can keep and the number it was read from may have had more.
+func (e *emitter) conversionNeedsWide(call *ast.CallExpr) bool {
+	if e.analysis == nil || call == nil || len(call.Args) != 1 {
+		return false
+	}
+
+	if hasWideIntOperand(e, call.Args[0]) {
+		return true
+	}
+
+	// a whole number read out of a double comes back with every digit the
+	// double was holding, which is the number Go hands back too
+	return e.isFloatExpr(call.Args[0])
+}
+
+// hasWideIntOperand reports whether a value somewhere in an expression is
+// worked out from, or is, a whole number too wide for a double.
+func hasWideIntOperand(e *emitter, expr ast.Expr) bool {
+	if e == nil || e.analysis == nil || expr == nil {
+		return false
+	}
+
+	switch x := expr.(type) {
+	case *ast.BasicLit:
+		if x.Kind != token.INT {
+			return false
+		}
+
+		value := constant.MakeFromLiteral(x.Value, x.Kind, 0)
+		if value == nil {
+			return false
+		}
+
+		text, ok := new(big.Int).SetString(constant.ToInt(value).ExactString(), 10)
+
+		return ok && (!text.IsInt64() || text.Int64() > maxSafeIntegerLiteral || text.Int64() < -maxSafeIntegerLiteral)
+
+	case *ast.BinaryExpr:
+		return hasWideIntOperand(e, x.X) || hasWideIntOperand(e, x.Y)
+	case *ast.ParenExpr:
+		return hasWideIntOperand(e, x.X)
+	case *ast.UnaryExpr:
+		return hasWideIntOperand(e, x.X)
+
+	case *ast.Ident:
+		t := e.analyzedType(x)
+
+		return t != nil && isWideIntType(t)
+	}
+
+	return false
 }
 
 func basicConversionName(basic *gotypesstd.Basic) string {

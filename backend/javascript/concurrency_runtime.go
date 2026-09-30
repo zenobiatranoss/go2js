@@ -850,7 +850,73 @@ function go2jsDurationDecimal(value) {
 	return text;
 }
 
+// A span of time too many digits to be a double is put in words the same way,
+// working the digits themselves rather than rounding them away.
+function go2jsDurationStringBig(nanoseconds) {
+	if (nanoseconds === 0n) {
+		return "0s";
+	}
+
+	const sign = nanoseconds < 0n ? "-" : "";
+	let rest = nanoseconds < 0n ? -nanoseconds : nanoseconds;
+	const billion = 1000000000n;
+	const minute = 60000000000n;
+	const hour = 3600000000000n;
+
+	if (rest < billion) {
+		let scale = 1n;
+		let unit = "ns";
+
+		if (rest >= 1000000n) {
+			scale = 1000000n;
+			unit = "ms";
+		} else if (rest >= 1000n) {
+			scale = 1000n;
+			unit = "\u00b5s";
+		}
+
+		return sign + go2jsFractionDigits(rest, scale) + unit;
+	}
+
+	const hours = rest / hour;
+	rest -= hours * hour;
+
+	const minutes = rest / minute;
+	rest -= minutes * minute;
+
+	let text = "";
+
+	if (hours > 0n) {
+		text += hours + "h";
+	}
+
+	if (hours > 0n || minutes > 0n) {
+		text += minutes + "m";
+	}
+
+	return sign + text + go2jsFractionDigits(rest, billion) + "s";
+}
+
+// go2jsFractionDigits writes a fraction of a whole part out the way Go writes
+// one, in digits, with the zeros on the right left off and none at all when
+// there is nothing to say. The unit is left to the caller, which is the one
+// that knows what is being measured.
+function go2jsFractionDigits(numerator, denominator) {
+	const whole = numerator / denominator;
+	const fraction = (numerator % denominator).toString().padStart(denominator.toString().length - 1, "0").replace(/0+$/, "");
+
+	if (fraction === "") {
+		return String(whole);
+	}
+
+	return String(whole) + "." + fraction;
+}
+
 function go2jsDurationString(nanoseconds) {
+	if (typeof nanoseconds === "bigint") {
+		return go2jsDurationStringBig(nanoseconds);
+	}
+
 	if (nanoseconds === 0) {
 		return "0s";
 	}

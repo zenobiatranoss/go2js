@@ -194,6 +194,292 @@ func compoundDerefTarget(stmt *ast.AssignStmt) (*ast.StarExpr, bool) {
 	return star, ok
 }
 
+// compoundAssignBinaryOp turns an assignment that works itself out into the
+// operation it works out, so that the two are done the same way.
+func compoundAssignBinaryOp(tok token.Token) (token.Token, bool) {
+	switch tok {
+	case token.ADD_ASSIGN:
+		return token.ADD, true
+	case token.SUB_ASSIGN:
+		return token.SUB, true
+	case token.MUL_ASSIGN:
+		return token.MUL, true
+	case token.QUO_ASSIGN:
+		return token.QUO, true
+	case token.REM_ASSIGN:
+		return token.REM, true
+	case token.AND_ASSIGN:
+		return token.AND, true
+	case token.OR_ASSIGN:
+		return token.OR, true
+	case token.XOR_ASSIGN:
+		return token.XOR, true
+	case token.SHL_ASSIGN:
+		return token.SHL, true
+	case token.SHR_ASSIGN:
+		return token.SHR, true
+	case token.AND_NOT_ASSIGN:
+		return token.AND_NOT, true
+	default:
+		return token.ILLEGAL, false
+	}
+}
+
+// emitStep writes a step of one on a whole number wider than a double as the
+// operation the runtime runs, for the same reason every other operation on one
+// is: JavaScript will not step the two kinds of whole number together, and
+// JavaScript will not write a step back to a lookup or through a pointer. It
+// reports that it did nothing for every other type, which steps as it always
+// did.
+func (e *emitter) emitStep(stmt *ast.IncDecStmt) bool {
+	if stmt == nil {
+		return false
+	}
+
+	tok := token.SHL_ASSIGN
+	if stmt.Tok == token.INC {
+		tok = token.ADD_ASSIGN
+	} else {
+		tok = token.SUB_ASSIGN
+	}
+
+	op, _ := compoundAssignBinaryOp(tok)
+	target := e.analyzedType(stmt.X)
+
+	// a step on an entry of a map is a read of that entry, the step, and a
+	// write back, for any element type at all
+	if index, ok := stmt.X.(*ast.IndexExpr); ok && e.isMapExpr(index.X) {
+		return e.emitMapCompoundAssign(index, nil, tok)
+	}
+
+	if !isWideIntType(target) {
+		return false
+	}
+
+	name, _ := wideIntOperator(op)
+	e.needsRuntime = true
+
+	// a step through a pointer is a read of what it points at, the step, and a
+	// write back, because JavaScript will not step a call on its own
+	if deref, ok := stmt.X.(*ast.StarExpr); ok {
+		e.writeIndent()
+		e.write("go2jsStorePtr(")
+
+		if err := e.emitPointerOperand(deref.X); err != nil {
+			return true
+		}
+
+		e.write(", ")
+		e.write(name)
+		e.write("(")
+
+		if err := e.emitExpr(deref); err != nil {
+			return true
+		}
+
+		e.write(", 1")
+
+		if basic := basicOf(target); basic != nil {
+			e.write(", ")
+			e.write(strconv.Quote(basic.Name()))
+		}
+
+		e.write("));")
+		e.newline()
+
+		return true
+	}
+
+	e.writeIndent()
+
+	if err := e.emitTargetExpr(stmt.X); err != nil {
+		return true
+	}
+
+	e.write(" = ")
+	e.write(name)
+	e.write("(")
+
+	if err := e.emitTargetExpr(stmt.X); err != nil {
+		return true
+	}
+
+	e.write(", 1")
+
+	if basic := basicOf(target); basic != nil {
+		e.write(", ")
+		e.write(strconv.Quote(basic.Name()))
+	}
+
+	e.write(");")
+	e.newline()
+
+	return true
+}
+
+// emitMapCompoundAssign writes a compound assignment aimed at an entry of a
+// map as the read, the operation, and the write back that it is in Go, since
+// JavaScript will not write to a lookup directly. It reports that it did
+// nothing when there is no such map to work on.
+func (e *emitter) emitMapCompoundAssign(index *ast.IndexExpr, rhs ast.Expr, tok token.Token) bool {
+	if index == nil {
+		return false
+	}
+
+	op, compound := compoundAssignBinaryOp(tok)
+	if !compound {
+		return false
+	}
+
+	step := rhs == nil
+
+	elem := e.analyzedType(index)
+
+	e.writeIndent()
+	e.needsRuntime = true
+	e.write("go2jsMapUpdate(")
+
+	if err := e.emitExpr(index.X); err != nil {
+		e.write("null")
+	}
+
+	e.write(", ")
+
+	if err := e.emitExpr(index.Index); err != nil {
+		return false
+	}
+
+	e.write(", ")
+	e.write(e.zeroValue(elem))
+	e.write(", (current) => ")
+
+	// the operation is the one the runtime runs for this type, for the same
+	// reason it is everywhere else: the two kinds of whole number cannot be
+	// mixed by an operator
+	wideName, wide := "", false
+
+	if isWideIntType(elem) && isArithmeticOp(op) {
+		wideName, wide = wideIntOperator(op)
+	} else if (op == token.SHL || op == token.SHR) && isWideIntType(elem) {
+		if op == token.SHL {
+			wideName = "go2jsShl"
+		} else {
+			wideName = "go2jsShr"
+		}
+
+		wide = true
+	}
+
+	if wide {
+		e.write(wideName)
+		e.write("(current, ")
+	} else {
+		e.write("current ")
+		e.write(op.String())
+		e.write(" ")
+	}
+
+	if _, wraps := narrowIntTypeName(elem); wraps {
+		e.write("go2jsIntWrap(")
+	}
+
+	if step {
+		e.write("1")
+	} else if err := e.emitExpr(rhs); err != nil {
+		return false
+	}
+
+	if wrapName, wraps := narrowIntTypeName(elem); wraps {
+		e.write(", ")
+		e.write(strconv.Quote(wrapName))
+		e.write(")")
+	}
+
+	if wide {
+		if basic := basicOf(elem); basic != nil {
+			e.write(", ")
+			e.write(strconv.Quote(basic.Name()))
+		}
+
+		e.write(")")
+	}
+
+	e.write(");")
+	e.newline()
+
+	return true
+}
+
+// emitWideCompoundAssign writes an assignment that works itself out as an
+// operation the runtime runs, for the whole number types a double cannot be
+// trusted with. It reports that it did nothing, leaving the assignment as the
+// plain operator it always was, for every other type.
+func (e *emitter) emitWideCompoundAssign(stmt *ast.AssignStmt) (bool, error) {
+	if stmt == nil || len(stmt.Lhs) != 1 || len(stmt.Rhs) != 1 {
+		return false, nil
+	}
+
+	op, compound := compoundAssignBinaryOp(stmt.Tok)
+
+	if !compound {
+		return false, nil
+	}
+
+	target := e.analyzedType(stmt.Lhs[0])
+	name, wide := "", false
+
+	switch {
+	case (op == token.SHL || op == token.SHR) && isWideIntType(target) && e.isIntegerExpr(stmt.Lhs[0]) && e.isIntegerExpr(stmt.Rhs[0]):
+		if op == token.SHL {
+			name = "go2jsShl"
+		} else {
+			name = "go2jsShr"
+		}
+
+		wide = true
+	case isWideIntType(target) && isArithmeticOp(op):
+		name, wide = wideIntOperator(op)
+	}
+
+	if !wide {
+		return false, nil
+	}
+
+	e.needsRuntime = true
+	e.writeIndent()
+
+	if err := e.emitTargetExpr(stmt.Lhs[0]); err != nil {
+		return true, err
+	}
+
+	e.write(" = ")
+	e.write(name)
+	e.write("(")
+
+	if err := e.emitTargetExpr(stmt.Lhs[0]); err != nil {
+		return true, err
+	}
+
+	e.write(", ")
+
+	if err := e.emitExpr(stmt.Rhs[0]); err != nil {
+		return true, err
+	}
+
+	// the answer is handed back inside the width of the type it is for
+	if basic := basicOf(target); basic != nil {
+		e.write(", ")
+		e.write(strconv.Quote(basic.Name()))
+	}
+
+	// the statement is written out whole here rather than left for the path it
+	// was taken from, so it ends the same way every other statement does
+	e.write(");")
+	e.newline()
+
+	return true, nil
+}
+
 func (e *emitter) emitTargetExpr(expr ast.Expr) error {
 	previous := e.inTarget
 	e.inTarget = true
@@ -944,10 +1230,34 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 			}
 			e.write(", ")
 
+			// The operation is the one the runtime runs for this type, for the
+			// same reason it is everywhere else: the two kinds of whole number
+			// cannot be mixed by an operator.
+			target := e.analyzedType(s.Lhs[0])
+			op, _ := compoundAssignBinaryOp(s.Tok)
+			wideName, wide := "", false
+
+			if isWideIntType(target) && isArithmeticOp(op) {
+				wideName, wide = wideIntOperator(op)
+			} else if (op == token.SHL || op == token.SHR) && isWideIntType(target) {
+				if op == token.SHL {
+					wideName = "go2jsShl"
+				} else {
+					wideName = "go2jsShr"
+				}
+
+				wide = true
+			}
+
+			if wide {
+				e.write(wideName)
+				e.write("(")
+			}
+
 			// The number the operation gives can be wider than the type it lands
 			// in, and Go hands back the number that fits rather than a number
 			// that does not, so the result is read back through that width first.
-			wrapName, wraps := narrowIntTypeName(e.analyzedType(s.Lhs[0]))
+			wrapName, wraps := narrowIntTypeName(target)
 			if wraps {
 				e.write("go2jsIntWrap(")
 			}
@@ -955,9 +1265,15 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 			if err := e.emitExpr(star); err != nil {
 				return err
 			}
-			e.write(" ")
-			e.write(compoundAssignOperator(s.Tok))
-			e.write(" ")
+
+			if wide {
+				e.write(", ")
+			} else {
+				e.write(" ")
+				e.write(compoundAssignOperator(s.Tok))
+				e.write(" ")
+			}
+
 			if err := e.emitBinaryOperand(s.Rhs[0], s.Tok, true); err != nil {
 				return err
 			}
@@ -965,6 +1281,15 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 			if wraps {
 				e.write(", ")
 				e.write(strconv.Quote(wrapName))
+				e.write(")")
+			}
+
+			if wide {
+				if basic := basicOf(target); basic != nil {
+					e.write(", ")
+					e.write(strconv.Quote(basic.Name()))
+				}
+
 				e.write(")")
 			}
 
@@ -1014,6 +1339,23 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 			if e.emitNarrowIntAssign(s.Lhs[0], compoundAssignOperator(s.Tok), s.Rhs[0]) {
 				return nil
 			}
+
+			// A compound assignment on an entry of a map is a read of that
+			// entry, the operation, and a write back, because a lookup is a
+			// value JavaScript will not let an assignment stand on the left of.
+			if index, ok := s.Lhs[0].(*ast.IndexExpr); ok && e.isMapExpr(index.X) {
+				if e.emitMapCompoundAssign(index, s.Rhs[0], s.Tok) {
+					return nil
+				}
+			}
+			// a whole number wider than a double keeps is worked out by the
+			// runtime rather than by an operator, since the two kinds of whole
+			// number cannot be mixed by one. A compound assignment is that same
+			// operation read as an assignment, so it is worked out the same way.
+			if handled, err := e.emitWideCompoundAssign(s); handled {
+				return err
+			}
+
 		}
 
 		e.writeIndent()
@@ -1144,6 +1486,10 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 				return nil
 			}
 		} else if e.emitNarrowIntAssign(s.X, "-", nil) {
+			return nil
+		}
+
+		if e.emitStep(s) {
 			return nil
 		}
 
@@ -2390,7 +2736,10 @@ func (e *emitter) emitConversion(call *ast.CallExpr) error {
 
 	if basic, ok := target.Underlying().(*gotypesstd.Basic); ok && basic.Kind() == gotypesstd.Int32 {
 		if source := e.analyzedType(call.Args[0]); source != nil {
-			if sourceBasic, ok := source.Underlying().(*gotypesstd.Basic); ok && sourceBasic.Info()&gotypesstd.IsInteger != 0 {
+			// a number with more digits than a double keeps is brought down to
+			// the thirty two bits it is going into, rather than left as the wide
+			// number it still is
+			if sourceBasic, ok := source.Underlying().(*gotypesstd.Basic); ok && sourceBasic.Info()&gotypesstd.IsInteger != 0 && !hasWideIntOperand(e, call.Args[0]) {
 				if err := e.emitExpr(call.Args[0]); err != nil {
 					return err
 				}
@@ -2477,6 +2826,29 @@ func (e *emitter) emitConversion(call *ast.CallExpr) error {
 
 		if err := e.emitExpr(call.Args[0]); err != nil {
 			return err
+		}
+
+		e.write(")")
+		return nil
+	}
+
+	// A whole number with more digits in it than a double keeps is turned into
+	// the type it is going into by the runtime, which reads both kinds of whole
+	// number and gives back whichever the answer is one of. A conversion a
+	// double covers either way is left as the plain conversion it always was, so
+	// a program that never reaches the wide range pays nothing for having it.
+	if name := wideConversionName(basicOf(target)); name != "" && e.conversionNeedsWide(call) {
+		e.needsRuntime = true
+		e.write(name)
+		e.write("(")
+
+		if err := e.emitExpr(call.Args[0]); err != nil {
+			return err
+		}
+
+		if basic := basicOf(target); basic != nil && isSizedIntegerKind(basic.Kind()) {
+			e.write(", ")
+			e.write(strconv.Quote(basic.Name()))
 		}
 
 		e.write(")")
