@@ -3,6 +3,7 @@ package javascript
 import (
 	"go/types"
 	"strconv"
+	"strings"
 )
 
 func (e *emitter) namedResultNames() []string {
@@ -74,6 +75,16 @@ func (e *emitter) emitNamedResults() error {
 }
 
 func (e *emitter) zeroValue(t types.Type) string {
+	return e.zeroValueAt(t, 0)
+}
+
+// zeroValueAt is the zero value of a type, writing out the fields of a struct
+// that has no class of its own to say them in. A struct from another package is
+// built by hand here, field by field, because a variable of that type has to
+// be the value Go would make of it: every field at its own zero value, all the
+// way down, so a field read from it is the zero of its own type rather than
+// nothing at all.
+func (e *emitter) zeroValueAt(t types.Type, depth int) string {
 	if e != nil && t != nil {
 		if named, ok := t.(*types.Named); ok {
 			obj := named.Obj()
@@ -99,7 +110,47 @@ func (e *emitter) zeroValue(t types.Type) string {
 		}
 	}
 
+	if literal, ok := e.structZeroLiteral(t, depth); ok {
+		return literal
+	}
+
 	return zeroValueForGoType(t)
+}
+
+// structZeroLiteral writes the object that a struct of no fields written to
+// means. It is asked for the struct of another package, which has no class to
+// construct, and for a struct written out in place, which has no name to build
+// one from.
+func (e *emitter) structZeroLiteral(t types.Type, depth int) (string, bool) {
+	// A struct cannot hold itself, so the fields walked here are always fewer,
+	// but a type that folds back on itself through a name is left to the value
+	// it has rather than followed forever.
+	if depth > 8 {
+		return "", false
+	}
+
+	structure, ok := t.Underlying().(*types.Struct)
+	if !ok {
+		return "", false
+	}
+
+	// A struct of this package has a class that zeroes itself already.
+	if named, isNamed := t.(*types.Named); isNamed {
+		if obj := named.Obj(); obj != nil && obj.Pkg() != nil {
+			if e.localStructTypes[obj.Name()] {
+				return "", false
+			}
+		}
+	}
+
+	parts := make([]string, 0, structure.NumFields())
+
+	for i := 0; i < structure.NumFields(); i++ {
+		field := structure.Field(i)
+		parts = append(parts, strconv.Quote(field.Name())+": "+e.zeroValueAt(field.Type(), depth+1))
+	}
+
+	return "{" + strings.Join(parts, ", ") + "}", true
 }
 
 func zeroValueForGoType(t types.Type) string {
