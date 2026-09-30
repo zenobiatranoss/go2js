@@ -518,13 +518,15 @@ var pathFuncs = map[string]string{
 }
 
 var randFuncs = map[string]string{
-	"Int":     "go2jsRandInt",
-	"Intn":    "go2jsRandIntn",
-	"Int63":   "go2jsRandInt63",
-	"Float64": "go2jsRandFloat64",
-	"Perm":    "go2jsRandPerm",
-	"Shuffle": "go2jsRandShuffle",
-	"Seed":    "go2jsRandSeed",
+	"Int":       "go2jsRandInt",
+	"Intn":      "go2jsRandIntn",
+	"Int63":     "go2jsRandInt63",
+	"Float64":   "go2jsRandFloat64",
+	"Perm":      "go2jsRandPerm",
+	"Shuffle":   "go2jsRandShuffle",
+	"Seed":      "go2jsRandSeed",
+	"New":       "go2jsRandNew",
+	"NewSource": "go2jsRandNewSource",
 }
 
 var cmpFuncs = map[string]string{

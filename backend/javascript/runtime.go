@@ -2809,6 +2809,21 @@ function go2jsRegisterTypeName(constructor, name, methods, fields, kind) {
 
 // go2jsGoTypeName reports the Go type name of a value for %T.
 function go2jsGoTypeName(value) {
+	// a verb asking for the type of a value asks for the type as it stands on
+	// its own, which is the name without the second one byte and rune have, and
+	// every way the name is worked out below is one that can come out needing
+	// that, so it is settled once at the end rather than in each of them
+	return go2jsNormalizeTypeName(go2jsGoTypeNameRaw(value));
+}
+
+function go2jsGoTypeNameRaw(value) {
+	// Every value of a type is the one type behind them all, which is a name
+	// kept out of reach rather than one a program can ask for, so a descriptor
+	// answers with it instead of with the type it describes.
+	if (value !== null && value !== undefined && value.__go2js_reflectType === true) {
+		return "*reflect.rtype";
+	}
+
 	if (value !== null && value !== undefined && value.__go2js_typed === true) {
 		return value.type;
 	}
@@ -3450,6 +3465,15 @@ function go2jsTypeOf(value) {
 		return "[]" + go2jsTypeOf(value[0]);
 	}
 
+	// A typed array is the one a byte slice is written as, since a program keeps
+	// writing bytes into it, so it carries the name of the slice it stands for
+	// rather than the name of the array class it is built on.
+	const viewName = go2jsViewTypeName(value);
+
+	if (viewName !== null) {
+		return viewName;
+	}
+
 	if (value instanceof go2jsNativeMap) {
 		if (value.__go2js_type !== undefined) {
 			return value.__go2js_type;
@@ -3477,7 +3501,40 @@ function go2jsTypeOf(value) {
 	return "interface {}";
 }
 
+// go2jsViewTypeName gives back the name of the slice a typed array stands for,
+// or nothing when the value is not a typed array at all.
+function go2jsViewTypeName(value) {
+	if (value === null || value === undefined || typeof value !== "object" ||
+		typeof ArrayBuffer === "undefined" || !ArrayBuffer.isView(value)) {
+		return null;
+	}
+
+	switch (value.constructor !== undefined && value.constructor !== null ? value.constructor.name : "") {
+	case "Uint8Array":
+	case "Uint8ClampedArray":
+		return "[]uint8";
+	case "Int8Array":
+		return "[]int8";
+	case "Uint16Array":
+		return "[]uint16";
+	case "Int16Array":
+		return "[]int16";
+	case "Uint32Array":
+		return "[]uint32";
+	case "Int32Array":
+		return "[]int32";
+	case "Float32Array":
+		return "[]float32";
+	case "Float64Array":
+		return "[]float64";
+	default:
+		return null;
+	}
+}
+
 function go2jsShortTypeName(name) {
+	name = go2jsNormalizeTypeName(name);
+
 	const pointer = name.startsWith("*");
 	const trimmed = pointer ? name.slice(1) : name;
 	const parts = trimmed.split(".");
@@ -3531,18 +3588,27 @@ function go2jsSameTypeName(actual, expected) {
 		return true;
 	}
 
-	if (typeof expected !== "string" || expected.includes(".")) {
+	if (typeof actual !== "string" || typeof expected !== "string") {
 		return false;
 	}
 
-	const base = name => {
-		const trimmed = name.startsWith("*") ? name.slice(1) : name;
-		const dot = trimmed.lastIndexOf(".");
+	return go2jsShortTypeName(actual) === go2jsShortTypeName(expected);
+}
 
-		return dot === -1 ? trimmed : trimmed.slice(dot + 1);
-	};
+// go2jsNormalizeTypeName gives a type the one name Go has for it, since byte is
+// uint8 and rune is int32 under two names each, and a type written one way is
+// asked about by the other as often as not.
+function go2jsNormalizeTypeName(name) {
+	if (typeof name !== "string" || name === "") {
+		return name;
+	}
 
-	return typeof actual === "string" && base(actual) === base(expected);
+	// byte and rune are the other names for uint8 and int32, and a name given
+	// for its own sake is not one of them, so a name a package stands behind is
+	// left as it stands.
+	return name
+		.replace(/(?<![.\w])byte(?![.\w])/g, "uint8")
+		.replace(/(?<![.\w])rune(?![.\w])/g, "int32");
 }
 
 // go2jsRegisterInterface records the method set of an interface type so a type
@@ -3569,6 +3635,8 @@ function go2jsInterfaceKey(name) {
 // is the one that counts.
 const go2jsBuiltinInterfaces = {
 	"error": ["Error"],
+	"rand.Source": ["Int63", "Seed"],
+	"sort.Interface": ["Len", "Less", "Swap"],
 	"Stringer": ["String"],
 	"GoStringer": ["GoString"],
 	"Formatter": ["Format"],
@@ -3648,7 +3716,7 @@ function go2jsAssert(value, typeName) {
 function go2jsAssertOK(value, typeName) {
     if (value !== null && value !== undefined &&
         value.__go2js_interface === true &&
-        value.type === typeName) {
+        go2jsSameTypeName(value.type, typeName)) {
         return [value.value, true];
     }
 
@@ -4699,6 +4767,15 @@ function go2jsFormat(value, typeName, kind, shape, plus, nested, raw) {
 	}
 
 	value = go2jsUntyped(value);
+
+	// A number too big for a double is held as the whole number it is, and the
+	// verbs are written against the number itself, so a plain number of that
+	// kind is shown as the digits it is made of. Which verb is in play is worked
+	// out further down, where the reading of the value it has is made, so this
+	// only covers the verbs that are the same either way.
+	if (typeof value === "bigint") {
+		return go2jsBigintFormat(value, {verb: "v", width: 0, precision: -1, plus: false, space: false, zero: false, left: false, alt: false}, typeName, kind);
+	}
 
 	// A nil slice or a nil map is given an empty value of its own so its type
 	// can travel, but it is still nil, and nil is what the verbs are written
@@ -6015,13 +6092,24 @@ function go2jsFormatValue(verb, spec, value, raw) {
 
 		value = typeof value.get === "function" ? value.get() : value.v;
 		value = go2jsMaterializeValue(go2jsUnwrap(go2jsUntyped(value)));
-	} else if (value !== null && value !== undefined && value.__go2js_reflectType === true) {
+	} else if (verb !== "T" && value !== null && value !== undefined && value.__go2js_reflectType === true) {
+		// every value of a type is the one type behind them all, and %T is the
+		// one verb that asks what a value is rather than what it says, so it is
+		// answered above and not here
 		return typeof value.String === "function" ? value.String() : "";
 	}
 
 	const kind = go2jsTypedKind(original);
 	const shape = go2jsTypedShape(original);
 	const tagName = tagged || boxedType;
+
+	// A number too big for a double is held whole, and every verb over it reads
+	// the digits off that whole number rather than off a rounded one, so it is
+	// answered before anything tries to treat it as a plain number.
+	if (typeof value === "bigint") {
+		return go2jsBigintFormat(value, {verb: verb, flags: flags, precision: precision, width: parsed.width}, tagName, kind);
+	}
+
 	const accepted = kind || go2jsInferTypeName(value, tagName);
 
 	if (verb !== "%" && !go2jsVerbAccepts(verb, accepted)) {
@@ -6438,6 +6526,82 @@ function go2jsParseFormatSpec(spec) {
 // value reads -0042 rather than 00-42. An integer that was given a precision
 // takes spaces instead, because a precision and a zero flag together leave the
 // flag with nothing to say: %05.3d of 42 is "  042" while %05d is "00042".
+// go2jsBigintFormat writes a number that is too big for a double the way fmt
+// writes an integer, reading the digits off the whole number rather than off a
+// rounded one. A negative number written in a base other than ten keeps the sign
+// in front rather than borrowing from the digits, which is what fmt does for an
+// integer of a signed type.
+function go2jsBigintFormat(value, parsed, typeName, kind) {
+	const spec = parsed === undefined ? {verb: "v", width: 0, precision: null, flags: ""} : parsed;
+	const verb = spec.verb === undefined ? "v" : spec.verb;
+	const flags = spec.flags === undefined ? "" : spec.flags;
+	const precision = spec.precision === undefined ? null : spec.precision;
+	const accepted = typeName || kind || "int";
+
+	// a number of this size is a whole number, so the verbs written for a float
+	// take it as one, and the ones that only a float answers say so
+	if (go2jsVerbInSet(verb, "efgEFG")) {
+		return go2jsFormatValue(verb, spec.width > 0 ? "%" + flags + spec.width + (precision === null ? "" : "." + precision) + verb : "%" + flags + verb,
+			go2jsTyped(Number(value), "float64"));
+	}
+
+	if (verb === "T") {
+		return go2jsFormatValue("T", "%T", go2jsTyped(0, accepted));
+	}
+
+	if (verb === "c" || verb === "q" || verb === "s" || verb === "U") {
+		return go2jsFormatValue(verb, "%" + verb, go2jsTyped(Number(value), "rune"));
+	}
+
+	if (verb === "p") {
+		return "0x0";
+	}
+
+	let out;
+
+	if (verb === "v" || verb === "d" || verb === undefined) {
+		out = value.toString(10);
+	} else if (verb === "b" || verb === "B") {
+		out = value.toString(2);
+	} else if (verb === "o") {
+		out = value.toString(8);
+	} else if (verb === "x" || verb === "X") {
+		out = value.toString(16);
+	} else if (verb === "e" || verb === "f" || verb === "g") {
+		out = value.toString(10);
+	} else {
+		return "%!" + verb + "(" + (kind === "rune" ? "int32" : accepted) + "=" + value.toString(10) + ")";
+	}
+
+	// only %X asks for capital digits, and %x with the sharp flag keeps its
+	// prefix and its digits in the same case
+	if (verb === "X") {
+		out = out.toUpperCase();
+	}
+
+	// a base prefix is written in front of the digits when the sharp flag asks
+	// for it, and %X has none of its own
+	let prefix = "";
+
+	if (flags.includes("#")) {
+		if (verb === "b" || verb === "B") {
+			prefix = "0b";
+		} else if (verb === "o") {
+			prefix = "0";
+		} else if (verb === "x" && value < 0n) {
+			prefix = "-0x";
+		} else if (verb === "x") {
+			prefix = "0x";
+		}
+	}
+
+	// the sharp flag leaves a value of zero in front of its prefix rather than
+	// turning the prefix into the whole of the number
+	const body = prefix === "" ? out : (out === "0" && value === 0n ? "0" : prefix + out);
+
+	return go2jsPad(body, {width: spec.width || 0, flags: flags.includes("+") || flags.includes(" ") || flags.includes("#") ? flags + "+" : flags, precision: precision}, true);
+}
+
 function go2jsPad(text, parsed, integer) {
 	if (parsed.width <= text.length) {
 		return text;
