@@ -2828,6 +2828,15 @@ function go2jsGoTypeNameRaw(value) {
 		return value.type;
 	}
 
+	// a value that answers for its own type carries the name itself
+	if (value !== null && value !== undefined && typeof value === "object") {
+		const own = value.__go2js_type_name;
+
+		if (typeof own === "string" && own !== "") {
+			return own;
+		}
+	}
+
 	// A box standing for a nil pointer carries the name of the pointer type, so
 	// a verb that asks for the type of the value asks the box rather than the
 	// interface that happens to hold it.
@@ -4578,6 +4587,9 @@ const go2jsSignBit64 = 1n << 63n;
 // read back as one, so a program working in the range a double covers is not
 // slowed down or made to answer differently by a range it never reaches.
 function go2jsWideBinary(left, right, whole, typeName) {
+	left = go2jsDurationOperand(left);
+	right = go2jsDurationOperand(right);
+
 	if (!go2jsIsWide(left) && !go2jsIsWide(right)) {
 		return go2jsWideWrap(whole(left, right), typeName);
 	}
@@ -4638,6 +4650,8 @@ function go2jsWideAndNot(left, right, typeName) {
 // out. A double carries about sixteen digits exactly, so past that the answer
 // is the nearest one to it rather than the whole number asked for.
 function go2jsWideFloat(value) {
+	value = go2jsDurationOperand(value);
+
 	// reading a whole number as a double gives the nearest double to it, which is
 	// the number the conversion gives in Go, digits and all the way out. A double
 	// carries about sixteen digits exactly, so past that the answer is the nearest
@@ -4650,6 +4664,8 @@ function go2jsWideFloat(value) {
 // go2jsWideToSigned turns a whole number into a signed number of the width the
 // type asks for, keeping every digit it has when they all fit.
 function go2jsWideToSigned(value, typeName) {
+	value = go2jsDurationOperand(value);
+
 	const number = typeof value === "bigint" ? value : go2jsWide(value);
 
 	return go2jsNarrow(go2jsIntWrap(number, typeName || "int64"));
@@ -4658,6 +4674,8 @@ function go2jsWideToSigned(value, typeName) {
 // go2jsWideToUnsigned is the same for an unsigned type, where a number below the
 // smallest is not a fault but the largest the type has.
 function go2jsWideToUnsigned(value, typeName) {
+	value = go2jsDurationOperand(value);
+
 	const number = typeof value === "bigint" ? value : go2jsWide(value);
 	const wrapped = go2jsIntWrap(number, typeName || "uint64");
 
@@ -4669,6 +4687,9 @@ function go2jsWideToUnsigned(value, typeName) {
 // past the safe range is compared as digits rather than as a number, which is
 // the same answer and the right one.
 function go2jsWideCompare(left, right) {
+	left = go2jsDurationOperand(left);
+	right = go2jsDurationOperand(right);
+
 	if (typeof left === "bigint" && typeof right === "bigint") {
 		return left < right ? -1 : (left > right ? 1 : 0);
 	}
@@ -4695,6 +4716,9 @@ function go2jsWideCompare(left, right) {
 // holds exactly is not equal to a whole number that stands for the same digits,
 // since the double is a different number once the digits are gone.
 function go2jsWideEqual(left, right) {
+	left = go2jsDurationOperand(left);
+	right = go2jsDurationOperand(right);
+
 	if (typeof left === "bigint" || typeof right === "bigint") {
 		return go2jsWideCompare(left, right) === 0;
 	}
@@ -4702,7 +4726,23 @@ function go2jsWideEqual(left, right) {
 	return left === right;
 }
 
+// go2jsDurationOperand reads the whole number out of a span of time and leaves
+// every other value as it stands, so a helper that works in whole numbers can
+// take one of either without being told which it has.
+function go2jsDurationOperand(value) {
+	if (go2jsIsDuration(value)) {
+		return value.nanoseconds;
+	}
+
+	return value;
+}
+
 function go2jsDivide(left, right) {
+	// a span of time is asked for the whole number it holds before the two are
+	// divided, since it is that number and not the shape that does the work
+	left = go2jsDurationOperand(left);
+	right = go2jsDurationOperand(right);
+
 	if (go2jsIsWide(left) || go2jsIsWide(right)) {
 		return go2jsWideQuo(left, right);
 	}
@@ -4723,6 +4763,9 @@ function go2jsDivide(left, right) {
 // wide those bits are. A number with no type of its own to land in is left
 // wherever it lands.
 function go2jsShl(left, right, typeName) {
+	left = go2jsDurationOperand(left);
+	right = go2jsDurationOperand(right);
+
 	const count = Math.trunc(Number(right));
 
 	if (count < 0) {
@@ -4748,6 +4791,9 @@ function go2jsShlWide(value, typeName) {
 // brings down zeros, and the number itself says which it is: a negative one
 // keeps its sign the whole way down.
 function go2jsShr(left, right, typeName) {
+	left = go2jsDurationOperand(left);
+	right = go2jsDurationOperand(right);
+
 	const count = Math.trunc(Number(right));
 
 	if (count <= 0) {
@@ -4772,6 +4818,8 @@ function go2jsShr(left, right, typeName) {
 // an int8 one past its largest is the smallest int8 and a uint8 one below its
 // smallest is the largest uint8.
 function go2jsIntWrap(value, typeName) {
+	value = go2jsDurationOperand(value);
+
 	// a whole number with more digits than a double keeps is given the width of
 	// its type as digits, since the digits a double is carrying past that point
 	// are not the ones the number was given
@@ -4831,6 +4879,9 @@ function go2jsIntWrap(value, typeName) {
 // after a quotient cut off toward zero, rather than the JavaScript remainder
 // that keeps the sign of the dividend.
 function go2jsMod(left, right) {
+	left = go2jsDurationOperand(left);
+	right = go2jsDurationOperand(right);
+
 	if (go2jsIsWide(left) || go2jsIsWide(right)) {
 		return go2jsWideRem(left, right);
 	}
@@ -4981,9 +5032,24 @@ function go2jsCompareValues(a, b) {
 
 // go2jsNumericValue coerces a value for the integer verbs without throwing on
 // non numeric operands, because the switch below is shared by every verb.
+// go2jsIsDuration reports whether a value is a span of time, which is a shape
+// around a whole number of nanoseconds rather than a number of its own. The name
+// is read first and on its own, since a box standing for a nil pointer answers
+// only to the keys the runtime itself asks about.
+function go2jsIsDuration(value) {
+	return value !== null && value !== undefined && typeof value === "object" &&
+		value.__go2js_type_name === "time.Duration";
+}
+
 function go2jsNumericValue(value) {
 	if (value !== null && value !== undefined && value.__go2js_pointer === true) {
 		return go2jsNumericValue(go2jsDeref(value));
+	}
+
+	// a span of time is asked for the whole number it holds, since that is what
+	// a verb wanting digits writes down
+	if (go2jsIsDuration(value)) {
+		return Number(value.nanoseconds);
 	}
 
 	if (typeof value === "number") {
@@ -5758,6 +5824,12 @@ function go2jsIsInterfaceTypeName(name) {
 }
 
 function go2jsTyped(value, type, kind, shape) {
+	// A span of time already carries the name of its own type and a way of
+	// writing itself out, so wrapping it would bury both of them.
+	if (go2jsIsDuration(value)) {
+		return value;
+	}
+
 	// A nil slice or a nil map is nil, and the empty value it carries says only
 	// what it is, so the name asked for here is the one that gets written down.
 	if (value !== null && typeof value === "object" && value.__go2js_nil === true) {

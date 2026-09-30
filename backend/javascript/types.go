@@ -151,7 +151,13 @@ func conversionName(t types.Type) string {
 // isDurationType reports whether an expression has the named type
 // time.Duration, which needs to stay a duration through arithmetic.
 func (e *emitter) isDurationType(expr ast.Expr) bool {
-	named, ok := e.analyzedType(expr).(*types.Named)
+	return isDurationGoType(e.analyzedType(expr))
+}
+
+// isDurationGoType reports whether a type is the named type time.Duration, which
+// needs to stay a duration through arithmetic and through being written out.
+func isDurationGoType(t types.Type) bool {
+	named, ok := t.(*types.Named)
 	if !ok {
 		return false
 	}
