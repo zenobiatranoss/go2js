@@ -118,6 +118,17 @@ function go2jsBufioText(source) {
 		return source.__go2js_text;
 	}
 
+	// A reader or a scanner reads from what it is given, which for a file is
+	// the text left in it. What it read is kept on the source, so that reading
+	// it twice reads it once.
+	if (source !== null && source !== undefined && typeof source.__go2js_readAll === "function") {
+		const text = source.__go2js_readAll();
+
+		source.__go2js_text = text;
+
+		return text;
+	}
+
 	return go2jsStringify(source);
 }
 
@@ -170,8 +181,16 @@ function go2jsBufioNewWriter(destination) {
 		WriteString: function (chunk) {
 			const text = go2jsStringify(chunk);
 			pending += text;
-			return text.length;
+			return [text.length, null];
 		},
+		WriteRune: function (value) {
+			return this.WriteString(String.fromCodePoint(Number(value)));
+		},
+		WriteByte: function (value) {
+			return this.WriteString(String.fromCharCode(Number(value) & 255));
+		},
+		// Flushing says whether what was held got out, which is the one thing
+		// about the writing that can go wrong.
 		Flush: function () {
 			if (pending === "") {
 				return null;
@@ -180,7 +199,7 @@ function go2jsBufioNewWriter(destination) {
 			const written = go2jsWriteDestination(target, pending);
 			pending = "";
 
-			return written;
+			return Array.isArray(written) ? written[1] : null;
 		},
 	};
 }

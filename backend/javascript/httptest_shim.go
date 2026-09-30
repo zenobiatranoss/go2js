@@ -31,12 +31,12 @@ function go2jsHttptestRecorderBody() {
 		Write: function(bytes) {
 			parts.push(go2jsStringify(bytes));
 
-			return Array.isArray(bytes) ? bytes.length : go2jsStringify(bytes).length;
+			return [Array.isArray(bytes) ? bytes.length : go2jsStringify(bytes).length, null];
 		},
 		WriteString: function(text) {
 			parts.push(String(text));
 
-			return String(text).length;
+			return [String(text).length, null];
 		},
 		Bytes: function() {
 			return go2jsStringToBytes(parts.join(""));
