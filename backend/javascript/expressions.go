@@ -403,6 +403,15 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			return err
 		}
 
+		// A span of time is a shape rather than a number, so JavaScript would
+		// answer a question about two of them by asking whether they are one
+		// object, and a question about their order by handing both to a
+		// coercion that has to be asked for first. The whole number inside is
+		// what Go compares, so both questions are asked of that.
+		if handled, err := e.emitDurationComparison(x); handled {
+			return err
+		}
+
 		// A nil slice or a nil map keeps a value of its own, so asking whether
 		// one is nil has to be answered by the runtime.
 		if handled, err := e.emitCollectionNilComparison(x); handled {
@@ -420,6 +429,15 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		if (x.Op == token.SHL || x.Op == token.SHR) && e.isIntegerExpr(x.X) && e.isIntegerExpr(x.Y) {
 			e.needsRuntime = true
 			wrapName, wraps := narrowIntTypeName(e.analyzedType(x))
+
+			// a shift of a span of time is a span of time, and the runtime gives
+			// back the whole number it shifted, so the shape goes back on around
+			// the whole of the call
+			wrapDuration := e.isDurationType(x)
+
+			if wrapDuration {
+				e.write("go2jsDuration(")
+			}
 
 			if wraps {
 				e.write("go2jsIntWrap(")
@@ -458,6 +476,10 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				e.write(")")
 			}
 
+			if wrapDuration {
+				e.write(")")
+			}
+
 			return nil
 		}
 
@@ -465,6 +487,12 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		// stops it the same way, so both are read through the runtime.
 		if (x.Op == token.QUO || x.Op == token.REM) && e.isIntegerExpr(x.X) && e.isIntegerExpr(x.Y) {
 			e.needsRuntime = true
+
+			// a span of time divided by a number is a span of time, and the
+			// runtime gives back a bare number, so it is given its shape back
+			if e.isDurationType(x) {
+				e.write("go2jsDuration(")
+			}
 
 			if x.Op == token.REM {
 				e.write("go2jsMod(")
@@ -483,6 +511,11 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			}
 
 			e.write(")")
+
+			if e.isDurationType(x) {
+				e.write(")")
+			}
+
 			return nil
 		}
 
@@ -613,6 +646,34 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			case token.SUB:
 				return e.emitComplexUnary("go2jsComplexNeg", x.X)
 			}
+		}
+
+		// a span of time turned inside out or negated is a span of time still,
+		// and the shape has to be given back around the whole number left over
+		if (x.Op == token.XOR || x.Op == token.SUB) && e.isDurationType(x) {
+			e.needsRuntime = true
+			e.write("go2jsDuration(")
+
+			// the count is answered inside the width it is kept in, so the
+			// smallest of them turned inside out is itself rather than a count
+			// one past what that width holds
+			e.needsRuntime = true
+			e.write("go2jsWideWrap(")
+
+			if x.Op == token.XOR {
+				e.write("~go2jsDurationNanos(")
+			} else {
+				e.write("-go2jsDurationNanos(")
+			}
+
+			if err := e.emitExpr(x.X); err != nil {
+				return err
+			}
+
+			e.write("), ")
+			e.write(strconv.Quote("int64"))
+			e.write("))")
+			return nil
 		}
 
 		// A whole number turned inside out or negated lands inside the width of
@@ -2282,4 +2343,52 @@ func (e *emitter) emitBinaryOperand(operand ast.Expr, parent token.Token, right 
 	}
 
 	return nil
+}
+
+// emitDurationComparison answers a question about two spans of time by asking
+// about the whole number of nanoseconds each one holds, since that is the value
+// Go compares rather than the shape wrapped around it.
+func (e *emitter) emitDurationComparison(x *ast.BinaryExpr) (bool, error) {
+	switch x.Op {
+	case token.EQL, token.NEQ, token.LSS, token.LEQ, token.GTR, token.GEQ:
+	default:
+		return false, nil
+	}
+
+	// a question about two spans of time answers with a yes or a no, so the
+	// shape being asked about is the one either side of the question carries
+	// rather than the one the answer has
+	if !e.isDurationType(x.X) && !e.isDurationType(x.Y) {
+		return false, nil
+	}
+
+	e.needsRuntime = true
+	e.write("go2jsDurationCmp(")
+
+	if err := e.emitExpr(x.X); err != nil {
+		return true, err
+	}
+
+	e.write(", ")
+
+	if err := e.emitExpr(x.Y); err != nil {
+		return true, err
+	}
+
+	e.write(")")
+
+	switch x.Op {
+	case token.EQL, token.NEQ:
+		e.write(" === 0")
+	case token.LSS:
+		e.write(" < 0")
+	case token.LEQ:
+		e.write(" <= 0")
+	case token.GTR:
+		e.write(" > 0")
+	case token.GEQ:
+		e.write(" >= 0")
+	}
+
+	return true, nil
 }

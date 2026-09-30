@@ -259,6 +259,10 @@ func (e *emitter) emitStep(stmt *ast.IncDecStmt) bool {
 	name, _ := wideIntOperator(op)
 	e.needsRuntime = true
 
+	// a span of time is a whole number with a name and a way of being written
+	// out of its own accord, and a step of one on one gives that back
+	wrapDuration := isDurationGoType(target)
+
 	// a step through a pointer is a read of what it points at, the step, and a
 	// write back, because JavaScript will not step a call on its own
 	if deref, ok := stmt.X.(*ast.StarExpr); ok {
@@ -270,6 +274,11 @@ func (e *emitter) emitStep(stmt *ast.IncDecStmt) bool {
 		}
 
 		e.write(", ")
+
+		if wrapDuration {
+			e.write("go2jsDuration(")
+		}
+
 		e.write(name)
 		e.write("(")
 
@@ -284,7 +293,13 @@ func (e *emitter) emitStep(stmt *ast.IncDecStmt) bool {
 			e.write(strconv.Quote(basic.Name()))
 		}
 
-		e.write("));")
+		e.write(")")
+
+		if wrapDuration {
+			e.write(")")
+		}
+
+		e.write(");")
 		e.newline()
 
 		return true
@@ -297,6 +312,11 @@ func (e *emitter) emitStep(stmt *ast.IncDecStmt) bool {
 	}
 
 	e.write(" = ")
+
+	if wrapDuration {
+		e.write("go2jsDuration(")
+	}
+
 	e.write(name)
 	e.write("(")
 
@@ -311,7 +331,13 @@ func (e *emitter) emitStep(stmt *ast.IncDecStmt) bool {
 		e.write(strconv.Quote(basic.Name()))
 	}
 
-	e.write(");")
+	e.write(")")
+
+	if wrapDuration {
+		e.write(")")
+	}
+
+	e.write(";")
 	e.newline()
 
 	return true
@@ -352,6 +378,10 @@ func (e *emitter) emitMapCompoundAssign(index *ast.IndexExpr, rhs ast.Expr, tok 
 	e.write(", ")
 	e.write(e.zeroValue(elem))
 	e.write(", (current) => ")
+
+	if isDurationGoType(elem) {
+		e.write("go2jsDuration(")
+	}
 
 	// the operation is the one the runtime runs for this type, for the same
 	// reason it is everywhere else: the two kinds of whole number cannot be
@@ -404,6 +434,10 @@ func (e *emitter) emitMapCompoundAssign(index *ast.IndexExpr, rhs ast.Expr, tok 
 		e.write(")")
 	}
 
+	if isDurationGoType(elem) {
+		e.write(")")
+	}
+
 	e.write(");")
 	e.newline()
 
@@ -453,6 +487,13 @@ func (e *emitter) emitWideCompoundAssign(stmt *ast.AssignStmt) (bool, error) {
 	}
 
 	e.write(" = ")
+
+	// a span of time is a whole number with a name and a way of being written
+	// out of its own accord, and an operation on one gives that back
+	if isDurationGoType(target) {
+		e.write("go2jsDuration(")
+	}
+
 	e.write(name)
 	e.write("(")
 
@@ -470,6 +511,10 @@ func (e *emitter) emitWideCompoundAssign(stmt *ast.AssignStmt) (bool, error) {
 	if basic := basicOf(target); basic != nil {
 		e.write(", ")
 		e.write(strconv.Quote(basic.Name()))
+	}
+
+	if isDurationGoType(target) {
+		e.write(")")
 	}
 
 	// the statement is written out whole here rather than left for the path it
@@ -2098,6 +2143,24 @@ func (e *emitter) emitValueDecl(decl *ast.GenDecl) error {
 				e.write(" = ")
 
 				target := e.variableType(name)
+
+				// a whole number written plainly is only a number, and a number
+				// has no name of its own and no way of being written out of its
+				// own accord, so one declared as a span of time is given that
+				// shape here
+				if isDurationGoType(target) && e.isIntegerExpr(valueSpec.Values[i]) {
+					e.needsRuntime = true
+					e.write("go2jsDuration(")
+					if err := e.emitExpr(valueSpec.Values[i]); err != nil {
+						return err
+					}
+					e.write(")")
+
+					first = false
+
+					continue
+				}
+
 				if err := e.emitInterfaceValue(valueSpec.Values[i], target); err != nil {
 					return err
 				}
@@ -2644,6 +2707,21 @@ func (e *emitter) emitConversion(call *ast.CallExpr) error {
 	// any needs as much as interface{} does.
 	if isInterfaceLikeType(target) {
 		return e.emitInterfaceValue(call.Args[0], target)
+	}
+
+	// A whole number read as a span of time is a span of time, and the paths
+	// below would answer a named type from the plain type it is built on, which
+	// for a whole number is a bare number with no way of being written out.
+	if isDurationGoType(target) && e.isIntegerExpr(call.Args[0]) {
+		e.needsRuntime = true
+		e.write("go2jsDuration(")
+
+		if err := e.emitExpr(call.Args[0]); err != nil {
+			return err
+		}
+
+		e.write(")")
+		return nil
 	}
 
 	// A conversion from nothing has no work to do: a slice, a map, a pointer,
