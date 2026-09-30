@@ -47,7 +47,7 @@ func (e *emitter) emitFormatCall(call *ast.CallExpr) error {
 		return e.emitSprintfCall(call)
 
 	case "Printf":
-		e.write("process.stdout.write(")
+		e.write("go2jsWriteOut(process.stdout, ")
 		if err := e.emitSprintfCall(call); err != nil {
 			return err
 		}
