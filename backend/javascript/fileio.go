@@ -68,18 +68,9 @@ func (e *emitter) emitFormatArgument(arg ast.Expr) error {
 		return nil
 	}
 
-	if e.isErrorExpr(arg) || e.isErrorInterfaceExpr(arg) {
-		e.needsRuntime = true
-		e.write("go2jsErrorString(")
-
-		if err := e.emitExpr(arg); err != nil {
-			return err
-		}
-
-		e.write(")")
-		return nil
-	}
-
+	// An error is written by its own methods, so the value itself is what the
+	// verbs are given. Taking its message first would leave out a type that
+	// writes itself, which is what %+v on a wrapped error is asking for.
 	return e.emitExpr(arg)
 }
 
