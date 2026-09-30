@@ -685,14 +685,46 @@ func (e *emitter) emitTypeAssert(x *ast.TypeAssertExpr) error {
 	return nil
 }
 
+// goTypeNameFromExpr writes a type out as Go names it, which is what a type
+// assertion is checked against. A type living in a package carries the name of
+// that package in front of it, and a type written with its arguments carries
+// those too, since both are asked about by the name they were written with.
 func goTypeNameFromExpr(expr ast.Expr) string {
 	switch value := expr.(type) {
 	case *ast.Ident:
 		return value.Name
+	case *ast.SelectorExpr:
+		if qualifier := exprString(value.X); qualifier != "" {
+			return qualifier + "." + value.Sel.Name
+		}
+
+		return ""
 	case *ast.StarExpr:
-		return "*" + goTypeNameFromExpr(value.X)
+		if name := goTypeNameFromExpr(value.X); name != "" {
+			return "*" + name
+		}
+
+		return ""
+	case *ast.IndexExpr:
+		if name := goTypeNameFromExpr(value.X); name != "" {
+			return name + "[" + exprString(value.Index) + "]"
+		}
+
+		return ""
+	case *ast.IndexListExpr:
+		if name := goTypeNameFromExpr(value.X); name != "" {
+			arguments := make([]string, 0, len(value.Indices))
+
+			for _, index := range value.Indices {
+				arguments = append(arguments, exprString(index))
+			}
+
+			return name + "[" + strings.Join(arguments, ",") + "]"
+		}
+
+		return ""
 	default:
-		return exprString(expr)
+		return ""
 	}
 }
 
@@ -700,8 +732,24 @@ func exprString(expr ast.Expr) string {
 	switch value := expr.(type) {
 	case *ast.Ident:
 		return value.Name
+	case *ast.SelectorExpr:
+		if qualifier := exprString(value.X); qualifier != "" {
+			return qualifier + "." + value.Sel.Name
+		}
+
+		return ""
 	case *ast.StarExpr:
-		return "*" + exprString(value.X)
+		if name := exprString(value.X); name != "" {
+			return "*" + name
+		}
+
+		return ""
+	case *ast.IndexExpr:
+		if name := exprString(value.X); name != "" {
+			return name + "[" + exprString(value.Index) + "]"
+		}
+
+		return ""
 	default:
 		return ""
 	}

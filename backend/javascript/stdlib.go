@@ -466,6 +466,7 @@ var httpStatusCodes = map[string]int{"StatusContinue": 100,
 }
 
 var osFuncs = map[string]string{
+	"Environ":    "go2jsOSEnviron",
 	"Getenv":     "go2jsOSGetenv",
 	"Setenv":     "go2jsOSSetenv",
 	"Stat":       "go2jsOSStat",
@@ -558,6 +559,7 @@ var fmtFuncs = map[string]string{
 }
 
 var multiReturnStdlibFuncs = map[string]bool{
+	"exec.LookPath":        true,
 	"strings.CutPrefix":    true,
 	"strings.CutSuffix":    true,
 	"time.Date":            false,

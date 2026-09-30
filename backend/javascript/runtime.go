@@ -3450,6 +3450,14 @@ function go2jsTypeOf(value) {
 		return value.type || "unknown";
 	}
 
+	// A value built by the runtime in place of one Go names a type for, such as
+	// the error a command leaves behind, says so by that name, and a question
+	// about its type is answered with it rather than with the class it happens
+	// to be built from.
+	if (typeof value.__go2js_type === "string" && value.__go2js_type !== "") {
+		return value.__go2js_type;
+	}
+
 	if (value instanceof Error) {
 		return "error";
 	}
