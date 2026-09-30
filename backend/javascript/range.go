@@ -334,7 +334,28 @@ func (e *emitter) emitRangeBinding(lhs ast.Expr, value string, tok token.Token) 
 func rangeRuntimeSource() string {
 	return `
 function go2jsRangeSequence(value) {
+	if (typeof value === "function") {
+		return go2jsRangeYielded(value);
+	}
+
 	return value === null || value === undefined ? [] : value;
+}
+
+// go2jsRangeYielded runs a sequence of values, which is a function that hands
+// each of its values to whoever asked for them, and keeps what it handed over.
+// A sequence is run to its end before the first value is used, because a yield
+// in the middle of a function cannot be left half finished and taken up again
+// where it stopped, so a sequence that never ends is one this cannot walk.
+function go2jsRangeYielded(sequence) {
+	const handed = [];
+
+	sequence(function (...items) {
+		handed.push(items);
+
+		return true;
+	});
+
+	return handed;
 }
 
 function go2jsRangeMap(value) {
@@ -343,6 +364,17 @@ function go2jsRangeMap(value) {
 
 function* go2jsRangeValue(value) {
 	if (value === null || value === undefined) {
+		return;
+	}
+
+	if (typeof value === "function") {
+		// A sequence of values hands over what it holds as it goes, so what it
+		// handed over is walked as a sequence of pairs, one for each value it
+		// gave and one for the key that came with it, if it gave one.
+		for (const items of go2jsRangeYielded(value)) {
+			yield items;
+		}
+
 		return;
 	}
 
