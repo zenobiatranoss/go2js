@@ -89,3 +89,27 @@ func main() {
 		t.Fatalf("output mismatch\nwant:\n%s\ngot:\n%s", want, got)
 	}
 }
+
+// Go and JavaScript do not put the bitwise operators in the same place among
+// the others, so an expression that mixes them with a comparison or with a
+// shift is written with brackets that say which way it is meant.
+func TestBitwiseOperatorsKeepTheirGrouping(t *testing.T) {
+	source := `package main
+
+func main() {
+	a, b, c := 120, 58, 3
+
+	println(a&b == 72, a|b == 126, a^b == 66, a&^b == 64)
+	println(a&b != 72, a&(b|c) == 120, (a|b)&c == 2)
+	println(a<<1 == 240, (a&b)<<2 == 288, a&(b<<1) == 112)
+	println((a|b)^c == 125, a|(b^c) == 127)
+
+	// A child of the same standing on the right is read as the far side of the
+	// operator, so a division of a division and a subtraction of a subtraction
+	// say which way round they are.
+	println(100/(5/2), 100/5/2, 20-5-3, 20-(5-3), 100%7/2, 8>>1>>1)
+	println((1<<3)<<2, 1<<(3<<1))
+}
+`
+	runParityTest(t, source)
+}
