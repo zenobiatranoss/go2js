@@ -2064,6 +2064,24 @@ const go2jsPointerAddresses = new WeakMap();
 let go2jsPointerAddressCount = 0;
 
 function go2jsPointerAddress(pointer) {
+	// A pointer that points at nothing has no address to write, so fmt names it
+	// rather than pointing at a place in a heap that is not there.
+	let target;
+
+	if (!go2jsPointerAccessor(pointer, go2jsPointerGet)) {
+		return "<nil>";
+	}
+
+	try {
+		target = pointer[go2jsPointerGet]();
+	} catch (e) {
+		target = null;
+	}
+
+	if (target === null || target === undefined) {
+		return "<nil>";
+	}
+
 	let address = go2jsPointerAddresses.get(pointer);
 
 	if (address === undefined) {
