@@ -121,11 +121,8 @@ func (e *emitter) collectionZeroValue(t gotypes.Type) string {
 	switch t := t.(type) {
 	case *gotypes.Named:
 		if obj := t.Obj(); obj != nil && obj.Pkg() != nil {
-			switch obj.Pkg().Path() + "." + obj.Name() {
-			case "bytes.Buffer":
-				return "new go2jsBytesBuffer()"
-			case "strings.Builder":
-				return "new go2jsStringsBuilder()"
+			if constructor := packageTypeConstructorFor(obj.Pkg().Name(), obj.Name()); constructor != "" {
+				return constructor
 			}
 		}
 		if _, ok := t.Underlying().(*gotypes.Struct); ok {

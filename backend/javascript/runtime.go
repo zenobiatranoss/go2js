@@ -856,7 +856,7 @@ function go2jsJSONEmpty(value) {
     }
 
     if (value !== null && value !== undefined && value.__go2js_pointer === true) {
-        return go2jsJSONEmpty(value.get());
+        return go2jsJSONEmpty(value[go2jsPointerGet]());
     }
 
     if (Array.isArray(value) || typeof value === "object") {
@@ -958,15 +958,15 @@ function go2jsJSONTargetMap(target) {
         return direct;
     }
 
-    if (target !== null && target !== undefined && typeof target.get === "function") {
-        const current = target.get();
+    if (target !== null && target !== undefined && target.__go2js_pointer === true) {
+        const current = target[go2jsPointerGet]();
 
         if (current instanceof go2jsNativeMap) {
             return current;
         }
 
         const created = go2jsMakeMap();
-        target.set(created);
+        target[go2jsPointerSet](created);
 
         return created;
     }
@@ -1471,7 +1471,7 @@ function go2jsMethodValue(receiver, method, copyReceiver) {
 		}
 
 		if (target.__go2js_pointer === true) {
-			target = target.get();
+			target = target[go2jsPointerGet]();
 
 			if (target === null || target === undefined) {
 				throw new TypeError("method value on nil pointer");
@@ -1491,7 +1491,7 @@ function go2jsMethodValue(receiver, method, copyReceiver) {
 	let target = receiver;
 
 	if (target.__go2js_pointer === true) {
-		target = target.get();
+		target = target[go2jsPointerGet]();
 
 		if (target === null || target === undefined) {
 			throw new TypeError("method value on nil pointer");
@@ -1521,7 +1521,7 @@ function go2jsMethodExpression(method, copyReceiver) {
 		let target = receiver;
 
 		if (copyReceiver && target.__go2js_pointer === true) {
-			target = target.get();
+			target = target[go2jsPointerGet]();
 		}
 
 		if (copyReceiver) {
@@ -1552,7 +1552,7 @@ function go2jsInvokeMethod(receiver, method, args) {
 	}
 
 	if (receiver.__go2js_pointer === true) {
-		const target = receiver.get();
+		const target = receiver[go2jsPointerGet]();
 
 		if (target === null || target === undefined) {
 			throw new TypeError("method call on nil pointer");
@@ -1576,7 +1576,7 @@ function go2jsLookupMember(target, name) {
 	}
 
 	if (target.__go2js_pointer === true) {
-		return go2jsLookupMember(target.get(), name);
+		return go2jsLookupMember(target[go2jsPointerGet](), name);
 	}
 
 	if (target.__go2js_interface === true) {
@@ -1686,10 +1686,22 @@ function go2jsEmbedProxy(target, embedded) {
     });
 }
 
+// A pointer reaches the value it points at through an accessor of its own, and
+// that accessor cannot be held under a plain property name: a value may well
+// have a method called Get or Set, and a pointer that answered for it would call
+// the pointer in place of the method. A symbol cannot collide with a name any Go
+// method can be given, because no name reaches a symbol.
+const go2jsPointerGet = Symbol("go2js.get");
+const go2jsPointerSet = Symbol("go2js.set");
+
+function go2jsPointerAccessor(ptr, accessor) {
+	return ptr !== null && ptr !== undefined && typeof ptr[accessor] === "function";
+}
+
 function go2jsPtr(get, set, typeName) {
 	const pointer = {
-		get,
-		set
+		[go2jsPointerGet]: get,
+		[go2jsPointerSet]: set
 	};
 
 	if (typeName !== undefined) {
@@ -1698,8 +1710,8 @@ function go2jsPtr(get, set, typeName) {
 
 	return new Proxy(pointer, {
 		get(target, property, receiver) {
-			if (property === "get" || property === "set") {
-				return Reflect.get(target, property, receiver);
+			if (property === go2jsPointerGet || property === go2jsPointerSet) {
+				return Reflect.get(target, property);
 			}
 
 			if (property === "__go2js_pointer") {
@@ -1710,7 +1722,7 @@ function go2jsPtr(get, set, typeName) {
 				return target.__go2js_new_type;
 			}
 
-			const value = target.get();
+			const value = target[go2jsPointerGet]();
 			if (value === null || value === undefined) {
 				return undefined;
 			}
@@ -1723,7 +1735,7 @@ function go2jsPtr(get, set, typeName) {
 		},
 
 		set(target, property, value) {
-			const current = target.get();
+			const current = target[go2jsPointerGet]();
 			if (current === null || current === undefined) {
 				throw new TypeError("cannot assign through nil pointer");
 			}
@@ -1732,7 +1744,7 @@ function go2jsPtr(get, set, typeName) {
 		},
 
 		has(target, property) {
-			const value = target.get();
+			const value = target[go2jsPointerGet]();
 			return value !== null && value !== undefined && property in Object(value);
 		}
 	});
@@ -1742,20 +1754,20 @@ function go2jsDeref(ptr) {
 	if (ptr === null || ptr === undefined) {
 		throw new TypeError("invalid pointer dereference");
 	}
-	if (typeof ptr.get !== "function") {
+	if (!go2jsPointerAccessor(ptr, go2jsPointerGet)) {
 		throw new TypeError("value is not a pointer");
 	}
-	return ptr.get();
+	return ptr[go2jsPointerGet]();
 }
 
 function go2jsStorePtr(ptr, value) {
 	if (ptr === null || ptr === undefined) {
 		throw new TypeError("invalid pointer assignment");
 	}
-	if (typeof ptr.set !== "function") {
+	if (!go2jsPointerAccessor(ptr, go2jsPointerSet)) {
 		throw new TypeError("value is not a pointer");
 	}
-	ptr.set(value);
+	ptr[go2jsPointerSet](value);
 }
 
 function go2jsToString(value) {
@@ -1803,7 +1815,7 @@ function go2jsNewTypeOf(value) {
 	}
 
 	if (value !== null && value !== undefined && value.__go2js_pointer === true) {
-		const pointed = value.get();
+		const pointed = value[go2jsPointerGet]();
 
 		return pointed === null || pointed === undefined ? "" : "*" + go2jsNewTypeOf(pointed);
 	}
@@ -1835,14 +1847,21 @@ const go2jsInterfaces = Object.create(null);
 const go2jsStructFormats = Object.create(null);
 const go2jsTypeNames = Object.create(null);
 const go2jsMethodSets = Object.create(null);
+const go2jsStructFields = Object.create(null);
 
-function go2jsRegisterTypeName(constructor, name, methods) {
+function go2jsRegisterTypeName(constructor, name, methods, fields) {
 	go2jsTypeNames[name] = constructor;
 
 	// The method set travels with the name, because a type that reflect reads
 	// off a value rather than off the program has to be told what it can do.
 	if (Array.isArray(methods)) {
 		go2jsMethodSets[name] = methods;
+	}
+
+	// The field names travel with it for the same reason: NumField and Field
+	// have nothing else to answer with for a type read off a value.
+	if (Array.isArray(fields)) {
+		go2jsStructFields[name] = fields;
 	}
 }
 
@@ -1875,7 +1894,7 @@ function go2jsGoTypeName(value) {
 	}
 
 	if (value.__go2js_pointer === true) {
-		const pointed = value.get();
+		const pointed = value[go2jsPointerGet]();
 
 		return pointed === null || pointed === undefined ? "*nil" : "*" + go2jsGoTypeName(pointed);
 	}
@@ -1967,6 +1986,41 @@ function go2jsNamedFormatMethod(value, name) {
 	return null;
 }
 
+// go2jsLookupNamedMethod finds a method of a value's own type and hands it back
+// un-called, which is what a method that takes arguments needs. A method of the
+// type the emitter wrote as a class is reached on the value, and one it wrote as
+// a registered function, because a method of a type that is not a class has
+// nowhere to live, is reached through the table it registered itself in.
+function go2jsLookupNamedMethod(receiver, name) {
+	if (receiver === null || receiver === undefined) {
+		return null;
+	}
+
+	if (receiver.__go2js_pointer === true) {
+		receiver = go2jsDeref(receiver);
+	}
+
+	if (receiver.__go2js_interface === true) {
+		return null;
+	}
+
+	if (typeof receiver[name] === "function") {
+		return receiver[name].bind(receiver);
+	}
+
+	const ctor = receiver.constructor;
+
+	if (ctor && typeof ctor.name === "string" && ctor.name !== "Object") {
+		const registered = go2jsLookupTypeName(ctor.name);
+
+		if (registered !== undefined && typeof go2jsMethodTable[registered + "." + name] === "function") {
+			return (...args) => go2jsMethodTable[registered + "." + name](receiver, ...args);
+		}
+	}
+
+	return null;
+}
+
 function go2jsLookupTypeName(jsName) {
 	for (const name of Object.keys(go2jsTypeNames)) {
 		if (go2jsTypeNames[name].name === jsName) {
@@ -2031,8 +2085,12 @@ function go2jsPointerAddress(pointer) {
 function go2jsPointerTargets(pointer) {
 	let value;
 
+	if (!go2jsPointerAccessor(pointer, go2jsPointerGet)) {
+		return false;
+	}
+
 	try {
-		value = pointer.get();
+		value = pointer[go2jsPointerGet]();
 	} catch (error) {
 		return false;
 	}
@@ -2216,7 +2274,7 @@ function go2jsInterfaceCall(value, method, ...args) {
 
 	if (value.__go2js_interface !== true) {
 		if (value.__go2js_pointer === true) {
-			return go2jsInterfaceCall(value.get(), method, ...args);
+			return go2jsInterfaceCall(value[go2jsPointerGet](), method, ...args);
 		}
 
 		if (typeof value[method] === "function") {
@@ -2268,7 +2326,7 @@ function go2jsTypeOf(value) {
 	}
 
 	if (value.__go2js_pointer === true) {
-		const pointed = value.get();
+		const pointed = value[go2jsPointerGet]();
 
 		return pointed === null || pointed === undefined ? "nil" : "*" + go2jsTypeOf(pointed);
 	}
@@ -2341,6 +2399,42 @@ function go2jsSwitchTypeOf(value) {
 	return go2jsShortTypeName(go2jsTypeOf(value));
 }
 
+// go2jsSwitchCaseIndex reports which of the labels a type switch names is the
+// one the examined value matches, in the order they were written, because the
+// first clause that matches is the clause that runs. A label that names an
+// interface matches every value carrying its methods, not only a value whose
+// own type is that interface, and a label that names the empty interface
+// matches anything but a nil.
+function go2jsSwitchCaseIndex(value, labels) {
+	const name = go2jsSwitchTypeOf(value);
+
+	for (let index = 0; index < labels.length; index++) {
+		const label = labels[index];
+
+		if (label === "nil") {
+			if (name === "nil") {
+				return index;
+			}
+
+			continue;
+		}
+
+		if (label === "interface{}" || label === "interface {}" || label === "any") {
+			if (name !== "nil") {
+				return index;
+			}
+
+			continue;
+		}
+
+		if (name === label || go2jsSatisfiesInterface(value, label)) {
+			return index;
+		}
+	}
+
+	return -1;
+}
+
 function go2jsSameTypeName(actual, expected) {
 	if (actual === expected) {
 		return true;
@@ -2377,10 +2471,38 @@ function go2jsInterfaceKey(name) {
 	return dot === -1 ? trimmed : trimmed.slice(dot + 1);
 }
 
+// go2jsBuiltinInterfaces records the method set of the interfaces a program can
+// name without declaring them, so a type assertion or a type switch clause that
+// names one can succeed for a type carrying its methods. A name the program
+// declares itself is registered over these, because a declaration of its own
+// is the one that counts.
+const go2jsBuiltinInterfaces = {
+	"error": ["Error"],
+	"Stringer": ["String"],
+	"GoStringer": ["GoString"],
+	"Formatter": ["Format"],
+	"State": ["Flag", "Width", "Precision", "Write"],
+	"Reader": ["Read"],
+	"Writer": ["Write"],
+	"ReadWriter": ["Read", "Write"],
+	"ReadCloser": ["Read", "Close"],
+	"WriteCloser": ["Write", "Close"],
+	"ReadWriteCloser": ["Read", "Write", "Close"],
+	"Closer": ["Close"],
+	"Seeker": ["Seek"],
+	"StringWriter": ["WriteString"],
+};
+
 function go2jsInterfaceMethods(name) {
 	const key = go2jsInterfaceKey(name);
 
-	return key === "" ? undefined : go2jsInterfaces[key];
+	if (key === "") {
+		return undefined;
+	}
+
+	const methods = go2jsInterfaces[key];
+
+	return methods !== undefined ? methods : go2jsBuiltinInterfaces[key];
 }
 
 function go2jsSatisfiesInterface(value, name) {
@@ -2520,7 +2642,7 @@ function go2jsLen(value) {
 		return 0;
 	}
 	if (value.__go2js_pointer === true) {
-		return go2jsLen(value.get());
+		return go2jsLen(value[go2jsPointerGet]());
 	}
 	if (value instanceof go2jsNativeMap || value instanceof go2jsNativeSet) {
 		return value.size;
@@ -2564,7 +2686,7 @@ function go2jsCap(value) {
 		return 0;
 	}
 	if (value.__go2js_pointer === true) {
-		return go2jsCap(value.get());
+		return go2jsCap(value[go2jsPointerGet]());
 	}
 	if (value instanceof go2jsNativeMap || value instanceof go2jsNativeSet) {
 		return value.size;
@@ -3169,8 +3291,10 @@ function go2jsNilFormat(typeName, kind, shape) {
 // go2jsFormat writes a value the way %v does, or the way %+v does when plus is
 // set, which is the flag that puts a name in front of every field. The nested
 // flag says the value sits inside another one, and that is what decides whether
-// a pointer is written as an address or with a leading &.
-function go2jsFormat(value, typeName, kind, shape, plus, nested) {
+// a pointer is written as an address or with a leading &. The raw flag says the
+// value is being shown as the rejected operand of a verb it does not take, and
+// fmt shows such an operand as it is rather than by asking it to write itself.
+function go2jsFormat(value, typeName, kind, shape, plus, nested, raw) {
 	if (typeof typeName !== "string") {
 		typeName = go2jsTypedType(value);
 	}
@@ -3197,10 +3321,12 @@ function go2jsFormat(value, typeName, kind, shape, plus, nested) {
 	}
 
 	if (value instanceof Error) {
-		return value.message;
+		// An error stands for a struct holding its message, so showing the value
+		// as it is means showing that struct behind the pointer fmt writes.
+		return raw === true ? "&{" + value.message + "}" : value.message;
 	}
 
-	if (value.__go2js_interface !== true) {
+	if (raw !== true && value.__go2js_interface !== true) {
 		const receiver = value.__go2js_pointer === true ? go2jsDeref(value) : value;
 
 		if (receiver !== null && receiver !== undefined && typeof receiver === "object" &&
@@ -3223,7 +3349,7 @@ function go2jsFormat(value, typeName, kind, shape, plus, nested) {
 	// left to unwrap and it formats as the composite it is rather than as a
 	// value pointing at itself.
 	if (value.__go2js_interface === true && value.value !== value) {
-		if (typeof value.type === "string") {
+		if (raw !== true && typeof value.type === "string") {
 			const errorer = go2jsMethodTable[value.type + ".Error"];
 
 			if (typeof errorer === "function") {
@@ -3237,7 +3363,7 @@ function go2jsFormat(value, typeName, kind, shape, plus, nested) {
 			}
 		}
 
-		return go2jsFormat(value.value, null, null, null, plus, nested);
+		return go2jsFormat(value.value, null, null, null, plus, nested, raw);
 	}
 
 	if (value.__go2js_pointer === true) {
@@ -3249,7 +3375,7 @@ function go2jsFormat(value, typeName, kind, shape, plus, nested) {
 			return go2jsPointerAddress(value);
 		}
 
-		return "&" + go2jsFormat(go2jsDeref(value), null, null, null, plus, false);
+		return "&" + go2jsFormat(go2jsDeref(value), null, null, null, plus, false, raw);
 	}
 
 
@@ -3298,11 +3424,11 @@ function go2jsFormat(value, typeName, kind, shape, plus, nested) {
 		return String(value);
 	}
 
-	if (typeof value.String === "function") {
+	if (raw !== true && typeof value.String === "function") {
 		return value.String();
 	}
 
-	if (typeof value.Error === "function") {
+	if (raw !== true && typeof value.Error === "function") {
 		return value.Error();
 	}
 
@@ -3470,7 +3596,21 @@ function go2jsSpreadValues(slice) {
 		element.__go2js_interface === true ? element.value : element));
 }
 
+// go2jsSprintf writes a format and its operands, which is what Printf and
+// Sprintf and friends do. A %w among them is turned down, because fmt only lets
+// that verb wrap in the one place that says so.
 function go2jsSprintf(format, ...args) {
+	return go2jsFormatForPrinter(format, args, false);
+}
+
+// go2jsSprintfWrapping writes a format that is allowed to wrap, which is the
+// shape Errorf gives its format. fmt lets a %w wrap there, and only for an
+// operand that is an error.
+function go2jsSprintfWrapping(format, args) {
+	return go2jsFormatForPrinter(format, args, true);
+}
+
+function go2jsFormatForPrinter(format, args, wrapErrs) {
 	let result = "";
 
 	// A trailing ... hands over a marked slice; its elements become the operands
@@ -3722,7 +3862,20 @@ function go2jsSprintf(format, ...args) {
 
 		afterIndex = false;
 
-		result += go2jsFormatValue(verb, spec, arg);
+		// A %w is written exactly as the %v beside it would be, because that is
+		// all fmt does with it: the cause is taken from the operand and the text
+		// still comes from the verb a Formatter is asked about. Handing the method
+		// the w itself would report a verb fmt never passes on. It wraps only
+		// where fmt says it may, and only around an error, so every other use is
+		// a verb no operand takes.
+		if (verb === "w" && !(wrapErrs === true && go2jsIsErrorOperand(arg))) {
+			result += "%!w(" + go2jsDynamicTypeName(arg, go2jsTypedType(arg)) + "=" +
+				go2jsFormatValue("v", spec.replace(/w$/, "v"), arg, true) + ")";
+		} else {
+			result += verb === "w"
+				? go2jsFormatValue("v", spec.replace(/w$/, "v"), arg)
+				: go2jsFormatValue(verb, spec, arg);
+		}
 	}
 
 	// fmt reports the operands the cursor never passed, unless the format named
@@ -4241,19 +4394,201 @@ function go2jsStructHasNoStringMethod(value) {
 	return typeof value.String !== "function" && typeof value.Error !== "function";
 }
 
-function go2jsFormatValue(verb, spec, value) {
+// The flags fmt.State reports on, in the order Go numbers them, because a
+// Format method compares against those numbers and a translation cannot renumber
+// them without changing what the method it is calling asks for.
+// go2jsSelfWrittenText returns what an error or a Stringer would write for a
+// value, or nothing when the value is neither. The value behind an interface box
+// or a pointer is the one the method belongs to, because the box and the
+// pointer are not the type that carries it.
+function go2jsSelfWrittenText(operand, value) {
+	// A value boxed as an interface carries the name of the type it holds, and
+	// that name is where a method of a type the emitter wrote as a number or a
+	// string is registered, because such a value has nowhere of its own to keep
+	// it.
+	if (operand !== null && operand !== undefined && operand.__go2js_interface === true &&
+		typeof operand.type === "string") {
+		for (const method of ["Error", "String"]) {
+			const registered = go2jsMethodTable[operand.type + "." + method];
+
+			if (typeof registered === "function") {
+				return go2jsBytesToString(registered(operand.value));
+			}
+		}
+	}
+
+	let target = operand;
+
+	if (target !== null && target !== undefined && target.__go2js_interface === true) {
+		target = target.value;
+	}
+
+	if (target !== null && target !== undefined && target.__go2js_pointer === true) {
+		target = go2jsDeref(target);
+	}
+
+	if (target === null || target === undefined) {
+		return null;
+	}
+
+	const written = go2jsNamedFormatMethod(target, "Error") ?? go2jsNamedFormatMethod(target, "String");
+
+	return written === null ? null : go2jsBytesToString(written);
+}
+
+// go2jsDynamicTypeName names a value by the type it really is rather than by the
+// interface it was boxed as, which is the name fmt writes into the text of a
+// verb that was refused.
+function go2jsDynamicTypeName(value, tagName) {
+	if (value !== null && value !== undefined && value.__go2js_interface === true) {
+		value = value.value;
+	}
+
+	return go2jsGoTypeName(value);
+}
+
+// go2jsIsErrorOperand reports whether a value is an error, which is the only
+// thing a %w has a cause to take from.
+function go2jsIsErrorOperand(value) {
+	if (value === null || value === undefined) {
+		return false;
+	}
+
+	if (value.__go2js_interface === true) {
+		return go2jsIsErrorOperand(value.value);
+	}
+
+	// The Error method sits on the type a pointer points at rather than on the
+	// pointer, so the pointer is followed to reach it.
+	if (value.__go2js_pointer === true) {
+		return go2jsIsErrorOperand(go2jsDeref(value));
+	}
+
+	return value instanceof Error || go2jsNamedFormatMethod(value, "Error") !== null;
+}
+
+// go2jsFmtFlags lists the flag characters a verb may be written with. A method
+// asking about a flag asks with the character itself, the way fmt reads it, so
+// the answer is about the character rather than about a bit of its own.
+const go2jsFmtFlags = ["-", "+", "#", " ", "0"];
+
+// go2jsFormatSelf hands a value to the Format method of its own type, which is
+// what a type that carries a Format method means by it. The state it is given
+// is what fmt would pass, and what it writes is what the verb produces. A value
+// with no such method reports nothing, which sends the verb on to its own case.
+function go2jsFormatSelf(value, verb, flags, width, precision) {
+	const receiver = go2jsUntyped(value);
+
+	if (receiver === null || receiver === undefined) {
+		return null;
+	}
+
+	let format = go2jsLookupNamedMethod(receiver, "Format");
+
+	if (format === null && receiver.__go2js_interface === true && typeof receiver.type === "string") {
+		const method = go2jsMethodTable[receiver.type + ".Format"];
+
+		if (typeof method === "function") {
+			format = (...args) => method(receiver.value, ...args);
+		}
+	}
+
+	if (format === null) {
+		return null;
+	}
+
+	const state = go2jsFmtState(verb, flags, width, precision, receiver);
+
+	// Go hands a Format method the verb as the rune it stands for, and a method
+	// that writes it into its own output does so as a code point, so it is
+	// passed as the number the letter is rather than as the letter.
+	const rune = String(verb).codePointAt(0);
+
+	try {
+		format.call(receiver, state, rune);
+	} catch (error) {
+		// A Format method that gives up is reported the way fmt reports a panic
+		// inside one, rather than being allowed to end the program.
+		const text = error !== null && error !== undefined && error.message !== undefined
+			? String(error.message)
+			: String(error);
+
+		return "%!" + verb + "(PANIC=Format method: " + text + ")";
+	}
+
+	return go2jsBytesToString(state.buffer);
+}
+
+// go2jsFmtState builds the state fmt hands to a Format method. It answers the
+// three questions the method asks about how it was called, and takes the bytes
+// the method writes, which are the bytes the verb stands for.
+function go2jsFmtState(verb, flags, width, precision, value) {
+	const written = go2jsFmtFlags.filter(flag => flags.includes(flag));
+	const buffer = [];
+
+	const state = {
+		__go2js_fmtState: true,
+		verb: verb,
+		buffer: buffer,
+		Flag: function(flag) {
+			return written.includes(typeof flag === "string" ? flag : String.fromCharCode(flag));
+		},
+		// Width and Precision report whether they were written at all, which is
+		// the second value a method that asks for them is given.
+		Width: function() {
+			return typeof width === "number" ? [width, true] : [0, false];
+		},
+		Precision: function() {
+			return typeof precision === "number" ? [precision, true] : [0, false];
+		},
+		// fmt hands a Format method its output as bytes, so what arrives is
+		// taken as the byte values it already is. A method that writes a string
+		// instead is given the same reading, the way it is in Go.
+		Write: function(bytes) {
+			const written = typeof bytes === "string" ? go2jsStringToBytes(bytes) : Array.from(bytes);
+
+			for (const byte of written) {
+				buffer.push(Number(byte) & 255);
+			}
+
+			return [written.length, null];
+		}
+	};
+
+	// fmt writes to a state through the io.Writer it is, so a method that holds
+	// it as one reaches Write without knowing what it is.
+	if (value !== null && value !== undefined) {
+		state.value = value;
+	}
+
+	return state;
+}
+
+// go2jsFormatValue writes one operand with a verb. The raw flag says the operand
+// is being shown as the rejected operand of a verb it does not take, and fmt
+// shows such an operand as it is rather than by asking it to write itself.
+function go2jsFormatValue(verb, spec, value, raw) {
 	const parsed = go2jsParseFormatSpec(spec);
 	const flags = parsed.flags;
 	const precision = parsed.precision;
 	const tagged = go2jsTypedType(value);
 	const original = value;
 
-	value = go2jsUntyped(value);
+	// An operand boxed as an interface is written as what it holds, and the type
+	// it holds is the type the verb is asked about. The box is kept alongside,
+	// because a String or an Error method is reached through the type the box
+	// names rather than through the value it wraps.
+	const operand = value;
+	const boxed = operand !== null && operand !== undefined && operand.__go2js_interface === true;
+	const boxedType = boxed && typeof operand.type === "string" ? operand.type : null;
+
+	value = go2jsUnwrap(go2jsUntyped(value));
 	value = go2jsMaterializeValue(value);
 
 	const kind = go2jsTypedKind(original);
 	const shape = go2jsTypedShape(original);
-	const accepted = kind || go2jsInferTypeName(value, tagged);
+	const tagName = tagged || boxedType;
+	const accepted = kind || go2jsInferTypeName(value, tagName);
 
 	if (verb !== "%" && !go2jsVerbAccepts(verb, accepted)) {
 		// A nil operand has no value to show, so fmt names the type alone.
@@ -4262,10 +4597,43 @@ function go2jsFormatValue(verb, spec, value) {
 		}
 
 		// fmt shows the rejected operand with %v while keeping the width and the
-		// precision the verb was written with. A rune is named int32, because
-		// that is the type fmt reflects on.
+		// precision the verb was written with, and without asking it to write
+		// itself, because an operand reporting a fault is not the place to look
+		// for it. A rune is named int32, because that is the type fmt reflects
+		// on.
 		return "%!" + verb + "(" + (accepted === "rune" ? "int32" : accepted) + "=" +
-			go2jsFormatValue("v", spec.replace(verb + "$", "v"), value) + ")";
+			go2jsFormatValue("v", spec.replace(verb + "$", "v"), value, true) + ")";
+	}
+
+	// A type that formats itself is asked to, and what it writes is what the
+	// verb produces. It goes before the verb's own case, because a type that
+	// takes the work over has the last word on how it is written. A width or a
+	// precision that was not written is passed as nothing rather than as zero,
+	// because a method asks for them to find out whether they were given.
+	const selfFormatted = raw === true
+		? null
+		: go2jsFormatSelf(
+			original,
+			verb,
+			flags,
+			parsed.width > 0 ? parsed.width : null,
+			precision
+		);
+
+	if (selfFormatted !== null) {
+		return selfFormatted;
+	}
+
+	// An error or a Stringer is asked to write itself for the verbs that can
+	// read a string at all, which is the set fmt consults them for. Every other
+	// verb is answered by the value itself, so %d on a named integer is the
+	// number and not what its String method would have said.
+	if (raw !== true && go2jsVerbInSet(verb, "vsxXq")) {
+		const text = go2jsSelfWrittenText(operand, value);
+
+		if (text !== null) {
+			return go2jsFormatValue(verb, spec, text);
+		}
 	}
 
 	// Renders the sign prefix and zero-pads the digits that follow it. A body
@@ -4441,10 +4809,10 @@ function go2jsFormatValue(verb, spec, value) {
 
 			if (flags.includes("#")) {
 				text = go2jsGoSyntax(value);
-			} else if (flags.includes("+") && !go2jsHasFormatMethod(value)) {
+			} else if (flags.includes("+") && !go2jsHasFormatMethod(operand)) {
 				text = go2jsFormatFields(value);
 			} else {
-				text = go2jsFormat(value, tagged, kind, shape);
+				text = go2jsFormat(operand, tagged || boxedType, kind, shape, false, false, raw);
 
 				if (typeof value === "number" && /^[0-9]/.test(text) && flags.includes(" ")) {
 					sign = " ";
@@ -4542,9 +4910,9 @@ function go2jsFormatValue(verb, spec, value) {
 
 			// An interface operand is quoted as the dynamic value it holds, the
 			// way fmt reaches through the interface before applying the verb.
-			if (value !== null && typeof value === "object" && value.__go2js_interface === true) {
+			if (operand !== null && typeof operand === "object" && operand.__go2js_interface === true) {
 				return go2jsFormatValue("q", "%" + flags + (precision === null ? "" : "." + precision) + "q",
-					value.value);
+					operand.value);
 			}
 
 			// A named function type can still carry a String method, and Go
@@ -5821,7 +6189,7 @@ function go2jsSortMethod(target, typeName, method) {
 	}
 
 	if (target.__go2js_pointer === true) {
-		const inner = target.get();
+		const inner = target[go2jsPointerGet]();
 
 		if (inner !== null && inner !== undefined && typeof inner[method] === "function") {
 			return inner[method].bind(inner);

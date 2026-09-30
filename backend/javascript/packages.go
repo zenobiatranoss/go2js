@@ -128,18 +128,28 @@ var packageConstants = map[string]string{
 }
 
 var packageTypes = map[string]string{
-	"sync.WaitGroup": "go2jsWaitGroup",
-	"sync.Mutex":     "go2jsMutex",
-	"sync.RWMutex":   "go2jsRWMutex",
-	"sync.Once":      "go2jsOnce",
-	"sync.Map":       "go2jsSyncMap",
-	"atomic.Int32":   "go2jsAtomicInt32Type",
-	"atomic.Int64":   "go2jsAtomicInt64Type",
-	"atomic.Uint32":  "go2jsAtomicUint32Type",
-	"atomic.Uint64":  "go2jsAtomicUint64Type",
-	"atomic.Uintptr": "go2jsAtomicUint64Type",
-	"atomic.Bool":    "go2jsAtomicBoolType",
-	"atomic.Value":   "go2jsAtomicValueType",
+	"sync.WaitGroup":  "go2jsWaitGroup",
+	"sync.Mutex":      "go2jsMutex",
+	"sync.RWMutex":    "go2jsRWMutex",
+	"sync.Once":       "go2jsOnce",
+	"sync.Map":        "go2jsSyncMap",
+	"atomic.Int32":    "go2jsAtomicInt32Type",
+	"atomic.Int64":    "go2jsAtomicInt64Type",
+	"atomic.Uint32":   "go2jsAtomicUint32Type",
+	"atomic.Uint64":   "go2jsAtomicUint64Type",
+	"atomic.Uintptr":  "go2jsAtomicUint64Type",
+	"atomic.Bool":     "go2jsAtomicBoolType",
+	"atomic.Value":    "go2jsAtomicValueType",
+	"bytes.Buffer":    "go2jsBytesBuffer",
+	"strings.Builder": "go2jsStringsBuilder",
+}
+
+// packageTypeNew names the types the runtime answers with a class of its own
+// rather than with a plain object, so a value of one is built by constructing
+// that class and not by calling a function that returns an object.
+var packageTypeNew = map[string]bool{
+	"bytes.Buffer":    true,
+	"strings.Builder": true,
 }
 
 func (e *emitter) isPackageIdent(ident *ast.Ident) bool {

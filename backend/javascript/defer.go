@@ -3,7 +3,6 @@ package javascript
 import (
 	"fmt"
 	"go/ast"
-	gotypesstd "go/types"
 	"strconv"
 )
 
@@ -44,8 +43,8 @@ func (e *emitter) emitFuncBody(body *ast.BlockStmt) error {
 	outerNeeded := e.addressNeeded
 	outerNames := e.addressNames
 
-	e.addressNeeded = map[gotypesstd.Object]bool{}
-	e.addressNames = map[gotypesstd.Object]string{}
+	e.addressNeeded = map[addressTarget]bool{}
+	e.addressNames = map[addressTarget]string{}
 
 	for object := range outerNeeded {
 		e.addressNeeded[object] = true

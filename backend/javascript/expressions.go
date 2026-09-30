@@ -264,8 +264,8 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			// it is kept in a variable of its own and handed out again rather
 			// than built afresh, which is what lets two pointers to one variable
 			// compare equal and lets a copy of a pointer stay the same pointer.
-			if base, _, ok := addressBase(x.X); ok {
-				if binding := e.addressBinding(e.addressKey(base)); binding != "" {
+			if target, ok := e.addressTargetOf(x.X); ok {
+				if binding := e.addressBinding(target); binding != "" {
 					e.write("(")
 					e.write(binding)
 					e.write(" ??= go2jsPtr(() => ")
@@ -1071,7 +1071,26 @@ func (e *emitter) packageTypeConstructor(named *gotypes.Named) string {
 		return ""
 	}
 
-	return packageTypes[named.Obj().Pkg().Name()+"."+named.Obj().Name()]
+	return packageTypeConstructorFor(named.Obj().Pkg().Name(), named.Obj().Name())
+}
+
+// packageTypeConstructorFor writes the expression a value of a type the program
+// does not declare is built from, so a literal of that type builds a value the
+// rest of the runtime recognises rather than a class that is never emitted.
+func packageTypeConstructorFor(pkg, name string) string {
+	key := pkg + "." + name
+
+	constructor, ok := packageTypes[key]
+
+	if !ok {
+		return ""
+	}
+
+	if packageTypeNew[key] {
+		return "new " + constructor + "()"
+	}
+
+	return constructor + "()"
 }
 
 func (e *emitter) emitAnonymousStructLiteral(x *ast.CompositeLit, structType *gotypes.Struct) (bool, error) {
@@ -1211,7 +1230,7 @@ func (e *emitter) emitStructCompositeLit(x *ast.CompositeLit) (bool, error) {
 		e.needsRuntime = true
 		e.write("Object.assign(")
 		e.write(constructor)
-		e.write("(), {")
+		e.write(", {")
 	} else {
 		e.write("Object.assign(new ")
 		e.write(e.typeReference(named))

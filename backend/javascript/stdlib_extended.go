@@ -1152,7 +1152,7 @@ function go2jsRawText(value) {
 	}
 
 	if (value.__go2js_pointer === true) {
-		return go2jsRawText(value.get());
+		return go2jsRawText(value[go2jsPointerGet]());
 	}
 
 	if (value.__go2js_text !== undefined) {
@@ -2729,8 +2729,8 @@ function go2jsStoreErrorTarget(target, value) {
 
 	value = go2jsUnwrap(value);
 
-	if (typeof target.set === "function") {
-		target.set(value);
+	if (go2jsPointerAccessor(target, go2jsPointerSet)) {
+		target[go2jsPointerSet](value);
 		return;
 	}
 

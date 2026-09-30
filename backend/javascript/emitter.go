@@ -35,9 +35,9 @@ type emitter struct {
 	reflectTypeKeys     map[gotypesstd.Type]string
 	reflectTypeConsts   []string
 	reflectTypeUnit     int
-	addressNeeded       map[gotypesstd.Object]bool
-	addressNames        map[gotypesstd.Object]string
-	addressStack        []map[gotypesstd.Object]string
+	addressNeeded       map[addressTarget]bool
+	addressNames        map[addressTarget]string
+	addressStack        []map[addressTarget]string
 	resultCount         int
 	analysis            *gotypes.Result
 	semantic            *semantic.Context
@@ -554,16 +554,16 @@ func (e *emitter) emitBlock(block *ast.BlockStmt) error {
 	// Every variable this block declares and hands an address to gets a pointer
 	// variable of its own, set up afresh on every entry so that a loop body
 	// hands out a new pointer each turn the way the variable itself is new.
-	blockAddresses := map[gotypesstd.Object]string{}
+	blockAddresses := map[addressTarget]string{}
 
-	for _, object := range e.blockAddressObjects(block) {
-		name := e.reserveAddressBinding(object)
+	for _, target := range e.blockAddressObjects(block) {
+		name := e.reserveAddressBinding(target)
 
 		if name == "" {
 			continue
 		}
 
-		blockAddresses[object] = name
+		blockAddresses[target] = name
 		e.writeIndent()
 		e.write("let ")
 		e.write(name)
@@ -1477,9 +1477,23 @@ func (e *emitter) emitTopLevelVarDecl(decl *ast.GenDecl) error {
 			e.write(";")
 			e.newline()
 
-			if i < len(valueSpec.Values) {
-				initialized = true
+			// A variable declared without a value is not left empty: it holds
+			// the zero value of its type, which is what Go gives it.
+			if i >= len(valueSpec.Values) {
+				e.needsRuntime = true
+				e.writeIndent()
+				e.write("go2jsDeferInit(() => {")
+				e.write(javaScriptIdentifier(name.Name))
+				e.write(" = ")
+				e.write(e.zeroValue(e.variableType(name)))
+				e.write(";")
+				e.write("})")
+				e.newline()
+
+				continue
 			}
+
+			initialized = true
 		}
 	}
 

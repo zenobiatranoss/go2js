@@ -50,16 +50,55 @@ func (e *emitter) emitTypeSwitch(stmt *ast.TypeSwitchStmt) error {
 	}
 
 	e.needsRuntime = true
+
+	// The switch stands in a block of its own, because the variable it declares
+	// belongs to it alone in Go. Two type switches in one block that both bind
+	// the same name are ordinary Go, and without a block of its own the second
+	// one would be a second declaration of the same name.
+	if !e.inlineMode {
+		e.writeIndent()
+		e.write("{")
+		e.newline()
+		e.indent++
+	}
+
+	// The value a type switch examines is written down once, because the switch
+	// looks at it and the variable every clause sees is read from it. Writing it
+	// twice would run an expression with a call in it a second time.
+	e.tempCounter++
+
+	subject := "$go2js_switch_" + strconv.Itoa(e.tempCounter)
 	e.writeIndent()
-	e.write("switch (go2jsSwitchTypeOf(")
+	e.write("let " + subject + " = ")
 
 	if err := e.emitExpr(value); err != nil {
 		return err
 	}
 
-	e.write(")) {")
+	e.write(";")
 	e.newline()
-	e.indent++
+
+	// The variable a type switch declares is declared once, ahead of the switch,
+	// because every clause sees it. The clause that names no type sees it too,
+	// and there it holds the value the switch examined, the way Go hands the
+	// value back to a default clause.
+	if name != "" {
+		e.writeIndent()
+		e.write(e.emitDeclarationKeyword())
+		e.write(e.resolveName(name))
+		e.write(" = go2jsInterfaceValue(" + subject + ");")
+		e.newline()
+		e.declare(name)
+	}
+
+	// The clause that runs is the first one whose label the value matches, and a
+	// label that names an interface matches on the methods the value carries
+	// rather than on the name of its own type. The labels are therefore handed
+	// over in the order they were written, and the switch runs on which of them
+	// matched, which is also what keeps a break out of a labelled switch working.
+	clauses := make([]*ast.CaseClause, 0, len(stmt.Body.List))
+
+	labels := make([]string, 0, len(stmt.Body.List))
 
 	for _, item := range stmt.Body.List {
 		clause, ok := item.(*ast.CaseClause)
@@ -67,9 +106,41 @@ func (e *emitter) emitTypeSwitch(stmt *ast.TypeSwitchStmt) error {
 			return fmt.Errorf("unsupported type switch clause: %T", item)
 		}
 
-		if err := e.emitTypeSwitchClause(clause, value, name); err != nil {
+		clauses = append(clauses, clause)
+
+		for _, expr := range clause.List {
+			typeName, err := e.typeSwitchCaseName(expr)
+			if err != nil {
+				return err
+			}
+
+			labels = append(labels, typeName)
+		}
+	}
+
+	e.writeIndent()
+	e.write("switch (go2jsSwitchCaseIndex(" + subject + ", [")
+
+	for i, label := range labels {
+		if i > 0 {
+			e.write(", ")
+		}
+
+		e.write(strconv.Quote(label))
+	}
+
+	e.write("])) {")
+	e.newline()
+	e.indent++
+
+	first := 0
+
+	for _, clause := range clauses {
+		if err := e.emitTypeSwitchClause(clause, first); err != nil {
 			return err
 		}
+
+		first += len(clause.List)
 	}
 
 	e.indent--
@@ -77,10 +148,17 @@ func (e *emitter) emitTypeSwitch(stmt *ast.TypeSwitchStmt) error {
 	e.write("}")
 	e.newline()
 
+	if !e.inlineMode {
+		e.indent--
+		e.writeIndent()
+		e.write("}")
+		e.newline()
+	}
+
 	return nil
 }
 
-func (e *emitter) emitTypeSwitchClause(clause *ast.CaseClause, value ast.Expr, name string) error {
+func (e *emitter) emitTypeSwitchClause(clause *ast.CaseClause, first int) error {
 	if clause == nil {
 		return fmt.Errorf("invalid type switch clause")
 	}
@@ -89,39 +167,20 @@ func (e *emitter) emitTypeSwitchClause(clause *ast.CaseClause, value ast.Expr, n
 
 	if len(clause.List) == 0 {
 		e.write("default:")
-		e.newline()
 	} else {
-		for _, expr := range clause.List {
-			typeName, err := e.typeSwitchCaseName(expr)
-			if err != nil {
-				return err
-			}
-
-			e.write("case ")
-			e.write(strconv.Quote(typeName))
-			e.write(":")
-			e.newline()
-		}
+		// Every label of a clause stands for the same body, so the clause names
+		// the first of the places they occupy and lets the rest fall to it.
+		e.write("case ")
+		e.write(strconv.Itoa(first))
+		e.write(":")
 	}
 
+	e.newline()
 	e.indent++
 	e.writeIndent()
 	e.write("{")
 	e.newline()
 	e.indent++
-
-	if name != "" && len(clause.List) > 0 {
-		e.writeIndent()
-		e.write(e.emitDeclarationKeyword())
-		e.write(e.resolveName(name))
-		e.write(" = go2jsInterfaceValue(")
-		if err := e.emitExpr(value); err != nil {
-			return err
-		}
-		e.write(");")
-		e.newline()
-		e.declare(name)
-	}
 
 	for _, stmt := range clause.Body {
 		if err := e.emitStmt(stmt); err != nil {
