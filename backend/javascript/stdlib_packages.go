@@ -1,5 +1,7 @@
 package javascript
 
+import "strconv"
+
 var contextFuncs = map[string]string{
 	"Canceled":         "go2jsContextCanceled",
 	"DeadlineExceeded": "go2jsContextDeadlineExceeded",
@@ -192,6 +194,18 @@ func moreStdlibFuncs() {
 
 	for name, value := range flagConstants {
 		packageConstants["flag."+name] = value
+	}
+
+	for name, value := range bufioConstants {
+		packageConstants["bufio."+name] = value
+	}
+
+	for name, value := range httpConstants {
+		packageConstants["http."+name] = value
+	}
+
+	for name, value := range httpStatusCodes {
+		packageConstants["http."+name] = strconv.Itoa(value)
 	}
 
 	stdlibFuncMaps["crypto/sha256"] = sha256Funcs

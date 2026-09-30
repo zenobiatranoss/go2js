@@ -128,6 +128,8 @@ func runtimeBundleSources() []string {
 		moreRuntimeSource(),
 		funcTypeRuntimeSource(),
 		reflectRuntimeSource(),
+		debugRuntimeSource(),
+		httptestRuntimeSource(),
 		netRuntimeSource(),
 		runtimeShimRuntimeSource(),
 		templateRuntimeSource(),

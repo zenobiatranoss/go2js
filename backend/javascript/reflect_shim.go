@@ -3,6 +3,7 @@ package javascript
 import (
 	"fmt"
 	"go/ast"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -10,11 +11,21 @@ import (
 )
 
 var reflectFuncs = map[string]string{
-	"TypeOf":    "go2jsReflectTypeOf",
-	"ValueOf":   "go2jsReflectValueOf",
-	"Zero":      "go2jsReflectZero",
-	"DeepEqual": "go2jsEqual",
-	"New":       "go2jsReflectNew",
+	"TypeOf":           "go2jsReflectTypeOf",
+	"ValueOf":          "go2jsReflectValueOf",
+	"Zero":             "go2jsReflectZero",
+	"DeepEqual":        "go2jsEqual",
+	"New":              "go2jsReflectNew",
+	"PtrTo":            "go2jsReflectPtrTo",
+	"MakeSlice":        "go2jsReflectMakeSlice",
+	"MakeMap":          "go2jsReflectMakeMap",
+	"MakeMapWithSize":  "go2jsReflectMakeMap",
+	"MakeMapWithSize2": "go2jsReflectMakeMap",
+	"Indirect":         "go2jsReflectIndirect",
+	"PointerTo":        "go2jsReflectPtrTo",
+	"ArrayOf":          "go2jsReflectArrayOf",
+	"SliceOf":          "go2jsReflectSliceOf",
+	"MapOf":            "go2jsReflectMapOf",
 }
 
 var reflectConstants = map[string]string{
@@ -58,14 +69,127 @@ var reflectTypes = map[string]string{
 }
 
 func reflectRuntimeSource() string {
-	return `function go2jsReflectType(go2jsKind, go2jsName, go2jsElem, go2jsKey) {
+	return `// go2jsReflectMakeSlice builds a slice of a length and a capacity, the way
+// reflect.MakeSlice does. The elements start at the zero value of the element
+// type, and the length decides how many of them there are, so a capacity past
+// the length leaves room that the slice reports but the length does not reach.
+function go2jsReflectMakeSlice(type, length, capacity) {
+	const element = go2jsReflectElem(type);
+	const items = [];
+
+	for (let i = 0; i < length; i++) {
+		items.push(go2jsReflectUnwrap(go2jsReflectZeroOf(go2jsReflectValue(null, element))));
+	}
+
+	// A byte slice is the one a program keeps writing bytes into, and the array
+	// it is written as has to stay one that can hold them.
+	if (go2jsReflectIsByteType(go2jsReflectElem(type))) {
+		return go2jsReflectValue(new Uint8Array(items), type);
+	}
+
+	return go2jsReflectValue(items, type);
+}
+
+// go2jsReflectIsByteType reports whether a type is a byte or a uint8, which are
+// the same type in Go under two names.
+function go2jsReflectIsByteType(type) {
+	return type !== null && type !== undefined && (type.kind === "uint8" || type.name === "byte" || type.name === "uint8");
+}
+
+// go2jsReflectMakeMap builds a map of the type it was given, which starts out
+// empty. A size is taken as a hint and does not change what the map holds.
+function go2jsReflectMakeMap(type) {
+	const map = new go2jsNativeMap();
+
+	if (type !== null && type !== undefined && typeof type.name === "string" && type.name !== "") {
+		go2jsMapTyped(type.name, map);
+	}
+
+	return go2jsReflectValue(map, type);
+}
+
+// go2jsReflectMapZero is the zero value a missing map field reads as, which is
+// an empty map rather than nothing at all.
+function go2jsReflectMapZero(type) {
+	return go2jsReflectValue(new go2jsNativeMap(), type);
+}
+
+// go2jsReflectArrayOf reports the array of a length over an element type, which
+// is the type reflect.ArrayOf builds. The length is kept on the descriptor
+// because Len is the only thing that tells one array from another.
+function go2jsReflectArrayOf(length, element) {
+	return go2jsReflectType("array", "", element, null, go2jsReflectMethodsOf(element), length);
+}
+
+// go2jsReflectSliceOf reports the slice of an element type, which is the type
+// reflect.SliceOf builds. A slice of a byte is the same slice under the other
+// name, and it is written into as bytes, so it is one here too.
+function go2jsReflectSliceOf(element) {
+	return go2jsReflectType("slice", "", element, null, go2jsReflectMethodsOf(element));
+}
+
+// go2jsReflectMapOf reports the map of a key and an element type, which is the
+// type reflect.MapOf builds.
+function go2jsReflectMapOf(key, element) {
+	return go2jsReflectType("map", "", element, key, go2jsReflectMethodsOf(element));
+}
+
+// go2jsReflectTypeLen reports the length of an array, which is the one kind
+// that has a length of its own rather than one that was handed to it.
+function go2jsReflectTypeLen(receiver) {
+	const type = go2jsReflectValueType(receiver);
+
+	if (type.kind !== "array" || typeof type.len !== "number") {
+		throw new TypeError("reflect: Len of non-array type " + go2jsReflectTypeString(type));
+	}
+
+	return type.len;
+}
+
+function go2jsReflectType(go2jsKind, go2jsName, go2jsElem, go2jsKey, go2jsMethods, go2jsLen) {
 	return {
 		__go2js_reflectType: true,
 		kind: go2jsKind,
 		name: go2jsName || "",
 		elem: go2jsElem || null,
-		key: go2jsKey || null
+		key: go2jsKey || null,
+		methods: go2jsMethods || [],
+		len: typeof go2jsLen === "number" ? go2jsLen : null
 	};
+}
+
+// go2jsReflectMethodsOf reports the method set a type descriptor carries. It is
+// what Implements compares, so a type that never went through the emitter and
+// was read off a value instead has an empty set of them.
+function go2jsReflectMethodsOf(type) {
+	if (type === null || type === undefined || !Array.isArray(type.methods)) {
+		return [];
+	}
+
+	return type.methods;
+}
+
+// go2jsReflectPtrTo reports the pointer to a type, the way reflect.PtrTo does.
+// A pointer type has no name of its own, and every method of the type it points
+// at is in its method set, so the methods travel across unchanged.
+function go2jsReflectPtrTo(type) {
+	return go2jsReflectType("ptr", "", type, null, go2jsReflectMethodsOf(type));
+}
+
+// go2jsReflectTypeImplements reports whether a type carries every method an
+// interface asks for. Go compares the two method sets by name, because one type
+// cannot have two methods of the same name, so the comparison here is the same.
+function go2jsReflectTypeImplements(type, iface) {
+	const wanted = go2jsReflectMethodsOf(iface);
+
+	if (wanted.length === 0) {
+		// Every type answers an interface that asks for nothing.
+		return true;
+	}
+
+	const have = go2jsReflectMethodsOf(type);
+
+	return wanted.every((name) => have.indexOf(name) >= 0);
 }
 
 function go2jsReflectTypeKind(value) {
@@ -93,12 +217,29 @@ function go2jsReflectTypeKind(value) {
 		return "slice";
 	}
 
-	if (typeof value.get === "function" && typeof value.set === "function") {
-		return "ptr";
-	}
-
+	// A map is checked before the pointer cell, because go2jsNativeMap builds on
+	// Map and so carries the get and set methods a cell is recognised by.
 	if (value instanceof go2jsNativeMap) {
 		return "map";
+	}
+
+	if (typeof value.get === "function" && typeof value.set === "function") {
+		// A map or a slice that reached reflect by reference is handed over in a
+		// cell so that a write reaches the storage its holder owns, and that cell
+		// is not a pointer. A real one says so, and only a real one is a pointer.
+		if (value.__go2js_pointer !== true) {
+			const target = go2jsStripWrappers(value.get());
+
+			if (target instanceof go2jsNativeMap) {
+				return "map";
+			}
+
+			if (Array.isArray(target)) {
+				return "slice";
+			}
+		}
+
+		return "ptr";
 	}
 
 	if (value.__go2js_interface === true) {
@@ -142,7 +283,31 @@ function go2jsReflectTypeOf(value, type) {
 		return type;
 	}
 
-	return go2jsReflectType(go2jsReflectTypeKind(value), go2jsReflectNameOfValue(value), null, null);
+	// A value that came through an interface is wrapped in the type it was
+	// given there, and it is the value underneath that says what it is.
+	const bare = go2jsStripWrappers(value);
+	const name = go2jsReflectNameOfValue(bare);
+
+	return go2jsReflectType(go2jsReflectTypeKind(bare), name, null, null, go2jsReflectMethodsOfName(name));
+}
+
+// go2jsReflectMethodsOfName looks up the method set the emitter recorded for a
+// named type. A type that was read off a value rather than off the program has
+// to be told what it can do, because nothing else about it says.
+function go2jsReflectMethodsOfName(name) {
+	if (typeof name !== "string" || name === "") {
+		return [];
+	}
+
+	const short = name.slice(name.lastIndexOf(".") + 1);
+
+	for (const registered of Object.keys(go2jsMethodSets)) {
+		if (registered === name || registered.slice(registered.lastIndexOf(".") + 1) === short) {
+			return go2jsMethodSets[registered];
+		}
+	}
+
+	return [];
 }
 
 function go2jsReflectValue(value, type) {
@@ -393,6 +558,35 @@ function go2jsReflectTypeSize() {
 	return 0;
 }
 
+// go2jsReflectTypeKey reports the key type of a map, which is the only kind
+// that has one.
+function go2jsReflectTypeKey(receiver) {
+	const type = go2jsReflectValueType(receiver);
+
+	if (type.key === null || type.key === undefined) {
+		throw new TypeError("reflect: Key of non-map type " + go2jsReflectTypeString(type));
+	}
+
+	return type.key;
+}
+
+// go2jsReflectTypeNumMethod reports how many methods a type carries.
+function go2jsReflectTypeNumMethod(receiver) {
+	return go2jsReflectMethodsOf(go2jsReflectValueType(receiver)).length;
+}
+
+// go2jsReflectTypeMethod reports one method by the order Go sorted the method
+// set in, which is alphabetical by name.
+function go2jsReflectTypeMethod(receiver, index) {
+	const methods = go2jsReflectMethodsOf(go2jsReflectValueType(receiver));
+
+	if (index < 0 || index >= methods.length) {
+		throw new RangeError("reflect: Method index out of range");
+	}
+
+	return {Name: methods[index], Type: null, Index: index};
+}
+
 // go2jsReflectInvoke calls a reflect.Value or reflect.Type method, which lives
 // in the method table rather than on a generated class.
 function go2jsReflectInvoke(owner, name, receiver, ...rest) {
@@ -453,7 +647,12 @@ const go2jsReflectTypeMethods = {
 	Field: go2jsReflectTypeField,
 	Elem: go2jsReflectTypeElemOf,
 	String: go2jsReflectTypeString,
-	Size: go2jsReflectTypeSize
+	Size: go2jsReflectTypeSize,
+	Implements: go2jsReflectTypeImplements,
+	Key: go2jsReflectTypeKey,
+	Len: go2jsReflectTypeLen,
+	NumMethod: go2jsReflectTypeNumMethod,
+	Method: go2jsReflectTypeMethod
 };
 
 function go2jsReflectRegisterMethods() {
@@ -790,6 +989,18 @@ func reflectStdlibFuncs() {
 	stdlibFuncMaps["reflect"] = functions
 }
 
+// reflectTypeUnits counts the emitted units, so that the type descriptors each
+// one declares are told apart. The count only has to differ from one unit to the
+// next, and the units are emitted one after another, so a plain number is enough
+// to keep the names apart and leaves the output in the same order every time.
+var reflectTypeUnits int
+
+func nextReflectTypeUnit() int {
+	reflectTypeUnits++
+
+	return reflectTypeUnits
+}
+
 func (e *emitter) reflectTypeDescriptor(t gotypesstd.Type) (string, error) {
 	if t == nil {
 		return "null", nil
@@ -856,20 +1067,110 @@ func (e *emitter) reflectTypeDescriptor(t gotypesstd.Type) (string, error) {
 		kind = strconv.Quote(kind)
 	}
 
-	constant := fmt.Sprintf("go2jsReflectType(%s, %s, %s, %s)", kind, name, elem, key)
+	methods := "[]"
+
+	if names := reflectMethodNames(t); len(names) > 0 {
+		quoted := make([]string, 0, len(names))
+
+		for _, name := range names {
+			quoted = append(quoted, strconv.Quote(name))
+		}
+
+		methods = "[" + strings.Join(quoted, ", ") + "]"
+	}
+
+	constant := fmt.Sprintf("go2jsReflectType(%s, %s, %s, %s, %s)", kind, name, elem, key, methods)
 
 	if e.reflectTypeKeys == nil {
 		e.reflectTypeKeys = map[gotypesstd.Type]string{}
 	}
 
 	if _, exists := e.reflectTypeKeys[t]; !exists {
-		identifier := "go2jsReflectType" + strconv.Itoa(len(e.reflectTypeConsts))
+		// Every file is emitted on its own and the declarations all end up at the
+		// top of one program, so the name carries the unit it was declared in as
+		// well as its place in it. Two files that ask about the same type
+		// therefore do not both call it go2jsReflectType0.
+		identifier := "go2jsReflectType" + strconv.Itoa(e.reflectTypeUnit) + "_" + strconv.Itoa(len(e.reflectTypeConsts))
 		e.reflectTypeConsts = append(e.reflectTypeConsts, "const "+identifier+" = "+constant+";")
 		e.reflectTypeKeys[t] = identifier
 		return identifier, nil
 	}
 
 	return e.reflectTypeKeys[t], nil
+}
+
+// reflectMethodNames lists the methods a type carries, which is the set Go
+// compares when one type is asked whether it implements an interface. The names
+// are sorted, because Go hands the method set out in that order.
+func reflectMethodNames(t gotypesstd.Type) []string {
+	seen := map[string]bool{}
+	collectReflectMethods(t, seen, map[gotypesstd.Type]bool{})
+
+	names := make([]string, 0, len(seen))
+
+	for name := range seen {
+		names = append(names, name)
+	}
+
+	sort.Strings(names)
+
+	return names
+}
+
+// collectReflectMethods gathers the method set of a type. A named type has the
+// methods it declares plus the ones its embedded fields bring in, and an
+// interface has the methods it declares plus the ones its embedded interfaces
+// ask for. A pointer carries the methods of the type it points at, because
+// every method of T is in the method set of *T.
+func collectReflectMethods(t gotypesstd.Type, seen map[string]bool, visited map[gotypesstd.Type]bool) {
+	if t == nil || visited[t] {
+		return
+	}
+
+	visited[t] = true
+
+	switch typed := t.(type) {
+	case *gotypesstd.Alias:
+		collectReflectMethods(gotypesstd.Unalias(t), seen, visited)
+	case *gotypesstd.Pointer:
+		collectReflectMethods(typed.Elem(), seen, visited)
+	case *gotypesstd.Named:
+		for i := 0; i < typed.NumMethods(); i++ {
+			seen[typed.Method(i).Name()] = true
+		}
+
+		// A named interface keeps the methods it embeds on the interface it is
+		// built from, so those are gathered from there as well.
+		if underlying, isInterface := typed.Underlying().(*gotypesstd.Interface); isInterface {
+			collectReflectMethods(underlying, seen, visited)
+		}
+
+		collectReflectPromotedMethods(typed, seen, visited)
+	case *gotypesstd.Interface:
+		for i := 0; i < typed.NumMethods(); i++ {
+			seen[typed.Method(i).Name()] = true
+		}
+
+		for i := 0; i < typed.NumEmbeddeds(); i++ {
+			collectReflectMethods(typed.EmbeddedType(i), seen, visited)
+		}
+	}
+}
+
+// collectReflectPromotedMethods adds the methods a type inherits from its
+// embedded fields, which is how a struct that embeds another one answers for
+// the methods of the field it embedded.
+func collectReflectPromotedMethods(t gotypesstd.Type, seen map[string]bool, visited map[gotypesstd.Type]bool) {
+	fields, ok := t.Underlying().(*gotypesstd.Struct)
+	if !ok {
+		return
+	}
+
+	for i := 0; i < fields.NumFields(); i++ {
+		if field := fields.Field(i); field.Embedded() {
+			collectReflectMethods(field.Type(), seen, visited)
+		}
+	}
 }
 
 func reflectKindName(t gotypesstd.Type) (string, error) {
@@ -979,9 +1280,30 @@ func (e *emitter) emitReflectCall(call *ast.CallExpr) (bool, error) {
 		}
 
 		argument := e.analyzedType(call.Args[0])
-
-		if argument == nil || isInterfaceGoType(argument) {
+		if argument == nil {
 			return false, nil
+		}
+
+		// A value that reaches reflect through an interface is described by the
+		// type it really carries rather than by the interface it arrived in, and
+		// only the value itself says which that is, so no descriptor travels
+		// with the call.
+		if isInterfaceLikeType(argument) {
+			e.needsRuntime = true
+			if name == "TypeOf" {
+				e.write("go2jsReflectTypeOf")
+			} else {
+				e.write("go2jsReflectValueOf")
+			}
+			e.write("(")
+
+			if err := e.emitExpr(call.Args[0]); err != nil {
+				return true, err
+			}
+
+			e.write(")")
+
+			return true, nil
 		}
 
 		descriptor, err := e.reflectTypeDescriptor(argument)
@@ -1021,6 +1343,133 @@ func (e *emitter) emitReflectCall(call *ast.CallExpr) (bool, error) {
 		e.write("go2jsReflectNew(")
 
 		if err := e.emitReflectTypeOperand(call.Args[0]); err != nil {
+			return true, err
+		}
+
+		e.write(")")
+
+		return true, nil
+
+	case "PtrTo":
+		// The argument is a reflect.Type, and the pointer that comes back has to
+		// keep the method set of the type it points at, which is what an
+		// Implements call on it asks about.
+		if len(call.Args) != 1 {
+			return false, nil
+		}
+
+		e.needsRuntime = true
+		e.write("go2jsReflectPtrTo(")
+
+		if err := e.emitReflectTypeOperand(call.Args[0]); err != nil {
+			return true, err
+		}
+
+		e.write(")")
+
+		return true, nil
+
+	case "MakeSlice":
+		// The first argument is the type of the slice, so its descriptor has to
+		// travel with the call for the runtime to know what to put in it.
+		if len(call.Args) != 3 {
+			return false, nil
+		}
+
+		e.needsRuntime = true
+		e.write("go2jsReflectMakeSlice(")
+
+		if err := e.emitReflectTypeOperand(call.Args[0]); err != nil {
+			return true, err
+		}
+
+		for _, arg := range call.Args[1:] {
+			e.write(", ")
+
+			if err := e.emitExpr(arg); err != nil {
+				return true, err
+			}
+		}
+
+		e.write(")")
+
+		return true, nil
+
+	case "MakeMap", "MakeMapWithSize", "MakeMapWithSize2", "Indirect":
+		// A size, where there is one, is a hint that says nothing about what the
+		// map will hold, so it is not passed on.
+		if len(call.Args) == 0 || len(call.Args) > 2 {
+			return false, nil
+		}
+
+		e.needsRuntime = true
+		e.write("go2jsReflectMakeMap(")
+
+		if err := e.emitReflectTypeOperand(call.Args[0]); err != nil {
+			return true, err
+		}
+
+		e.write(")")
+
+		return true, nil
+
+	case "ArrayOf":
+		// The length comes first and the type of the elements second, which is
+		// the order reflect takes them in and the order the runtime wants them.
+		if len(call.Args) != 2 {
+			return false, nil
+		}
+
+		e.needsRuntime = true
+		e.write("go2jsReflectArrayOf(")
+
+		if err := e.emitExpr(call.Args[0]); err != nil {
+			return true, err
+		}
+
+		e.write(", ")
+
+		if err := e.emitReflectTypeOperand(call.Args[1]); err != nil {
+			return true, err
+		}
+
+		e.write(")")
+
+		return true, nil
+
+	case "SliceOf":
+		if len(call.Args) != 1 {
+			return false, nil
+		}
+
+		e.needsRuntime = true
+		e.write("go2jsReflectSliceOf(")
+
+		if err := e.emitReflectTypeOperand(call.Args[0]); err != nil {
+			return true, err
+		}
+
+		e.write(")")
+
+		return true, nil
+
+	case "MapOf":
+		// The key comes first and the elements second, the way reflect takes
+		// them in, and the runtime is handed them in that same order.
+		if len(call.Args) != 2 {
+			return false, nil
+		}
+
+		e.needsRuntime = true
+		e.write("go2jsReflectMapOf(")
+
+		if err := e.emitReflectTypeOperand(call.Args[0]); err != nil {
+			return true, err
+		}
+
+		e.write(", ")
+
+		if err := e.emitReflectTypeOperand(call.Args[1]); err != nil {
 			return true, err
 		}
 

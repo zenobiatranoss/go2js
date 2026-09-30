@@ -101,15 +101,52 @@ func (e *emitter) declareNonBlank(lhs []ast.Expr) {
 // indentation and trailing semicolon that statement context expects.
 func (e *emitter) emitTypeAssertAssignInline(stmt *ast.AssignStmt, assert *ast.TypeAssertExpr) error {
 	e.needsRuntime = true
+	assignOnly := false
 
 	if stmt.Tok == token.DEFINE {
-		if e.inlineMode {
-			e.declareNonBlank(stmt.Lhs)
+		// A short declaration only declares the names that are not in scope yet,
+		// so a statement that repeats one of them declares the rest and assigns
+		// to all of them. Writing let for the whole pattern would declare the
+		// name that is already there a second time, which Go allows because it
+		// scopes the two declarations apart and JavaScript does not.
+		fresh := e.shortDeclareNames(stmt.Lhs)
+
+		if len(fresh) == e.declarableNameCount(stmt.Lhs) {
+			if !e.inlineMode {
+				e.writeIndent()
+			}
+
+			e.write(e.emitDeclarationKeyword())
 		} else {
-			e.writeIndent()
+			for _, name := range fresh {
+				if !e.inlineMode {
+					e.writeIndent()
+				}
+
+				e.write(e.emitDeclarationKeyword())
+				e.write(name)
+				e.write(";")
+
+				if !e.inlineMode {
+					e.newline()
+				}
+			}
+
+			if !e.inlineMode {
+				e.writeIndent()
+			}
+
+			// A pattern that assigns rather than declares has to be written as
+			// an expression, and a statement may not begin with a bracket.
+			e.write("(")
+			assignOnly = true
 		}
 
-		e.write(e.emitDeclarationKeyword())
+		for _, name := range fresh {
+			e.declare(name)
+		}
+	} else if !e.inlineMode {
+		e.writeIndent()
 	}
 
 	e.write(e.blankDestructuringPattern(stmt.Lhs))
@@ -123,12 +160,57 @@ func (e *emitter) emitTypeAssertAssignInline(stmt *ast.AssignStmt, assert *ast.T
 	e.write(e.typeAssertName(assert.Type))
 	e.write(`")`)
 
+	if assignOnly {
+		e.write(")")
+	}
+
 	if !e.inlineMode {
 		e.write(";")
 		e.newline()
 	}
 
 	return nil
+}
+
+// declarableNameCount counts the names on the left of a short declaration that
+// the declaration can introduce. A blank name is only ever a hole in the
+// pattern, so it is not one of them.
+func (e *emitter) declarableNameCount(lhs []ast.Expr) int {
+	count := 0
+
+	for _, expr := range lhs {
+		ident, ok := expr.(*ast.Ident)
+
+		if !ok || ident.Name == blankIdentifier {
+			continue
+		}
+
+		count++
+	}
+
+	return count
+}
+
+// shortDeclareNames lists the names on the left of a short declaration that are
+// not in scope yet, which are the only ones the declaration introduces.
+func (e *emitter) shortDeclareNames(lhs []ast.Expr) []string {
+	var fresh []string
+
+	for _, expr := range lhs {
+		ident, ok := expr.(*ast.Ident)
+
+		if !ok || ident.Name == blankIdentifier {
+			continue
+		}
+
+		if e.isDeclaredHere(ident.Name) {
+			continue
+		}
+
+		fresh = append(fresh, ident.Name)
+	}
+
+	return fresh
 }
 
 func (e *emitter) emitBlankAssignment(stmt *ast.AssignStmt) error {

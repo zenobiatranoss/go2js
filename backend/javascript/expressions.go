@@ -1180,15 +1180,26 @@ func (e *emitter) emitStructCompositeLit(x *ast.CompositeLit) (bool, error) {
 		return e.emitAnonymousStructLiteral(x, structType)
 	}
 
-	if named.Obj() != nil && named.Obj().Pkg() != nil &&
-		named.Obj().Pkg().Path() == "net/url" &&
-		named.Obj().Name() == "Values" {
-		if len(x.Elts) != 0 {
-			return false, nil
+	if named.Obj() != nil && named.Obj().Pkg() != nil {
+		pkgPath := named.Obj().Pkg().Path()
+
+		if pkgPath == "net/url" && named.Obj().Name() == "Values" {
+			if len(x.Elts) != 0 {
+				return false, nil
+			}
+			e.needsRuntime = true
+			e.write("go2jsURLValues()")
+			return true, nil
 		}
-		e.needsRuntime = true
-		e.write("go2jsURLValues()")
-		return true, nil
+
+		// A time is a date in the runtime rather than a declared type, so the
+		// zero value of the struct is the zero instant instead of an instance
+		// of a class that is never emitted.
+		if pkgPath == "time" && named.Obj().Name() == "Time" && len(x.Elts) == 0 {
+			e.needsRuntime = true
+			e.write("go2jsTimeZero()")
+			return true, nil
+		}
 	}
 
 	structType, ok = named.Underlying().(*gotypes.Struct)
