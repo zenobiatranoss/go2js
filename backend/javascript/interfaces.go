@@ -121,6 +121,31 @@ func (e *emitter) emitInterfaceValue(expr ast.Expr, target gotypes.Type) error {
 		}
 	}
 
+	// A pointer that is nil still has a type once an interface holds it, so the
+	// interface is not empty even though the pointer is. JavaScript has one
+	// value for both, so the two are told apart here and a pointer with nothing
+	// behind it is given a box of its own.
+	if isInterfaceLikeType(target) && !isInterfaceGoType(target) && e.analysis != nil {
+		if info, ok := e.analysis.Types[expr]; ok && info.Type != nil {
+			if _, isPointer := info.Type.Underlying().(*gotypes.Pointer); isPointer {
+				if name, ok := e.goTypeNameOfExpr(expr); ok {
+					e.needsRuntime = true
+					e.write("go2jsTypedNilGuard(")
+
+					if err := e.emitExpr(expr); err != nil {
+						return err
+					}
+
+					e.write(", ")
+					e.write(strconv.Quote(name))
+					e.write(")")
+
+					return nil
+				}
+			}
+		}
+	}
+
 	if target != nil && isArrayType(target) && e.analysis != nil {
 		if info, ok := e.analysis.Types[expr]; ok && info.Type != nil && isArrayType(info.Type) {
 			e.needsRuntime = true

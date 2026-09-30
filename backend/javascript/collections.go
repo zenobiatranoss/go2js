@@ -28,6 +28,18 @@ func isSliceType(t gotypes.Type) bool {
 
 // A nil slice or a nil map is given a value of its own once it is stored in an
 // interface, so the types that answer to that treatment are these two.
+// isPointerType reports whether a type is a pointer, which is what a nil can be
+// compared against and what an interface gives a box of its own.
+func isPointerType(t gotypes.Type) bool {
+	if t == nil {
+		return false
+	}
+
+	_, ok := t.Underlying().(*gotypes.Pointer)
+
+	return ok
+}
+
 func isSliceOrMapType(t gotypes.Type) bool {
 	return isSliceType(t) || isMapType(t)
 }
@@ -42,10 +54,17 @@ func (e *emitter) emitCollectionNilComparison(x *ast.BinaryExpr) (bool, error) {
 
 	var operand ast.Expr
 
+	// A pointer compared with nil asks whether the pointer is nil, and a box
+	// standing for a nil pointer inside an interface is a nil pointer, so the
+	// same question answers it as well.
+	isNilOperand := func(expr ast.Expr) bool {
+		return isSliceOrMapType(e.analyzedType(expr)) || isPointerType(e.analyzedType(expr))
+	}
+
 	switch {
-	case isNilLiteral(x.Y) && isSliceOrMapType(e.analyzedType(x.X)):
+	case isNilLiteral(x.Y) && isNilOperand(x.X):
 		operand = x.X
-	case isNilLiteral(x.X) && isSliceOrMapType(e.analyzedType(x.Y)):
+	case isNilLiteral(x.X) && isNilOperand(x.Y):
 		operand = x.Y
 	default:
 		return false, nil
