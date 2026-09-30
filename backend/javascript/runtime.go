@@ -34,8 +34,153 @@ function go2jsFloat(value) {
 	return (value < 0 ? "-" : "+") + match[1] + "e" + match[2] + match[3].padStart(3, "0");
 }
 
+var go2jsTextEncoder = new TextEncoder();
+var go2jsStrictDecoder = new TextDecoder("utf-8", { fatal: true });
+var go2jsLenientDecoder = new TextDecoder("utf-8");
+
+// Decoding reads a run of bytes as the runes it spells, and a byte that is not
+// the UTF-8 of a rune as the byte it is, since a Go string keeps it either way.
+function go2jsDecodeBytes(bytes) {
+	if (bytes.length === 0) {
+		return "";
+	}
+
+	try {
+		// Text is the common case, and the platform reads it far faster than a
+		// walk over every byte of it could.
+		return go2jsStrictDecoder.decode(bytes);
+	} catch (error) {
+		return go2jsDecodeBytesByteByByte(bytes);
+	}
+}
+
+function go2jsDecodeBytesByteByByte(bytes) {
+	let text = "";
+	let i = 0;
+
+	while (i < bytes.length) {
+		const first = bytes[i];
+		let codePoint;
+		let size;
+
+		if (first < 0x80) {
+			codePoint = first;
+			size = 1;
+		} else if ((first & 0xe0) === 0xc0) {
+			codePoint = first & 0x1f;
+			size = 2;
+		} else if ((first & 0xf0) === 0xe0) {
+			codePoint = first & 0x0f;
+			size = 3;
+		} else if ((first & 0xf8) === 0xf0) {
+			codePoint = first & 0x07;
+			size = 4;
+		} else {
+			text += go2jsRawByteUnit(first);
+			i++;
+			continue;
+		}
+
+		if (i + size > bytes.length) {
+			text += go2jsRawByteUnit(first);
+			i++;
+			continue;
+		}
+
+		let wellFormed = true;
+
+		for (let offset = 1; offset < size; offset++) {
+			const next = bytes[i + offset];
+
+			if ((next & 0xc0) !== 0x80) {
+				wellFormed = false;
+				break;
+			}
+
+			codePoint = (codePoint << 6) | (next & 0x3f);
+		}
+
+		// A rune has to be as long as it was written to be, has to be a rune at
+		// all, and has to be one the encoding is allowed to spell. A sequence
+		// that is not any of those is a byte and not a character.
+		if (!wellFormed || codePoint > 0x10ffff || (codePoint >= 0xd800 && codePoint <= 0xdfff) ||
+			(size === 2 && codePoint < 0x80) || (size === 3 && codePoint < 0x800) || (size === 4 && codePoint < 0x10000)) {
+			text += go2jsRawByteUnit(first);
+			i++;
+			continue;
+		}
+
+		text += String.fromCodePoint(codePoint);
+		i += size;
+	}
+
+	return text;
+}
+
+// A Go string is a run of bytes, and a JavaScript string is a run of runes, so
+// a byte that is not the UTF-8 of a rune has nowhere of its own to sit in one.
+// Those bytes are held as lone low surrogates, which no rune is ever written
+// with, and are read back as the very bytes they were wherever they are
+// measured, sliced, indexed or written out.
+function go2jsRawByteUnit(byte) {
+	return String.fromCharCode(0xdc00 + (byte & 255));
+}
+
+function go2jsHasRawBytes(value) {
+	for (let i = 0; i < value.length; i++) {
+		const unit = value.charCodeAt(i);
+
+		// A low surrogate is the other half of a rune when the unit before it is
+		// a high surrogate, and a raw byte of its own when nothing is.
+		if (unit >= 0xdc00 && unit <= 0xdfff && (i === 0 || value.charCodeAt(i - 1) < 0xd800 || value.charCodeAt(i - 1) > 0xdbff)) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
 function go2jsStringToBytes(value) {
-    return Array.from(new TextEncoder().encode(value));
+	const bytes = [];
+	let start = 0;
+	let i = 0;
+
+	while (i < value.length) {
+		const unit = value.charCodeAt(i);
+
+		if (unit >= 0xdc00 && unit <= 0xdfff && (i === 0 || value.charCodeAt(i - 1) < 0xd800 || value.charCodeAt(i - 1) > 0xdbff)) {
+			if (i > start) {
+				go2jsAppendEncodedBytes(bytes, value.slice(start, i));
+			}
+
+			bytes.push(unit - 0xdc00);
+			i++;
+			start = i;
+			continue;
+		}
+
+		i++;
+	}
+
+	// Text with no raw byte in it is the case for nearly every string, and is
+	// left to the platform to write out whole.
+	if (start === 0) {
+		return Array.from(go2jsTextEncoder.encode(value));
+	}
+
+	if (start < value.length) {
+		go2jsAppendEncodedBytes(bytes, value.slice(start));
+	}
+
+	return bytes;
+}
+
+function go2jsAppendEncodedBytes(bytes, text) {
+	const encoded = go2jsTextEncoder.encode(text);
+
+	for (let i = 0; i < encoded.length; i++) {
+		bytes.push(encoded[i]);
+	}
 }
 
 function go2jsOSArgs() {
@@ -1844,7 +1989,7 @@ go2jsBytesBuffer.prototype.Write = function(value) {
     }
 
     if (typeof value === "string") {
-        value = Array.from(new TextEncoder().encode(value));
+        value = go2jsStringToBytes(value);
     } else if (ArrayBuffer.isView(value)) {
         value = Array.from(value);
     } else if (Array.isArray(value)) {
@@ -3566,8 +3711,26 @@ function go2jsLen(value) {
 function go2jsStringByteLength(s) {
 	let bytes = 0;
 
-	for (const ch of s) {
-		const code = ch.codePointAt(0);
+	for (let i = 0; i < s.length; i++) {
+		const unit = s.charCodeAt(i);
+
+		// A byte that is not the UTF-8 of a rune is a byte of its own, held as a
+		// lone surrogate, and takes up room on its own.
+		if (unit >= 0xdc00 && unit <= 0xdfff && (i === 0 || s.charCodeAt(i - 1) < 0xd800 || s.charCodeAt(i - 1) > 0xdbff)) {
+			bytes += 1;
+			continue;
+		}
+
+		let code = unit;
+
+		if (unit >= 0xd800 && unit <= 0xdbff && i + 1 < s.length) {
+			const low = s.charCodeAt(i + 1);
+
+			if (low >= 0xdc00 && low <= 0xdfff) {
+				code = (unit - 0xd800) * 0x400 + (low - 0xdc00) + 0x10000;
+				i++;
+			}
+		}
 
 		if (code < 0x80) {
 			bytes += 1;
@@ -4341,7 +4504,7 @@ function go2jsFormat(value, typeName, kind, shape, plus, nested, raw) {
 }
 
 function go2jsPrintln(...values) {
-	process.stdout.write(go2jsJoinOperands(values, true) + "\n");
+	go2jsWriteOut(process.stdout, go2jsJoinOperands(values, true) + "\n");
 }
 
 function go2jsJoinOperands(values, alwaysSpace) {
@@ -4375,7 +4538,18 @@ function isStringOperand(value) {
 }
 
 function go2jsPrint(...values) {
-	process.stdout.write(go2jsJoinOperands(values, false));
+	go2jsWriteOut(process.stdout, go2jsJoinOperands(values, false));
+}
+
+// Text on its way out is written as bytes, because a string is bytes and a
+// byte that is not the UTF-8 of a rune has to arrive as itself.
+function go2jsWriteOut(stream, text) {
+	if (typeof text === "string" && go2jsHasRawBytes(text)) {
+		stream.write(Buffer.from(go2jsStringToBytes(text)));
+		return;
+	}
+
+	stream.write(text);
 }
 function go2jsWriteDestination(destination, text) {
 	const target = go2jsUnwrap(destination);

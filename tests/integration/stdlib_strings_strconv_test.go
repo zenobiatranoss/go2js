@@ -95,3 +95,39 @@ func main() {
 		t.Fatalf("strings byte offsets mismatch\n--- want ---\n%s\n--- got ---\n%s", want, got)
 	}
 }
+
+// A Go string is a run of bytes, and a slice cut on a byte offset that lands
+// inside a rune keeps the bytes it cut across rather than losing them. What
+// comes out of such a slice is text no rune is written with, and it is written
+// out as the very bytes it is.
+func TestStringSliceKeepsTheBytesItCutsAcross(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+func main() {
+	s := "aé漢😀z"
+
+	// Every start inside the two byte rune, and inside the four byte one.
+	fmt.Println(s[2:])
+	fmt.Println(s[1:3], s[3:6], s[6:10])
+	fmt.Println(s[2:5], s[7:9])
+	fmt.Println(len(s[2:]), len(s[3:6]))
+
+	// A string cut at a bound that is not a rune is measured, indexed and
+	// joined as the bytes it is.
+	half := s[2:]
+	fmt.Println(half[0], strings.ToUpper(half[1:]) == "\xe6\xbc\xa2")
+	fmt.Println("x"+half, half+"x")
+
+	// Bytes that are not the UTF-8 of a rune come from a file as they are, and
+	// go out again as they are.
+	raw := []byte{0x61, 0xa9, 0xe6, 0xbc, 0xa2, 0xff}
+	fmt.Println(string(raw))
+	fmt.Println(string(raw[1:3]), len(string(raw)))
+}
+`)
+}
