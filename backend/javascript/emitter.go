@@ -56,6 +56,11 @@ type emitter struct {
 	deferNamedReturn bool
 	localStructTypes map[string]bool
 
+	// The deferred arguments are passed to the call by a name of their own, so
+	// what each of them holds is kept here for the calls that are written
+	// against those names.
+	deferredArgChannels map[string]bool
+
 	// True while an expression that is about to be assigned to is being
 	// written, where a bounds check has no room to stand.
 	inTarget        bool
