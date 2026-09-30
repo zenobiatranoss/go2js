@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/token"
 	gotypesstd "go/types"
+	"sort"
 )
 
 const (
@@ -11,6 +12,29 @@ const (
 	tokenDEFINE = token.DEFINE
 	tokenVAR    = token.VAR
 )
+
+// addressTarget is the place a pointer is kept for: the variable it names and
+// the path of fields taken to reach that place. Two names that reach the same
+// variable by the same path share a pointer, while the same variable reached by
+// different paths does not, because those are different places to read and
+// write through.
+type addressTarget struct {
+	object gotypesstd.Object
+	path   string
+}
+
+// addressPath spells out the fields an address expression walks, so that &x and
+// &x.field can be told apart.
+func addressPath(expr ast.Expr) string {
+	switch x := expr.(type) {
+	case *ast.Ident:
+		return x.Name
+	case *ast.SelectorExpr:
+		return addressPath(x.X) + "." + x.Sel.Name
+	}
+
+	return ""
+}
 
 // addressBase returns the variable an address expression names, along with the
 // expression that reaches it. Only a chain of plain field or method
@@ -61,6 +85,24 @@ func (e *emitter) addressKey(ident *ast.Ident) gotypesstd.Object {
 	return nil
 }
 
+// addressTargetOf names the place an address expression points at, so that the
+// pointer to it can be kept in a variable of its own.
+func (e *emitter) addressTargetOf(expr ast.Expr) (addressTarget, bool) {
+	base, chain, ok := addressBase(expr)
+
+	if !ok {
+		return addressTarget{}, false
+	}
+
+	object := e.addressKey(base)
+
+	if object == nil {
+		return addressTarget{}, false
+	}
+
+	return addressTarget{object: object, path: addressPath(chain)}, true
+}
+
 // collectAddressObjects walks a function body and gathers every variable whose
 // address the body takes, so a block can set aside the variable a pointer is
 // kept in before any statement that needs it runs. A function literal is walked
@@ -74,32 +116,26 @@ func (e *emitter) collectAddressObjects(node ast.Node) {
 			return true
 		}
 
-		base, _, ok := addressBase(unary.X)
-
-		if !ok {
-			return true
-		}
-
-		if object := e.addressKey(base); object != nil {
-			e.addressNeeded[object] = true
+		if target, ok := e.addressTargetOf(unary.X); ok {
+			e.addressNeeded[target] = true
 		}
 
 		return true
 	})
 }
 
-// reserveAddressBinding gives an object the variable its pointer lives in,
-// handing out the same name every time the same variable asks again.
-func (e *emitter) reserveAddressBinding(object gotypesstd.Object) string {
-	if object == nil {
+// reserveAddressBinding gives a target the variable its pointer lives in,
+// handing out the same name every time the same place asks again.
+func (e *emitter) reserveAddressBinding(target addressTarget) string {
+	if target.object == nil {
 		return ""
 	}
 
-	name := e.addressNames[object]
+	name := e.addressNames[target]
 
 	if name == "" {
 		name = e.nextTemp("addr")
-		e.addressNames[object] = name
+		e.addressNames[target] = name
 	}
 
 	return name
@@ -107,13 +143,13 @@ func (e *emitter) reserveAddressBinding(object gotypesstd.Object) string {
 
 // addressBinding returns the name of the variable a pointer to this object is
 // kept in, or an empty string when the pointer is not kept anywhere.
-func (e *emitter) addressBinding(object gotypesstd.Object) string {
-	if object == nil {
+func (e *emitter) addressBinding(target addressTarget) string {
+	if target.object == nil {
 		return ""
 	}
 
 	for index := len(e.addressStack) - 1; index >= 0; index-- {
-		if name := e.addressStack[index][object]; name != "" {
+		if name := e.addressStack[index][target]; name != "" {
 			return name
 		}
 	}
@@ -121,35 +157,43 @@ func (e *emitter) addressBinding(object gotypesstd.Object) string {
 	return ""
 }
 
-// blockAddressObjects gathers the variables a block declares itself and whose
-// address is taken, so each one gets a pointer variable the block sets up afresh
-// every time it is entered. A variable declared in a loop body therefore gets a
-// new pointer each turn, which is what Go does with the variable itself.
-func (e *emitter) blockAddressObjects(block *ast.BlockStmt) []gotypesstd.Object {
+// blockAddressObjects gathers the pointers a block has to set up, which are the
+// pointers held for the variables the block declares itself, so each one gets a
+// pointer variable of its own that the block builds afresh every time it is
+// entered. A variable declared in a loop body therefore hands out a new pointer
+// each turn, which is what Go does with the variable itself.
+func (e *emitter) blockAddressObjects(block *ast.BlockStmt) []addressTarget {
 	if block == nil {
 		return nil
 	}
 
-	var objects []gotypesstd.Object
+	declared := map[gotypesstd.Object]bool{}
 
-	seen := map[gotypesstd.Object]bool{}
-
-	add := func(expr ast.Expr) {
-		ident, ok := expr.(*ast.Ident)
-
-		if !ok || ident.Name == blankIdentifier {
-			return
+	for _, ident := range e.blockDeclaredObjects(block) {
+		if object := e.addressKey(ident); object != nil {
+			declared[object] = true
 		}
-
-		object := e.addressKey(ident)
-
-		if object == nil || seen[object] || !e.addressNeeded[object] {
-			return
-		}
-
-		seen[object] = true
-		objects = append(objects, object)
 	}
+
+	var targets []addressTarget
+
+	for target := range e.addressNeeded {
+		if declared[target.object] {
+			targets = append(targets, target)
+		}
+	}
+
+	sort.Slice(targets, func(i, j int) bool {
+		return targets[i].path < targets[j].path
+	})
+
+	return targets
+}
+
+// blockDeclaredObjects names the variables a block declares, so a pointer kept
+// for one of them can be set up when the block is entered.
+func (e *emitter) blockDeclaredObjects(block *ast.BlockStmt) []*ast.Ident {
+	var idents []*ast.Ident
 
 	for _, stmt := range block.List {
 		switch s := stmt.(type) {
@@ -159,7 +203,9 @@ func (e *emitter) blockAddressObjects(block *ast.BlockStmt) []gotypesstd.Object 
 			}
 
 			for _, lhs := range s.Lhs {
-				add(lhs)
+				if ident, ok := lhs.(*ast.Ident); ok {
+					idents = append(idents, ident)
+				}
 			}
 		case *ast.DeclStmt:
 			decl, ok := s.Decl.(*ast.GenDecl)
@@ -176,11 +222,11 @@ func (e *emitter) blockAddressObjects(block *ast.BlockStmt) []gotypesstd.Object 
 				}
 
 				for _, name := range value.Names {
-					add(name)
+					idents = append(idents, name)
 				}
 			}
 		}
 	}
 
-	return objects
+	return idents
 }

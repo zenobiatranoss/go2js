@@ -534,14 +534,13 @@ function go2jsSyncMapLen(store) {
 }
 
 function go2jsAtomicCell(target) {
-	if (target !== null && target !== undefined &&
-		typeof target.get === "function" && typeof target.set === "function") {
+	if (go2jsPointerAccessor(target, go2jsPointerGet) && go2jsPointerAccessor(target, go2jsPointerSet)) {
 		return {
 			get value() {
-				return target.get();
+				return target[go2jsPointerGet]();
 			},
 			set value(next) {
-				target.set(next);
+				target[go2jsPointerSet](next);
 			}
 		};
 	}
@@ -587,7 +586,7 @@ function go2jsErrorMethodCall(err, name, ...args) {
 	let receiver = err;
 
 	if (err.__go2js_pointer === true) {
-		receiver = err.get();
+		receiver = err[go2jsPointerGet]();
 
 		if (receiver === null || receiver === undefined) {
 			return undefined;
@@ -663,7 +662,7 @@ function go2jsErrorsIs(err, target) {
 }
 
 function go2jsWrapError(format, ...args) {
-	const error = new Error(go2jsSprintf(format, ...args));
+	const error = new Error(go2jsSprintfWrapping(format, args));
 	// fmt.Errorf names its result after how many errors it wraps: one gives a
 	// wrapError, more than one gives a wrapErrors that wraps them all.
 	const wrapped = (String(format).match(/%[+#0 -.]*[0-9.]*w/g) || []).length;

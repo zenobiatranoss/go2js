@@ -116,6 +116,13 @@ func (e *emitter) stdlibKeyForIdent(pkgIdent *ast.Ident) string {
 
 	alias, ok := e.analysis.Uses[pkgIdent].(*gotypes.PkgName)
 	if !ok || alias.Imported() == nil {
+		// A name the program declares itself is not the package that goes by
+		// the same name, so a local that shadows an import never reaches the
+		// table of the package it hides.
+		if _, declared := e.analysis.Uses[pkgIdent]; declared {
+			return ""
+		}
+
 		if _, ok := stdlibFuncMaps[name]; ok {
 			return name
 		}

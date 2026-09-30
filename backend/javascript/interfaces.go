@@ -320,6 +320,10 @@ func (e *emitter) isVariadicCall(call *ast.CallExpr) bool {
 	return signature.Variadic()
 }
 
+// hasStringMethod reports whether a value of this named type prints through a
+// String method of its own. The method is looked up in the whole program rather
+// than in the file being written, because a type named by an import brings its
+// method along with it.
 func (e *emitter) hasStringMethod(t gotypes.Type) bool {
 	named, ok := t.(*gotypes.Named)
 	if !ok {
@@ -335,7 +339,7 @@ func (e *emitter) hasStringMethod(t gotypes.Type) bool {
 		return false
 	}
 
-	if !e.declaresInSource(method) {
+	if !e.emitsNamedMethod(method) {
 		return false
 	}
 
@@ -350,6 +354,43 @@ func (e *emitter) hasStringMethod(t gotypes.Type) bool {
 	}
 
 	return basic.Kind() == gotypes.String
+}
+
+// namedMethodRegisteredName is the name a method of a named type registers
+// itself under, which carries the bare name of the type rather than a qualified
+// one so that a call from another package can find it.
+func namedMethodRegisteredName(named *gotypes.Named) string {
+	if named == nil || named.Obj() == nil {
+		return ""
+	}
+
+	return typeJavaScriptName(named.Obj().Name())
+}
+
+// emitsNamedMethod reports whether a method of a named type is part of the
+// program being written. A method the file being written declares is, and so is
+// a method of a type that arrived with an import, because the package that
+// declares it is compiled alongside.
+func (e *emitter) emitsNamedMethod(fn *gotypes.Func) bool {
+	if fn == nil {
+		return false
+	}
+
+	if e.declaresInSource(fn) {
+		return true
+	}
+
+	if fn.Pkg() == nil {
+		return false
+	}
+
+	if fn.Pkg().Path() == e.selfPackagePath {
+		return true
+	}
+
+	_, imported := e.qualifiers[fn.Pkg().Path()]
+
+	return imported
 }
 
 func (e *emitter) emitStringerValue(expr ast.Expr) (bool, error) {
@@ -367,16 +408,46 @@ func (e *emitter) emitStringerValue(expr ast.Expr) (bool, error) {
 		return false, nil
 	}
 
-	e.write(scalarNamedMethodName(typeName.Obj().Name(), "String"))
-	e.write("(")
+	return true, e.emitNamedMethodCall(expr, typeName, "String")
+}
 
-	if err := e.emitExpr(expr); err != nil {
-		return true, err
+// emitNamedMethodCall writes a call to a method of a named type. A method the
+// file being written declares is called by name. A method that came in with an
+// import lives in the module of the package that declares it, so it is reached
+// through the table it registered itself in, which the whole program shares.
+func (e *emitter) emitNamedMethodCall(expr ast.Expr, named *gotypes.Named, name string) error {
+	local, ok := lookupNamedMethod(named, name)
+
+	if ok && e.declaresInSource(local) {
+		e.write(scalarNamedMethodName(namedMethodRegisteredName(named), name))
+		e.write("(")
+
+		if err := e.emitExpr(expr); err != nil {
+			return err
+		}
+
+		e.write(")")
+
+		return nil
 	}
 
+	// A method that came in with an import lives in the module of the package
+	// that declares it, so it is reached through the table it registered itself
+	// in, which the whole program shares.
+	e.needsRuntime = true
+	e.write("go2jsNamedMethodCall(")
+
+	if err := e.emitExpr(expr); err != nil {
+		return err
+	}
+
+	e.write(", ")
+	e.write(strconv.Quote(namedMethodRegisteredName(named)))
+	e.write(", ")
+	e.write(strconv.Quote(name))
 	e.write(")")
 
-	return true, nil
+	return nil
 }
 
 func (e *emitter) emitCallArgument(call *ast.CallExpr, index int, expr ast.Expr) error {

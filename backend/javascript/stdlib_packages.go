@@ -1351,7 +1351,7 @@ function go2jsFlagSetValue(target, value) {
 	}
 
 	if (target.__go2js_pointer === true) {
-		target.set(value);
+		target[go2jsPointerSet](value);
 		return;
 	}
 
@@ -2683,7 +2683,7 @@ function go2jsHeapItems(target) {
 		}
 
 		if (value.__go2js_pointer === true) {
-			value = value.get();
+			value = value[go2jsPointerGet]();
 			continue;
 		}
 
@@ -2836,7 +2836,7 @@ function go2jsListNew() {
 	};
 
 	list.InsertBefore = function(mark, value) {
-		const pivot = mark.get();
+		const pivot = mark[go2jsPointerGet]();
 		const node = go2jsListNode(list, value);
 		node.prev = pivot.prev;
 		node.next = pivot;
@@ -2847,7 +2847,7 @@ function go2jsListNew() {
 	};
 
 	list.InsertAfter = function(mark, value) {
-		const pivot = mark.get();
+		const pivot = mark[go2jsPointerGet]();
 		const node = go2jsListNode(list, value);
 		node.next = pivot.next;
 		node.prev = pivot;
@@ -2858,7 +2858,7 @@ function go2jsListNew() {
 	};
 
 	list.Remove = function(handle) {
-		const node = handle.get();
+		const node = handle[go2jsPointerGet]();
 		node.prev.next = node.next;
 		node.next.prev = node.prev;
 		list.len--;
@@ -2866,7 +2866,7 @@ function go2jsListNew() {
 	};
 
 	list.MoveToFront = function(handle) {
-		const node = handle.get();
+		const node = handle[go2jsPointerGet]();
 		node.prev.next = node.next;
 		node.next.prev = node.prev;
 		node.prev = root;
@@ -2876,7 +2876,7 @@ function go2jsListNew() {
 	};
 
 	list.MoveToBack = function(handle) {
-		const node = handle.get();
+		const node = handle[go2jsPointerGet]();
 		node.next.prev = node.prev;
 		node.prev.next = node.next;
 		node.next = root;

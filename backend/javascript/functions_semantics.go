@@ -82,8 +82,8 @@ func (e *emitter) zeroValue(t types.Type) string {
 			// happens to call its own things. The bare name is no good here:
 			// sync.Map is a struct whose name reads like a JavaScript global.
 			if obj != nil && obj.Pkg() != nil {
-				if constructor, found := packageTypes[obj.Pkg().Name()+"."+obj.Name()]; found {
-					return constructor + "()"
+				if constructor := packageTypeConstructorFor(obj.Pkg().Name(), obj.Name()); constructor != "" {
+					return constructor
 				}
 			}
 
@@ -110,15 +110,8 @@ func zeroValueForGoType(t types.Type) string {
 	switch t := t.(type) {
 	case *types.Named:
 		if obj := t.Obj(); obj != nil && obj.Pkg() != nil {
-			switch obj.Pkg().Path() + "." + obj.Name() {
-			case "bytes.Buffer":
-				return "new go2jsBytesBuffer()"
-			case "strings.Builder":
-				return "new go2jsStringsBuilder()"
-			}
-
-			if constructor, ok := packageTypes[obj.Pkg().Name()+"."+obj.Name()]; ok {
-				return constructor + "()"
+			if constructor := packageTypeConstructorFor(obj.Pkg().Name(), obj.Name()); constructor != "" {
+				return constructor
 			}
 		}
 		return zeroValueForGoType(t.Underlying())
