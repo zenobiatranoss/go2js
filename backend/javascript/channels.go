@@ -17,6 +17,12 @@ func isChannelType(t gotypesstd.Type) bool {
 }
 
 func (e *emitter) isChannelExpr(expr ast.Expr) bool {
+	// A deferred argument arrives under a name of its own, which the analysis
+	// knows nothing about, so what it holds was kept when it was passed on.
+	if ident, ok := expr.(*ast.Ident); ok && e.deferredArgChannels[ident.Name] {
+		return true
+	}
+
 	if e.analysis == nil {
 		return false
 	}

@@ -257,8 +257,16 @@ func (e *emitter) emitDeferStmt(stmt *ast.DeferStmt) error {
 		Fun:  stmt.Call.Fun,
 		Args: make([]ast.Expr, len(stmt.Call.Args)),
 	}
-	for i := range stmt.Call.Args {
-		deferredCall.Args[i] = ast.NewIdent("go2jsDeferArg" + strconv.Itoa(i))
+
+	if e.deferredArgChannels == nil {
+		e.deferredArgChannels = make(map[string]bool, len(stmt.Call.Args))
+	}
+
+	for i, arg := range stmt.Call.Args {
+		name := "go2jsDeferArg" + strconv.Itoa(i)
+
+		e.deferredArgChannels[name] = e.isChannelExpr(arg)
+		deferredCall.Args[i] = ast.NewIdent(name)
 	}
 
 	if err := e.emitExpr(deferredCall); err != nil {
