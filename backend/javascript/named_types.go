@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	gotypesstd "go/types"
 	"strconv"
+	"strings"
 )
 
 func isScalarNamedType(t gotypesstd.Type) bool {
@@ -467,6 +468,21 @@ func (e *emitter) emitTypeNameRegistration(typeIdent *ast.Ident) error {
 	e.write(typeJavaScriptName(typeName.Name()))
 	e.write(", ")
 	e.write(strconv.Quote(qualified))
+
+	// The method set goes with the name, so that a type reflect describes from
+	// a value rather than from the program can still answer Implements.
+	if methods := reflectMethodNames(typeName.Type()); len(methods) > 0 {
+		quoted := make([]string, 0, len(methods))
+
+		for _, method := range methods {
+			quoted = append(quoted, strconv.Quote(method))
+		}
+
+		e.write(", [")
+		e.write(strings.Join(quoted, ", "))
+		e.write("]")
+	}
+
 	e.write(");")
 	e.newline()
 

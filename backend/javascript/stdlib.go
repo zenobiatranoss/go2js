@@ -360,10 +360,89 @@ var httpFuncs = map[string]string{
 	"NewServeMux": "go2jsHTTPNewServeMux",
 }
 
+// httpConstants are the values net/http names. NoBody is the reader a request
+// with nothing in its body is given, and it is the one reader that reports no
+// content and never ends, so it is not a reader over anything.
+var httpConstants = map[string]string{
+	"NoBody":     "go2jsHTTPNoBody",
+	"MethodGet":  `"GET"`,
+	"MethodPost": `"POST"`,
+	"MethodPut":  `"PUT"`,
+	"MethodHead": `"HEAD"`,
+}
+
+// httpStatusCodes are the numbers the Status names stand for, taken from
+// net/http rather than gathered here, so a program that names a status gets the
+// code Go gives that name.
+var httpStatusCodes = map[string]int{"StatusContinue": 100,
+	"StatusSwitchingProtocols":            101,
+	"StatusProcessing":                    102,
+	"StatusEarlyHints":                    103,
+	"StatusOK":                            200,
+	"StatusCreated":                       201,
+	"StatusAccepted":                      202,
+	"StatusNonAuthoritativeInfo":          203,
+	"StatusNoContent":                     204,
+	"StatusResetContent":                  205,
+	"StatusPartialContent":                206,
+	"StatusMultiStatus":                   207,
+	"StatusAlreadyReported":               208,
+	"StatusIMUsed":                        226,
+	"StatusMultipleChoices":               300,
+	"StatusMovedPermanently":              301,
+	"StatusFound":                         302,
+	"StatusSeeOther":                      303,
+	"StatusNotModified":                   304,
+	"StatusUseProxy":                      305,
+	"StatusTemporaryRedirect":             307,
+	"StatusPermanentRedirect":             308,
+	"StatusBadRequest":                    400,
+	"StatusUnauthorized":                  401,
+	"StatusPaymentRequired":               402,
+	"StatusForbidden":                     403,
+	"StatusNotFound":                      404,
+	"StatusMethodNotAllowed":              405,
+	"StatusNotAcceptable":                 406,
+	"StatusProxyAuthRequired":             407,
+	"StatusRequestTimeout":                408,
+	"StatusConflict":                      409,
+	"StatusGone":                          410,
+	"StatusLengthRequired":                411,
+	"StatusPreconditionFailed":            412,
+	"StatusRequestEntityTooLarge":         413,
+	"StatusRequestURITooLong":             414,
+	"StatusUnsupportedMediaType":          415,
+	"StatusRequestedRangeNotSatisfiable":  416,
+	"StatusExpectationFailed":             417,
+	"StatusTeapot":                        418,
+	"StatusMisdirectedRequest":            421,
+	"StatusUnprocessableEntity":           422,
+	"StatusLocked":                        423,
+	"StatusFailedDependency":              424,
+	"StatusTooEarly":                      425,
+	"StatusUpgradeRequired":               426,
+	"StatusPreconditionRequired":          428,
+	"StatusTooManyRequests":               429,
+	"StatusRequestHeaderFieldsTooLarge":   431,
+	"StatusUnavailableForLegalReasons":    451,
+	"StatusInternalServerError":           500,
+	"StatusNotImplemented":                501,
+	"StatusBadGateway":                    502,
+	"StatusServiceUnavailable":            503,
+	"StatusGatewayTimeout":                504,
+	"StatusHTTPVersionNotSupported":       505,
+	"StatusVariantAlsoNegotiates":         506,
+	"StatusInsufficientStorage":           507,
+	"StatusLoopDetected":                  508,
+	"StatusNotExtended":                   510,
+	"StatusNetworkAuthenticationRequired": 511,
+}
+
 var osFuncs = map[string]string{
 	"Getenv":     "go2jsOSGetenv",
 	"Setenv":     "go2jsOSSetenv",
 	"Stat":       "go2jsOSStat",
+	"Lstat":      "go2jsOSLstat",
 	"Getpid":     "go2jsOSGetpid",
 	"Getppid":    "go2jsOSGetppid",
 	"Getuid":     "go2jsOSGetuid",
@@ -384,6 +463,21 @@ var bufioFuncs = map[string]string{
 	"NewScanner": "go2jsBufioNewScanner",
 	"NewWriter":  "go2jsBufioNewWriter",
 	"ScanLines":  "go2jsBufioScanLines",
+}
+
+// bufioConstants are the buffer sizes bufio names. A Scanner refuses a token
+// longer than MaxScanTokenSize, and a reader reads at most MaxConsecutiveEmpty
+// reads before it counts the writer as gone, so the numbers are the ones Go
+// gives them rather than anything chosen here.
+var bufioConstants = map[string]string{
+	"MaxScanTokenSize":         "65536",
+	"MaxScanLinesSize":         "65536",
+	"MaxConsecutiveEmptyReads": "100",
+	"ErrInvalidUnreadByte":     `"bufio: invalid use of UnreadByte"`,
+	"ErrInvalidUnreadRune":     `"bufio: invalid use of UnreadRune"`,
+	"ErrBufferFull":            `"bufio: buffer full"`,
+	"ErrNegativeCount":         `"bufio: negative count"`,
+	"DefaultBufSize":           "4096",
 }
 
 var pathFuncs = map[string]string{

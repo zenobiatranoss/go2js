@@ -83,24 +83,40 @@ function go2jsOSSetenv(name, value) {
     return null;
 }
 
+// go2jsOSStatObject builds the FileInfo a stat call answers with. The methods
+// are the ones Go's os.FileInfo declares, so a program that asks for a field it
+// does not know here is told the same way a Go program would be.
+function go2jsOSStatObject(stats) {
+    return [{
+        Size: function() {
+            return stats.size;
+        },
+        IsDir: function() {
+            return stats.isDirectory();
+        },
+        Mode: function() {
+            return stats.mode;
+        },
+        ModTime: function() {
+            return stats.mtime;
+        }
+    }, null];
+}
+
+// go2jsOSLstat describes a path without following a symbolic link, which is
+// what Node's lstatSync does. A path that is not one answers the same as stat,
+// which is what Go reports for it.
+function go2jsOSLstat(path) {
+    try {
+        return go2jsOSStatObject(require("fs").lstatSync(String(path)));
+    } catch (err) {
+        return [null, err];
+    }
+}
+
 function go2jsOSStat(path) {
     try {
-        const stats = require("fs").statSync(String(path));
-
-        return [{
-            Size: function() {
-                return stats.size;
-            },
-            IsDir: function() {
-                return stats.isDirectory();
-            },
-            Mode: function() {
-                return stats.mode;
-            },
-            ModTime: function() {
-                return stats.mtime;
-            }
-        }, null];
+        return go2jsOSStatObject(require("fs").statSync(String(path)));
     } catch (err) {
         return [null, err];
     }
@@ -179,6 +195,19 @@ function go2jsHTTPHeader() {
         Get: function(key) {
             return values[String(key).toLowerCase()] || "";
         }
+    };
+}
+
+// go2jsHTTPNoBody is the reader a request with nothing in its body is given. It
+// reports no content and never ends, so it is not a reader over anything: every
+// read asks again and the answer is always no bytes.
+function go2jsHTTPNoBody() {
+    return {
+        Read: function() {
+            return 0;
+        },
+        Close: function() {},
+        __go2js_no_body: true
     };
 }
 
@@ -261,6 +290,13 @@ function go2jsMonthName(month) {
     ];
 
     return names[month - 1] || "";
+}
+
+// go2jsTimeZero is the zero time, which is January 1 of year 1 at midnight UTC.
+// The year is out of the range that Date.UTC maps straight onto, so the
+// instant is given as the number of milliseconds before the epoch instead.
+function go2jsTimeZero() {
+    return go2jsTimeValue(new Date(-62135596800000));
 }
 
 function go2jsTimeValue(date) {
@@ -1775,13 +1811,39 @@ function go2jsNewTypeOf(value) {
 	return "";
 }
 
+// go2jsInitializers holds the assignments a package level variable would have
+// made while the program was being written. Go makes them after every
+// declaration in the package is in place, so an initializer there is allowed to
+// name a type that another file declares further down. A JavaScript assignment
+// at the top of a file would run before that class exists, so the assignments
+// wait here and are made in the order they were written once the program has
+// been loaded.
+const go2jsInitializers = [];
+
+function go2jsDeferInit(assign) {
+	go2jsInitializers.push(assign);
+}
+
+function go2jsRunInitializers() {
+	while (go2jsInitializers.length > 0) {
+		go2jsInitializers.shift()();
+	}
+}
+
 const go2jsMethodTable = Object.create(null);
 const go2jsInterfaces = Object.create(null);
 const go2jsStructFormats = Object.create(null);
 const go2jsTypeNames = Object.create(null);
+const go2jsMethodSets = Object.create(null);
 
-function go2jsRegisterTypeName(constructor, name) {
+function go2jsRegisterTypeName(constructor, name, methods) {
 	go2jsTypeNames[name] = constructor;
+
+	// The method set travels with the name, because a type that reflect reads
+	// off a value rather than off the program has to be told what it can do.
+	if (Array.isArray(methods)) {
+		go2jsMethodSets[name] = methods;
+	}
 }
 
 // go2jsGoTypeName reports the Go type name of a value for %T.
@@ -1979,6 +2041,23 @@ function go2jsPointerTargets(pointer) {
 }
 
 function go2jsInterface(value, typeName, displayName) {
+	// An interface names no type of its own, so the type of the value it holds
+	// is the one that has to be written down. Reading the name of the interface
+	// back off the wrapper would claim that every value stored in one has the
+	// same type, and a value compared against a plain one of another type would
+	// never be equal.
+	if (go2jsIsInterfaceTypeName(typeName)) {
+		const named = go2jsGoTypeName(value);
+
+		if (named !== "" && !go2jsIsInterfaceTypeName(named)) {
+			typeName = named;
+
+			if (displayName === "any" || displayName === "interface {}" || displayName === "interface{}") {
+				displayName = named;
+			}
+		}
+	}
+
 	const wrapper = {
 		__go2js_interface: true,
 		type: typeName,
@@ -2058,7 +2137,18 @@ function go2jsEqual(a, b) {
 			return go2jsEqual(a.value, b.value);
 		}
 	} else if (ai || bi) {
-		return false;
+		// One side is a value that was stored in an interface and the other is
+		// not. Go compares the value the interface holds against the value on
+		// the other side, so the wrapper is peeled off and the two values are
+		// compared, which leaves a value of a different type unequal.
+		const wrapped = ai ? a : b;
+		const plain = ai ? b : a;
+
+		if (wrapped.value === wrapped) {
+			return false;
+		}
+
+		return go2jsEqual(wrapped.value, plain);
 	}
 
 	if (Array.isArray(a) || Array.isArray(b)) {
@@ -3741,6 +3831,12 @@ function go2jsIsNil(value) {
 	return value.__go2js_nil === true;
 }
 
+// go2jsIsInterfaceTypeName reports whether a name is one of the ways the emitter
+// spells an empty interface, which carries no name of its own.
+function go2jsIsInterfaceTypeName(name) {
+	return name === "" || name === "any" || name === "interface{}" || name === "interface {}";
+}
+
 function go2jsTyped(value, type, kind, shape) {
 	// A nil slice or a nil map is nil, and the empty value it carries says only
 	// what it is, so the name asked for here is the one that gets written down.
@@ -3754,13 +3850,22 @@ function go2jsTyped(value, type, kind, shape) {
 	if (value !== null && typeof value === "object" && (value.__go2js_typed === true || value.__go2js_interface === true)) {
 		// An interface carries no name of its own, so a type that arrived with
 		// the value says more than the name of the interface it sits in.
-		if (type === "" || type === "any" || type === "interface{}" || type === "interface {}") {
+		if (go2jsIsInterfaceTypeName(type)) {
 			if (typeof value.type === "string" && value.type !== "") {
 				return value;
 			}
 		}
 
 		value = go2jsStripWrappers(value);
+	} else if (go2jsIsInterfaceTypeName(type)) {
+		// A value that leaves through an interface is reported by the type it
+		// really has, and a value that carries no tag of its own has to be read
+		// for it, because the name of the interface says only where it sits.
+		const named = go2jsGoTypeName(value);
+
+		if (typeof named === "string" && named !== "" && !go2jsIsInterfaceTypeName(named)) {
+			type = named;
+		}
 	}
 
 	const wrapper = {__go2js_typed: true, value: value, type: type};

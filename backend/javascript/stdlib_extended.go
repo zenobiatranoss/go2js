@@ -1452,6 +1452,9 @@ func extendedStdlibFuncs() {
 		"Unix":          "go2jsTimeUnix",
 		"Parse":         "go2jsTimeParse",
 		"After":         "go2jsTimeAfter",
+		"NewTimer":      "go2jsTimeNewTimer",
+		"NewTicker":     "go2jsTimeNewTicker",
+		"AfterFunc":     "go2jsTimeAfterFunc",
 		"ParseDuration": "go2jsParseDuration",
 		"Tick":          "go2jsTimeTick",
 	})
@@ -2814,6 +2817,75 @@ function go2jsTimeSub(left, right) {
 // go2jsTimeAfter returns a channel that carries the moment it comes due. The
 // channel starts empty and only becomes ready at that moment, so a select that
 // has real work waiting chooses the work rather than the deadline.
+// go2jsTimeStopChannel takes a timer or ticker back out of the schedule, which
+// is what a Stop is. A timer that has already come due has left the schedule
+// on its own, so there is nothing left to take out and Stop says it stopped
+// nothing, the way Go does.
+function go2jsTimeStopChannel(channel) {
+	if (channel === null || channel === undefined || channel.timerDeadline === undefined) {
+		return false;
+	}
+
+	go2jsTimers.delete(channel);
+	channel.timerDeadline = undefined;
+
+	return true;
+}
+
+// go2jsTimeNewTimer waits for a duration and then sends the moment on a
+// channel, the way time.NewTimer does. The timer holds that channel so a Stop
+// can take it back out of the schedule before it fires.
+function go2jsTimeNewTimer(d) {
+	const channel = go2jsTimeAfter(d);
+
+	return {C: channel, timerChannel: channel, Stop: function() {
+		go2jsTimeStopChannel(channel);
+	}};
+}
+
+// go2jsTimeNewTicker sends the moment on a channel over and over, every
+// duration, the way time.NewTicker does. The channel is the one the schedule
+// watches, so a channel that is drained and armed again is the same channel and
+// a consumer that missed a tick sees the next one rather than falling behind.
+function go2jsTimeNewTicker(d) {
+	const channel = go2jsChannel(1);
+
+	channel.timerPeriod = go2jsTimeMilliseconds(d);
+	channel.timerDeadline = Date.now() + channel.timerPeriod;
+	channel.timerDue = go2jsTimeAdd(go2jsTimeNow(), d);
+	go2jsTimers.set(channel, channel.timerDue);
+
+	return {C: channel, timerChannel: channel, Stop: function() {
+		channel.timerPeriod = null;
+		go2jsTimeStopChannel(channel);
+	}};
+}
+
+// go2jsTimeAfterFunc runs a function once, a duration from now, and hands back a
+// timer whose Stop keeps the function from running when it is called in time.
+function go2jsTimeAfterFunc(d, fn) {
+	const channel = go2jsTimeAfter(d);
+	const timer = {timerChannel: channel, ran: false};
+
+	timer.Stop = function() {
+		if (timer.ran) {
+			return false;
+		}
+
+		return go2jsTimeStopChannel(channel);
+	};
+
+	// The channel is drained by the schedule, so the function is run from there
+	// rather than from a timer of its own, which keeps one clock for the whole
+	// program.
+	channel.timerCallback = function() {
+		timer.ran = true;
+		fn();
+	};
+
+	return timer;
+}
+
 function go2jsTimeAfter(d) {
 	const channel = go2jsChannel(1);
 	const due = go2jsTimeAdd(go2jsTimeNow(), d);
