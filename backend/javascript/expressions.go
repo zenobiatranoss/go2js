@@ -260,6 +260,30 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				return nil
 			}
 
+			// The address of an element keeps that element, and the index it was
+			// written with is read where the address is taken, because that is
+			// where Go reads it. A program that takes the address of one element
+			// and moves on to another one still holds the first, so a closure
+			// that read the index again would point at the wrong element.
+			if index, ok := x.X.(*ast.IndexExpr); ok && !e.isChannelExpr(index.X) {
+				e.write("go2jsIndexPtr(")
+
+				if err := e.emitExpr(index.X); err != nil {
+					return err
+				}
+
+				e.write(", ")
+
+				if err := e.emitExpr(index.Index); err != nil {
+					return err
+				}
+
+				e.write(e.pointeeTypeNameArgument(x.X))
+				e.write(")")
+
+				return nil
+			}
+
 			// A pointer to the same variable is the same address every time, so
 			// it is kept in a variable of its own and handed out again rather
 			// than built afresh, which is what lets two pointers to one variable
@@ -960,7 +984,12 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				previous := e.expectedElementType
 				e.expectedElementType = elementType
 
-				if err := e.emitExpr(elt); err != nil {
+				// An element of a slice or an array is a value of the element
+				// type, so one that is a struct is a copy of that struct rather
+				// than the struct itself. Two elements written from the same one
+				// are then two structs, which is what a slice of records built
+				// from a template depends on.
+				if err := e.emitStructFieldValue(elt, elementType); err != nil {
 					e.expectedElementType = previous
 					return err
 				}
@@ -1110,7 +1139,7 @@ func (e *emitter) emitAnonymousStructLiteral(x *ast.CompositeLit, structType *go
 
 			e.write(": ")
 
-			if err := e.emitExpr(kv.Value); err != nil {
+			if err := e.emitStructFieldValue(kv.Value, structFieldType(structType, kv.Key)); err != nil {
 				return true, err
 			}
 
@@ -1124,7 +1153,7 @@ func (e *emitter) emitAnonymousStructLiteral(x *ast.CompositeLit, structType *go
 		e.write(structType.Field(i).Name())
 		e.write(": ")
 
-		if err := e.emitExpr(elt); err != nil {
+		if err := e.emitStructFieldValue(elt, structType.Field(i).Type()); err != nil {
 			return true, err
 		}
 	}
@@ -1132,6 +1161,65 @@ func (e *emitter) emitAnonymousStructLiteral(x *ast.CompositeLit, structType *go
 	e.write("}")
 
 	return true, nil
+}
+
+// mayAliasStructValue reports whether an expression reads a struct that already
+// exists rather than building a new one, which is the case where a copy has to
+// be made to keep the two apart.
+func mayAliasStructValue(expr ast.Expr) bool {
+	for {
+		switch node := expr.(type) {
+		case *ast.ParenExpr:
+			expr = node.X
+		case *ast.SelectorExpr:
+			return true
+		case *ast.IndexExpr:
+			return true
+		case *ast.StarExpr:
+			expr = node.X
+		case *ast.Ident:
+			return true
+		case *ast.TypeAssertExpr:
+			expr = node.X
+		default:
+			return false
+		}
+	}
+}
+
+// emitStructFieldValue emits the value written into a struct field. A struct
+// holds its fields by value, so one struct stored in another is a copy of it,
+// and a program that writes to the original afterwards expects the copy to
+// keep what it was given. JavaScript objects are references, so storing one as
+// it stands would let the later change reach back into the copy.
+func (e *emitter) emitStructFieldValue(expr ast.Expr, fieldType gotypes.Type) error {
+	if !mayAliasStructValue(expr) {
+		return e.emitExpr(expr)
+	}
+
+	if _, isStruct := fieldType.Underlying().(*gotypes.Struct); !isStruct {
+		return e.emitExpr(expr)
+	}
+
+	info, found := e.analysis.Types[expr]
+	if !found || info.Type == nil {
+		return e.emitExpr(expr)
+	}
+
+	if _, sourceIsStruct := info.Type.Underlying().(*gotypes.Struct); !sourceIsStruct {
+		return e.emitExpr(expr)
+	}
+
+	e.needsRuntime = true
+	e.write("go2jsStructCopy(")
+
+	if err := e.emitExpr(expr); err != nil {
+		return err
+	}
+
+	e.write(")")
+
+	return nil
 }
 
 // structFieldType resolves the declared type of the struct field addressed by a
@@ -1252,7 +1340,12 @@ func (e *emitter) emitStructCompositeLit(x *ast.CompositeLit) (bool, error) {
 			}
 			e.write(": ")
 
-			if err := e.emitInterfaceFieldValue(kv.Value, structFieldType(structType, kv.Key)); err != nil {
+			fieldType := structFieldType(structType, kv.Key)
+			if isInterfaceTarget(fieldType) {
+				if err := e.emitInterfaceFieldValue(kv.Value, fieldType); err != nil {
+					return true, err
+				}
+			} else if err := e.emitStructFieldValue(kv.Value, fieldType); err != nil {
 				return true, err
 			}
 			continue
@@ -1265,7 +1358,12 @@ func (e *emitter) emitStructCompositeLit(x *ast.CompositeLit) (bool, error) {
 		e.write(structType.Field(i).Name())
 		e.write(": ")
 
-		if err := e.emitInterfaceFieldValue(elt, structType.Field(i).Type()); err != nil {
+		fieldType := structType.Field(i).Type()
+		if isInterfaceTarget(fieldType) {
+			if err := e.emitInterfaceFieldValue(elt, fieldType); err != nil {
+				return true, err
+			}
+		} else if err := e.emitStructFieldValue(elt, fieldType); err != nil {
 			return true, err
 		}
 	}

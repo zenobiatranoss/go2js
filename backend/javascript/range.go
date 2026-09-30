@@ -124,7 +124,7 @@ func (e *emitter) rangeEntryMode(stmt *ast.RangeStmt) rangeIteration {
 		}
 	}
 
-	name := func(expr ast.Expr) string { return e.resolveName(e.identName(expr)) }
+	name := e.declaredName
 
 	if used == 0 {
 		return rangeIteration{kind: rangeSkip, name: e.nextTemp("item")}
@@ -153,7 +153,7 @@ func (e *emitter) rangeEntryMode(stmt *ast.RangeStmt) rangeIteration {
 			return rangeIteration{kind: rangeKeys, name: name(stmt.Key)}
 		}
 
-		return rangeIteration{kind: rangeKeys, name: e.identName(stmt.Key)}
+		return rangeIteration{kind: rangeKeys, name: name(stmt.Key)}
 	}
 
 	single := name(targets[0])

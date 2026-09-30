@@ -108,6 +108,33 @@ func (e *emitter) emitTargetIndexChecks(targets []ast.Expr) error {
 
 // emitTargetExpr writes an expression that is about to be assigned to, where a
 // runtime check in the middle of it would not be JavaScript at all.
+// compoundAssignOperator gives back the operator a compound assignment applies,
+// which is the plain operator it is written with the equals sign taken off.
+func compoundAssignOperator(tok token.Token) string {
+	return strings.TrimSuffix(tok.String(), "=")
+}
+
+// compoundDerefTarget reports whether a statement assigns through a pointer
+// using one of the compound operators, which is a form JavaScript cannot write
+// on its own because a call is not something it can assign through.
+func compoundDerefTarget(stmt *ast.AssignStmt) (*ast.StarExpr, bool) {
+	if stmt == nil || len(stmt.Lhs) != 1 || len(stmt.Rhs) != 1 {
+		return nil, false
+	}
+
+	switch stmt.Tok {
+	case token.ADD_ASSIGN, token.SUB_ASSIGN, token.MUL_ASSIGN, token.QUO_ASSIGN,
+		token.REM_ASSIGN, token.AND_ASSIGN, token.OR_ASSIGN, token.XOR_ASSIGN,
+		token.SHL_ASSIGN, token.SHR_ASSIGN, token.AND_NOT_ASSIGN:
+	default:
+		return nil, false
+	}
+
+	star, ok := stmt.Lhs[0].(*ast.StarExpr)
+
+	return star, ok
+}
+
 func (e *emitter) emitTargetExpr(expr ast.Expr) error {
 	previous := e.inTarget
 	e.inTarget = true
@@ -844,6 +871,32 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 			return nil
 		}
 
+		// A compound assignment to a pointer is a read of what it points at, the
+		// operation, and a write back to it. JavaScript only lets a plain
+		// variable or a property stand on the left of one of its own compound
+		// operators, so the pointer is written through in full instead.
+		if star, ok := compoundDerefTarget(s); ok {
+			e.writeIndent()
+			e.needsRuntime = true
+			e.write("go2jsStorePtr(")
+			if err := e.emitPointerOperand(star.X); err != nil {
+				return err
+			}
+			e.write(", ")
+			if err := e.emitExpr(star); err != nil {
+				return err
+			}
+			e.write(" ")
+			e.write(compoundAssignOperator(s.Tok))
+			e.write(" ")
+			if err := e.emitBinaryOperand(s.Rhs[0], s.Tok, true); err != nil {
+				return err
+			}
+			e.write(");")
+			e.newline()
+			return nil
+		}
+
 		if s.Tok == token.ASSIGN && len(s.Lhs) == 1 && len(s.Rhs) == 1 {
 			if star, ok := s.Lhs[0].(*ast.StarExpr); ok {
 				e.writeIndent()
@@ -973,6 +1026,34 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 		}
 
 		e.writeIndent()
+
+		// A step through a pointer is a read of what it points at, the step, and
+		// a write back to it, because JavaScript will not step a call on its own
+		// and a dereference is written as one.
+		if deref, ok := s.X.(*ast.StarExpr); ok {
+			e.needsRuntime = true
+			e.write("go2jsStorePtr(")
+
+			if err := e.emitPointerOperand(deref.X); err != nil {
+				return err
+			}
+
+			e.write(", ")
+
+			if err := e.emitExpr(deref); err != nil {
+				return err
+			}
+
+			if s.Tok == token.INC {
+				e.write(" + 1)")
+			} else {
+				e.write(" - 1)")
+			}
+
+			e.write(";")
+			e.newline()
+			return nil
+		}
 
 		if err := e.emitTargetExpr(s.X); err != nil {
 			return err
@@ -1777,7 +1858,7 @@ func (e *emitter) emitType(spec *ast.TypeSpec) error {
 			return err
 		}
 
-		if err := e.emitTypeNameRegistration(spec.Name); err != nil {
+		if err := e.emitTypeNameRegistration(spec.Name, t); err != nil {
 			return err
 		}
 
@@ -1793,7 +1874,7 @@ func (e *emitter) emitType(spec *ast.TypeSpec) error {
 				e.newline()
 				e.newline()
 
-				return e.emitTypeNameRegistration(spec.Name)
+				return e.emitTypeNameRegistration(spec.Name, nil)
 			}
 		}
 

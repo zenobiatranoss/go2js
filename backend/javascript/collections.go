@@ -762,7 +762,7 @@ function go2jsStructCopy(value) {
 	const copy = Object.create(Object.getPrototypeOf(value));
 
 	for (const key of Object.keys(value)) {
-		copy[key] = value[key];
+		copy[key] = go2jsStructFieldCopy(value[key]);
 	}
 
 	if (embedded !== null) {
@@ -770,6 +770,30 @@ function go2jsStructCopy(value) {
 	}
 
 	return copy;
+}
+
+// go2jsStructFieldCopy copies one field of a struct. A field holding a struct is
+// a value of its own rather than a name for one somewhere else, so it is copied
+// as well, and a copy of a struct is a copy of everything it is made of. A field
+// holding a slice, a map or a pointer is not a value of its own but a reference
+// to storage somebody else owns, and Go copies the reference and not the
+// storage, so those are carried over as they stand.
+function go2jsStructFieldCopy(item) {
+	if (item === null || item === undefined || typeof item !== "object") {
+		return item;
+	}
+
+	if (item.__go2js_pointer === true || item.__go2js_reflectValue === true ||
+		item.__go2js_typed === true || item.__go2js_interface === true ||
+		item instanceof go2jsNativeDate) {
+		return item;
+	}
+
+	if (Array.isArray(item) || item.__go2js_nil === true) {
+		return item;
+	}
+
+	return go2jsStructCopy(item);
 }
 
 function go2jsMaterializeValue(value) {
