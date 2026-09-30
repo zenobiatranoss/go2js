@@ -489,7 +489,7 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 
 				return nil
 			}
-			if name == "go2jsLen" || name == "go2jsCap" || name == "go2jsAppend" || name == "go2jsMake" || name == "go2jsMakeMap" || name == "go2jsMapDelete" || name == "go2jsSprintf" || name == "go2jsPrintln" || name == "go2jsPrint" || name == "go2jsPanic" || name == "go2jsRecover" || name == "go2jsComplex" || name == "go2jsReal" || name == "go2jsImag" {
+			if runtimeBuiltins[name] {
 				e.needsRuntime = true
 			}
 

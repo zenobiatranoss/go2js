@@ -44,6 +44,12 @@ func (e *emitter) builtinName(call *ast.CallExpr) (string, bool) {
 			return "go2jsImag", true
 		case "complex":
 			return "go2jsComplex", true
+		case "clear":
+			return "go2jsClear", true
+		case "min":
+			return "go2jsMin", true
+		case "max":
+			return "go2jsMax", true
 		}
 
 	case *ast.SelectorExpr:
@@ -69,6 +75,28 @@ func (e *emitter) builtinName(call *ast.CallExpr) (string, bool) {
 	}
 
 	return "", false
+}
+
+// The builtins whose work is done by the runtime, rather than by anything the
+// language of the output already has.
+var runtimeBuiltins = map[string]bool{
+	"go2jsLen":       true,
+	"go2jsCap":       true,
+	"go2jsAppend":    true,
+	"go2jsMake":      true,
+	"go2jsMakeMap":   true,
+	"go2jsMapDelete": true,
+	"go2jsSprintf":   true,
+	"go2jsPrintln":   true,
+	"go2jsPrint":     true,
+	"go2jsPanic":     true,
+	"go2jsRecover":   true,
+	"go2jsComplex":   true,
+	"go2jsReal":      true,
+	"go2jsImag":      true,
+	"go2jsMin":       true,
+	"go2jsClear":     true,
+	"go2jsMax":       true,
 }
 
 func isFmtPrintBuiltin(call *ast.CallExpr) bool {

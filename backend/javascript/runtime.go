@@ -3363,6 +3363,106 @@ function go2jsAssertOK(value, typeName) {
     return [null, false];
 }
 
+// go2jsMin and go2jsMax answer with the smallest and the largest of the values
+// they are given, which is the same answer whichever of the two is found first
+// only when there is nothing to tell them apart. An operand that is not a
+// number at all, such as a NaN, decides the answer on its own: a NaN among the
+// values gives a NaN, and the two zeroes are told apart by the one written
+// with a minus in front, which is the smaller of them.
+function go2jsMin(...values) {
+	let best = values[0];
+
+	for (let index = 1; index < values.length; index++) {
+		const order = go2jsMinOrder(best, values[index]);
+
+		if (Number.isNaN(order)) {
+			return NaN;
+		}
+
+		if (order > 0) {
+			best = values[index];
+		}
+	}
+
+	return best;
+}
+
+function go2jsMax(...values) {
+	let best = values[0];
+
+	for (let index = 1; index < values.length; index++) {
+		const order = go2jsMinOrder(best, values[index]);
+
+		if (Number.isNaN(order)) {
+			return NaN;
+		}
+
+		if (order < 0) {
+			best = values[index];
+		}
+	}
+
+	return best;
+}
+
+// go2jsMinOrder puts two values in order. A value that is not a plain number
+// is asked for the one it stands for, which is what a duration and a moment
+// each answer as, and the answer is one of the values as it was given rather
+// than the number behind it, so a duration stays a duration.
+function go2jsMinOrder(left, right) {
+	if (typeof left === "string" || typeof right === "string") {
+		return left < right ? -1 : (left > right ? 1 : 0);
+	}
+
+	const a = Number(left);
+	const b = Number(right);
+
+	if (Number.isNaN(a) || Number.isNaN(b)) {
+		return NaN;
+	}
+
+	if (a === 0 && b === 0) {
+		return Object.is(a, -0) || Object.is(b, -0) ? -1 : 1;
+	}
+
+	return a < b ? -1 : (a > b ? 1 : 0);
+}
+
+// go2jsClear empties what it is given: a map is left with nothing in it at all,
+// while a slice keeps its length and is left holding nothing but zero values,
+// because a slice of a length is still that slice afterwards.
+function go2jsClear(value) {
+	const target = go2jsUnwrap(value);
+
+	if (target === null || target === undefined) {
+		return null;
+	}
+
+	if (target instanceof go2jsNativeMap) {
+		target.clear();
+
+		return null;
+	}
+
+	if (Array.isArray(target)) {
+		target.fill(0);
+
+		return null;
+	}
+
+	if (target instanceof go2jsNativeSet) {
+		target.clear();
+
+		return null;
+	}
+
+	for (const key of Object.keys(target)) {
+		delete target[key];
+	}
+
+	return null;
+}
+
 function go2jsComplex(re, im) {
 	return { re: Number(re), im: Number(im) };
 }
@@ -3779,23 +3879,7 @@ function go2jsCopy(value) {
 	return value;
 }
 
-function go2jsClear(value) {
-	if (value instanceof go2jsNativeMap || value instanceof go2jsNativeSet) {
-		value.clear();
-		return;
-	}
 
-	if (Array.isArray(value)) {
-		value.length = 0;
-		return;
-	}
-
-	if (value && typeof value === "object") {
-		for (const key of Object.keys(value)) {
-			delete value[key];
-		}
-	}
-}
 
 function go2jsDelete(value, key) {
 	if (value instanceof go2jsNativeMap) {
