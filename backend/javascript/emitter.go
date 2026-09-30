@@ -108,6 +108,65 @@ func (e *emitter) emitTargetIndexChecks(targets []ast.Expr) error {
 
 // emitTargetExpr writes an expression that is about to be assigned to, where a
 // runtime check in the middle of it would not be JavaScript at all.
+// narrowIntTarget reports whether a place is simple enough to be read and
+// written twice in a row without running anything twice, which is what lets a
+// narrowed result be put back into it.
+func narrowIntTarget(expr ast.Expr) bool {
+	switch target := expr.(type) {
+	case *ast.Ident, *ast.SelectorExpr:
+		return true
+	case *ast.IndexExpr:
+		return narrowIntTarget(target.X)
+	case *ast.StarExpr:
+		return narrowIntTarget(target.X)
+	default:
+		return false
+	}
+}
+
+// emitNarrowIntAssign writes an operation on a narrow integer and puts the
+// result back, read back through the width of the type. A number too wide for
+// its type is not an error in Go, it is the number that fits, so an int8 one
+// past its largest is the smallest int8 and a uint8 one below its smallest is
+// the largest uint8. JavaScript has no width of its own to give, so the width is
+// asked for by name.
+func (e *emitter) emitNarrowIntAssign(target ast.Expr, operator string, rhs ast.Expr) bool {
+	name, ok := narrowIntTypeName(e.analyzedType(target))
+	if !ok || !narrowIntTarget(target) {
+		return false
+	}
+
+	e.needsRuntime = true
+	e.writeIndent()
+
+	if err := e.emitTargetExpr(target); err != nil {
+		return true
+	}
+
+	e.write(" = go2jsIntWrap(")
+
+	if err := e.emitTargetExpr(target); err != nil {
+		return true
+	}
+
+	e.write(" ")
+	e.write(operator)
+	e.write(" ")
+
+	if rhs == nil {
+		e.write("1")
+	} else if err := e.emitBinaryOperand(rhs, token.ADD, true); err != nil {
+		return true
+	}
+
+	e.write(", ")
+	e.write(strconv.Quote(name))
+	e.write(");")
+	e.newline()
+
+	return true
+}
+
 // compoundAssignOperator gives back the operator a compound assignment applies,
 // which is the plain operator it is written with the equals sign taken off.
 func compoundAssignOperator(tok token.Token) string {
@@ -883,6 +942,15 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 				return err
 			}
 			e.write(", ")
+
+			// The number the operation gives can be wider than the type it lands
+			// in, and Go hands back the number that fits rather than a number
+			// that does not, so the result is read back through that width first.
+			wrapName, wraps := narrowIntTypeName(e.analyzedType(s.Lhs[0]))
+			if wraps {
+				e.write("go2jsIntWrap(")
+			}
+
 			if err := e.emitExpr(star); err != nil {
 				return err
 			}
@@ -892,6 +960,13 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 			if err := e.emitBinaryOperand(s.Rhs[0], s.Tok, true); err != nil {
 				return err
 			}
+
+			if wraps {
+				e.write(", ")
+				e.write(strconv.Quote(wrapName))
+				e.write(")")
+			}
+
 			e.write(");")
 			e.newline()
 			return nil
@@ -930,6 +1005,12 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 				e.write(");")
 				e.newline()
 				e.needsRuntime = true
+				return nil
+			}
+		}
+
+		if s.Tok != token.DEFINE && s.Tok != token.ASSIGN && len(s.Lhs) == 1 && len(s.Rhs) == 1 {
+			if e.emitNarrowIntAssign(s.Lhs[0], compoundAssignOperator(s.Tok), s.Rhs[0]) {
 				return nil
 			}
 		}
@@ -1052,6 +1133,16 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 
 			e.write(";")
 			e.newline()
+			return nil
+		}
+
+		// A step of one on a narrow integer can run past its own ends, and Go
+		// gives the number that fits rather than a number that does not.
+		if s.Tok == token.INC {
+			if e.emitNarrowIntAssign(s.X, "+", nil) {
+				return nil
+			}
+		} else if e.emitNarrowIntAssign(s.X, "-", nil) {
 			return nil
 		}
 

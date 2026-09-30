@@ -3,8 +3,10 @@ package javascript
 import (
 	"fmt"
 	"go/ast"
+	"go/constant"
 	"go/token"
 	gotypes "go/types"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -82,6 +84,129 @@ func (e *emitter) isGenericInstantiation(expr ast.Expr) bool {
 	return false
 }
 
+// isArithmeticOp reports whether an operator works a number out rather than
+// asking a question about one, since a question has an answer of its own type
+// and a number worked out has the type of the numbers it worked on.
+func isArithmeticOp(op token.Token) bool {
+	switch op {
+	case token.ADD, token.SUB, token.MUL, token.QUO,
+		token.REM, token.AND, token.OR, token.XOR,
+		token.SHL, token.SHR, token.AND_NOT:
+		return true
+	default:
+		return false
+	}
+}
+
+// isFloat32Type reports whether a number is kept in the width a float32 has,
+// which is fewer digits than the width a float64 has.
+func isFloat32Type(t gotypes.Type) bool {
+	if t == nil {
+		return false
+	}
+
+	basic, ok := t.Underlying().(*gotypes.Basic)
+	if !ok {
+		return false
+	}
+
+	return basic.Kind() == gotypes.Float32
+}
+
+// foldedFloatConstant gives back the worked out answer for an expression whose
+// every part is a constant, written as it stands. The working out behind it was
+// exact, and the working out a JavaScript engine would do over the same numbers
+// is not, so the answer is written down rather than left to be found again.
+func (e *emitter) foldedFloatConstant(expr ast.Expr) (string, bool) {
+	if e.analysis == nil {
+		return "", false
+	}
+
+	info, ok := e.analysis.Types[expr]
+	if !ok || info.Value == nil || !e.hasFloatOperand(expr) {
+		return "", false
+	}
+
+	// A float32 constant is written from the digits a float32 keeps, and the
+	// conversion that does that is one the program asks for by name, so folding
+	// it here would drop the name the printing goes by.
+	if info.Type != nil && isFloat32Type(info.Type) {
+		return "", false
+	}
+
+	switch info.Value.Kind() {
+	case constant.Float:
+		// A constant standing in for a float64 is rounded to the number nearest
+		// it, which is the rounding Go makes when it converts one, and written
+		// in the fewest digits that read back as that same number.
+		number, _ := constant.Float64Val(info.Value)
+
+		// A constant too large for the number it stands in would not have been
+		// allowed past the compiler in the first place, so a result that is not
+		// a number means there is nothing safe to write down here.
+		if math.IsInf(number, 0) || math.IsNaN(number) {
+			return "", false
+		}
+
+		return strconv.FormatFloat(number, 'g', -1, 64), true
+	case constant.Bool:
+		return info.Value.String(), true
+	default:
+		return "", false
+	}
+}
+
+// hasFloatOperand reports whether any part of an expression is a number with a
+// decimal point in it, which is what makes a worked out answer something the
+// numbers of a JavaScript engine cannot be trusted to find again.
+func (e *emitter) hasFloatOperand(expr ast.Expr) bool {
+	if e.analysis == nil || expr == nil {
+		return false
+	}
+
+	if t, ok := e.analysis.Types[expr]; ok && t.Type != nil {
+		if basic, isBasic := t.Type.Underlying().(*gotypes.Basic); isBasic {
+			return basic.Info()&gotypes.IsFloat > 0
+		}
+	}
+
+	switch value := expr.(type) {
+	case *ast.BinaryExpr:
+		return e.hasFloatOperand(value.X) || e.hasFloatOperand(value.Y)
+	case *ast.ParenExpr:
+		return e.hasFloatOperand(value.X)
+	case *ast.UnaryExpr:
+		return e.hasFloatOperand(value.X)
+	}
+
+	return false
+}
+
+// narrowIntTypeName reports the name of an integer type narrow enough that
+// arithmetic on it can run past its own ends, which is what makes a result have
+// to be brought back. Go does not stop an int8 from passing its largest value,
+// it gives the number that fits instead. A float, a string and a type as wide
+// as the machine word are left out, because a number that wide is not one
+// JavaScript loses track of.
+func narrowIntTypeName(t gotypes.Type) (string, bool) {
+	if t == nil {
+		return "", false
+	}
+
+	basic, ok := t.Underlying().(*gotypes.Basic)
+	if !ok {
+		return "", false
+	}
+
+	switch basic.Kind() {
+	case gotypes.Int8, gotypes.Int16, gotypes.Int32,
+		gotypes.Uint8, gotypes.Uint16, gotypes.Uint32:
+		return basic.Name(), true
+	default:
+		return "", false
+	}
+}
+
 func (e *emitter) emitExpr(expr ast.Expr) error {
 	switch x := expr.(type) {
 	case *ast.Ident:
@@ -142,6 +267,16 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		}
 
 	case *ast.BinaryExpr:
+		// A constant is worked out before the program runs, and the working out
+		// is exact in a way the numbers JavaScript has are not, so the answer Go
+		// has already found is written down rather than worked out a second time
+		// out of numbers that cannot hold it.
+		if folded, ok := e.foldedFloatConstant(x); ok {
+			e.write(folded)
+
+			return nil
+		}
+
 		if handled, err := e.emitInterfaceComparison(x); handled {
 			return err
 		}
@@ -154,6 +289,45 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 
 		if e.isComplexExpr(x) {
 			return e.emitComplexBinary(x)
+		}
+
+		// A shift is however many bits a program asks for in Go, and a
+		// JavaScript shift is thirty-two bits wide whatever the count says, so
+		// both are read through the runtime rather than through an operator that
+		// cannot be asked for more.
+		if (x.Op == token.SHL || x.Op == token.SHR) && e.isIntegerExpr(x.X) && e.isIntegerExpr(x.Y) {
+			e.needsRuntime = true
+			wrapName, wraps := narrowIntTypeName(e.analyzedType(x))
+
+			if wraps {
+				e.write("go2jsIntWrap(")
+			}
+
+			if x.Op == token.SHL {
+				e.write("go2jsShl(")
+			} else {
+				e.write("go2jsShr(")
+			}
+
+			if err := e.emitExpr(x.X); err != nil {
+				return err
+			}
+
+			e.write(", ")
+
+			if err := e.emitExpr(x.Y); err != nil {
+				return err
+			}
+
+			e.write(")")
+
+			if wraps {
+				e.write(", ")
+				e.write(strconv.Quote(wrapName))
+				e.write(")")
+			}
+
+			return nil
 		}
 
 		// A divisor of zero has to stop the program, and a remainder by zero
@@ -190,6 +364,27 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			e.write("go2jsDuration(")
 		}
 
+		// An operation on whole numbers lands in the type both operands share,
+		// and a narrow one is given the number that fits rather than a number
+		// that does not, so the result is read back through the width of the
+		// type it is for.
+		wrapName, wraps := narrowIntTypeName(e.analyzedType(x))
+
+		if wraps {
+			e.needsRuntime = true
+			e.write("go2jsIntWrap(")
+		}
+
+		// A float32 keeps a number of digits a float64 keeps more of, and a
+		// result that has been given up those digits is a different number, so
+		// a float32 result is brought back to the width it is kept in.
+		frounds := isArithmeticOp(x.Op) && isFloat32Type(e.analyzedType(x))
+
+		if frounds {
+			e.needsRuntime = true
+			e.write("go2jsFloat32(")
+		}
+
 		if x.Op == token.AND_NOT {
 			e.write("(")
 			if err := e.emitExpr(x.X); err != nil {
@@ -215,6 +410,16 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		}
 
 		if wrapDuration {
+			e.write(")")
+		}
+
+		if wraps {
+			e.write(", ")
+			e.write(strconv.Quote(wrapName))
+			e.write(")")
+		}
+
+		if frounds {
 			e.write(")")
 		}
 
@@ -244,6 +449,31 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				return e.emitExpr(x.X)
 			case token.SUB:
 				return e.emitComplexUnary("go2jsComplexNeg", x.X)
+			}
+		}
+
+		// A whole number turned inside out or negated lands inside the width of
+		// the type it is for, and a narrow one is given the number that fits
+		// rather than a number that does not.
+		if x.Op == token.XOR || x.Op == token.SUB {
+			if name, ok := narrowIntTypeName(e.analyzedType(x)); ok {
+				e.needsRuntime = true
+				e.write("go2jsIntWrap(")
+
+				if x.Op == token.XOR {
+					e.write("~")
+				} else {
+					e.write("-")
+				}
+
+				if err := e.emitExpr(x.X); err != nil {
+					return err
+				}
+
+				e.write(", ")
+				e.write(strconv.Quote(name))
+				e.write(")")
+				return nil
 			}
 		}
 

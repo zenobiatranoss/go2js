@@ -324,7 +324,10 @@ func main() {
 		t.Fatalf("float division was incorrectly treated as integer division:\n%s", output)
 	}
 
-	if !strings.Contains(output, "7.0 / 2.0") {
+	// A division of two constants is worked out before the program runs, the
+	// same way Go works it out, so the answer is written down rather than left
+	// for the engine to find again from numbers that cannot hold it.
+	if !strings.Contains(output, "3.5") {
 		t.Fatalf("float division missing:\n%s", output)
 	}
 }
