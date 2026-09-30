@@ -3428,6 +3428,10 @@ function go2jsSprintf(format, ...args) {
 		// An index in front of the width has to stay there: digits or a dot
 		// after it would leave fmt unable to tell who they belong to.
 		let seenDot = false;
+		// fmt reads its flags before the width and its precision, so a flag
+		// written after one of them is the verb instead and whatever follows
+		// it in the format is text.
+		let seenWidth = false;
 
 		while (i < format.length) {
 			const flag = format[i];
@@ -3466,6 +3470,10 @@ function go2jsSprintf(format, ...args) {
 			}
 
 			if ("+-# ".includes(flag)) {
+				if (seenWidth) {
+					break;
+				}
+
 				spec += flag;
 				i++;
 				continue;
@@ -3479,6 +3487,12 @@ function go2jsSprintf(format, ...args) {
 					goodArgNum = false;
 				}
 
+				// A leading zero is the flag that pads with zeros; a digit after
+				// that is the width itself, and the width ends the flags.
+				if (flag !== "0") {
+					seenWidth = true;
+				}
+
 				spec += flag;
 				i++;
 				continue;
@@ -3490,6 +3504,7 @@ function go2jsSprintf(format, ...args) {
 				}
 
 				seenDot = true;
+				seenWidth = true;
 				spec += flag;
 				i++;
 				continue;
@@ -3499,6 +3514,8 @@ function go2jsSprintf(format, ...args) {
 			// leaves the cursor on the next one, so the verb that follows reads
 			// the operand after the star.
 			if (flag === "*") {
+				seenWidth = true;
+
 				if (explicitIndex > 0) {
 					argIndex = explicitIndex;
 					explicitIndex = 0;
@@ -4311,6 +4328,11 @@ function go2jsFormatValue(verb, spec, value) {
 		case "v":
 		case "w": {
 			let text;
+			// A sign flag asks for a sign in front of a number that has none of
+			// its own to show, so it only applies when the text rendered is the
+			// number itself. A negative one already carries a minus, and a value
+			// that is not a number, a string or a struct say, is left alone.
+			let sign = "";
 
 			if (flags.includes("#")) {
 				text = go2jsGoSyntax(value);
@@ -4318,6 +4340,10 @@ function go2jsFormatValue(verb, spec, value) {
 				text = go2jsFormatFields(value);
 			} else {
 				text = go2jsFormat(value, tagged, kind, shape);
+
+				if (typeof value === "number" && /^[0-9]/.test(text) && flags.includes(" ")) {
+					sign = " ";
+				}
 			}
 
 			// A precision means a minimum number of digits for an integer, a
@@ -4332,7 +4358,11 @@ function go2jsFormatValue(verb, spec, value) {
 				}
 			}
 
-			return go2jsPad(text, parsed, isInteger);
+			// A sign stands outside the width, so the width and a padding of
+			// zeros are counted from the digits alone.
+			return sign === ""
+				? go2jsPad(text, parsed, isInteger)
+				: go2jsPadNumber(sign + text, sign, text, parsed, isInteger);
 		}
 		case "q": {
 			// A nil slice or a nil map still prints as its empty literal under
