@@ -67,7 +67,19 @@ func (c *Compiler) CompileFile(path string) (string, error) {
 		}}
 	}
 
-	return c.wrapWithSources(output, sources), nil
+	return c.wrapWithSources(runDeferredInits(output), sources), nil
+}
+
+// runDeferredInits makes the assignments that were held back while a package
+// level variable was written. Go makes them once every declaration in the
+// package is in place, which is before the init functions of the package run and
+// before main is called, so the call is placed ahead of both.
+func runDeferredInits(code string) string {
+	if !strings.Contains(code, "go2jsDeferInit(") {
+		return code
+	}
+
+	return strings.Replace(code, "main();", "go2jsRunInitializers();\nmain();", 1)
 }
 
 func (c *Compiler) CompilePackage(pkg *Package) (string, error) {
@@ -103,12 +115,14 @@ func (c *Compiler) CompilePackage(pkg *Package) (string, error) {
 		parts = append(parts, code)
 	}
 
+	code := strings.Join(parts, "\n")
+
 	var sources []javascript.SourceMapSource
 	if c.Options.SourceMap {
 		sources = packageSourceMapSources(pkg)
 	}
 
-	return c.wrapWithSources(strings.Join(parts, "\n"), sources), nil
+	return c.wrapWithSources(runDeferredInits(code), sources), nil
 }
 
 func (c *Compiler) CompileDirectory(dir string) (string, error) {

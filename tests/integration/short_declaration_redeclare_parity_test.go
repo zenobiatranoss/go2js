@@ -47,3 +47,41 @@ func main() {
 }
 `)
 }
+
+func TestShortDeclarationRedeclareWithBlankTarget(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+type shape interface{ sides() int }
+type tri struct{}
+
+func (tri) sides() int { return 3 }
+
+func describe(value any) string {
+	if _, ok := value.(shape); ok {
+		return "shape"
+	}
+
+	if _, ok := value.(string); !ok {
+		return fmt.Sprintf("other %T", value)
+	}
+
+	return "text"
+}
+
+func main() {
+	fmt.Println(describe(tri{}))
+	fmt.Println(describe("word"))
+	fmt.Println(describe(3))
+
+	var first, ok interface{} = 1, true
+	_, ok = first.(int)
+
+	fmt.Println(ok)
+
+	_, ok = first.(string)
+	fmt.Println(ok)
+}
+`)
+}

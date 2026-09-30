@@ -35,7 +35,6 @@ type emitter struct {
 	reflectTypeKeys     map[gotypesstd.Type]string
 	reflectTypeConsts   []string
 	reflectTypeUnit     int
-	deferredInits       bool
 	addressNeeded       map[gotypesstd.Object]bool
 	addressNames        map[gotypesstd.Object]string
 	addressStack        []map[gotypesstd.Object]string
@@ -262,13 +261,6 @@ func emitFilePass(file *ast.File, analysis *gotypes.Result, context *semantic.Co
 	if pass != emitTypesOnly && file.Name.Name == "main" {
 		for _, decl := range file.Decls {
 			if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv == nil && fn.Name.Name == "main" {
-				if e.deferredInits {
-					// The assignments that were held back are made here, which
-					// is once every declaration of the program has been read.
-					e.write("go2jsRunInitializers();")
-					e.newline()
-				}
-
 				e.write("main();")
 				e.newline()
 				break
@@ -1496,7 +1488,6 @@ func (e *emitter) emitTopLevelVarDecl(decl *ast.GenDecl) error {
 	}
 
 	e.needsRuntime = true
-	e.deferredInits = true
 	e.writeIndent()
 	e.write("go2jsDeferInit(() => {")
 	e.newline()
