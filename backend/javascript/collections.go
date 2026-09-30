@@ -802,9 +802,13 @@ function go2jsStructFieldCopy(item) {
 		return item;
 	}
 
+	// A description of a type is the one description of it rather than a copy of
+	// one, and copying it field by field drops the parts of it that are not
+	// fields, which is where the way it writes itself is kept. It is carried
+	// over as it stands for the same reason a pointer is.
 	if (item.__go2js_pointer === true || item.__go2js_reflectValue === true ||
-		item.__go2js_typed === true || item.__go2js_interface === true ||
-		item instanceof go2jsNativeDate) {
+		item.__go2js_reflectType === true || item.__go2js_typed === true ||
+		item.__go2js_interface === true || item instanceof go2jsNativeDate) {
 		return item;
 	}
 
