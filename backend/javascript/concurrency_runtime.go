@@ -756,8 +756,17 @@ function go2jsErrorMessage(err) {
 }
 
 function go2jsDuration(nanoseconds) {
+	// a span of time that is already one keeps the shape it has, since giving
+	// it a second would bury the first inside it
+	if (go2jsIsDuration(nanoseconds)) {
+		return nanoseconds;
+	}
+
 	return {
 		nanoseconds: nanoseconds,
+		// the name of the type is kept where a verb asking for it can find it,
+		// since the object is its own kind rather than something wrapped
+		__go2js_type_name: "time.Duration",
 		valueOf() {
 			return this.nanoseconds;
 		},
@@ -783,7 +792,7 @@ function go2jsDuration(nanoseconds) {
 			return this.nanoseconds / 3600000000000;
 		},
 		Abs() {
-			return go2jsDuration(Math.abs(this.nanoseconds));
+			return DurationAbs(this);
 		},
 		Truncate(m) {
 			return DurationTruncate(this, m);
@@ -794,13 +803,48 @@ function go2jsDuration(nanoseconds) {
 	};
 }
 
-// go2jsDurationNanos accepts either a duration object or a raw nanosecond count.
+// go2jsDurationNanos accepts either a duration object or a raw nanosecond count,
+// and gives the count back as it is held, since a count with more digits than a
+// double keeps is held as digits and must not be brought down to a double here.
 function go2jsDurationNanos(value) {
-	if (value !== null && value !== undefined && typeof value.nanoseconds === "number") {
+	if (go2jsIsDuration(value)) {
 		return value.nanoseconds;
 	}
 
+	if (typeof value === "bigint") {
+		return value;
+	}
+
 	return Number(value);
+}
+
+// go2jsDurationNanosAsNumber gives the count back as a double, which is what
+// the helpers that divide the count and answer with a fraction need.
+function go2jsDurationNanosAsNumber(value) {
+	return Number(go2jsDurationNanos(value));
+}
+
+// go2jsDurationCmp answers which of two spans of time comes first, as JavaScript
+// cannot be asked the question itself: the two counts may be held as a plain
+// number or as a wide one, and a wide number is never equal to a plain one
+// however alike the two look.
+function go2jsDurationCmp(left, right) {
+	let a = go2jsDurationNanos(left);
+	let b = go2jsDurationNanos(right);
+
+	if (typeof a === "bigint" || typeof b === "bigint") {
+		a = BigInt(a);
+		b = BigInt(b);
+	} else {
+		a = Number(a);
+		b = Number(b);
+	}
+
+	if (a < b) {
+		return -1;
+	}
+
+	return a > b ? 1 : 0;
 }
 
 // Methods on the named scalar type time.Duration are emitted as flat functions.
@@ -813,23 +857,35 @@ function DurationNanoseconds(d) {
 }
 
 function DurationMicroseconds(d) {
-	return Math.trunc(go2jsDurationNanos(d) / 1000);
+	const span = go2jsDurationNanos(d);
+
+	if (typeof span === "bigint") {
+		return go2jsNarrow(span / 1000n);
+	}
+
+	return Math.trunc(span / 1000);
 }
 
 function DurationMilliseconds(d) {
-	return Math.trunc(go2jsDurationNanos(d) / 1000000);
+	const span = go2jsDurationNanos(d);
+
+	if (typeof span === "bigint") {
+		return go2jsNarrow(span / 1000000n);
+	}
+
+	return Math.trunc(span / 1000000);
 }
 
 function DurationSeconds(d) {
-	return go2jsDurationNanos(d) / 1000000000;
+	return go2jsDurationNanosAsNumber(d) / 1000000000;
 }
 
 function DurationMinutes(d) {
-	return go2jsDurationNanos(d) / 60000000000;
+	return go2jsDurationNanosAsNumber(d) / 60000000000;
 }
 
 function DurationHours(d) {
-	return go2jsDurationNanos(d) / 3600000000000;
+	return go2jsDurationNanosAsNumber(d) / 3600000000000;
 }
 
 function go2jsDurationDecimal(value) {
@@ -1021,27 +1077,39 @@ function go2jsExit(code) {
 }
 
 function DurationAbs(d) {
-	return go2jsDuration(Math.abs(go2jsDurationNanos(d)));
+	const span = go2jsDurationNanos(d);
+
+	if (span >= 0) {
+		return go2jsDuration(span);
+	}
+
+	// the smallest count there is has no positive counterpart inside the width
+	// it is held in, so its own absolute value is the largest there is
+	if (span === -go2jsSignBit64) {
+		return go2jsDuration(go2jsSignBit64 - 1n);
+	}
+
+	return go2jsDuration(-span);
 }
 
 function DurationTruncate(d, multiple) {
-	const step = go2jsDurationNanos(multiple);
+	const step = go2jsDurationNanosAsNumber(multiple);
 
 	if (step === 0) {
 		return go2jsDuration(go2jsDurationNanos(d));
 	}
 
-	return go2jsDuration(Math.trunc(go2jsDurationNanos(d) / step) * step);
+	return go2jsDuration(Math.trunc(go2jsDurationNanosAsNumber(d) / step) * step);
 }
 
 function DurationRound(d, multiple) {
-	const step = go2jsDurationNanos(multiple);
+	const step = go2jsDurationNanosAsNumber(multiple);
 
 	if (step === 0) {
 		return go2jsDuration(go2jsDurationNanos(d));
 	}
 
-	const value = go2jsDurationNanos(d);
+	const value = go2jsDurationNanosAsNumber(d);
 	const half = step / 2;
 	let offset = value % step;
 
