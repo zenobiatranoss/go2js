@@ -128,6 +128,15 @@ func compileProjectWithOptions(dir string, options Options) (string, error) {
 	}
 
 	mainCode, initCalls := renameInitFunctions(target.pkg, mainCode)
+
+	// A package level variable is assigned once every declaration in the package
+	// is in place, which is before the init functions of the package run and
+	// before main is called. A variable declared in a file other than the one
+	// holding main is why this is made here rather than beside the call.
+	if strings.Contains(mainCode, "go2jsDeferInit(") {
+		initCalls = "go2jsRunInitializers();\n" + initCalls
+	}
+
 	mainCode = strings.Replace(mainCode, "main();", initCalls+"main();", 1)
 	out.WriteString(mainCode)
 
