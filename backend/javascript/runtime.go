@@ -2695,6 +2695,17 @@ function go2jsGoTypeName(value) {
 	}
 
 	if (value instanceof go2jsNativeMap) {
+		// A map that was made from a declaration of its own knows the key and the
+		// value it was declared to hold, and an empty one has nothing to be read
+		// for, so the declaration is what says what it is.
+		if (typeof value.__go2js_type === "string" && value.__go2js_type !== "") {
+			return value.__go2js_type;
+		}
+
+		if (value.size === 0) {
+			return "map[interface {}]interface {}";
+		}
+
 		return "map[" + go2jsGoTypeName(go2jsFirstKey(value)) + "]" + go2jsGoTypeName(go2jsFirstValue(value));
 	}
 
