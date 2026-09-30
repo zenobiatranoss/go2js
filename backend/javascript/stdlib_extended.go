@@ -2838,8 +2838,11 @@ function go2jsTimeStopChannel(channel) {
 function go2jsTimeNewTimer(d) {
 	const channel = go2jsTimeAfter(d);
 
+	// A Stop says whether it was the one that kept the timer from firing, so a
+	// timer that has already fired, or that was stopped before, reports that it
+	// stopped nothing.
 	return {C: channel, timerChannel: channel, Stop: function() {
-		go2jsTimeStopChannel(channel);
+		return go2jsTimeStopChannel(channel);
 	}};
 }
 
@@ -2850,10 +2853,8 @@ function go2jsTimeNewTimer(d) {
 function go2jsTimeNewTicker(d) {
 	const channel = go2jsChannel(1);
 
-	channel.timerPeriod = go2jsTimeMilliseconds(d);
-	channel.timerDeadline = Date.now() + channel.timerPeriod;
-	channel.timerDue = go2jsTimeAdd(go2jsTimeNow(), d);
-	go2jsTimers.set(channel, channel.timerDue);
+	channel.timerPeriod = go2jsDurationNanos(d);
+	go2jsTimerArm(channel);
 
 	return {C: channel, timerChannel: channel, Stop: function() {
 		channel.timerPeriod = null;

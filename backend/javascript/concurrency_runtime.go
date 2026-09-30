@@ -13,16 +13,25 @@ function go2jsChannel(capacity) {
 	};
 }
 
+// A channel that was never made is not a channel, but it is still a value: a
+// send on it and a receive from it are both never ready, and a select that
+// offers one of them takes whichever other case it was given. Only the
+// operations that ask for an answer, such as the length of one, have to treat
+// it as a channel of no capacity.
+function go2jsChannelIsNil(channel) {
+	return channel === null || channel === undefined;
+}
+
 function go2jsChanLen(channel) {
-	return channel.buffer.length;
+	return go2jsChannelIsNil(channel) ? 0 : channel.buffer.length;
 }
 
 function go2jsChanCap(channel) {
-	return channel.capacity;
+	return go2jsChannelIsNil(channel) ? 0 : channel.capacity;
 }
 
 function go2jsChannelClosed(channel) {
-	return channel.closed && channel.buffer.length === 0;
+	return !go2jsChannelIsNil(channel) && channel.closed && channel.buffer.length === 0;
 }
 
 function go2jsChannelClosedPanic(operation) {
@@ -66,12 +75,19 @@ function go2jsTimerDue(channel) {
 	// behind is the next one rather than none at all. A ticker that was stopped
 	// has no period left and is done.
 	if (channel.timerPeriod !== null && channel.timerPeriod !== undefined) {
-		channel.timerDeadline = Date.now() + channel.timerPeriod;
-		channel.timerDue = go2jsTimeAdd(go2jsTimeNow(), go2jsTimeMilliseconds(channel.timerPeriod));
-		go2jsTimers.set(channel, channel.timerDue);
+		go2jsTimerArm(channel);
 	}
 
 	return true;
+}
+
+// go2jsTimerArm gives a channel a deadline a period on from now, in the two
+// forms the schedule keeps it in: the moment a send carries, and the millis-
+// second moment a select compares against the clock.
+function go2jsTimerArm(channel) {
+	channel.timerDeadline = Date.now() + channel.timerPeriod / 1000000;
+	channel.timerDue = go2jsTimeValue(new Date(channel.timerDeadline));
+	go2jsTimers.set(channel, channel.timerDue);
 }
 
 function go2jsWaitForEarliestTimer() {
@@ -130,6 +146,10 @@ function go2jsChanRecv(channel) {
 }
 
 function go2jsChanTryRecv(channel) {
+	if (go2jsChannelIsNil(channel)) {
+		return null;
+	}
+
 	if (channel.buffer.length > 0) {
 		const value = channel.buffer.shift();
 		go2jsChannelPump(channel);
@@ -144,11 +164,15 @@ function go2jsChanTryRecv(channel) {
 }
 
 function go2jsChanRecvReady(channel) {
+	if (go2jsChannelIsNil(channel)) {
+		return false;
+	}
+
 	return channel.buffer.length > 0 || channel.closed || go2jsTimerDue(channel);
 }
 
 function go2jsChanSendReady(channel) {
-	if (channel.closed) {
+	if (go2jsChannelIsNil(channel) || channel.closed) {
 		return false;
 	}
 
@@ -234,29 +258,20 @@ function go2jsChannelRange(channel) {
 		[Symbol.iterator]() {
 			return {
 				next() {
-					for (;;) {
-						const result = go2jsChanTryRecv(channel);
-
-						if (result === null) {
-							// The channel is open but empty, so a producer goroutine
-							// has to run before the receive can be retried.
-							if (!go2jsProgress()) {
-								if (go2jsChanTryRecv(channel) === null && !channel.closed) {
-									throw new Error("go2js: no goroutine can unblock this channel receive");
-								}
-
-								continue;
-							}
-
-							continue;
-						}
-
-						if (result[1] === false) {
-							return { done: true, value: undefined };
-						}
-
-						return { done: false, value: result[0] };
+					// Ranging over a channel is receiving from it until it is
+					// closed, and a receive waits for whatever will send on it,
+					// a goroutine or the moment a timer comes due.
+					if (channel === null || channel === undefined) {
+						throw new Error("go2js: no goroutine can unblock this channel receive");
 					}
+
+					const result = go2jsChanRecvPair(channel);
+
+					if (result[1] === false) {
+						return { done: true, value: undefined };
+					}
+
+					return { done: false, value: result[0] };
 				}
 			};
 		}
