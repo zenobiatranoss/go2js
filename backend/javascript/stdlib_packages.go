@@ -2560,33 +2560,79 @@ function go2jsCSVReadAll(source) {
 	return reader.ReadAll();
 }
 
+// A writer holds what it is given until its buffer is full or until it is
+// flushed, which is what decides whether what was written to it reached the
+// thing underneath by the time the program stopped. A record is written as
+// fields joined by commas, and a field that holds a comma, a quote or a line
+// of its own is written between quotes, with the quotes of its own written
+// twice.
 function go2jsCSVNewWriter(target) {
-	const writer = {pending: ""};
+	const writer = {pending: "", failed: null};
 
 	writer.write = function(text) {
-		if (target === null || target === undefined) {
-			writer.pending += text;
+		if (writer.failed !== null) {
 			return;
+		}
+
+		writer.pending += text;
+
+		// A writer that has taken a bufferful of text gives it to the thing
+		// underneath rather than holding more, which is what keeps a long run of
+		// records from being held until the end.
+		if (writer.pending.length >= 4096) {
+			writer.flush();
+		}
+	};
+
+	writer.flush = function() {
+		if (writer.pending === "") {
+			return null;
+		}
+
+		const text = writer.pending;
+
+		writer.pending = "";
+
+		if (writer.failed !== null) {
+			return writer.failed;
+		}
+
+		if (target === null || target === undefined) {
+			return null;
 		}
 
 		const sink = go2jsUnwrap(target);
 
 		if (sink !== null && sink !== undefined && typeof sink.WriteString === "function") {
-			sink.WriteString(text);
-			return;
+			const written = sink.WriteString(text);
+
+			if (Array.isArray(written) && written[1] !== null && written[1] !== undefined) {
+				writer.failed = written[1];
+			}
+
+			return writer.failed;
 		}
 
 		if (sink !== null && sink !== undefined && typeof sink.Write === "function") {
-			sink.Write(text);
-			return;
+			const written = sink.Write(go2jsStringToBytes(text));
+
+			if (Array.isArray(written) && written[1] !== null && written[1] !== undefined) {
+				writer.failed = written[1];
+			}
+
+			return writer.failed;
 		}
 
-		writer.pending += text;
+		// Nothing underneath to write to yet, so what was written is held until
+		// there is, rather than dropped.
+		writer.pending = text;
+
+		return null;
 	};
 
 	writer.Write = function(record) {
 		const values = go2jsToArray(record);
-		const line = values.map(value => {
+		const line = values.map((value) => {
 			const item = go2jsRawText(value);
 
 			return /[",\n\r]/.test(item) ? '"' + item.replace(/"/g, '""') + '"' : item;
@@ -2594,15 +2640,31 @@ function go2jsCSVNewWriter(target) {
 
 		writer.write(line);
 
-		return null;
+		return writer.failed;
+	};
+
+	// WriteAll writes every record it is given, stopping at the first that
+	// fails, and then flushes what it wrote, because a writer that is written
+	// all at once is a writer whose work is done rather than one that keeps
+	// holding on to it.
+	writer.WriteAll = function(records) {
+		for (const record of go2jsToArray(records)) {
+			const failed = writer.Write(record);
+
+			if (failed !== null) {
+				return failed;
+			}
+		}
+
+		return writer.Flush();
 	};
 
 	writer.Flush = function() {
-		return null;
+		return writer.flush();
 	};
 
 	writer.Error = function() {
-		return null;
+		return writer.failed;
 	};
 
 	writer.String = function() {
@@ -2613,7 +2675,7 @@ function go2jsCSVNewWriter(target) {
 
 	return go2jsPtr(
 		() => handle,
-		value => {
+		(value) => {
 			handle = value;
 		}
 	);
