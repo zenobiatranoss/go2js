@@ -201,7 +201,7 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			}
 			e.write(")")
 		} else {
-			if err := e.emitExpr(x.X); err != nil {
+			if err := e.emitBinaryOperand(x.X, x.Op, false); err != nil {
 				return err
 			}
 
@@ -209,7 +209,7 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			e.write(x.Op.String())
 			e.write(" ")
 
-			if err := e.emitExpr(x.Y); err != nil {
+			if err := e.emitBinaryOperand(x.Y, x.Op, true); err != nil {
 				return err
 			}
 		}
@@ -1722,4 +1722,73 @@ func (e *emitter) pointeeTypeNameArgument(expr ast.Expr) string {
 	}
 
 	return ", " + strconv.Quote(name)
+}
+
+// goOperatorPrecedence is where Go binds an operator, and jsOperatorPrecedence
+// is where JavaScript binds the same one. The two do not agree: the bitwise
+// operators sit with the arithmetic in Go and below the comparisons in
+// JavaScript, while a shift sits with the bitwise in Go and above them in
+// JavaScript. An expression that mixes them therefore has to say which way it
+// is meant, or it means something else.
+var goOperatorPrecedence = map[token.Token]int{
+	token.MUL: 5, token.QUO: 5, token.REM: 5,
+	token.SHL: 5, token.SHR: 5, token.AND: 5, token.AND_NOT: 5,
+	token.ADD: 4, token.SUB: 4, token.OR: 4, token.XOR: 4,
+	token.EQL: 3, token.NEQ: 3, token.LSS: 3, token.LEQ: 3, token.GTR: 3, token.GEQ: 3,
+	token.LAND: 2,
+	token.LOR:  1,
+}
+
+var jsOperatorPrecedence = map[token.Token]int{
+	token.MUL: 13, token.QUO: 13, token.REM: 13,
+	token.ADD: 12, token.SUB: 12,
+	token.SHL: 11, token.SHR: 11,
+	token.LSS: 10, token.LEQ: 10, token.GTR: 10, token.GEQ: 10,
+	token.EQL: 9, token.NEQ: 9,
+	token.AND:  8,
+	token.XOR:  7,
+	token.OR:   6,
+	token.LAND: 4,
+	token.LOR:  3,
+}
+
+// emitBinaryOperand writes one side of a binary expression, in brackets when
+// that side has to be held together to mean in JavaScript what it means in Go.
+func (e *emitter) emitBinaryOperand(operand ast.Expr, parent token.Token, right bool) error {
+	brackets := false
+
+	if binary, ok := operand.(*ast.BinaryExpr); ok {
+		childGo := goOperatorPrecedence[binary.Op]
+		parentGo := goOperatorPrecedence[parent]
+		childJS := jsOperatorPrecedence[binary.Op]
+		parentJS := jsOperatorPrecedence[parent]
+
+		// JavaScript that binds the child looser than the parent reads the
+		// child's own operands as part of the parent, and Go that binds it
+		// looser than JavaScript does reads them the other way around.
+		if childJS < parentJS || (childJS == parentJS && childGo < parentGo) {
+			brackets = true
+		}
+
+		// A child of the parent's own standing on its right is read as the far
+		// side of that operator, so a division of a division and a subtraction
+		// of a subtraction both have to say which way round they are.
+		if right && childGo == parentGo {
+			brackets = true
+		}
+	}
+
+	if brackets {
+		e.write("(")
+	}
+
+	if err := e.emitExpr(operand); err != nil {
+		return err
+	}
+
+	if brackets {
+		e.write(")")
+	}
+
+	return nil
 }
