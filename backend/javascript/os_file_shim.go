@@ -14,6 +14,8 @@ var osFileFuncs = map[string]string{
 	"CreateTemp": "go2jsOSCreateTemp",
 	"MkdirTemp":  "go2jsOSMkdirTemp",
 	"TempDir":    "go2jsOSTempDir",
+	"Environ":    "go2jsOSEnviron",
+	"Getenv":     "go2jsOSGetenv",
 }
 
 var osFileConstants = map[string]string{

@@ -136,6 +136,8 @@ func runtimeBundleSources() []string {
 		htmlRuntimeSource(),
 		osFileRuntimeSource(),
 		sortSliceShimRuntimeSource(),
+		execRuntimeSource(),
+		osEnvironRuntimeSource(),
 	}
 }
 

@@ -736,6 +736,8 @@ func ProgramRuntime(requiredSource, target string) string {
 		osFileRuntimeSource(),
 		runtimeShimRuntimeSource(),
 		sortSliceShimRuntimeSource(),
+		execRuntimeSource(),
+		osEnvironRuntimeSource(),
 		randGeneratorSource(),
 	)
 	prefix = lowerJavaScriptTarget(prefix, normalizeTarget(target))
