@@ -446,7 +446,7 @@ func (e *emitter) emitPointerOperand(expr ast.Expr) error {
 
 // emitTypeNameRegistration records the fully qualified Go type name so %T can
 // report "main.Point" rather than the JavaScript class name.
-func (e *emitter) emitTypeNameRegistration(typeIdent *ast.Ident) error {
+func (e *emitter) emitTypeNameRegistration(typeIdent *ast.Ident, declared *ast.StructType) error {
 	if typeIdent == nil || e.semantic == nil {
 		return nil
 	}
@@ -475,7 +475,7 @@ func (e *emitter) emitTypeNameRegistration(typeIdent *ast.Ident) error {
 	// one is written out as an empty list rather than left out, which would put
 	// the field names where the method set belongs.
 	methods := reflectMethodNames(typeName.Type())
-	fields := structFieldNames(typeName.Type())
+	fields := structFieldDescriptors(typeName.Type(), declared)
 
 	if len(methods) > 0 || len(fields) > 0 {
 		e.write(", ")
@@ -484,7 +484,15 @@ func (e *emitter) emitTypeNameRegistration(typeIdent *ast.Ident) error {
 
 	if len(fields) > 0 {
 		e.write(", ")
-		e.write(quoteList(fields))
+		e.write(quoteFieldDescriptors(fields))
+	}
+
+	// The kind of the type goes with the name as well, because reflect is told
+	// the name of a type on a value that reached it through an interface, and a
+	// name on its own says nothing about what kind of type it names.
+	if kind, err := reflectKindName(typeName.Type()); err == nil {
+		e.write(", ")
+		e.write(strconv.Quote(kind))
 	}
 
 	e.write(");")
@@ -527,6 +535,134 @@ func structFieldNames(t gotypesstd.Type) []string {
 	}
 
 	return names
+}
+
+// structFieldDescriptor is what reflect reports about one field of a struct,
+// written out so that a type reached by name rather than by a value still
+// describes its fields the way the program declared them. A program that reads
+// a field asks for more than its name: a private field is one whose package
+// path is set, an embedded field is one that is anonymous, and the tag and the
+// type of a field are what a program such as an encoder keys off.
+type structFieldDescriptor struct {
+	Name      string
+	Tag       string
+	PkgPath   string
+	Anonymous bool
+	Type      string
+	Kind      string
+}
+
+// structFieldDescriptors describes the fields a struct type carries in the
+// order they are declared, which is the order reflect reports them in. The tag
+// of a field is written in the source rather than kept by the type checker, so
+// the declaration is read as well as the type.
+func structFieldDescriptors(t gotypesstd.Type, declared *ast.StructType) []structFieldDescriptor {
+	_, ok := t.(*gotypesstd.Named)
+	if !ok {
+		return nil
+	}
+
+	underlying, ok := t.Underlying().(*gotypesstd.Struct)
+	if !ok {
+		return nil
+	}
+
+	tags, anonymous := declaredFieldTags(declared)
+
+	descriptors := make([]structFieldDescriptor, 0, underlying.NumFields())
+
+	for index := range underlying.NumFields() {
+		field := underlying.Field(index)
+
+		name := field.Name()
+
+		// A field the program cannot name from outside its own package is
+		// private, and a private field is one reflect marks with the path of
+		// the package that declares it. A path is made up where there is no
+		// package to name, which is the case for a type declared in a function.
+		pkgPath := ""
+		if !field.Exported() {
+			pkgPath = "main"
+		}
+
+		kind, err := reflectKindName(field.Type())
+		if err != nil {
+			kind = ""
+		} else {
+			kind = strings.Trim(kind, `"`)
+		}
+
+		descriptors = append(descriptors, structFieldDescriptor{
+			Name:      name,
+			Tag:       tags[name],
+			PkgPath:   pkgPath,
+			Anonymous: anonymous[name],
+			Type:      field.Type().String(),
+			Kind:      kind,
+		})
+	}
+
+	return descriptors
+}
+
+// declaredFieldTags reads the tags the program wrote on the fields of a struct,
+// keyed by field name, along with which of the fields are embedded.
+func declaredFieldTags(declared *ast.StructType) (map[string]string, map[string]bool) {
+	tags := make(map[string]string)
+	embedded := make(map[string]bool)
+
+	if declared == nil || declared.Fields == nil {
+		return tags, embedded
+	}
+
+	for _, field := range declared.Fields.List {
+		if field.Tag != nil {
+			tags[embeddedFieldName(field.Type)] = field.Tag.Value
+		}
+
+		if len(field.Names) == 0 {
+			if name := embeddedFieldName(field.Type); name != "" {
+				embedded[name] = true
+			}
+			continue
+		}
+
+		for _, name := range field.Names {
+			if field.Tag != nil {
+				tags[name.Name] = field.Tag.Value
+			}
+		}
+	}
+
+	return tags, embedded
+}
+
+// structTagText takes the quotes off a struct tag, which reflect hands back
+// without them even though they are written with them.
+func structTagText(tag string) string {
+	unquoted, err := strconv.Unquote(tag)
+	if err != nil {
+		return tag
+	}
+
+	return unquoted
+}
+
+// quoteFieldDescriptors writes a list of field descriptors as a JavaScript
+// array of objects, each of which a type reached by name can be asked about.
+func quoteFieldDescriptors(descriptors []structFieldDescriptor) string {
+	parts := make([]string, 0, len(descriptors))
+
+	for _, descriptor := range descriptors {
+		parts = append(parts, "{Name: "+strconv.Quote(descriptor.Name)+
+			", Tag: "+strconv.Quote(structTagText(descriptor.Tag))+
+			", PkgPath: "+strconv.Quote(descriptor.PkgPath)+
+			", Anonymous: "+strconv.FormatBool(descriptor.Anonymous)+
+			", Type: "+strconv.Quote(descriptor.Type)+
+			", Kind: "+strconv.Quote(descriptor.Kind)+"}")
+	}
+
+	return "[" + strings.Join(parts, ", ") + "]"
 }
 
 func (e *emitter) emitStructFieldStringers(typeName string, structType *ast.StructType) error {

@@ -55,6 +55,11 @@ func (e *emitter) emitTypeSwitch(stmt *ast.TypeSwitchStmt) error {
 	// belongs to it alone in Go. Two type switches in one block that both bind
 	// the same name are ordinary Go, and without a block of its own the second
 	// one would be a second declaration of the same name.
+	// The switch stands in a scope of its own to match the block of its own
+	// below: the name it binds belongs to the switch alone, so a name already in
+	// use outside is left alone rather than renamed to a second JavaScript name.
+	e.pushScope()
+
 	if !e.inlineMode {
 		e.writeIndent()
 		e.write("{")
@@ -83,12 +88,13 @@ func (e *emitter) emitTypeSwitch(stmt *ast.TypeSwitchStmt) error {
 	// and there it holds the value the switch examined, the way Go hands the
 	// value back to a default clause.
 	if name != "" {
+		e.declare(name)
+
 		e.writeIndent()
 		e.write(e.emitDeclarationKeyword())
 		e.write(e.resolveName(name))
 		e.write(" = go2jsInterfaceValue(" + subject + ");")
 		e.newline()
-		e.declare(name)
 	}
 
 	// The clause that runs is the first one whose label the value matches, and a
@@ -154,6 +160,8 @@ func (e *emitter) emitTypeSwitch(stmt *ast.TypeSwitchStmt) error {
 		e.write("}")
 		e.newline()
 	}
+
+	e.scopes = e.scopes[:len(e.scopes)-1]
 
 	return nil
 }

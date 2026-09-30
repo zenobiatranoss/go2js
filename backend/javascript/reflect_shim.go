@@ -147,6 +147,36 @@ function go2jsReflectTypeLen(receiver) {
 	return type.len;
 }
 
+// go2jsReflectLazyList gives a descriptor a list it has to go and look up, and
+// works it out the first time something reads it. The list is kept once it has
+// been found, and a lookup that finds nothing is left to be tried again, which
+// is what lets a descriptor be written out before the registrations it reads.
+function go2jsReflectLazyList(target, name, lookup) {
+	let value = null;
+	let found = false;
+
+	Object.defineProperty(target, name, {
+		get: function() {
+			if (!found) {
+				const listed = lookup(target.name);
+
+				if (listed !== null && listed !== undefined) {
+					value = listed;
+					found = true;
+				}
+			}
+
+			return found ? value : null;
+		},
+		set: function(next) {
+			value = next;
+			found = true;
+		},
+		enumerable: true,
+		configurable: true
+	});
+}
+
 function go2jsReflectType(go2jsKind, go2jsName, go2jsElem, go2jsKey, go2jsMethods, go2jsLen) {
 	const type = {
 		__go2js_reflectType: true,
@@ -157,6 +187,20 @@ function go2jsReflectType(go2jsKind, go2jsName, go2jsElem, go2jsKey, go2jsMethod
 		methods: go2jsMethods || [],
 		len: typeof go2jsLen === "number" ? go2jsLen : null
 	};
+
+	// A descriptor is usually written out at the top of the generated program,
+	// which is above the registrations that say what a named type is made of, so
+	// what a descriptor needs to know about a named type is looked up when it is
+	// wanted rather than when it is written. A lookup that comes back with
+	// nothing is tried again rather than remembered, because the registration it
+	// was looking for has yet to run.
+	if (go2jsKind === "struct") {
+		go2jsReflectLazyList(type, "fields", go2jsReflectFieldsOfName);
+	}
+
+	if (!Array.isArray(go2jsMethods) || go2jsMethods.length === 0) {
+		go2jsReflectLazyList(type, "methods", go2jsReflectMethodsOfName);
+	}
 
 	// A type writes itself as the name it has, so a program that prints one, or
 	// hands it to a verb that takes a string, is given that name rather than the
@@ -310,10 +354,134 @@ function go2jsReflectTypeOf(value, type) {
 	// the descriptor names them. The emitter's list is the one to believe, and
 	// the value settles it when the type is not one the emitter described.
 	if (descriptor.kind === "struct" && !Array.isArray(descriptor.fields)) {
-		descriptor.fields = go2jsReflectStructFieldNames(bare);
+		descriptor.fields = go2jsReflectFieldDescriptorsOf(bare);
 	}
 
 	return descriptor;
+}
+
+// go2jsReflectTypeFromName builds a type descriptor from the name of a type. A
+// value that reached reflect through an interface carries the name of what it
+// holds, and a name written out in full says what the type is where reading it
+// back off the value does not, because a pointer cell, an empty map, and an
+// untyped nil all say nothing at all about what they hold. The empty interface
+// says nothing either way here, because what a value passed as one turned out
+// to be is said by the value and not by the interface it passed through.
+function go2jsReflectTypeFromName(name) {
+	if (typeof name !== "string") {
+		return null;
+	}
+
+	if (go2jsIsInterfaceTypeName(name.trim())) {
+		return null;
+	}
+
+	return go2jsReflectDeclaredType(name);
+}
+
+// go2jsReflectDeclaredType builds a descriptor for a type the program said out
+// loud, which is the static type of a field rather than the type of a value.
+// The empty interface is a type here rather than the absence of one, because a
+// field of interface type is an interface whatever it happens to be holding.
+function go2jsReflectDeclaredType(name) {
+	if (typeof name !== "string") {
+		return null;
+	}
+
+	const text = name.trim();
+
+	if (text === "") {
+		return null;
+	}
+
+	if (go2jsIsInterfaceTypeName(text)) {
+		return go2jsReflectType("interface", "", null, null, []);
+	}
+
+	if (text[0] === "*") {
+		const elem = go2jsReflectDeclaredType(text.slice(1));
+
+		return elem === null ? null : go2jsReflectType("ptr", "", elem, null, go2jsReflectMethodsOfName(text));
+	}
+
+	if (text.startsWith("[]")) {
+		const elem = go2jsReflectDeclaredType(text.slice(2));
+
+		return elem === null ? null : go2jsReflectType("slice", "", elem, null, []);
+	}
+
+	if (text[0] === "[") {
+		const end = text.indexOf("]");
+		const length = Number(text.slice(1, end));
+
+		if (end > 1 && Number.isInteger(length) && length >= 0) {
+			const elem = go2jsReflectDeclaredType(text.slice(end + 1));
+
+			return elem === null ? null : go2jsReflectType("array", "", elem, null, [], length);
+		}
+	}
+
+	if (text.startsWith("map[")) {
+		const end = text.indexOf("]");
+
+		if (end > 4) {
+			const key = go2jsReflectDeclaredType(text.slice(4, end));
+			const elem = go2jsReflectDeclaredType(text.slice(end + 1));
+
+			if (key !== null && elem !== null) {
+				return go2jsReflectType("map", "", elem, key, []);
+			}
+		}
+	}
+
+	if (text.startsWith("chan ")) {
+		const elem = go2jsReflectDeclaredType(text.slice(5));
+
+		return elem === null ? null : go2jsReflectType("chan", "", elem, null, []);
+	}
+
+	if (text.startsWith("func(") && text.endsWith(")")) {
+		return go2jsReflectType("func", "", null, null, []);
+	}
+
+	if (typeof go2jsReflectBasicTypes[text] === "string") {
+		return go2jsReflectType(go2jsReflectBasicTypes[text], text, null, null, []);
+	}
+
+	// A name that is not a type written out in full is the name of a named
+	// type, and what kind of type it is was recorded when the program said so.
+	if (/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/.test(text)) {
+		return go2jsReflectType(go2jsReflectTypeKindOfName(text), text.slice(text.lastIndexOf(".") + 1), null, null, go2jsReflectMethodsOfName(text));
+	}
+
+	return null;
+}
+
+// go2jsReflectFieldTypeOf builds the type a struct says one of its fields is.
+// The kind is there to fall back on, because a type written out in full says
+// more than the kind does and a name the emitter never described leaves the
+// kind as the only thing left to go by.
+function go2jsReflectFieldTypeOf(described) {
+	if (described === null || described === undefined) {
+		return null;
+	}
+
+	const declared = go2jsReflectDeclaredType(described.Type);
+	const kind = typeof described.Kind === "string" && described.Kind !== "" ? described.Kind : "";
+
+	if (declared !== null) {
+		// The kind recorded beside the type is the one the program said, and it
+		// settles a name that was registered without saying what kind of type it
+		// is, which is what a named interface comes down to: it has a name and a
+		// method set, and nothing that says whether it is a struct or a slice.
+		if (declared.kind === "invalid" && kind !== "" && kind !== "invalid") {
+			declared.kind = kind;
+		}
+
+		return declared;
+	}
+
+	return kind !== "" && kind !== "invalid" ? go2jsReflectType(kind, "", null, null, []) : null;
 }
 
 // go2jsReflectMethodsOfName looks up the method set the emitter recorded for a
@@ -334,6 +502,114 @@ function go2jsReflectMethodsOfName(name) {
 
 	return [];
 }
+
+// go2jsReflectClassOfName reports the class a name was registered for. A name
+// is looked up whole first and then by the last part of it, because a descriptor
+// read off a value holds the bare name while the registry is keyed by the
+// qualified one.
+function go2jsReflectClassOfName(name) {
+	if (typeof name !== "string" || name === "") {
+		return null;
+	}
+
+	if (typeof go2jsTypeNames[name] === "function") {
+		return go2jsTypeNames[name];
+	}
+
+	const short = name.slice(name.lastIndexOf(".") + 1);
+
+	for (const registered of Object.keys(go2jsTypeNames)) {
+		if (registered.slice(registered.lastIndexOf(".") + 1) === short) {
+			return go2jsTypeNames[registered];
+		}
+	}
+
+	return null;
+}
+
+// go2jsReflectTypeKindsOfName reports the kind a name was registered under. A
+// name is looked up whole first and then by the last part of it, which is the
+// same way a method set is found, so both agree on which type a name means.
+function go2jsReflectTypeKindOfName(name) {
+	if (typeof name !== "string" || name === "") {
+		return "invalid";
+	}
+
+	if (typeof go2jsTypeKinds[name] === "string") {
+		return go2jsTypeKinds[name];
+	}
+
+	const short = name.slice(name.lastIndexOf(".") + 1);
+
+	for (const registered of Object.keys(go2jsTypeKinds)) {
+		if (registered.slice(registered.lastIndexOf(".") + 1) === short) {
+			return go2jsTypeKinds[registered];
+		}
+	}
+
+	return "invalid";
+}
+
+// go2jsReflectFieldsOfName reports the field names a name was registered with,
+// looked up the way the method set is.
+function go2jsReflectFieldsOfName(name) {
+	if (typeof name !== "string" || name === "") {
+		return null;
+	}
+
+	if (Array.isArray(go2jsStructFields[name])) {
+		return go2jsStructFields[name];
+	}
+
+	const short = name.slice(name.lastIndexOf(".") + 1);
+
+	for (const registered of Object.keys(go2jsStructFields)) {
+		if (registered.slice(registered.lastIndexOf(".") + 1) === short) {
+			return go2jsStructFields[registered];
+		}
+	}
+
+	return null;
+}
+
+// go2jsReflectFieldNamesOf reduces a list of field descriptors to the names
+// alone, which is what a program that only counts or indexes fields needs.
+function go2jsReflectFieldNamesOf(fields) {
+	return fields.map((field) => (typeof field === "string" ? field : field.Name));
+}
+
+// go2jsReflectFieldDescriptorsOf describes the fields of a value the way the
+// emitter described the type they belong to, falling back on what the value
+// itself carries for a type the emitter said nothing about.
+function go2jsReflectFieldDescriptorsOf(value) {
+	const names = go2jsReflectStructFieldNames(value);
+
+	return names.map((name) => ({Name: name, Tag: "", PkgPath: "", Anonymous: false}));
+}
+
+// go2jsReflectBasicTypes is the set of type names that are written out the
+// same way everywhere they appear, so a name is read as the kind it names.
+const go2jsReflectBasicTypes = {
+	bool: "bool",
+	string: "string",
+	int: "int",
+	int8: "int8",
+	int16: "int16",
+	int32: "int32",
+	int64: "int64",
+	uint: "uint",
+	uint8: "uint8",
+	uint16: "uint16",
+	uint32: "uint32",
+	uint64: "uint64",
+	uintptr: "uintptr",
+	float32: "float32",
+	float64: "float64",
+	complex64: "complex64",
+	complex128: "complex128",
+	byte: "uint8",
+	rune: "int32"
+};
 
 function go2jsReflectValue(value, type) {
 	return {__go2js_reflectValue: true, v: value, t: type || null};
@@ -377,7 +653,12 @@ function go2jsReflectValueOf(value, type) {
 	// through, which is what the type it was wrapped with says.
 	if (type === null || type === undefined) {
 		if (value !== null && value !== undefined && value.__go2js_interface === true && value.value !== value) {
-			return go2jsReflectValue(value.value, go2jsReflectTypeOf(value.value));
+			// The interface was given the name of what it holds, and a name
+			// written out in full describes the type where the value it wraps
+			// cannot: a pointer cell and a nil map both say nothing at all.
+			const named = go2jsReflectTypeFromName(value.type);
+
+			return go2jsReflectValue(value.value, named !== null ? named : go2jsReflectTypeOf(value.value));
 		}
 	}
 
@@ -389,7 +670,15 @@ function go2jsReflectValueBox(value) {
 }
 
 function go2jsReflectUnwrap(value) {
-	return go2jsReflectValueBox(value) ? value.v : value;
+	if (!go2jsReflectValueBox(value)) {
+		return value;
+	}
+
+	// A box standing over a slot holds the value as it stood when the box was
+	// made, and a write through that box can have moved it since, so the getter
+	// is asked when there is one. What is left is the value of a box that is not
+	// standing over a slot at all, which is all a box over a plain value has.
+	return typeof value.get === "function" ? value.get() : value.v;
 }
 
 function go2jsReflectValueOfBox(value) {
@@ -470,7 +759,7 @@ function go2jsReflectStructFieldNames(value) {
 		const registered = go2jsStructFields[go2jsRegisteredTypeName(ctor.name)];
 
 		if (Array.isArray(registered)) {
-			return registered;
+			return go2jsReflectFieldNamesOf(registered);
 		}
 
 		const fields = go2jsStructFormats[ctor.name];
@@ -524,14 +813,35 @@ function go2jsReflectValueNumField(receiver) {
 	return go2jsReflectStructFieldNames(go2jsStripWrappers(go2jsReflectUnwrap(receiver))).length;
 }
 
+// go2jsReflectFieldTypeAt reports the type a struct's own descriptor says one
+// of its fields is, and reports nothing at all for a struct the emitter never
+// described, which is a value whose type was read off it rather than off the
+// program.
+function go2jsReflectFieldTypeAt(receiver, index) {
+	if (!go2jsReflectValueBox(receiver)) {
+		return null;
+	}
+
+	const fields = receiver.t !== null && receiver.t !== undefined ? receiver.t.fields : null;
+
+	if (!Array.isArray(fields) || index < 0 || index >= fields.length) {
+		return null;
+	}
+
+	return go2jsReflectFieldTypeOf(fields[index]);
+}
+
 function go2jsReflectValueField(receiver, index) {
 	// The field is one of the value's own, so the wrappers it travelled through
 	// are stepped over rather than read as fields of their own.
 	const field = go2jsReflectFieldAt(go2jsStripWrappers(go2jsReflectUnwrap(receiver)), index);
 
-	// The field is addressable because the box itself carries the getter and the
-	// setter for its slot, which is what SetString and the other setters use.
-	const type = go2jsReflectTypeOf(field.value);
+	// A field is the type its own struct says it is, and the value standing in
+	// it says nothing at all when that value is the zero of a type that reads
+	// as nothing, which is what a nil slice and a nil map both are. So the type
+	// the struct declared is asked first, and the value settles it only for a
+	// struct that was described by no type of its own.
+	const type = go2jsReflectFieldTypeAt(receiver, index) || go2jsReflectTypeOf(field.value);
 
 	return {
 		__go2js_reflectValue: true,
@@ -543,10 +853,61 @@ function go2jsReflectValueField(receiver, index) {
 }
 
 function go2jsReflectValueIndex(receiver, index) {
-	const target = go2jsReflectUnwrap(receiver);
-	const at = target !== null && target !== undefined && target[index] !== undefined ? target[index] : target.at(index);
+	const target = go2jsReflectRead(receiver);
+	const at = Math.trunc(Number(index));
 
-	return go2jsReflectValue(at, go2jsReflectTypeOf(at));
+	// An element of a slice or an array is reached by way of the container it
+	// stands in, so a write to it goes back the same way. A box holding only the
+	// element would be a copy, and a program could write to it all afternoon
+	// without the container ever hearing of it, which is the one thing an
+	// element of a slice in Go is not.
+	if (target === null || target === undefined || typeof target !== "object") {
+		const at2 = target !== null && target !== undefined && target[at] !== undefined ? target[at] : target.at(at);
+
+		return go2jsReflectValue(at2, go2jsReflectTypeOf(at2));
+	}
+
+	// An element of a slice view is not a place in the array the view was cut
+	// from, because the view is a run of elements handed back on its own. The
+	// element is therefore written by putting the run back with the element
+	// changed, which is the only way through to the storage behind it.
+	if (receiver !== null && receiver !== undefined && receiver.__go2js_sliceView === true) {
+		const elementOf = receiver.t !== null && receiver.t !== undefined ? go2jsReflectElem(receiver.t) : null;
+
+		return {
+			__go2js_reflectValue: true,
+			get: function() {
+				return go2jsReflectRead(receiver)[at];
+			},
+			set: function(next) {
+				const whole = go2jsReflectRead(receiver).slice();
+
+				whole[at] = next;
+				receiver.set(whole);
+			},
+			v: target[at],
+			t: elementOf !== null ? elementOf : go2jsReflectTypeOf(target[at])
+		};
+	}
+
+	// The container says what its elements are, and the element says what it is
+	// holding, which is nothing at all when the element is the zero of a type
+	// that reads as nothing.
+	const element = receiver !== null && receiver !== undefined && receiver.t !== null && receiver.t !== undefined
+		? go2jsReflectElem(receiver.t)
+		: null;
+
+	return {
+		__go2js_reflectValue: true,
+		get: function() {
+			return target[at];
+		},
+		set: function(next) {
+			target[at] = next;
+		},
+		v: target[at],
+		t: element !== null ? element : go2jsReflectTypeOf(target[at])
+	};
 }
 
 function go2jsReflectValueNumMethod() {
@@ -564,6 +925,267 @@ function go2jsReflectValueIsValid(receiver) {
 function go2jsReflectValueCanSet(receiver) {
 	return go2jsReflectValueBox(receiver) && receiver.v !== null && receiver.v !== undefined &&
 		typeof receiver.v === "object";
+}
+
+// go2jsReflectValueMapIndex reads an entry of a map. A key the map does not
+// hold has no value to answer with, so it answers with the zero Value, which is
+// what reflect gives a program that asked for one.
+function go2jsReflectValueMapIndex(receiver, key) {
+	const target = go2jsReflectRead(receiver);
+	const element = receiver !== null && receiver !== undefined && receiver.t !== null && receiver.t !== undefined
+		? go2jsReflectElem(receiver.t)
+		: null;
+
+	if (target instanceof go2jsNativeMap && go2jsReflectValueIsValid(key)) {
+		const at = go2jsReflectUnwrap(go2jsReflectRead(key));
+		const found = target.get(at);
+
+		if (found !== undefined) {
+			return go2jsReflectValue(found, element || go2jsReflectTypeOf(found));
+		}
+	}
+
+	return go2jsReflectValue(null, element !== null ? element : go2jsReflectType("invalid", "", null, null, []));
+}
+
+// go2jsReflectValueMapKeys lists the keys a map holds, which is every key it
+// has an entry for, in the order it holds them.
+function go2jsReflectValueMapKeys(receiver) {
+	const target = go2jsReflectRead(receiver);
+	const element = receiver !== null && receiver !== undefined && receiver.t !== null && receiver.t !== undefined &&
+		receiver.t.key !== null && receiver.t.key !== undefined
+		? receiver.t.key
+		: null;
+	const keys = [];
+
+	if (target instanceof go2jsNativeMap) {
+		for (const key of target.keys()) {
+			keys.push(go2jsReflectValue(key, element || go2jsReflectTypeOf(key)));
+		}
+	}
+
+	return keys;
+}
+
+// go2jsReflectValueSetMapIndex writes an entry of a map, and a value that is
+// not a value at all is the way a program asks for the entry to be removed.
+function go2jsReflectValueSetMapIndex(receiver, key, value) {
+	// The map is read through the box rather than taken from it, because a box
+	// that was handed a fresh map by Set kept the one it had, and reading it is
+	// what tells a write the map it is writing into.
+	const target = go2jsReflectRead(receiver);
+
+	if (!go2jsReflectValueIsValid(key)) {
+		go2jsPanic("reflect: SetMapIndex on zero key");
+	}
+
+	if (!(target instanceof go2jsNativeMap)) {
+		go2jsPanic("reflect: SetMapIndex on non-map value");
+	}
+
+	const at = go2jsReflectUnwrap(go2jsReflectRead(key));
+
+	if (go2jsReflectValueBox(value) && !go2jsReflectValueIsValid(value)) {
+		go2jsMapDelete(target, at);
+		return;
+	}
+
+	go2jsMapSet(target, at, go2jsReflectUnwrap(go2jsReflectRead(value)));
+}
+
+// go2jsReflectValueSlice takes a slice of a slice or an array, sharing the
+// storage behind it, so a write to what it hands back is a write to the slice
+// it came from.
+function go2jsReflectValueSlice(receiver, low, high, max) {
+	const target = go2jsReflectRead(receiver);
+
+	if (!Array.isArray(target)) {
+		go2jsPanic("reflect.Value.Slice: slice of unaddressable array or string");
+	}
+
+	const from = low === undefined ? 0 : Math.trunc(Number(low));
+	const to = high === undefined ? target.length : Math.trunc(Number(high));
+
+	if (from < 0 || to > target.length || to < from) {
+		go2jsPanic("reflect.Value.Slice: slice bounds out of range");
+	}
+
+	const from_t = receiver !== null && receiver !== undefined ? receiver.t : null;
+	const element = from_t !== null ? go2jsReflectElem(from_t) : null;
+
+	// The value handed back is a slice, so it is described as one, keeping the
+	// name and the type of what it was cut from where the container said them.
+	// Describing it as its element type instead makes a program that asks what
+	// kind of thing it now has answer with the kind of the things inside it.
+	const sliced = from_t !== null && from_t.kind === "slice"
+		? from_t
+		: go2jsReflectType("slice", "", element, null, []);
+
+	// A slice cut from a slice shares the storage it was cut out of, so a write
+	// through it has to land in that storage. Cutting a run of elements out of an
+	// array and handing the run back on its own gives a copy, and a write through
+	// the copy is a write the array never hears of, which is the one thing a
+	// slice in Go is not.
+	return {
+		__go2js_reflectValue: true,
+		__go2js_sliceView: true,
+		get: function() {
+			return target.slice(from, to);
+		},
+		set: function(next) {
+			const elements = Array.isArray(next) ? next : [];
+
+			// Only the elements the slice covers are written, because a slice
+			// holds its own length rather than the length of what it was cut
+			// from, and the storage past that length is left as it was.
+			for (let i = 0; i < elements.length && from + i < to; i++) {
+				target[from + i] = elements[i];
+			}
+		},
+		v: target.slice(from, to),
+		t: sliced
+	};
+}
+
+// go2jsReflectValueAppend adds values to the slice a Value stands for, which is
+// how a program grows one without knowing how much room it has.
+function go2jsReflectValueAppend(receiver, ...values) {
+	const target = go2jsReflectRead(receiver);
+	const items = Array.isArray(target) ? target.slice() : [];
+
+	for (const value of values) {
+		items.push(go2jsReflectUnwrap(go2jsReflectRead(value)));
+	}
+
+	const element = receiver !== null && receiver !== undefined && receiver.t !== null && receiver.t !== undefined
+		? go2jsReflectElem(receiver.t)
+		: null;
+
+	return go2jsReflectValue(items, element !== null ? element : go2jsReflectTypeOf(items[items.length - 1]));
+}
+
+// go2jsReflectValueCopy copies values from one slice into another, which is what
+// copy does, and answers with how many were copied.
+function go2jsReflectValueCopy(receiver, source) {
+	const target = go2jsReflectRead(receiver);
+	const from = go2jsReflectUnwrap(go2jsReflectRead(source));
+	const length = Math.min(Array.isArray(target) ? target.length : 0, Array.isArray(from) ? from.length : 0);
+
+	for (let i = 0; i < length; i++) {
+		target[i] = from[i];
+	}
+
+	return length;
+}
+
+// go2jsReflectValueNew allocates a zero value of the type the receiver names
+// and hands back a pointer to it, which is what a program gets for New.
+function go2jsReflectValueNew(receiver) {
+	if (!go2jsReflectValueBox(receiver) || receiver.t === null || receiver.t === undefined) {
+		go2jsPanic("reflect: New of zero Value");
+	}
+
+	return go2jsReflectNew(receiver.t);
+}
+
+// go2jsReflectIntBits reports how wide an integer kind is, and reports zero for
+// a kind that is not an integer at all, which is the one width that is never
+// too narrow. A width is all it takes to say whether a number fits, because
+// every integer kind differs from its neighbours only in how many bits it has
+// and in whether those bits read as signed.
+function go2jsReflectIntBits(kind) {
+	switch (kind) {
+		case "int8":
+		case "uint8":
+			return 8;
+		case "int16":
+		case "uint16":
+			return 16;
+		case "int32":
+		case "uint32":
+			return 32;
+		case "int64":
+		case "uint64":
+		case "uint":
+		case "uintptr":
+			return 64;
+		default:
+			return 0;
+	}
+}
+
+// go2jsReflectIntIsSigned reports whether a width of that many bits reads as
+// signed, which is the half of a kind's name after the u.
+function go2jsReflectIntIsSigned(kind) {
+	return kind.charAt(0) !== "u";
+}
+
+// go2jsReflectValueOverflowInt reports whether a whole number is one the type
+// cannot hold, which is what a program that asks before it writes is told. A
+// number of a shape the type has no answer for fits as well as anything.
+function go2jsReflectValueOverflowInt(receiver, value) {
+	const kind = go2jsReflectKind(receiver);
+	const bits = go2jsReflectIntBits(kind);
+
+	if (bits === 0) {
+		return false;
+	}
+
+	const number = Math.trunc(Number(value));
+	const top = 2 ** (bits - 1);
+
+	return go2jsReflectIntIsSigned(kind)
+		? number < -top || number > top - 1
+		: number < 0 || number > 2 * top - 1;
+}
+
+// go2jsReflectValueOverflowUint reports the same for a number read as unsigned,
+// which is the question a program asks when it has an unsigned number in hand
+// and a signed type to put it in. That type keeps the numbers up to its own
+// largest, and not the ones past it.
+function go2jsReflectValueOverflowUint(receiver, value) {
+	const kind = go2jsReflectKind(receiver);
+	const bits = go2jsReflectIntBits(kind);
+
+	if (bits === 0) {
+		return false;
+	}
+
+	const number = Math.trunc(Number(value));
+	const top = 2 ** (bits - 1);
+
+	return go2jsReflectIntIsSigned(kind)
+		? number < 0 || number > top - 1
+		: number < 0 || number > 2 * top - 1;
+}
+
+// go2jsReflectNarrowInt keeps the low bits of a whole number the way a type
+// narrower than the number does. A program that writes a number too wide means
+// the number that fits, so the value stored is not the one that was asked for.
+function go2jsReflectNarrowInt(kind, value) {
+	const bits = go2jsReflectIntBits(kind);
+	const number = Math.trunc(Number(value));
+
+	if (bits === 0) {
+		return number;
+	}
+
+	const top = 2 ** bits;
+	const kept = ((number % top) + top) % top;
+
+	return go2jsReflectIntIsSigned(kind) && kept > top / 2 - 1 ? kept - top : kept;
+}
+
+// go2jsReflectValueSetInt stores a whole number, narrowed to the width of the
+// type it goes into.
+function go2jsReflectValueSetInt(receiver, value) {
+	go2jsReflectValueSet(receiver, go2jsReflectNarrowInt(go2jsReflectKind(receiver), value));
+}
+
+// go2jsReflectValueSetUint stores an unsigned number, narrowed to the width of
+// the type it goes into.
+function go2jsReflectValueSetUint(receiver, value) {
+	go2jsReflectValueSet(receiver, go2jsReflectNarrowInt(go2jsReflectKind(receiver), value));
 }
 
 function go2jsReflectValueSetLen(receiver, length) {
@@ -604,12 +1226,12 @@ function go2jsReflectTypeField(receiver, index) {
 			throw new RangeError("reflect: Field index out of range");
 		}
 
-		return go2jsReflectStructField(receiver.fields[index], null, "");
+		return go2jsReflectStructField(receiver.fields[index]);
 	}
 
 	const field = go2jsReflectFieldAt(go2jsReflectUnwrap(go2jsReflectZeroOf(receiver)), index);
 
-	return go2jsReflectStructField(field.name, go2jsReflectTypeOf(field.value), go2jsReflectTagOf(field.value));
+	return go2jsReflectStructField({Name: field.name, Tag: "", PkgPath: "", Anonymous: false});
 }
 
 function go2jsReflectTypeElemOf(receiver) {
@@ -685,12 +1307,30 @@ function go2jsReflectValueCall(receiver, ...args) {
 // go2jsReflectValueAddr is the address of a value, which is a pointer to the
 // storage the value was read from when there is any, and a new cell holding the
 // value otherwise.
+// go2jsReflectValueAddr is the address of a value, which is a pointer to the
+// storage it lives in. The pointer it hands back still reaches that storage, so
+// what it points at can be written to, and a method a program finds on the
+// pointer is a method of what it points at, which is how a pointer answers for
+// the interface its element type implements.
 function go2jsReflectValueAddr(receiver) {
-	if (go2jsReflectValueIsValid(receiver) && receiver.get !== undefined) {
-		return go2jsReflectValue(receiver.get, go2jsReflectPtrTo(go2jsReflectValueType(receiver)));
+	if (!go2jsReflectValueBox(receiver)) {
+		go2jsPanic("reflect: Addr of unaddressable value");
 	}
 
-	return go2jsReflectValue(go2jsNew(go2jsReflectRead(receiver)), go2jsReflectPtrTo(go2jsReflectValueType(receiver)));
+	const type = go2jsReflectPtrTo(go2jsReflectValueType(receiver));
+	const name = type !== null && type !== undefined && type.elem !== null && type.elem !== undefined && type.elem.name
+		? "*" + type.elem.name
+		: undefined;
+
+	if (typeof receiver.get === "function" && typeof receiver.set === "function") {
+		// The address keeps the storage the value lives in, so a write through
+		// the pointer is a write to the value the address was taken of.
+		let storage = receiver.get();
+
+		return go2jsReflectValue(go2jsPtr(() => storage, next => storage = next, name), type);
+	}
+
+	return go2jsReflectValue(go2jsNew(go2jsReflectRead(receiver), name), type);
 }
 
 // go2jsReflectValuePointer reports an address as a number, which for a value
@@ -714,14 +1354,25 @@ function go2jsReflectInvoke(owner, name, receiver, ...rest) {
 
 // go2jsReflectStructField describes one field of a struct: its name, its type
 // and its tag, which is what reflect.Type.Field reports.
-function go2jsReflectStructField(name, type, tag) {
-	return {__go2js_reflectStructField: true, Name: name, Type: type || null, Tag: tag || ""};
-}
+// go2jsReflectStructField reports one field of a struct the way reflect does.
+// A field is more than a name: a program reads a tag off it, a private field is
+// one with a package path set, an embedded field is one that is anonymous, and
+// the type of a field is what a program keys its decoding on. A bare name is
+// taken to be a field that says only the name.
+function go2jsReflectStructField(field) {
+	const described = typeof field === "string" ? {Name: field} : field;
 
-// go2jsReflectTagOf reports the struct tag of a field, which is empty unless
-// the emitter recorded one alongside the field list.
-function go2jsReflectTagOf() {
-	return "";
+	return {
+		__go2js_reflectStructField: true,
+		Name: described.Name,
+		Tag: described.Tag || "",
+		PkgPath: described.PkgPath || "",
+		Anonymous: described.Anonymous === true,
+		Index: described.Index || [],
+		Offset: described.Offset || 0,
+		Type: go2jsReflectFieldTypeOf(described),
+		IsExported: () => described.PkgPath === ""
+	};
 }
 
 // The methods of reflect.Value and reflect.Type are reached through the method
@@ -740,7 +1391,8 @@ const go2jsReflectValueMethods = {
 	Type: go2jsReflectValueType,
 	Set: go2jsReflectValueSet,
 	SetString: go2jsReflectValueSet,
-	SetInt: go2jsReflectValueSet,
+	SetInt: go2jsReflectValueSetInt,
+	SetUint: go2jsReflectValueSetUint,
 	SetFloat: go2jsReflectValueSet,
 	SetBool: go2jsReflectValueSet,
 	NumField: go2jsReflectValueNumField,
@@ -760,8 +1412,61 @@ const go2jsReflectValueMethods = {
 	Pointer: go2jsReflectValuePointer,
 	MethodByName: go2jsReflectValueMethodByName,
 	Call: go2jsReflectValueCall,
-	SetLen: go2jsReflectValueSetLen
+	SetLen: go2jsReflectValueSetLen,
+	MapIndex: go2jsReflectValueMapIndex,
+	MapKeys: go2jsReflectValueMapKeys,
+	MapRange: go2jsReflectValueMapKeys,
+	SetMapIndex: go2jsReflectValueSetMapIndex,
+	Slice: go2jsReflectValueSlice,
+	Append: go2jsReflectValueAppend,
+	Copy: go2jsReflectValueCopy,
+	New: go2jsReflectValueNew,
+	OverflowInt: go2jsReflectValueOverflowInt,
+	OverflowUint: go2jsReflectValueOverflowUint
 };
+
+// go2jsReflectStructTagGet reports the value of one key in a struct tag, which
+// is how a program reads a tag that names a key and gives it a value. A key the
+// tag does not carry is reported as not being there, and a key standing on its
+// own without a value reads as the empty string, which is what the tag says.
+function go2jsReflectStructTagGet(receiver, key) {
+	// A tag is reached as a string most of the time and as a field descriptor
+	// the rest, because a field carries one while a bare tag does not.
+	const tag = typeof receiver === "string"
+		? receiver
+		: (receiver === null || receiver === undefined ? "" : String(receiver.Tag || ""));
+
+	if (tag === "") {
+		return "";
+	}
+
+	for (const part of tag.split(/\s+/)) {
+		if (part === "") {
+			continue;
+		}
+
+		// A tag is written as a key, a colon, and the value in quotes, and a key
+		// standing on its own says the value is the empty string.
+		const colon = part.indexOf(":");
+		const name = colon < 0 ? part : part.slice(0, colon);
+
+		if (name !== key) {
+			continue;
+		}
+
+		if (colon < 0) {
+			return "";
+		}
+
+		const value = part.slice(colon + 1);
+
+		return value.charAt(0) === "\"" && value.charAt(value.length - 1) === "\""
+			? value.slice(1, value.length - 1)
+			: value;
+	}
+
+	return "";
+}
 
 const go2jsReflectTypeMethods = {
 	Name: go2jsReflectTypeName,
@@ -788,6 +1493,10 @@ function go2jsReflectRegisterMethods() {
 	for (const [name, fn] of Object.entries(go2jsReflectValueMethods)) {
 		go2jsMethodTable["reflect.Value." + name] = fn;
 	}
+
+	// The tag of a field is itself reached as a value, because reflect gives it
+	// a type of its own and a program calls Get on it.
+	go2jsMethodTable["reflect.StructTag.Get"] = go2jsReflectStructTagGet;
 
 	for (const [name, fn] of Object.entries(go2jsReflectTypeMethods)) {
 		go2jsMethodTable["reflect.Type." + name] = fn;
@@ -839,12 +1548,21 @@ function go2jsReflectValueElem(receiver) {
 		return go2jsReflectValue(inner, go2jsReflectTypeOf(inner));
 	}
 
+	// A pointer that was described without saying what it points at takes the
+	// type of what it points at, which is the only thing left that says. A
+	// pointer that reached reflect by way of an interface is described from the
+	// cell standing for it, and a cell knows how to be read and not what is
+	// behind it.
+	const elemType = receiver.t.kind === "ptr" && !receiver.t.elem && receiver.v !== null && receiver.v !== undefined &&
+		go2jsPointerAccessor(receiver.v, go2jsPointerGet)
+		? go2jsReflectTypeOf(go2jsStripWrappers(receiver.v[go2jsPointerGet]()))
+		: go2jsReflectElem(receiver.t);
+
 	// Elem of a pointer is addressable, so a write to what it points at reaches
 	// the pointee the same way a Go pointer to a field does.
 	if (receiver.t.kind === "ptr" && receiver.v !== null && receiver.v !== undefined &&
 		go2jsPointerAccessor(receiver.v, go2jsPointerGet) && go2jsPointerAccessor(receiver.v, go2jsPointerSet)) {
 		const pointer = receiver.v;
-		const elemType = go2jsReflectElem(receiver.t);
 
 		return {
 			__go2js_reflectValue: true,
@@ -859,7 +1577,7 @@ function go2jsReflectValueElem(receiver) {
 		};
 	}
 
-	return go2jsReflectValue(receiver.v, go2jsReflectElem(receiver.t));
+	return go2jsReflectValue(receiver.v, elemType);
 }
 
 function go2jsReflectValueSet(receiver, value) {
@@ -1080,6 +1798,18 @@ function go2jsReflectTypeString(receiver) {
 
 	if (receiver.__go2js_reflectType === true) {
 		if (receiver.name !== "") {
+			// A named type is named after the package it was declared in, which
+			// the registry knows and the descriptor does not carry.
+			const ctor = go2jsReflectClassOfName(receiver.name);
+
+			if (ctor !== null && typeof ctor.name === "string") {
+				const registered = go2jsRegisteredTypeName(ctor.name);
+
+				if (typeof registered === "string" && registered !== "") {
+					return registered;
+				}
+			}
+
 			return receiver.name;
 		}
 
@@ -1096,6 +1826,21 @@ function go2jsReflectTypeString(receiver) {
 				go2jsReflectTypeString(receiver.elem);
 		}
 
+		if (receiver.kind === "array" && typeof receiver.len === "number" && receiver.elem) {
+			return "[" + receiver.len + "]" + go2jsReflectTypeString(receiver.elem);
+		}
+
+		if (receiver.kind === "chan" && receiver.elem) {
+			return "chan " + go2jsReflectTypeString(receiver.elem);
+		}
+
+		// The kind names are the ones a program reads them by, and an interface
+		// and a channel are the two that are written out in full where a kind is
+		// only a name for it.
+		if (receiver.kind === "interface") {
+			return "interface {}";
+		}
+
 		return receiver.kind;
 	}
 
@@ -1103,11 +1848,24 @@ function go2jsReflectTypeString(receiver) {
 }
 
 function go2jsReflectZero(receiver) {
-	return go2jsReflectZeroOf(go2jsReflectValueOfBox(receiver));
+	// A zero is asked for either of a type or of a value, and a type already is
+	// the description of itself, so it is used as it stands rather than read as
+	// if it were a value of its own type.
+	const type = receiver !== null && receiver !== undefined && receiver.__go2js_reflectType === true
+		? receiver
+		: go2jsReflectValueType(go2jsReflectValueOfBox(receiver));
+
+	return go2jsReflectZeroOfType(type);
 }
 
 function go2jsReflectZeroOf(receiver) {
-	const type = go2jsReflectValueType(receiver);
+	return go2jsReflectZeroOfType(go2jsReflectValueType(receiver));
+}
+
+function go2jsReflectZeroOfType(type) {
+	if (type === null || type === undefined) {
+		return go2jsReflectValue(null, null);
+	}
 
 	switch (type.kind) {
 	case "bool":
@@ -1154,8 +1912,10 @@ function go2jsReflectInstanceOf(type) {
 	}
 
 	// The descriptor holds the bare type name while the registry is keyed by the
-	// qualified one, so the lookup has to try both spellings.
-	const ctor = go2jsTypeNames[type.name] || go2jsTypeNames[go2jsRegisteredTypeName(type.name)];
+	// qualified one, so the lookup has to try both spellings, and then either
+	// name of the same type, because which one it was handed is not something
+	// the runtime gets to choose.
+	const ctor = go2jsReflectClassOfName(type.name) || go2jsTypeNames[go2jsRegisteredTypeName(type.name)];
 
 	if (typeof ctor !== "function") {
 		return null;
@@ -1731,10 +2491,13 @@ func (e *emitter) emitReflectCall(call *ast.CallExpr) (bool, error) {
 }
 
 // reflectMethodOwners names the interfaces whose methods reach the reflect
-// runtime rather than a generated class.
+// runtime rather than a generated class. The tag of a field is one of them: it
+// is a type of its own in the reflect package and its Get reads the tag the
+// program wrote rather than anything a value carries.
 var reflectMethodOwners = map[string]bool{
-	"reflect.Value": true,
-	"reflect.Type":  true,
+	"reflect.Value":     true,
+	"reflect.Type":      true,
+	"reflect.StructTag": true,
 }
 
 // emitReflectTypeOperand writes an operand that is already known to be a
