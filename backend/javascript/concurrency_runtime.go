@@ -188,6 +188,16 @@ function go2jsChanSend(channel, value) {
 		if (channel.capacity === 0 || channel.buffer.length < channel.capacity) {
 			channel.buffer.push(value);
 			go2jsChannelPump(channel);
+
+			// A channel of no room is a handover: the value is not sent until the
+			// goroutine that was waiting for it has taken it, and that goroutine
+			// runs before the send is said to be done. A channel with room is not
+			// a handover, so a send to one carries on without waiting for whoever
+			// reads it later.
+			if (channel.capacity === 0) {
+				go2jsRunTasks();
+			}
+
 			return;
 		}
 
@@ -903,11 +913,11 @@ function go2jsErrorString(value) {
 }
 
 function go2jsStdoutWrite(values, suffix, separator) {
-	process.stdout.write(go2jsOutputText(values, suffix, separator));
+	go2jsWriteOut(process.stdout, go2jsOutputText(values, suffix, separator));
 }
 
 function go2jsStderrWrite(values, suffix, separator) {
-	process.stderr.write(go2jsOutputText(values, suffix, separator));
+	go2jsWriteOut(process.stderr, go2jsOutputText(values, suffix, separator));
 }
 
 function go2jsOperandIsString(value) {

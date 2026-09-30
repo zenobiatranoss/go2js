@@ -393,12 +393,33 @@ function* go2jsRangeValue(value) {
 	}
 
 	if (typeof value === "string") {
-		const encoder = new TextEncoder();
 		let byteIndex = 0;
 
-		for (const rune of Array.from(value)) {
-			yield [byteIndex, rune.codePointAt(0)];
-			byteIndex += encoder.encode(rune).length;
+		for (let i = 0; i < value.length; i++) {
+			const unit = value.charCodeAt(i);
+
+			// A byte that is not the UTF-8 of a rune is read as the rune that
+			// stands for a byte nothing was written with, and takes up room on
+			// its own, which is what a walk over a string in Go finds.
+			if (unit >= 0xdc00 && unit <= 0xdfff && (i === 0 || value.charCodeAt(i - 1) < 0xd800 || value.charCodeAt(i - 1) > 0xdbff)) {
+				yield [byteIndex, 0xfffd];
+				byteIndex += 1;
+				continue;
+			}
+
+			let code = unit;
+
+			if (unit >= 0xd800 && unit <= 0xdbff && i + 1 < value.length) {
+				const low = value.charCodeAt(i + 1);
+
+				if (low >= 0xdc00 && low <= 0xdfff) {
+					code = (unit - 0xd800) * 0x400 + (low - 0xdc00) + 0x10000;
+					i++;
+				}
+			}
+
+			yield [byteIndex, code];
+			byteIndex += go2jsStringByteLength(String.fromCodePoint(code));
 		}
 
 		return;

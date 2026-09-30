@@ -1228,11 +1228,11 @@ function go2jsBytesToString(value) {
 	}
 
 	if (Array.isArray(value)) {
-		return new TextDecoder().decode(Uint8Array.from(value.map(item => Number(item) & 255)));
+		return go2jsDecodeBytes(Uint8Array.from(value.map(item => Number(item) & 255)));
 	}
 
 	if (value instanceof Uint8Array) {
-		return new TextDecoder().decode(value);
+		return go2jsDecodeBytes(value);
 	}
 
 	if (typeof value.String === "function") {
@@ -2246,7 +2246,7 @@ function go2jsBytesReplaceAll(a, old, replacement) {
 function go2jsBytesSplit(a, sep) {
 	return go2jsRawText(a)
 		.split(go2jsRawText(sep))
-		.map(part => Array.from(new TextEncoder().encode(part)));
+		.map(part => go2jsStringToBytes(part));
 }
 
 function go2jsBytesSplitN(a, sep, n) {

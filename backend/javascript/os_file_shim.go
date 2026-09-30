@@ -219,7 +219,7 @@ function go2jsOSFileWrite(file, buffer) {
 			return [0, go2jsOSFileInvalid()];
 		}
 
-		process.stdout.write(go2jsBytesToString(buffer));
+		go2jsWriteOut(process.stdout, go2jsBytesToString(buffer));
 
 		return [bytes.length, null];
 	}
