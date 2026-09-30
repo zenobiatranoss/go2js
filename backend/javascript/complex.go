@@ -117,10 +117,23 @@ func normalizedIntegerLiteral(value constant.Value) (string, error) {
 		return exact.ExactString(), nil
 	}
 
+	// A whole number a double cannot hold exactly is written as a whole number
+	// of the kind JavaScript keeps whole of its own accord, so the digits in the
+	// program are the digits the program gets. The operators it takes part in
+	// read the two kinds as one, so a number this size still adds up and still
+	// compares the way it does in Go.
 	if !text.IsInt64() || text.Int64() > maxSafeIntegerLiteral || text.Int64() < -maxSafeIntegerLiteral {
-		return "", fmt.Errorf(
-			"integer literal %s exceeds the JavaScript safe integer range and cannot be represented exactly",
-			exact.ExactString())
+		if !text.IsInt64() {
+			// wider than int64 in either direction, which is a number Go reaches
+			// only by working it out, and it is still written whole
+			if text.Sign() < 0 {
+				return "-" + new(big.Int).Neg(text).String() + "n", nil
+			}
+
+			return text.String() + "n", nil
+		}
+
+		return text.String() + "n", nil
 	}
 
 	return text.String(), nil

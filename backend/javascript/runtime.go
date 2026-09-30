@@ -4288,6 +4288,24 @@ function go2jsMapSet(map, key, value) {
 	map.set(go2jsMapKey(key), value);
 }
 
+// go2jsMapUpdate works an operation out on the entry a compound assignment is
+// aimed at, because a lookup is a value JavaScript will not let an assignment
+// be written to. A key that is not there yet reads as the element type's zero
+// value, and the result is written back under the same key.
+function go2jsMapUpdate(map, key, zero, operation) {
+	if (map === null || map === undefined || map.__go2js_nil === true) {
+		go2jsPanic("assignment to entry in nil map");
+	}
+
+	if (!(map instanceof go2jsNativeMap)) {
+		throw new TypeError("go2jsMapUpdate expects a Map");
+	}
+
+	const k = go2jsMapKey(key);
+	const current = map.has(k) ? map.get(k) : zero;
+	map.set(k, operation(current));
+}
+
 function go2jsMapDelete(map, key) {
 	if (!(map instanceof go2jsNativeMap)) {
 		throw new TypeError("go2jsMapDelete expects a Map");
@@ -4470,7 +4488,225 @@ function go2jsIndexCheck(value, index) {
 
 // go2jsDivide keeps an integer division honest: a divisor of zero stops the
 // program where Go stops it rather than answering Infinity or NaN.
+// A whole number Go can be asked for goes past the point where a double holds
+// every one of its numbers, and JavaScript has a second kind of whole number for
+// that, one that keeps every digit it is given. Both kinds are read here so an
+// operation works out the same whichever it is handed, and so a number that fits
+// a double is left as one rather than paid for twice over.
+const go2jsSafeInteger = 9007199254740991;
+
+// go2jsIsWide reports whether a value is a whole number too wide for a double,
+// which is the only thing the second kind is used for here.
+function go2jsIsWide(value) {
+	return typeof value === "bigint";
+}
+
+// go2jsWide reads a value as a whole number of the wider kind, whichever kind it
+// came in as. A number that is already whole and within reach is turned over
+// exactly, and one that has a fraction in it is left alone rather than rounded
+// away, because a fraction is not something a whole number operation can have.
+function go2jsWide(value) {
+	if (typeof value === "bigint") {
+		return value;
+	}
+
+	return BigInt(Math.trunc(Number(value)));
+}
+
+// go2jsNarrow reads a whole number back as a double once it fits one, so a
+// program that only ever sees small numbers never notices any of this.
+function go2jsNarrow(value) {
+	if (typeof value !== "bigint") {
+		return value;
+	}
+
+	if (value <= go2jsSafeInteger && value >= -go2jsSafeInteger) {
+		return Number(value);
+	}
+
+	return value;
+}
+
+// go2jsWideWrap keeps a whole number inside the sixty four bits a signed or an
+// unsigned number of that width is held in, which is what a Go variable of that
+// type does without being asked. An answer too wide for its type is not a fault
+// in Go, it is the number that fits, so a signed one past its largest is the
+// smallest it has and an unsigned one below its smallest is the largest it has.
+function go2jsWideWrap(value, typeName) {
+	if (typeof value !== "bigint") {
+		const number = Math.trunc(Number(value));
+
+		// a double past the point where it holds every digit is worked out as
+		// digits before it is given a width, since the digits it is carrying are
+		// not the ones it was handed
+		if (Number.isInteger(number) && (number > go2jsSafeInteger || number < -go2jsSafeInteger)) {
+			return go2jsWideWrap(BigInt(number), typeName);
+		}
+
+		return number;
+	}
+
+	// the width the type is held in, and whether it goes below zero at all
+	const bits = { "uint8": 8, byte: 8, "int8": 8, "uint16": 16, "int16": 16, "uint32": 32, "int32": 32, rune: 32 };
+	const unsigned = typeName === "uint64" || typeName === "uint" || typeName === "uintptr" ||
+		typeName === "uint8" || typeName === "byte" || typeName === "uint16" || typeName === "uint32";
+	const width = bits[typeName] === undefined ? 64 : bits[typeName];
+
+	if (width === 64) {
+		return go2jsNarrow(unsigned ? (value & go2jsUint64Mask) : go2jsWrapSigned64(value));
+	}
+
+	const modulus = 1n << BigInt(width);
+	const wrapped = unsigned ? (value & (modulus - 1n)) : ((value % modulus) + modulus) % modulus;
+
+	return go2jsNarrow(unsigned ? wrapped : (wrapped >= modulus >> 1n ? wrapped - modulus : wrapped));
+}
+
+const go2jsUint64Mask = (1n << 64n) - 1n;
+
+function go2jsWrapSigned64(value) {
+	const wrapped = ((value % go2jsUint64One) + go2jsUint64One) % go2jsUint64One;
+
+	return wrapped >= go2jsSignBit64 ? wrapped - go2jsUint64One : wrapped;
+}
+
+const go2jsUint64One = 1n << 64n;
+const go2jsSignBit64 = 1n << 63n;
+
+// go2jsWideBinary runs an operation over two whole numbers and gives back
+// whichever kind of number the answer is one of. A number that fits a double is
+// read back as one, so a program working in the range a double covers is not
+// slowed down or made to answer differently by a range it never reaches.
+function go2jsWideBinary(left, right, whole, typeName) {
+	if (!go2jsIsWide(left) && !go2jsIsWide(right)) {
+		return go2jsWideWrap(whole(left, right), typeName);
+	}
+
+	return go2jsWideWrap(whole(go2jsWide(left), go2jsWide(right)), typeName);
+}
+
+function go2jsWideAdd(left, right, typeName) {
+	return go2jsWideBinary(left, right, (a, b) => a + b, typeName);
+}
+
+function go2jsWideSub(left, right, typeName) {
+	return go2jsWideBinary(left, right, (a, b) => a - b, typeName);
+}
+
+function go2jsWideMul(left, right, typeName) {
+	return go2jsWideBinary(left, right, (a, b) => a * b, typeName);
+}
+
+function go2jsWideQuo(left, right, typeName) {
+	return go2jsWideBinary(left, right, (a, b) => {
+		if (b === 0) {
+			throw new RangeError(go2jsRuntimeErrorPrefix + "integer divide by zero");
+		}
+
+		return a / b;
+	}, typeName);
+}
+
+function go2jsWideRem(left, right, typeName) {
+	return go2jsWideBinary(left, right, (a, b) => {
+		if (b === 0) {
+			throw new RangeError(go2jsRuntimeErrorPrefix + "integer divide by zero");
+		}
+
+		return a % b;
+	}, typeName);
+}
+
+function go2jsWideAnd(left, right, typeName) {
+	return go2jsWideBinary(left, right, (a, b) => a & b, typeName);
+}
+
+function go2jsWideOr(left, right, typeName) {
+	return go2jsWideBinary(left, right, (a, b) => a | b, typeName);
+}
+
+function go2jsWideXor(left, right, typeName) {
+	return go2jsWideBinary(left, right, (a, b) => a ^ b, typeName);
+}
+
+function go2jsWideAndNot(left, right, typeName) {
+	return go2jsWideBinary(left, right, (a, b) => a & ~b, typeName);
+}
+
+// go2jsWideFloat turns a whole number into the nearest number a double holds,
+// which is the same number the conversion gives in Go, digits and all the way
+// out. A double carries about sixteen digits exactly, so past that the answer
+// is the nearest one to it rather than the whole number asked for.
+function go2jsWideFloat(value) {
+	// reading a whole number as a double gives the nearest double to it, which is
+	// the number the conversion gives in Go, digits and all the way out. A double
+	// carries about sixteen digits exactly, so past that the answer is the nearest
+	// to the whole number rather than the whole number itself, and that is what a
+	// program asking for a float64 is asking for.
+	return Number(value);
+}
+
+
+// go2jsWideToSigned turns a whole number into a signed number of the width the
+// type asks for, keeping every digit it has when they all fit.
+function go2jsWideToSigned(value, typeName) {
+	const number = typeof value === "bigint" ? value : go2jsWide(value);
+
+	return go2jsNarrow(go2jsIntWrap(number, typeName || "int64"));
+}
+
+// go2jsWideToUnsigned is the same for an unsigned type, where a number below the
+// smallest is not a fault but the largest the type has.
+function go2jsWideToUnsigned(value, typeName) {
+	const number = typeof value === "bigint" ? value : go2jsWide(value);
+	const wrapped = go2jsIntWrap(number, typeName || "uint64");
+
+	return go2jsNarrow(typeof wrapped === "bigint" ? go2jsWideWrap(wrapped, typeName || "uint64") : wrapped);
+}
+
+// go2jsWideCompare answers which of two whole numbers comes first, whichever
+// kind either of them is. A double cannot hold every whole number, so a number
+// past the safe range is compared as digits rather than as a number, which is
+// the same answer and the right one.
+function go2jsWideCompare(left, right) {
+	if (typeof left === "bigint" && typeof right === "bigint") {
+		return left < right ? -1 : (left > right ? 1 : 0);
+	}
+
+	// one side is a double and the other a whole number, so the double is read
+	// as digits only when it stands outside the range a double holds exactly
+	if (typeof left === "number" && typeof right === "bigint") {
+		if (Number.isInteger(left) && left >= -go2jsSafeInteger && left <= go2jsSafeInteger) {
+			return left < Number(right) ? -1 : (left > Number(right) ? 1 : 0);
+		}
+
+		return left < Number(right) ? -1 : (left > Number(right) ? 1 : 0);
+	}
+
+	if (typeof left === "bigint" && typeof right === "number") {
+		return Number(left) < right ? -1 : (Number(left) > right ? 1 : 0);
+	}
+
+	return left < right ? -1 : (left > right ? 1 : 0);
+}
+
+// go2jsWideEqual answers whether two whole numbers are the same number, in
+// either kind and in a mixture of the two. A double past the range a double
+// holds exactly is not equal to a whole number that stands for the same digits,
+// since the double is a different number once the digits are gone.
+function go2jsWideEqual(left, right) {
+	if (typeof left === "bigint" || typeof right === "bigint") {
+		return go2jsWideCompare(left, right) === 0;
+	}
+
+	return left === right;
+}
+
 function go2jsDivide(left, right) {
+	if (go2jsIsWide(left) || go2jsIsWide(right)) {
+		return go2jsWideQuo(left, right);
+	}
+
 	if (right === 0) {
 		throw new RangeError(go2jsRuntimeErrorPrefix + "integer divide by zero");
 	}
@@ -4482,29 +4718,52 @@ function go2jsDivide(left, right) {
 // bits a program asks for. A JavaScript shift is thirty-two bits wide whatever
 // the count says, so a shift of sixty-two bits is a shift of thirty in
 // JavaScript and the wrong answer twice over.
-function go2jsShl(left, right) {
+// A shift lands inside the sixty four bits the number is held in, the same way
+// any other operation on it does, and the name of the type it is for says how
+// wide those bits are. A number with no type of its own to land in is left
+// wherever it lands.
+function go2jsShl(left, right, typeName) {
 	const count = Math.trunc(Number(right));
 
 	if (count < 0) {
-		return go2jsShr(left, -count);
+		return go2jsShr(left, -count, typeName);
 	}
 
-	return Math.trunc(Number(left)) * 2 ** count;
+	// a shift that lands outside the range a double holds exactly is worked out
+	// as digits, since a double is already carrying more of them than it can
+	// keep by the time a shift of so many bits has been asked for
+	if (count > 30 && (go2jsIsWide(left) || Math.abs(Math.trunc(Number(left))) > go2jsSafeInteger / 2 ** count)) {
+		return go2jsShlWide(go2jsWide(left) << BigInt(count), typeName);
+	}
+
+	return go2jsShlWide(Math.trunc(Number(left)) * 2 ** count, typeName);
+}
+
+function go2jsShlWide(value, typeName) {
+	return typeName === undefined ? go2jsNarrow(value) : go2jsWideWrap(value, typeName);
 }
 
 // go2jsShr brings a number down by so many bits. A shift to the right on a
 // signed number brings the sign down with it and one on an unsigned number
 // brings down zeros, and the number itself says which it is: a negative one
 // keeps its sign the whole way down.
-function go2jsShr(left, right) {
+function go2jsShr(left, right, typeName) {
 	const count = Math.trunc(Number(right));
-	const number = Math.trunc(Number(left));
 
 	if (count <= 0) {
-		return number;
+		return go2jsShlWide(go2jsIsWide(left) ? go2jsWide(left) : Math.trunc(Number(left)), typeName);
 	}
 
-	return number < 0 ? -Math.floor(-number / 2 ** count) : Math.floor(number / 2 ** count);
+	if (go2jsIsWide(left)) {
+		return go2jsShlWide(go2jsWide(left) >> BigInt(count), typeName);
+	}
+
+	// a number that is a whole number of digits is brought down by dropping the
+	// digits on the right, and one that is not whole comes down by rounding
+	// towards the floor, which keeps the ones the digits stand for. Rounding
+	// towards zero instead would turn -1 into 0 for a shift of one, which is not
+	// what a shift does to a negative number in Go.
+	return go2jsShlWide(Math.floor(Math.trunc(Number(left)) / 2 ** count), typeName);
 }
 
 // go2jsIntWrap keeps a whole number inside the width of the type it is for,
@@ -4513,6 +4772,13 @@ function go2jsShr(left, right) {
 // an int8 one past its largest is the smallest int8 and a uint8 one below its
 // smallest is the largest uint8.
 function go2jsIntWrap(value, typeName) {
+	// a whole number with more digits than a double keeps is given the width of
+	// its type as digits, since the digits a double is carrying past that point
+	// are not the ones the number was given
+	if (typeof value === "bigint") {
+		return go2jsNarrow(go2jsWideWrap(value, typeName));
+	}
+
 	const number = Math.trunc(Number(value));
 	let bits = 0;
 	let signed = true;
@@ -4565,6 +4831,10 @@ function go2jsIntWrap(value, typeName) {
 // after a quotient cut off toward zero, rather than the JavaScript remainder
 // that keeps the sign of the dividend.
 function go2jsMod(left, right) {
+	if (go2jsIsWide(left) || go2jsIsWide(right)) {
+		return go2jsWideRem(left, right);
+	}
+
 	if (right === 0) {
 		throw new RangeError(go2jsRuntimeErrorPrefix + "integer divide by zero");
 	}
@@ -6549,7 +6819,9 @@ function go2jsBigintFormat(value, parsed, typeName, kind) {
 		return go2jsFormatValue("T", "%T", go2jsTyped(0, accepted));
 	}
 
-	if (verb === "c" || verb === "q" || verb === "s" || verb === "U") {
+	// these three read a number as the character it stands for. %s does not: it
+	// is written for a string, and fmt says so when a number is given to it.
+	if (verb === "c" || verb === "q" || verb === "U") {
 		return go2jsFormatValue(verb, "%" + verb, go2jsTyped(Number(value), "rune"));
 	}
 
@@ -6567,10 +6839,8 @@ function go2jsBigintFormat(value, parsed, typeName, kind) {
 		out = value.toString(8);
 	} else if (verb === "x" || verb === "X") {
 		out = value.toString(16);
-	} else if (verb === "e" || verb === "f" || verb === "g") {
-		out = value.toString(10);
 	} else {
-		return "%!" + verb + "(" + (kind === "rune" ? "int32" : accepted) + "=" + value.toString(10) + ")";
+		return "%!" + verb + "(" + (accepted === "rune" ? "int32" : accepted) + "=" + value.toString(10) + ")";
 	}
 
 	// only %X asks for capital digits, and %x with the sharp flag keeps its
