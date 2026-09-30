@@ -126,3 +126,29 @@ func main() {
 }
 `)
 }
+
+func TestFlagAfterWidthIsTheVerb(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+func main() {
+	// fmt reads its flags before the width and its precision, so a flag written
+	// after one of them is the verb instead. No operand can answer a space that
+	// way, so it is turned down, and whatever follows it stays text.
+	fmt.Printf("a=%08 x b=%8 x c=%.* x d=%* x\n", 255, 255, 4, 255, 6, 255)
+	fmt.Printf("e=%8. x f=%08.2 x\n", 255, 255)
+	fmt.Printf("g=%8 d h=%8.2f i=%8 v\n", 255, 255, 255)
+
+	// A space written before the width is a flag, and a minus beside it still
+	// says where the padding goes.
+	fmt.Printf("j=% x k=% 8x l=%- 8v m=%# 8x\n", 255, 255, 255, 255)
+	fmt.Printf("n=%0 8x o=%+ 8x p=% 8.2f\n", 255, 255, 1.5)
+
+	// The space asks for a sign in front of a number that has none, so %v takes
+	// it just as the base ten verbs do.
+	fmt.Printf("q=% v r=%8 v s=%-8v t=%+v u=%v\n", 255, 255, 255, 255, 255)
+	fmt.Printf("w=% v x=%8 v y=% v z=%-6v\n", -255, -255, 1.5, 1.5, 255)
+}
+`)
+}
