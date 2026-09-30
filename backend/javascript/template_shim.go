@@ -217,18 +217,12 @@ function go2jsTemplateParseNodes(text, stops, offset) {
 			throw new Error("template: unexpected " + keyword);
 		}
 
-		if (keyword === "if" || keyword === "range" || keyword === "with" ||
-			keyword === "define" || keyword === "block") {
-			const block = go2jsTemplateParseBlock(text, index, keyword);
-
-			nodes.push(block.node);
-			index = block.index;
-
-			continue;
-		}
-
-		if (keyword === "template") {
-			const block = go2jsTemplateParseBlock(text, index, "template");
+		// A block action opens a body of its own, and what that body is decided
+		// by is the rest of the action rather than the body that follows it.
+		if ((keyword === "if" || keyword === "range" || keyword === "with" ||
+			keyword === "define" || keyword === "block" || keyword === "template")
+			&& body.length > keyword.length) {
+			const block = go2jsTemplateParseBlock(text, index, keyword, body.slice(keyword.length).trim());
 
 			nodes.push(block.node);
 			index = block.index;
@@ -240,34 +234,38 @@ function go2jsTemplateParseNodes(text, stops, offset) {
 	}
 }
 
-function go2jsTemplateParseBlock(text, index, keyword) {
+// go2jsTemplateParseBlock reads the body of a block action and the branch that
+// follows it, up to the end that closes it. The action itself is read by the
+// caller, because the body of a block begins after the action rather than
+// inside it.
+function go2jsTemplateParseBlock(text, index, keyword, action) {
 	const head = go2jsTemplateParseNodes(text, ["else", "end"], index);
-	const node = {t: keyword, action: "", body: head.nodes, alt: [], stop: ""};
+	const node = {t: keyword, action: action, body: head.nodes, alt: [], stop: ""};
 
 	if (head.stop === "end") {
-		node.action = head.action;
 		return {node: node, index: head.index};
 	}
 
-	if (head.stop === "else") {
-		const rest = head.action.trim();
-		const branch = go2jsTemplateParseNodes(text, ["else", "end"], head.index);
+	const branch = go2jsTemplateParseNodes(text, ["else", "end"], head.index);
 
-		node.action = rest;
-		node.alt = branch.nodes;
+	node.alt = branch.nodes;
 
-		if (branch.stop === "end") {
-			node.stop = "end";
-			return {node: node, index: branch.index};
-		}
-
-		const nested = go2jsTemplateParseBlock(text, branch.index, "if");
-		node.alt = [nested.node];
-
-		return {node: node, index: nested.index};
+	if (branch.stop === "end") {
+		node.stop = "end";
+		return {node: node, index: branch.index};
 	}
 
-	throw new Error("template: unexpected EOF in " + keyword);
+	// An else that opens another if asks a further question rather than naming a
+	// branch of its own, so it is read as the block it is and stands in for the
+	// branch. Anything else after an else is a pipeline the else is given.
+	const rest = branch.action.trim();
+	const nested = rest.startsWith("if")
+		? go2jsTemplateParseBlock(text, branch.index, "if", rest.slice(2).trim())
+		: go2jsTemplateParseBlock(text, branch.index, "if", rest);
+
+	node.alt = [nested.node];
+
+	return {node: node, index: nested.index};
 }
 
 function go2jsTemplateRender(nodes, dot, root, funcs, vars) {
@@ -434,7 +432,9 @@ function go2jsTemplateRangeVars(action) {
 		return [];
 	}
 
-	return action.slice(0, cut).trim().split(/\s+/).filter((name) => name.startsWith("$"));
+	// The names are written in a list, so each one but the last carries the comma
+	// that separates it from the next.
+	return action.slice(0, cut).trim().split(/[\s,]+/).filter((name) => name.startsWith("$"));
 }
 
 function go2jsTemplateStripRangeVars(declared, action) {
@@ -648,9 +648,14 @@ function go2jsTemplateResolve(token, args, dot, root, funcs, vars) {
 		return go2jsTemplateCall(dot, args);
 	}
 
+	// A variable is named up to the first dot, and whatever follows that dot is
+	// a field of the value the variable holds rather than part of its name.
 	if (word.startsWith("$")) {
-		const base = word === "$" ? root : vars[word];
-		return go2jsTemplateField(word, base, args, dot);
+		const dot2 = word.indexOf(".");
+		const name = dot2 === -1 ? word : word.slice(0, dot2);
+		const base = name === "$" ? root : vars[name];
+
+		return go2jsTemplateField(word.slice(name.length), base, args, dot);
 	}
 
 	if (word.startsWith(".")) {
@@ -950,6 +955,18 @@ function go2jsTemplateTruth(value) {
 	return true;
 }
 
+// A number reaches a template as whatever arithmetic left behind, so it is
+// written the way the language writes one: without a trailing fraction, and in
+// the exponent form once the number is too large or too small to sit on one
+// line.
+function go2jsTemplateNumber(value) {
+	if (typeof go2jsFormatFloatDefault === "function") {
+		return go2jsFormatFloatDefault(value);
+	}
+
+	return String(value);
+}
+
 function go2jsTemplateString(value) {
 	if (value === null || value === undefined) {
 		return "";
@@ -968,7 +985,7 @@ function go2jsTemplateString(value) {
 	}
 
 	if (typeof value === "number") {
-		return go2jsFormatNumber(value);
+		return go2jsTemplateNumber(value);
 	}
 
 	if (value.__go2js_reflectValue === true) {

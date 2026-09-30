@@ -151,6 +151,19 @@ func (e *emitter) emitInterfaceValue(expr ast.Expr, target gotypes.Type) error {
 		}
 	}
 
+	// A pointer that is written as a conversion of the nil identifier goes into
+	// an interface as a pointer to nothing rather than as nothing, because an
+	// interface holding a nil pointer is not itself nil and only the type tells
+	// the two apart.
+	if isInterfaceLikeType(target) && e.analysis != nil {
+		if info, ok := e.analysis.Types[expr]; ok && info.Type != nil && isTypedNilPointer(expr, info.Type) {
+			name := goTypeName(info.Type)
+			e.needsRuntime = true
+			e.write("go2jsInterface(go2jsNew(null, " + strconv.Quote(name) + "), " + strconv.Quote(name) + ", " + strconv.Quote(name) + ")")
+			return nil
+		}
+	}
+
 	if isInterfaceGoType(target) {
 		if e.isInterfaceExpr(expr) {
 			return e.emitExpr(expr)
@@ -190,7 +203,7 @@ func (e *emitter) emitInterfaceValue(expr ast.Expr, target gotypes.Type) error {
 	}
 
 	if isInterfaceTarget(target) && e.analysis != nil {
-		if name, ok := namedBasicTypeName(e.analysis.Types[expr].Type); ok {
+		if name, ok := interfaceDynamicTypeName(e.analysis.Types[expr].Type); ok {
 			e.needsRuntime = true
 			e.write("go2jsInterface(")
 
@@ -223,6 +236,64 @@ func isInterfaceTarget(t gotypes.Type) bool {
 	}
 
 	return isInterfaceGoType(t)
+}
+
+// isTypedNilPointer reports whether an expression writes a nil pointer, which is
+// a conversion of the nil identifier to a pointer type. The nil on its own is not
+// one, because it fills whatever type it is given.
+func isTypedNilPointer(expr ast.Expr, t gotypes.Type) bool {
+	if _, ok := t.Underlying().(*gotypes.Pointer); !ok {
+		return false
+	}
+
+	call, ok := expr.(*ast.CallExpr)
+	if !ok || len(call.Args) != 1 {
+		return false
+	}
+
+	ident, ok := call.Args[0].(*ast.Ident)
+
+	return ok && ident.Name == "nil"
+}
+
+// interfaceDynamicTypeName reports the name a value of type t has to be known by
+// once it sits in an interface. A value keeps its identity there, because an
+// interface holds a value together with the type it has rather than the type it
+// was declared with.
+//
+// JavaScript has types of its own for the four that everyday code is written in,
+// and a value of one of them already reads back as itself. Every other type has
+// to be told apart by its name, so it is boxed on the way in. A defined type
+// whose underlying type is a basic one counts as one of its own, because
+// JavaScript cannot see that it is anything but the basic type underneath.
+func interfaceDynamicTypeName(t gotypes.Type) (string, bool) {
+	if t == nil {
+		return "", false
+	}
+
+	t = gotypes.Unalias(t)
+
+	if named, ok := t.(*gotypes.Named); ok {
+		name, ok := namedBasicTypeName(named)
+		return name, ok
+	}
+
+	basic, ok := t.(*gotypes.Basic)
+	if !ok {
+		return "", false
+	}
+
+	switch basic.Kind() {
+	case gotypes.Bool, gotypes.String, gotypes.Int, gotypes.Float64, gotypes.UnsafePointer:
+		return "", false
+	}
+
+	name := basic.Name()
+	if name == "byte" {
+		name = "uint8"
+	}
+
+	return name, name != ""
 }
 
 // namedBasicTypeName reports the name of a defined (non-alias) type whose

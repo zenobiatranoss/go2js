@@ -168,11 +168,19 @@ func (e *emitter) emitTypeSwitchClause(clause *ast.CaseClause, first int) error 
 	if len(clause.List) == 0 {
 		e.write("default:")
 	} else {
-		// Every label of a clause stands for the same body, so the clause names
-		// the first of the places they occupy and lets the rest fall to it.
-		e.write("case ")
-		e.write(strconv.Itoa(first))
-		e.write(":")
+		// Every label of a clause stands for the same body, so the clause takes
+		// every place its labels occupy. They are written one under the other
+		// rather than side by side, because a case label holds one value and
+		// "case 0, 1, 2:" would read as the last of the three. A value that is
+		// none of them falls to the clause that does take it, which is what
+		// "case int, string:" has to do when the value turned out to be neither.
+		for i := range clause.List {
+			e.writeIndent()
+			e.write("case " + strconv.Itoa(first+i) + ":")
+			e.newline()
+		}
+
+		e.writeIndent()
 	}
 
 	e.newline()
