@@ -134,8 +134,9 @@ function go2jsReflectMapOf(key, element) {
 	return go2jsReflectType("map", "", element, key, go2jsReflectMethodsOf(element));
 }
 
-// go2jsReflectTypeLen reports the length of an array, which is the one kind
-// that has a length of its own rather than one that was handed to it.
+// go2jsReflectTypeLen reports the length of a type, which is the one kind of
+// type that has a length of its own rather than one that was handed to it. A
+// type is not a value, so a slice or a string has none to report either.
 function go2jsReflectTypeLen(receiver) {
 	const type = go2jsReflectValueType(receiver);
 
@@ -147,7 +148,7 @@ function go2jsReflectTypeLen(receiver) {
 }
 
 function go2jsReflectType(go2jsKind, go2jsName, go2jsElem, go2jsKey, go2jsMethods, go2jsLen) {
-	return {
+	const type = {
 		__go2js_reflectType: true,
 		kind: go2jsKind,
 		name: go2jsName || "",
@@ -156,6 +157,19 @@ function go2jsReflectType(go2jsKind, go2jsName, go2jsElem, go2jsKey, go2jsMethod
 		methods: go2jsMethods || [],
 		len: typeof go2jsLen === "number" ? go2jsLen : null
 	};
+
+	// A type writes itself as the name it has, so a program that prints one, or
+	// hands it to a verb that takes a string, is given that name rather than the
+	// parts of the descriptor. It is kept out of the way of the fields the
+	// descriptor is read for, which are its own.
+	Object.defineProperty(type, "String", {
+		value: () => go2jsReflectTypeString(type),
+		enumerable: false,
+		writable: true,
+		configurable: true
+	});
+
+	return type;
 }
 
 // go2jsReflectMethodsOf reports the method set a type descriptor carries. It is
