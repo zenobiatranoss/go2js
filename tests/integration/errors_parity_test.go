@@ -387,3 +387,53 @@ func main() {
 }
 `)
 }
+
+// A type that writes itself is asked to, and the value is handed to the verb
+// rather than its message, so a wrapper that writes the error it holds and then
+// its own message writes both in that order, which is what %+v asks of it.
+func TestErrorVerbReachesTheValueItself(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"strings"
+)
+
+type writer struct {
+	cause error
+	msg   string
+}
+
+func (w *writer) Error() string { return w.msg + ": " + w.cause.Error() }
+
+func (w *writer) Unwrap() error { return w.cause }
+
+func (w *writer) Format(s fmt.State, verb rune) {
+	if verb == 'v' && s.Flag('+') {
+		fmt.Fprintf(s, "%+v\n", w.cause)
+		io.WriteString(s, w.msg)
+		return
+	}
+
+	io.WriteString(s, w.Error())
+}
+
+func main() {
+	base := errors.New("base failure")
+	wrapped := &writer{cause: base, msg: "context"}
+
+	fmt.Println(wrapped)
+	fmt.Println(errors.Is(wrapped, base))
+	fmt.Println(errors.Unwrap(wrapped))
+
+	// %+v writes the error that is held and then the message wrapped around
+	// it, and a verb that has no more to say writes the message on its own.
+	lines := strings.SplitN(fmt.Sprintf("%+v", wrapped), "\n", 3)
+	fmt.Println(lines[0], lines[1])
+	fmt.Println(fmt.Sprintf("%v", wrapped), fmt.Sprintf("%s", wrapped))
+	fmt.Printf("%v %s %q\n", wrapped, wrapped, wrapped)
+}
+`)
+}
