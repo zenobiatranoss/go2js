@@ -48,7 +48,28 @@ function go2jsTimerDue(channel) {
 
 	go2jsTimers.delete(channel);
 	channel.timerDeadline = undefined;
+
+	// A timer that runs a function has no value to send: the function is what
+	// the timer was asked for, and the moment it fires at is not a result.
+	if (typeof channel.timerCallback === "function") {
+		const run = channel.timerCallback;
+
+		delete channel.timerCallback;
+		run();
+
+		return true;
+	}
+
 	channel.buffer.push(go2jsTimeValue(new Date(channel.timerDue)));
+
+	// A ticker sends again once its period is up, so the deadline it leaves
+	// behind is the next one rather than none at all. A ticker that was stopped
+	// has no period left and is done.
+	if (channel.timerPeriod !== null && channel.timerPeriod !== undefined) {
+		channel.timerDeadline = Date.now() + channel.timerPeriod;
+		channel.timerDue = go2jsTimeAdd(go2jsTimeNow(), go2jsTimeMilliseconds(channel.timerPeriod));
+		go2jsTimers.set(channel, channel.timerDue);
+	}
 
 	return true;
 }
@@ -287,9 +308,22 @@ function go2jsRunTasks() {
 				throw new Error("go2js: goroutine task limit exceeded");
 			}
 
-			const task = go2jsTasks.shift();
+		const task = go2jsTasks.shift();
+
+		try {
 			task();
-			executed++;
+		} catch (thrown) {
+			// A goroutine that was told to end stops there, and the rest of them
+			// carry on. Anything else is a failure and belongs to the program, so
+			// it is left to travel up.
+			if (!go2jsIsGoexit(thrown)) {
+				go2jsDraining = false;
+				throw thrown;
+			}
+		}
+
+		executed++;
+
 		}
 	} finally {
 		go2jsDraining = false;

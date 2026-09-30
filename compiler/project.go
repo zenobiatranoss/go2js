@@ -276,6 +276,10 @@ func (p *project) emitNamespace(pkg *projectPackage) (string, error) {
 		}
 
 		for _, alias := range p.localNames(pkg.pkg)[imported] {
+			// An alias is a declaration, so it takes the same JavaScript spelling
+			// every use of it is written with.
+			alias = javascript.Identifier(alias)
+
 			if emittedNames[alias] {
 				continue
 			}
@@ -301,7 +305,16 @@ func (p *project) emitNamespace(pkg *projectPackage) (string, error) {
 
 	code, initCalls := renameInitFunctions(pkg.pkg, code)
 	out.WriteString(code)
+
+	// A package level variable is assigned once every declaration in the package
+	// is in place, which is before the init functions of that package run, so
+	// the assignments that were held back are made here.
+	if strings.Contains(code, "go2jsDeferInit(") {
+		out.WriteString("go2jsRunInitializers();\n")
+	}
+
 	out.WriteString(initCalls)
+
 	out.WriteString("\nreturn {")
 
 	names := exportedNames(pkg.pkg)
@@ -350,6 +363,8 @@ func (p *project) emitImports(out *strings.Builder, pkg *Package) error {
 		}
 
 		for _, alias := range p.localNames(pkg)[imported] {
+			alias = javascript.Identifier(alias)
+
 			if emitted[alias] {
 				continue
 			}

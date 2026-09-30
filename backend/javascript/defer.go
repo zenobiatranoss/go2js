@@ -94,6 +94,12 @@ func (e *emitter) emitFuncBody(body *ast.BlockStmt) error {
 	e.writeIndent()
 	e.write("if (go2jsPanicValue === undefined || go2jsRecovered) return undefined;")
 	e.newline()
+	// A goroutine that was told to end is unwound, not recovered from: recover
+	// answers nothing for it, the way it answers nothing for a goroutine that
+	// was never panicking.
+	e.writeIndent()
+	e.write("if (go2jsPanicValue === go2jsGoexitSignal) return undefined;")
+	e.newline()
 	e.writeIndent()
 	e.write("go2jsRecovered = true;")
 	e.newline()

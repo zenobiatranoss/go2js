@@ -34,6 +34,8 @@ type emitter struct {
 	needsRuntime        bool
 	reflectTypeKeys     map[gotypesstd.Type]string
 	reflectTypeConsts   []string
+	reflectTypeUnit     int
+	deferredInits       bool
 	addressNeeded       map[gotypesstd.Object]bool
 	addressNames        map[gotypesstd.Object]string
 	addressStack        []map[gotypesstd.Object]string
@@ -225,6 +227,7 @@ func emitFilePass(file *ast.File, analysis *gotypes.Result, context *semantic.Co
 		localStructTypes: localStructTypeNames(file),
 		selfPackagePath:  selfPackagePath,
 		qualifiers:       qualifiers,
+		reflectTypeUnit:  nextReflectTypeUnit(),
 	}
 	for _, decl := range file.Decls {
 		switch d := decl.(type) {
@@ -259,6 +262,13 @@ func emitFilePass(file *ast.File, analysis *gotypes.Result, context *semantic.Co
 	if pass != emitTypesOnly && file.Name.Name == "main" {
 		for _, decl := range file.Decls {
 			if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv == nil && fn.Name.Name == "main" {
+				if e.deferredInits {
+					// The assignments that were held back are made here, which
+					// is once every declaration of the program has been read.
+					e.write("go2jsRunInitializers();")
+					e.newline()
+				}
+
 				e.write("main();")
 				e.newline()
 				break
@@ -304,6 +314,8 @@ func ProgramRuntime(requiredSource, target string) string {
 		moreRuntimeSource(),
 		funcTypeRuntimeSource(),
 		reflectRuntimeSource(),
+		debugRuntimeSource(),
+		httptestRuntimeSource(),
 		netRuntimeSource(),
 		templateRuntimeSource(),
 		osFileRuntimeSource(),
@@ -608,12 +620,40 @@ func (e *emitter) emitTypeAssertAssignment(stmt *ast.AssignStmt) (bool, error) {
 	}
 
 	e.needsRuntime = true
-	e.writeIndent()
+	assignOnly := false
 
 	if stmt.Tok == token.DEFINE {
-		e.write(e.emitDeclarationKeyword())
+		// A short declaration only introduces the names that are not in scope
+		// yet, so a statement that repeats one of them declares the rest and
+		// assigns to all of them. Writing let for the whole pattern would declare
+		// the name that is already there a second time, which Go allows because
+		// the two declarations are scoped apart and JavaScript is not.
+		fresh := e.shortDeclareNames(stmt.Lhs)
+
+		if len(fresh) == e.declarableNameCount(stmt.Lhs) {
+			e.write(e.emitDeclarationKeyword())
+		} else {
+			for _, name := range fresh {
+				e.writeIndent()
+				e.write(e.emitDeclarationKeyword())
+				e.write(name)
+				e.write(";")
+				e.newline()
+			}
+
+			e.writeIndent()
+			// A pattern that assigns rather than declares has to be written as
+			// an expression, and a statement may not begin with a bracket.
+			e.write("(")
+			assignOnly = true
+		}
+
+		for _, name := range fresh {
+			e.declare(name)
+		}
 	}
 
+	e.writeIndent()
 	e.write("[")
 	for i, lhs := range stmt.Lhs {
 		if i > 0 {
@@ -622,10 +662,6 @@ func (e *emitter) emitTypeAssertAssignment(stmt *ast.AssignStmt) (bool, error) {
 
 		if ident, ok := lhs.(*ast.Ident); ok && ident.Name == "_" {
 			continue
-		}
-
-		if ident, ok := lhs.(*ast.Ident); ok && stmt.Tok == token.DEFINE {
-			e.declare(ident.Name)
 		}
 
 		if err := e.emitTargetExpr(lhs); err != nil {
@@ -641,6 +677,11 @@ func (e *emitter) emitTypeAssertAssignment(stmt *ast.AssignStmt) (bool, error) {
 	e.write(`, "`)
 	e.write(e.typeAssertName(assert.Type))
 	e.write(`")`)
+
+	if assignOnly {
+		e.write(")")
+	}
+
 	e.write(";")
 	e.newline()
 
@@ -1187,6 +1228,8 @@ func (e *emitter) emitIfBody(stmt *ast.IfStmt) error {
 }
 
 func (e *emitter) emitInlineMultiReturn(stmt *ast.AssignStmt) error {
+	assignOnly := false
+
 	if stmt.Tok == token.DEFINE {
 		// A short declaration only declares names that are not already in
 		// scope, so existing names must be assigned rather than redeclared.
@@ -1242,6 +1285,11 @@ func (e *emitter) emitInlineMultiReturn(stmt *ast.AssignStmt) error {
 				e.newline()
 				e.writeIndent()
 			}
+
+			// A pattern that assigns rather than declares has to be written as
+			// an expression, and a statement may not begin with a bracket.
+			e.write("(")
+			assignOnly = true
 		}
 	}
 
@@ -1271,10 +1319,22 @@ func (e *emitter) emitInlineMultiReturn(stmt *ast.AssignStmt) error {
 		e.write(e.typeAssertName(assert.Type))
 		e.write(`")`)
 
+		if assignOnly {
+			e.write(")")
+		}
+
 		return nil
 	}
 
-	return e.emitMultiReturnExpr(stmt.Rhs[0])
+	if err := e.emitMultiReturnExpr(stmt.Rhs[0]); err != nil {
+		return err
+	}
+
+	if assignOnly {
+		e.write(")")
+	}
+
+	return nil
 }
 
 func (e *emitter) emitInlineStmt(stmt ast.Stmt) error {
@@ -1393,9 +1453,96 @@ func (e *emitter) emitGenDecl(decl *ast.GenDecl) error {
 	return nil
 }
 
+// topLevelVars is true while a variable declared at the top level of a file is
+// being written, which is where Go lets an initializer name anything the package
+// declares rather than only what came before it.
+func (e *emitter) topLevelVars() bool {
+	return len(e.scopes) == 0
+}
+
+// emitTopLevelVarDecl writes a variable declared at the top level of a file.
+// Go initializes package level variables after every declaration in the package
+// is in place, so an initializer there may name a type another file declares
+// later on. A JavaScript let at the top level would run at the point it is
+// written, before that class exists, so the assignment is held back and made
+// once the whole program has been loaded. The names are declared here and keep
+// the order the initializers are given, which is the order Go initializes them
+// in.
+func (e *emitter) emitTopLevelVarDecl(decl *ast.GenDecl) error {
+	initialized := false
+
+	for _, spec := range decl.Specs {
+		valueSpec, ok := spec.(*ast.ValueSpec)
+		if !ok {
+			return fmt.Errorf("unsupported value specification: %T", spec)
+		}
+
+		for i, name := range valueSpec.Names {
+			e.writeIndent()
+			e.write(e.emitDeclarationKeyword())
+			e.write(javaScriptIdentifier(name.Name))
+			e.declare(name.Name)
+			e.write(";")
+			e.newline()
+
+			if i < len(valueSpec.Values) {
+				initialized = true
+			}
+		}
+	}
+
+	if !initialized {
+		return nil
+	}
+
+	e.needsRuntime = true
+	e.deferredInits = true
+	e.writeIndent()
+	e.write("go2jsDeferInit(() => {")
+	e.newline()
+	e.indent++
+
+	for _, spec := range decl.Specs {
+		valueSpec, ok := spec.(*ast.ValueSpec)
+		if !ok {
+			continue
+		}
+
+		for i, name := range valueSpec.Names {
+			if i >= len(valueSpec.Values) {
+				continue
+			}
+
+			e.writeIndent()
+			e.write(javaScriptIdentifier(name.Name))
+			e.write(" = ")
+
+			target := e.variableType(name)
+			if err := e.emitInterfaceValue(valueSpec.Values[i], target); err != nil {
+				e.indent--
+				return err
+			}
+
+			e.write(";")
+			e.newline()
+		}
+	}
+
+	e.indent--
+	e.writeIndent()
+	e.write("});")
+	e.newline()
+
+	return nil
+}
+
 func (e *emitter) emitValueDecl(decl *ast.GenDecl) error {
 	if decl.Tok == token.CONST {
 		return e.emitConstDecl(decl)
+	}
+
+	if e.topLevelVars() {
+		return e.emitTopLevelVarDecl(decl)
 	}
 
 	e.writeIndent()
@@ -1841,6 +1988,14 @@ var javaScriptReservedNames = map[string]bool{
 	"process": true, "queueMicrotask": true, "require": true,
 	"setTimeout": true, "structuredClone": true, "TextDecoder": true,
 	"TextEncoder": true,
+}
+
+// Identifier is the JavaScript spelling of a name declared in Go. A name that
+// a JavaScript program already uses at the top level is renamed so a
+// declaration of it does not take the global over, and every use of the name
+// has to be written the same way.
+func Identifier(name string) string {
+	return javaScriptIdentifier(name)
 }
 
 func javaScriptIdentifier(name string) string {
