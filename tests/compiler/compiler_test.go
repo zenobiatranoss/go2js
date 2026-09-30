@@ -37,7 +37,9 @@ func main() {
 
 	expected := []string{
 		"function add(a, b)",
-		"return a + b;",
+		// the sum of two numbers a double cannot be trusted with is worked out
+		// by the runtime, which keeps every digit of it
+		`return go2jsWideAdd(a, b, "int");`,
 		"let result = add(10, 20);",
 		"if (result > 20)",
 		"for (let i = 0; i < 3; i++)",
@@ -283,7 +285,35 @@ func main() {
 	}
 }
 
+// A division of two numbers is a whole number, and so it is worked out as one
+// rather than left to an operator that would round it.
 func TestCompileIntegerDivision(t *testing.T) {
+	source := `package main
+
+func half(value int) int {
+	return value / 2
+}
+
+func main() {
+	println(half(7))
+}
+`
+
+	file := writeSource(t, source)
+
+	output, err := compiler.CompileFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(output, "go2jsDivide(value, 2)") {
+		t.Fatalf("integer division was not lowered correctly:\n%s", output)
+	}
+}
+
+// Two numbers Go already knows the answer of are answered here rather than at
+// the place they are written, since there is nothing left to work out.
+func TestCompileFoldsIntegerConstantDivision(t *testing.T) {
 	source := `package main
 
 func main() {
@@ -299,8 +329,8 @@ func main() {
 		t.Fatal(err)
 	}
 
-	if !strings.Contains(output, "go2jsDivide(7, 2)") {
-		t.Fatalf("integer division was not lowered correctly:\n%s", output)
+	if !strings.Contains(output, "let value = 3;") {
+		t.Fatalf("constant division was not folded:\n%s", output)
 	}
 }
 
@@ -351,8 +381,10 @@ func main() {
 		t.Fatal(err)
 	}
 
+	// a whole number read out of a double is read through the runtime, so that
+	// a number too wide for a double keeps every digit on the way back
 	for _, want := range []string{
-		"Math.trunc(input)",
+		"go2jsWideToSigned(input)",
 		"String.fromCodePoint(65)",
 	} {
 		if !strings.Contains(output, want) {
@@ -493,7 +525,9 @@ func (u User) Test() string {
 	}
 }
 
-func TestCompileRejectsUnsafeIntegerLiteral(t *testing.T) {
+// A number too many digits for a double is still a number Go can hold, so it is
+// written as digits rather than refused.
+func TestCompileAcceptsUnsafeIntegerLiteral(t *testing.T) {
 	source := `package main
 
 func main() {
@@ -504,13 +538,13 @@ func main() {
 
 	file := writeSource(t, source)
 
-	_, err := compiler.CompileFile(file)
-	if err == nil {
-		t.Fatal("expected an error for an integer literal outside the safe range")
+	output, err := compiler.CompileFile(file)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if !strings.Contains(err.Error(), "safe integer range") {
-		t.Fatalf("unexpected error: %v", err)
+	if !strings.Contains(output, "9223372036854775807n") {
+		t.Fatalf("expected a whole number literal, got:\n%s", output)
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"go/token"
 	gotypes "go/types"
 	"math"
+	"math/big"
 	"strconv"
 	"strings"
 )
@@ -156,6 +157,70 @@ func (e *emitter) foldedFloatConstant(expr ast.Expr) (string, bool) {
 	}
 }
 
+// foldedIntConstant writes down the answer to a worked out whole number, in the
+// fewest digits that read back as the same whole number. Go works constant
+// arithmetic out exactly, with as many digits as the answer has, and a program
+// that has an answer like two to the sixty second plus one is asking for a
+// number no double holds. Working it out here, where the exact value is in
+// hand, is the only way to write it down at all.
+func (e *emitter) foldedIntConstant(expr ast.Expr) (string, bool) {
+	if e.analysis == nil {
+		return "", false
+	}
+
+	info, ok := e.analysis.Types[expr]
+	if !ok || info.Value == nil {
+		return "", false
+	}
+
+	// only whole numbers are worked out here, and only when they are free of a
+	// type that would round the answer on its way to being written down
+	value := constant.ToInt(info.Value)
+
+	if value.Kind() != constant.Int {
+		return "", false
+	}
+
+	if info.Type != nil {
+		// a type with a name of its own is written the way it is written in Go,
+		// through the operation that makes it, since folding it away would take
+		// away the shape the name gives it
+		if _, named := info.Type.(*gotypes.Named); named {
+			return "", false
+		}
+
+		basic, isBasic := info.Type.Underlying().(*gotypes.Basic)
+
+		if !isBasic || basic.Info()&gotypes.IsInteger == 0 {
+			return "", false
+		}
+
+		// a narrow type is wrapped on the way to being used rather than worked
+		// out, so folding one here would take the wrapping away from it, and a
+		// type that carries no name of its own has nothing to be folded to
+		if basic.Info()&gotypes.IsUntyped == 0 && !isWideIntType(info.Type) {
+			return "", false
+		}
+	}
+
+	text, ok := new(big.Int).SetString(value.ExactString(), 10)
+	if !ok {
+		return "", false
+	}
+
+	// a whole number a double holds exactly is written as one, since that is
+	// what every other part of the program expects to be handed
+	if text.IsInt64() && text.Int64() <= maxSafeIntegerLiteral && text.Int64() >= -maxSafeIntegerLiteral {
+		return text.String(), true
+	}
+
+	if text.Sign() < 0 {
+		return "-" + new(big.Int).Neg(text).String() + "n", true
+	}
+
+	return text.String() + "n", true
+}
+
 // hasFloatOperand reports whether any part of an expression is a number with a
 // decimal point in it, which is what makes a worked out answer something the
 // numbers of a JavaScript engine cannot be trusted to find again.
@@ -188,6 +253,57 @@ func (e *emitter) hasFloatOperand(expr ast.Expr) bool {
 // it gives the number that fits instead. A float, a string and a type as wide
 // as the machine word are left out, because a number that wide is not one
 // JavaScript loses track of.
+// wideIntOperator names the runtime function that runs an operation over whole
+// numbers, whichever of the two kinds of whole number it is handed. It is only
+// needed where the type the answer lands in can hold digits a double cannot
+// keep, which for a narrower type cannot happen, so a program working in int32 or
+// below is left with the plain operator.
+func wideIntOperator(op token.Token) (string, bool) {
+	switch op {
+	case token.ADD:
+		return "go2jsWideAdd", true
+	case token.SUB:
+		return "go2jsWideSub", true
+	case token.MUL:
+		return "go2jsWideMul", true
+	case token.QUO:
+		return "go2jsWideQuo", true
+	case token.REM:
+		return "go2jsWideRem", true
+	case token.AND:
+		return "go2jsWideAnd", true
+	case token.OR:
+		return "go2jsWideOr", true
+	case token.XOR:
+		return "go2jsWideXor", true
+	case token.AND_NOT:
+		return "go2jsWideAndNot", true
+	default:
+		return "", false
+	}
+}
+
+// isWideIntType reports whether a type can hold whole numbers with more digits
+// in them than a double keeps exactly, which is what makes an operation over it
+// something a double cannot be trusted with.
+func isWideIntType(t gotypes.Type) bool {
+	if t == nil {
+		return false
+	}
+
+	basic, ok := t.Underlying().(*gotypes.Basic)
+	if !ok {
+		return false
+	}
+
+	switch basic.Kind() {
+	case gotypes.Int, gotypes.Int64, gotypes.Uint, gotypes.Uint64, gotypes.Uintptr:
+		return true
+	default:
+		return false
+	}
+}
+
 func narrowIntTypeName(t gotypes.Type) (string, bool) {
 	if t == nil {
 		return "", false
@@ -277,6 +393,12 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			return nil
 		}
 
+		if folded, ok := e.foldedIntConstant(x); ok {
+			e.write(folded)
+
+			return nil
+		}
+
 		if handled, err := e.emitInterfaceComparison(x); handled {
 			return err
 		}
@@ -317,6 +439,15 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 
 			if err := e.emitExpr(x.Y); err != nil {
 				return err
+			}
+
+			// a shift lands inside the width of the type it is for, which says
+			// so, and a number with no type of its own is left where it lands
+			if isWideIntType(e.analyzedType(x)) {
+				if basic := basicOf(e.analyzedType(x)); basic != nil {
+					e.write(", ")
+					e.write(strconv.Quote(basic.Name()))
+				}
 			}
 
 			e.write(")")
@@ -385,7 +516,24 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			e.write("go2jsFloat32(")
 		}
 
-		if x.Op == token.AND_NOT {
+		// A whole number wider than a double can keep is worked out by the
+		// runtime, which reads both kinds of whole number the same way, and the
+		// plain operator is left for the types a double does cover.
+		wideName, wide := "", false
+		wideType := ""
+
+		if isWideIntType(e.analyzedType(x)) && isArithmeticOp(x.Op) {
+			wideName, wide = wideIntOperator(x.Op)
+			wideType = e.analyzedType(x).Underlying().(*gotypes.Basic).Name()
+		}
+
+		if wide {
+			e.needsRuntime = true
+			e.write(wideName)
+			e.write("(")
+		}
+
+		if x.Op == token.AND_NOT && !wide {
 			e.write("(")
 			if err := e.emitExpr(x.X); err != nil {
 				return err
@@ -400,13 +548,28 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				return err
 			}
 
-			e.write(" ")
-			e.write(x.Op.String())
-			e.write(" ")
+			if wide {
+				// the work is done by the function rather than by an operator, so
+				// the two numbers are handed over as its arguments
+				e.write(", ")
+			} else {
+				e.write(" ")
+				e.write(x.Op.String())
+				e.write(" ")
+			}
 
 			if err := e.emitBinaryOperand(x.Y, x.Op, true); err != nil {
 				return err
 			}
+		}
+
+		if wide {
+			// the answer is given back inside the width of the type it is for,
+			// since a number wider than that type is the number that fits rather
+			// than a fault
+			e.write(", ")
+			e.write(strconv.Quote(wideType))
+			e.write(")")
 		}
 
 		if wrapDuration {
