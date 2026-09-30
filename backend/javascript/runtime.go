@@ -2484,6 +2484,18 @@ function go2jsLookupMember(target, name) {
 		return undefined;
 	}
 
+	if (target.__go2js_typed_nil === true) {
+		const methods = go2jsInterfaceMethods(target.__go2js_type_name);
+
+		if (methods === undefined || methods.indexOf(name) < 0) {
+			return undefined;
+		}
+
+		return function go2jsTypedNilMethod() {
+			throw new TypeError(go2jsRuntimeErrorPrefix + "invalid memory address or nil pointer dereference");
+		};
+	}
+
 	if (target.__go2js_pointer === true) {
 		return go2jsLookupMember(target[go2jsPointerGet](), name);
 	}
@@ -2801,6 +2813,13 @@ function go2jsGoTypeName(value) {
 		return value.type;
 	}
 
+	// A box standing for a nil pointer carries the name of the pointer type, so
+	// a verb that asks for the type of the value asks the box rather than the
+	// interface that happens to hold it.
+	if (value !== null && value !== undefined && value.__go2js_typed_nil === true) {
+		return value.__go2js_type_name;
+	}
+
 	if (value === null || value === undefined) {
 		return "<nil>";
 	}
@@ -2933,7 +2952,7 @@ function go2jsNamedFormatMethod(value, name) {
 // a registered function, because a method of a type that is not a class has
 // nowhere to live, is reached through the table it registered itself in.
 function go2jsLookupNamedMethod(receiver, name) {
-	if (receiver === null || receiver === undefined) {
+	if (receiver === null || receiver === undefined || go2jsIsTypedNilPointer(receiver)) {
 		return null;
 	}
 
@@ -3144,6 +3163,9 @@ function go2jsSameReflectType(left, right) {
 }
 
 function go2jsEqual(a, b) {
+	// A pointer that is nil and is held in an interface is a value of its own
+	// rather than nothing, so the interface holding it is not nil even though
+	// the pointer is, and it is the interface that is being compared here.
 	const aNil = a === null || a === undefined;
 	const bNil = b === null || b === undefined;
 
@@ -3305,9 +3327,93 @@ function go2jsInterfaceCall(value, method, ...args) {
 	return fn.call(target, ...args);
 }
 
+// A pointer that is nil is still a value Go knows the type of once an interface
+// holds it, so an interface holding one is not empty. Reading anything through
+// it reaches memory the program does not have, which Go stops the program for,
+// and a trap that stops it is what stands in for that missing memory.
+const go2jsTypedNilPointers = new Map();
+
+function go2jsTypedNilPointer(typeName) {
+	let boxed = go2jsTypedNilPointers.get(typeName);
+
+	if (boxed === undefined) {
+		const stop = () => {
+			throw new TypeError(go2jsRuntimeErrorPrefix + "invalid memory address or nil pointer dereference");
+		};
+
+		// The keys the runtime itself asks a value about are let through, since
+		// they are the type of the value rather than a field of it, and a name
+		// beginning with the runtime's own mark is never a field either.
+		const internal = key => {
+			return typeof key === "symbol" || key === "constructor" ||
+				key === "toString" || key === "valueOf" ||
+				(typeof key === "string" && key.startsWith("__go2js"));
+		};
+
+		boxed = new Proxy({}, {
+			get(target, key) {
+				if (key === "__go2js_typed_nil") {
+					return true;
+				}
+
+				if (key === "__go2js_type_name") {
+					return typeName;
+				}
+
+				if (internal(key)) {
+					return target[key];
+				}
+
+				return stop();
+			},
+			set(target, key, value) {
+				if (internal(key)) {
+					target[key] = value;
+
+					return true;
+				}
+
+				return stop();
+			},
+			has(target, key) {
+				return internal(key);
+			},
+			ownKeys() {
+				return [];
+			},
+			getOwnPropertyDescriptor() {
+				return undefined;
+			}
+		});
+
+		go2jsTypedNilPointers.set(typeName, boxed);
+	}
+
+	return boxed;
+}
+
+function go2jsIsTypedNilPointer(value) {
+	return value !== null && value !== undefined &&
+		value.__go2js_typed_nil === true;
+}
+
+// go2jsTypedNilGuard boxes a nil pointer on the way into an interface, and
+// leaves a pointer that has something to point at exactly as it is.
+function go2jsTypedNilGuard(value, typeName) {
+	if (value === null || value === undefined) {
+		return go2jsTypedNilPointer(typeName);
+	}
+
+	return value;
+}
+
 function go2jsTypeOf(value) {
 	if (value === null || value === undefined) {
 		return "nil";
+	}
+
+	if (value.__go2js_typed_nil === true) {
+		return value.__go2js_type_name;
 	}
 
 	if (value.__go2js_pointer === true) {
@@ -3990,6 +4096,80 @@ function go2jsMapTyped(typeName, map) {
 	return map;
 }
 
+// A key that is a struct or an array is found by what it holds rather than by
+// which object it happens to be, so two keys built alike reach the same entry
+// and a key built apart does not. JavaScript tells objects apart by identity, so
+// the first key of a shape is kept and every later key of that shape is given
+// the one that was kept.
+const go2jsMapKeyShapes = new Map();
+
+function go2jsMapKeySignature(value) {
+	if (Array.isArray(value)) {
+		let signature = "[";
+
+		for (let index = 0; index < value.length; index++) {
+			signature += "|" + go2jsMapKeyPart(value[index]);
+		}
+
+		return signature + "]";
+	}
+
+	if (value === null || typeof value !== "object") {
+		return null;
+	}
+
+	if (value.__go2js_pointer === true || value.__go2js_interface === true ||
+		value.__go2js_reflectValue === true || value.__go2js_reflectType === true) {
+		return null;
+	}
+
+	const ctor = value.constructor;
+	const name = ctor !== undefined && ctor !== null && typeof ctor.name === "string" ? ctor.name : "";
+	const keys = Object.keys(value).sort();
+	let signature = "{" + name;
+
+	for (const key of keys) {
+		signature += "|" + key + "=" + go2jsMapKeyPart(value[key]);
+	}
+
+	return signature + "}";
+}
+
+function go2jsMapKeyPart(value) {
+	if (value === null || value === undefined) {
+		return " nil";
+	}
+
+	if (typeof value === "object" || typeof value === "function") {
+		const nested = go2jsMapKeySignature(value);
+
+		return nested === null ? " obj" : " " + nested;
+	}
+
+	return typeof value.charAt === "function" ? "s" + value : typeof value + value;
+}
+
+// go2jsMapKey hands back the one object every key of that shape shares, so a key
+// is found by what it holds. A key that is not a struct or an array is left
+// alone, since a string or a number is already found by what it is.
+function go2jsMapKey(key) {
+	const signature = go2jsMapKeySignature(key);
+
+	if (signature === null) {
+		return key;
+	}
+
+	let shape = go2jsMapKeyShapes.get(signature);
+
+	if (shape === undefined) {
+		go2jsMapKeyShapes.set(signature, key);
+
+		return key;
+	}
+
+	return shape;
+}
+
 function go2jsMap(entries) {
 	const map = new go2jsNativeMap();
 
@@ -4000,7 +4180,7 @@ function go2jsMap(entries) {
 		if (!Array.isArray(entry) || entry.length < 2) {
 			continue;
 		}
-		map.set(entry[0], entry[1]);
+		map.set(go2jsMapKey(entry[0]), entry[1]);
 	}
 
 	return map;
@@ -4011,18 +4191,18 @@ function go2jsMapGet(map, key, zero) {
 		return zero;
 	}
 
-	const value = map.get(key);
+	const value = map.get(go2jsMapKey(key));
 
 	// A missing key yields the element type's zero value, not null.
 	return value === undefined ? zero : value;
 }
 
 function go2jsMapGetOK(map, key, zero) {
-	if (!(map instanceof go2jsNativeMap) || !map.has(key)) {
+	if (!(map instanceof go2jsNativeMap) || !map.has(go2jsMapKey(key))) {
 		return [zero, false];
 	}
 
-	return [map.get(key), true];
+	return [map.get(go2jsMapKey(key)), true];
 }
 
 function go2jsMapSet(map, key, value) {
@@ -4037,21 +4217,21 @@ function go2jsMapSet(map, key, value) {
 	if (!(map instanceof go2jsNativeMap)) {
 		throw new TypeError("go2jsMapSet expects a Map");
 	}
-	map.set(key, value);
+	map.set(go2jsMapKey(key), value);
 }
 
 function go2jsMapDelete(map, key) {
 	if (!(map instanceof go2jsNativeMap)) {
 		throw new TypeError("go2jsMapDelete expects a Map");
 	}
-	map.delete(key);
+	map.delete(go2jsMapKey(key));
 }
 
 function go2jsMapHas(map, key) {
 	if (!(map instanceof go2jsNativeMap)) {
 		return false;
 	}
-	return map.has(key);
+	return map.has(go2jsMapKey(key));
 }
 
 function go2jsMapKeys(map) {
@@ -4228,6 +4408,89 @@ function go2jsDivide(left, right) {
 	}
 
 	return Math.trunc(left / right);
+}
+
+// go2jsShl shifts a number the way Go does, where the count is however many
+// bits a program asks for. A JavaScript shift is thirty-two bits wide whatever
+// the count says, so a shift of sixty-two bits is a shift of thirty in
+// JavaScript and the wrong answer twice over.
+function go2jsShl(left, right) {
+	const count = Math.trunc(Number(right));
+
+	if (count < 0) {
+		return go2jsShr(left, -count);
+	}
+
+	return Math.trunc(Number(left)) * 2 ** count;
+}
+
+// go2jsShr brings a number down by so many bits. A shift to the right on a
+// signed number brings the sign down with it and one on an unsigned number
+// brings down zeros, and the number itself says which it is: a negative one
+// keeps its sign the whole way down.
+function go2jsShr(left, right) {
+	const count = Math.trunc(Number(right));
+	const number = Math.trunc(Number(left));
+
+	if (count <= 0) {
+		return number;
+	}
+
+	return number < 0 ? -Math.floor(-number / 2 ** count) : Math.floor(number / 2 ** count);
+}
+
+// go2jsIntWrap keeps a whole number inside the width of the type it is for,
+// which is what a Go variable of that type does without being asked. A number
+// too wide for its type is not an error in Go, it is the number that fits, so
+// an int8 one past its largest is the smallest int8 and a uint8 one below its
+// smallest is the largest uint8.
+function go2jsIntWrap(value, typeName) {
+	const number = Math.trunc(Number(value));
+	let bits = 0;
+	let signed = true;
+
+	switch (typeName) {
+		case "int8":
+			bits = 8;
+			break;
+		case "int16":
+			bits = 16;
+			break;
+		case "int32":
+		case "rune":
+			bits = 32;
+			break;
+		case "int64":
+		case "int":
+			bits = 64;
+			break;
+		case "uint8":
+		case "byte":
+			bits = 8;
+			signed = false;
+			break;
+		case "uint16":
+			bits = 16;
+			signed = false;
+			break;
+		case "uint32":
+			bits = 32;
+			signed = false;
+			break;
+		case "uint64":
+		case "uint":
+		case "uintptr":
+			bits = 64;
+			signed = false;
+			break;
+		default:
+			return number;
+	}
+
+	const top = 2 ** bits;
+	const kept = ((number % top) + top) % top;
+
+	return signed && kept > top / 2 - 1 ? kept - top : kept;
 }
 
 // go2jsMod takes the remainder the way Go does, which is the one left over
@@ -4448,6 +4711,13 @@ function go2jsFormat(value, typeName, kind, shape, plus, nested, raw) {
 		return go2jsNilFormat(typeName, kind, shape);
 	}
 
+	// A nil pointer held in an interface prints as the nil it is, the same as a
+	// nil pointer anywhere else, even though the interface holding it is not
+	// itself empty.
+	if (value.__go2js_typed_nil === true) {
+		return go2jsNilFormat("ptr", kind, shape);
+	}
+
 	// A value reflect made is a window onto a value rather than a value of its
 	// own, so it is written as what the window holds, which is what a verb over
 	// a reflect.Value shows in Go.
@@ -4555,7 +4825,7 @@ function go2jsFormat(value, typeName, kind, shape, plus, nested, raw) {
 		// integer types keep their digits, so that a large int64 stays
 		// readable instead of turning into an exponent.
 		if (go2jsIsFloatTypeName(typeName) || (kind !== null && kind !== undefined && kind !== "int" && kind !== "" && go2jsIsFloatTypeName(kind))) {
-			return go2jsFormatFloatDefault(value);
+			return go2jsFormatFloatType(value, typeName, kind);
 		}
 
 		return Number.isInteger(value) ? String(value) : go2jsFormatFloatDefault(value);
@@ -5131,7 +5401,7 @@ function go2jsIsNil(value) {
 		return true;
 	}
 
-	return value.__go2js_nil === true;
+	return value.__go2js_nil === true || value.__go2js_typed_nil === true;
 }
 
 // go2jsIsInterfaceTypeName reports whether a name is one of the ways the emitter
@@ -5629,7 +5899,7 @@ const go2jsFmtFlags = ["-", "+", "#", " ", "0"];
 function go2jsFormatSelf(value, verb, flags, width, precision) {
 	const receiver = go2jsUntyped(value);
 
-	if (receiver === null || receiver === undefined) {
+	if (receiver === null || receiver === undefined || go2jsIsTypedNilPointer(receiver)) {
 		return null;
 	}
 
@@ -6419,6 +6689,13 @@ function go2jsFormatHexFloat(num, precision, upper) {
 	return upper ? body.toUpperCase() : body;
 }
 
+// go2jsFloat32 gives a result back the number of digits a float32 keeps, since a
+// float64 holds digits a float32 has no room for and a number carrying digits it
+// has no room for is a number that is not the one the program asked for.
+function go2jsFloat32(value) {
+	return Math.fround(value);
+}
+
 // go2jsFloat32Bits splits a float32 into its exponent and mantissa, which are
 // narrower than a double's and so report different significands.
 function go2jsFloat32Bits(value) {
@@ -6510,6 +6787,54 @@ function go2jsPadNumber(text, prefix, body, parsed, integer) {
 	return " ".repeat(fill) + text;
 }
 
+// go2jsFormatFloatType writes a float the way the width it is kept in writes it,
+// since a float32 has fewer digits to give and the shortest form that reads
+// back as the same float32 is shorter than the one that reads back as the same
+// float64.
+function go2jsFormatFloatType(value, typeName, kind) {
+	const single = go2jsIsFloat32TypeName(typeName) || go2jsIsFloat32TypeName(kind);
+
+	return single ? go2jsFormatFloat32Default(value) : go2jsFormatFloatDefault(value);
+}
+
+function go2jsIsFloat32TypeName(name) {
+	return typeof name === "string" && name === "float32";
+}
+
+// go2jsFormatFloat32Default mirrors fmt's %v rule for float32: the fewest
+// digits that read back as the same float32. A float32 holds one bit fewer
+// digit than a double does, so a value carried in one is written in fewer
+// digits than the same value carried in a double would be.
+function go2jsFormatFloat32Default(value) {
+	const num = Number(value);
+
+	if (Number.isNaN(num) || num === Infinity || num === -Infinity) {
+		return go2jsFormatFloatDefault(num);
+	}
+
+	if (num === 0) {
+		return Object.is(num, -0) ? "-0" : "0";
+	}
+
+	if (Math.fround(num) !== num) {
+		return go2jsFormatFloatDefault(num);
+	}
+
+	for (let digits = 1; digits <= 9; digits++) {
+		const text = num.toExponential(digits - 1);
+		const rounded = Number(text);
+
+		if (Math.fround(rounded) === num) {
+			const parts = text.split("e");
+			const digits = parts[0].replace(".", "");
+
+			return go2jsWriteFloatDigits(num < 0 ? "-" : "", digits, parseInt(parts[1], 10));
+		}
+	}
+
+	return go2jsFormatFloatDefault(num);
+}
+
 // go2jsFormatFloatDefault mirrors fmt's %v rule for float64: the shortest
 // round-trip digits, switching to scientific notation when the decimal exponent
 // is below -4 or at least 6.
@@ -6535,8 +6860,14 @@ function go2jsFormatFloatDefault(value) {
 	const parts = Math.abs(num).toExponential().split("e");
 	const digits = parts[0].replace(".", "");
 	const exp10 = parseInt(parts[1], 10);
-	const sign = num < 0 ? "-" : "";
 
+	return go2jsWriteFloatDigits(num < 0 ? "-" : "", digits, exp10);
+}
+
+// go2jsWriteFloatDigits writes a number from the digits that stand for it and
+// the place the point goes, switching to scientific notation when the decimal
+// exponent is below -4 or at least 6, which is the rule fmt's %v writes by.
+function go2jsWriteFloatDigits(sign, digits, exp10) {
 	if (exp10 < -4 || exp10 >= 6) {
 		let body = digits[0];
 
