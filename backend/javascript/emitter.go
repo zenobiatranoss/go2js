@@ -2326,14 +2326,7 @@ func (e *emitter) emitType(spec *ast.TypeSpec) error {
 								e.write(value.Name)
 								e.write("()")
 							case *ast.StarExpr:
-								if ident, ok := value.X.(*ast.Ident); ok {
-									e.needsRuntime = true
-									e.write("go2jsPtr(new ")
-									e.write(ident.Name)
-									e.write("())")
-								} else {
-									e.write("null")
-								}
+								e.write("null")
 							}
 						} else {
 							e.write(e.fieldZeroValue(field.Type))
