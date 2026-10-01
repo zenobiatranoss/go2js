@@ -193,6 +193,134 @@ func main() {
 	}
 }
 
+// programFrameLines are the lines of the frames of a program that named them
+// itself, which are the frames of the program rather than the frames of the
+// runtime the program went through. A trace of a call to runtime.Callers ends
+// in the frames of the runtime, which a Go program shows and a JavaScript
+// program has none of, so those lines are left out of both.
+func programFrameLines(output string) []string {
+	lines := []string{}
+
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		fields := strings.Fields(line)
+
+		if len(fields) == 0 || strings.HasPrefix(fields[0], "runtime.") {
+			continue
+		}
+
+		lines = append(lines, line)
+	}
+
+	return lines
+}
+
+func TestRuntimeCallersNamesGoFrames(t *testing.T) {
+	source := `package main
+
+import (
+	"fmt"
+	"path/filepath"
+	"runtime"
+)
+
+func deeper() []string {
+	pcs := make([]uintptr, 16)
+	n := runtime.Callers(1, pcs)
+	frames := runtime.CallersFrames(pcs[:n])
+	out := []string{}
+
+	for {
+		frame, more := frames.Next()
+		if frame.Function == "" {
+			break
+		}
+
+		out = append(out, fmt.Sprintf("%s %s:%d", frame.Function, filepath.Base(frame.File), frame.Line))
+
+		if !more {
+			break
+		}
+	}
+
+	return out
+}
+
+func middle() []string { return deeper() }
+
+func caller() string {
+	_, file, line, ok := runtime.Caller(0)
+	if !ok {
+		return "caller: nothing"
+	}
+
+	return fmt.Sprintf("caller %s:%d", filepath.Base(file), line)
+}
+
+func main() {
+	fmt.Println(caller())
+
+	for _, frame := range middle() {
+		fmt.Println(frame)
+	}
+}
+`
+
+	goTrace, _, jsTrace, jsStatus, js := runTraceParity(t, source)
+
+	if jsStatus != 0 {
+		t.Fatalf("node failed with %d\n%s\n%s", jsStatus, jsTrace, js)
+	}
+
+	want := programFrameLines(goTrace)
+	got := programFrameLines(jsTrace)
+
+	if len(want) == 0 {
+		t.Fatalf("the Go run names no frames:\n%s", goTrace)
+	}
+
+	if strings.Join(want, "\n") != strings.Join(got, "\n") {
+		t.Fatalf("frames mismatch\ngo:\n%s\njs:\n%s\nwant:\n%v\ngot:\n%v\ncode:\n%s",
+			goTrace, jsTrace, want, got, js)
+	}
+}
+
+func TestRuntimeFuncForPCNamesAFunction(t *testing.T) {
+	source := `package main
+
+import (
+	"fmt"
+	"runtime"
+)
+
+func report() {
+	pcs := make([]uintptr, 4)
+	runtime.Callers(1, pcs)
+
+	fn := runtime.FuncForPC(pcs[0])
+	if fn == nil {
+		fmt.Println("no function")
+		return
+	}
+
+	fmt.Println("named", fn.Name() != "")
+}
+
+func main() {
+	report()
+}
+`
+
+	goTrace, _, jsTrace, jsStatus, js := runTraceParity(t, source)
+
+	if jsStatus != 0 {
+		t.Fatalf("node failed with %d\n%s\n%s", jsStatus, jsTrace, js)
+	}
+
+	if strings.TrimSpace(jsTrace) != "named true" {
+		t.Fatalf("a program counter was not named\ngo:\n%s\njs:\n%s\ncode:\n%s", goTrace, jsTrace, js)
+	}
+}
+
 func TestUncaughtPanicWritesATrace(t *testing.T) {
 	source := `package main
 
