@@ -75,9 +75,7 @@ func main() {
 		t.Fatal(err)
 	}
 
-	if strings.Contains(stdout.String(), "\n") {
-		t.Fatal("minified output contains newlines")
-	}
+	assertMinified(t, stdout.String())
 }
 
 func TestRunWithoutRuntime(t *testing.T) {
@@ -183,7 +181,19 @@ func main() {
 		t.Fatal(err)
 	}
 
-	if strings.Contains(stdout.String(), "\n") {
-		t.Fatal("expected minified output")
+	assertMinified(t, stdout.String())
+}
+
+func assertMinified(t *testing.T, output string) {
+	t.Helper()
+
+	if strings.Contains(output, "\t") {
+		t.Fatal("minified output contains tabs")
+	}
+
+	for _, line := range strings.Split(output, "\n") {
+		if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+			t.Fatalf("minified output kept indentation: %q", line)
+		}
 	}
 }
