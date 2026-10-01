@@ -151,6 +151,8 @@ function go2jsExecCmdEnviron(cmd) {
 // that never started describes. Going through one place is what keeps Run,
 // Output and CombinedOutput telling the same story about one run.
 function go2jsExecSpawn(cmd) {
+	go2jsLetGoroutinesRun();
+
 	const none = {code: 0, signal: "", stdout: new Uint8Array(0), stderr: new Uint8Array(0), error: null};
 	const Args = cmd === null || cmd === undefined ? [] : go2jsToArray(cmd.Args || []);
 

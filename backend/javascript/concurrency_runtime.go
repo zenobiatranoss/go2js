@@ -364,6 +364,19 @@ function go2jsGo(task) {
 	});
 }
 
+// go2jsLetGoroutinesRun lets the goroutines that are waiting to start go. A Go
+// program that has reached something which waits on another process has already
+// had the goroutines written above it scheduled, so a listener opened in one of
+// them is open by then; waiting for a process is one of the moments at which
+// that has to be so, since nothing else here would ever hand the turn over.
+function go2jsLetGoroutinesRun() {
+	if (go2jsTasks.length === 0) {
+		return 0;
+	}
+
+	return go2jsRunTasks();
+}
+
 // go2jsProgress lets the goroutines that are runnable run, and says whether any
 // of them did. A goroutine waiting on a timer is runnable once its moment comes,
 // so a select with nothing else to do waits for the earliest one rather than

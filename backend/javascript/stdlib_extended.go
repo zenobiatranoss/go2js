@@ -2774,6 +2774,8 @@ function go2jsTimeNow() {
 function go2jsTimeSleep(d) {
 	const ms = go2jsDurationNanos(d) / 1e6;
 
+	go2jsLetGoroutinesRun();
+
 	if (ms > 0) {
 		try {
 			require("child_process").execFileSync("sleep", [String(ms / 1000)]);

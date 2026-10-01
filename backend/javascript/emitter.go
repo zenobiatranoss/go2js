@@ -737,6 +737,7 @@ func ProgramRuntime(requiredSource, target string) string {
 		runtimeShimRuntimeSource(),
 		sortSliceShimRuntimeSource(),
 		execRuntimeSource(),
+		netHTTPRuntimeSource(),
 		osEnvironRuntimeSource(),
 		randGeneratorSource(),
 	)
