@@ -1741,6 +1741,24 @@ function go2jsJSONEncode(value, fields, omitEmpty, stringFields) {
     return out;
 }
 
+// go2jsJSONFold is a name as JSON is said to match it, which is a name that
+// differs from another only in case and so is that other name.
+function go2jsJSONFold(name) {
+    let out = "";
+
+    for (let i = 0; i < name.length; i++) {
+        let code = name.charCodeAt(i);
+
+        if (code >= 65 && code <= 90) {
+            code = code + 32;
+        }
+
+        out += String.fromCharCode(code);
+    }
+
+    return out;
+}
+
 // go2jsJSONStructMapping is the fields a struct value is written with: the name
 // each field was declared under and the name its tag gave it, along with the
 // fields a tag asked to leave out when empty. It is nothing for a value that
@@ -1753,6 +1771,109 @@ function go2jsJSONStructMapping(value) {
     }
 
     return go2jsJSONReduceCandidates(candidates);
+}
+
+// go2jsJSONMappingTypes is what each field of a struct value holds, read off the
+// candidates its own fields make up and so flattened and settled by the same
+// rules as its names. A field holding something JSON has no shape for is left
+// out, and reading into it falls back to whatever the text held.
+function go2jsJSONMappingTypes(value) {
+    const candidates = go2jsJSONFieldCandidates(value, 0, new Set());
+
+    if (candidates === null) {
+        return null;
+    }
+
+    const fields = go2jsJSONReduceCandidates(candidates);
+
+    if (fields === null || fields === undefined || fields.fields === undefined) {
+        return null;
+    }
+
+    const types = {};
+
+    for (const candidate of candidates) {
+        if (fields.fields[candidate.name] === undefined || types[candidate.name] !== undefined) {
+            continue;
+        }
+
+        const descriptor = go2jsJSONTypeDescriptor(candidate.type);
+
+        if (descriptor === null || descriptor === undefined || descriptor.kind === "any") {
+            continue;
+        }
+
+        types[candidate.name] = descriptor;
+    }
+
+    return types;
+}
+
+// go2jsJSONTypeDescriptor is what a destination of the named type holds, read
+// off the type name a program registered the field with. A type that stands for
+// a struct is described by the name it was declared under and by nothing else,
+// because a value of it is built from that very type and read through that
+// type's own fields, which is as much as any depth of it needs to know.
+function go2jsJSONTypeDescriptor(typeName) {
+    if (typeof typeName !== "string" || typeName === "") {
+        return null;
+    }
+
+    const text = typeName;
+
+    if (text[0] === "*") {
+        return {kind: "ptr", elem: go2jsJSONTypeDescriptor(text.slice(1))};
+    }
+
+    if (text.startsWith("map[")) {
+        const close = text.indexOf("]");
+
+        if (close < 0) {
+            return null;
+        }
+
+        return {kind: "map", elem: go2jsJSONTypeDescriptor(text.slice(close + 1))};
+    }
+
+    if (text[0] === "[" && text[1] !== "]") {
+        const close = text.indexOf("]");
+
+        if (close < 0) {
+            return null;
+        }
+
+        const length = parseInt(text.slice(1, close), 10);
+
+        return {kind: "array", len: isNaN(length) ? 0 : length, elem: go2jsJSONTypeDescriptor(text.slice(close + 1))};
+    }
+
+    if (text.startsWith("[]")) {
+        return {kind: "slice", elem: go2jsJSONTypeDescriptor(text.slice(2))};
+    }
+
+    if (text === "string" || text === "[]byte" || text.startsWith("string")) {
+        return {kind: "string"};
+    }
+
+    if (text === "bool") {
+        return {kind: "bool"};
+    }
+
+    if (text === "int" || text.startsWith("int") || text === "uint" || text.startsWith("uint") ||
+        text === "byte" || text === "rune" || text.startsWith("float") ||
+        text.startsWith("complex")) {
+        return {kind: "number"};
+    }
+
+    if (text === "any" || text.startsWith("interface{")) {
+        return {kind: "any"};
+    }
+
+    if (Array.isArray(go2jsStructFields[text])) {
+        return {kind: "lazy", name: text};
+    }
+
+    return {kind: "any"};
 }
 
 // go2jsJSONFieldCandidates reads the fields a struct value is written with at
@@ -1819,6 +1940,7 @@ function go2jsJSONFieldCandidates(value, depth, seen) {
             depth: depth,
             omit: tag.omit,
             string: tag.string,
+            type: descriptor.Type,
         });
     }
 
@@ -1921,7 +2043,7 @@ function go2jsJSONEmpty(value) {
     return false;
 }
 
-function go2jsJSONUnmarshal(data, target, fields, destination, stringFields) {
+function go2jsJSONUnmarshal(data, target, fields, destination, stringFields, fieldTypes) {
     try {
         const value = JSON.parse(
             typeof data === "string"
@@ -1933,13 +2055,14 @@ function go2jsJSONUnmarshal(data, target, fields, destination, stringFields) {
             return null;
         }
 
-        if (destination !== null && destination !== undefined && destination.map === true) {
-            go2jsJSONDecodeMap(value, target, destination.value);
+        if (destination !== null && destination !== undefined && destination.kind !== undefined) {
+            go2jsJSONAssign(target, go2jsJSONStore(value, target, destination));
             return null;
         }
+
         if (typeof target === "object") {
             if (value !== null && typeof value === "object") {
-                go2jsJSONDecode(value, target, fields, stringFields);
+                go2jsJSONDecode(value, target, fields, stringFields, fieldTypes);
             }
             return null;
         }
@@ -1950,9 +2073,162 @@ function go2jsJSONUnmarshal(data, target, fields, destination, stringFields) {
     }
 }
 
-// go2jsJSONNewEncoder returns an encoder that writes to an io.Writer. What it
-// writes is the same text Marshal writes, with a newline after every value so
-// that a stream of them can be read back one at a time.
+// go2jsJSONStore builds the value a destination of the given kind holds out of
+// the value the text held, and hands it back for the caller to put where that
+// destination stands.
+function go2jsJSONStore(value, target, descriptor) {
+    if (descriptor === null || descriptor === undefined || descriptor.kind === undefined) {
+        return go2jsJSONCoerceAny(value);
+    }
+
+    switch (descriptor.kind) {
+    case "ptr":
+        // the value behind the pointer is built in place, which for a map and
+        // for a plain value is what the thing behind it already knows how to
+        // take, and for a struct and a slice is done below
+        return go2jsJSONStore(value, target, descriptor.elem);
+
+    case "struct": {
+        if (value === null || typeof value !== "object" || Array.isArray(value)) {
+            return null;
+        }
+
+        // the value is read into the place that already stands for the struct,
+        // and into one built for it when nothing does, which is what reading
+        // into a pointer with nothing behind it comes down to
+        let struct = go2jsJSONPointerTarget(target);
+
+        if (struct === null || struct === undefined || go2jsJSONStructMapping(struct) === null) {
+            const constructor = descriptor.name === "" ? undefined : go2jsTypeNames[descriptor.name];
+            struct = constructor !== undefined && constructor !== null ? new constructor() : {};
+        }
+
+        go2jsJSONDecode(value, struct, descriptor.fields, descriptor.string, descriptor.types);
+
+        return struct;
+    }
+
+    case "lazy": {
+        if (value === null || typeof value !== "object" || Array.isArray(value)) {
+            return null;
+        }
+
+        // A struct that holds itself is described by the name it was declared
+        // under and by nothing else, because the value it stands for is built
+        // from that very type and read through that type's own fields. Any depth
+        // of one is read the same way, so a type holding itself is described
+        // once and read as many times as the text holds of it.
+        const constructor = descriptor.name === "" ? undefined : go2jsTypeNames[descriptor.name];
+        const struct = constructor !== undefined && constructor !== null ? new constructor() : {};
+
+        // the fields are read off the value the type declared, so a type that
+        // holds itself is described once and read as many times as the text
+        // holds of it, however deep that text goes
+        go2jsJSONDecode(value, struct, null, null, go2jsJSONMappingTypes(struct));
+
+        return struct;
+    }
+
+    case "slice":
+        return go2jsJSONStoreSlice(value, descriptor.elem);
+
+    case "array":
+        return go2jsJSONStoreArray(value, go2jsJSONPointerTarget(target), descriptor.elem, descriptor.len);
+
+    case "map":
+        return go2jsJSONStoreMap(value, target, descriptor.elem);
+
+    default:
+        return go2jsJSONCoerce(value, descriptor.kind);
+    }
+}
+
+// go2jsJSONStoreSlice builds a slice of what the descriptor holds, one element
+// for every one the text had.
+function go2jsJSONStoreSlice(value, elem) {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+
+    const out = new Array(value.length);
+
+    for (let index = 0; index < value.length; index++) {
+        out[index] = go2jsJSONStore(value[index], null, elem);
+    }
+
+    return out;
+}
+
+// go2jsJSONStoreArray builds an array of what the descriptor holds. An array
+// keeps the room it was declared with, so a text too long for it is refused and
+// one too short leaves the rest of it as it was declared.
+function go2jsJSONStoreArray(value, target, elem, length) {
+    const out = go2jsToArray(target);
+
+    if (!Array.isArray(value) || value.length > length) {
+        return out;
+    }
+
+    out.length = length;
+
+    for (let index = 0; index < length; index++) {
+        out[index] = go2jsJSONStore(value[index], null, elem);
+    }
+
+    return out;
+}
+
+// go2jsJSONStoreMap builds a map of what the descriptor holds, one entry for
+// every key the text named.
+function go2jsJSONStoreMap(value, target, elem) {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+        return go2jsJSONTargetMap(target);
+    }
+
+    const map = go2jsJSONTargetMap(target);
+
+    if (map === null) {
+        // nothing stood for the map yet, which is what a field of it that has
+        // not been set comes down to, so one is built to hold what the text
+        // named
+        return go2jsJSONStoreMap(value, go2jsMakeMap(), elem);
+    }
+
+    for (const key of Object.keys(value)) {
+        go2jsMapSet(map, go2jsJSONCoerceString(key), go2jsJSONStore(value[key], null, elem));
+    }
+
+    return map;
+}
+
+// go2jsJSONPointerTarget is the value behind a pointer, which is given one to
+// stand in for when it has none yet.
+function go2jsJSONPointerTarget(target) {
+    if (target === null || target === undefined || target.__go2js_pointer !== true) {
+        return target;
+    }
+
+    const current = target[go2jsPointerGet]();
+
+    if (current === null || current === undefined || typeof current !== "object") {
+        const created = {};
+        target[go2jsPointerSet](created);
+
+        return created;
+    }
+
+    return current;
+}
+
+// go2jsJSONAssign puts a built value where the destination stands, which is
+// behind a pointer or the value itself.
+function go2jsJSONAssign(target, value) {
+    if (target !== null && target !== undefined && target.__go2js_pointer === true) {
+        target[go2jsPointerSet](value);
+    }
+}
+
+
 function go2jsJSONNewEncoder(writer) {
     return {
         __go2js_json_encoder: true,
@@ -2135,7 +2411,7 @@ function go2jsJSONDecoderOne(decoder) {
     return [text.slice(start), null];
 }
 
-function go2jsJSONDecoderDecode(decoder, target, fields, destination, stringFields) {
+function go2jsJSONDecoderDecode(decoder, target, fields, destination, stringFields, fieldTypes) {
     const [text, err] = go2jsJSONDecoderOne(decoder);
 
     if (err !== null) {
@@ -2144,7 +2420,7 @@ function go2jsJSONDecoderDecode(decoder, target, fields, destination, stringFiel
 
     decoder.position += text.length;
 
-    return go2jsJSONUnmarshal(text, target, fields, destination, stringFields);
+    return go2jsJSONUnmarshal(text, target, fields, destination, stringFields, fieldTypes);
 }
 
 // go2jsJSONDecoderMore reports whether another value is left to read, which is
@@ -2244,23 +2520,7 @@ function go2jsJSONTargetMap(target) {
     return null;
 }
 
-function go2jsJSONDecodeMap(value, target, kind) {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
-        return;
-    }
-
-    const map = go2jsJSONTargetMap(target);
-
-    if (map === null) {
-        return;
-    }
-
-    for (const key of Object.keys(value)) {
-        go2jsMapSet(map, go2jsJSONCoerceString(key), go2jsJSONCoerce(value[key], kind));
-    }
-}
-
-function go2jsJSONDecode(value, target, fields, stringFields) {
+function go2jsJSONDecode(value, target, fields, stringFields, fieldTypes) {
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
         return;
     }
@@ -2294,6 +2554,20 @@ function go2jsJSONDecode(value, target, fields, stringFields) {
                 }
             }
 
+            if (!matched) {
+                // a field a tag named differently than it is spelled only in
+                // case is still that field, and the text has always been taken
+                // for it, so it is looked for once more that way before it is
+                // looked for at all
+                for (const field of Object.keys(fields)) {
+                    if (go2jsJSONFold(fields[field]) === go2jsJSONFold(key) && field in target) {
+                        name = field;
+                        matched = true;
+                        break;
+                    }
+                }
+            }
+
             if (!matched && key in target) {
                 name = key;
             }
@@ -2323,7 +2597,15 @@ function go2jsJSONDecode(value, target, fields, stringFields) {
         if (current !== null && typeof current === "object" && !Array.isArray(current) &&
             item !== null && typeof item === "object" && !Array.isArray(item) &&
             go2jsJSONStructMapping(current) !== null) {
-            go2jsJSONDecode(item, current, null, null);
+            go2jsJSONDecode(item, current, null, null, go2jsJSONMappingTypes(current));
+            continue;
+        }
+
+        // a field is built as the type it was declared to hold, which for a
+        // field the program declared a type for is that type and for one it did
+        // not is whatever the text held
+        if (fieldTypes !== null && fieldTypes !== undefined && fieldTypes[name] !== undefined) {
+            target[name] = go2jsJSONStore(item, null, fieldTypes[name]);
             continue;
         }
 

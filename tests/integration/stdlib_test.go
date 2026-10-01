@@ -534,6 +534,91 @@ func main() {
 	}
 }
 
+func TestJSONUnmarshalDestinations(t *testing.T) {
+	source := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+)
+
+type Inner struct {
+	A int
+	B int
+}
+
+type Outer struct {
+	In    Inner
+	Ptr   *Inner
+	List  []Inner
+	Deep  [][]int
+	ByNum map[string]Inner
+	Any   any
+}
+
+type Rec struct {
+	Val  int
+	Next *Rec
+}
+
+func main() {
+	var any1 any
+	json.Unmarshal([]byte(` + "`" + `{"a":1,"b":["x",null],"c":true}` + "`" + `), &any1)
+	fmt.Printf("any: %v %v %v\n", any1, any1 == nil, any1)
+
+	var ints []int
+	json.Unmarshal([]byte(` + "`" + `[1,2,3]` + "`" + `), &ints)
+	fmt.Println("slice:", ints)
+
+	var arr [3]int
+	json.Unmarshal([]byte(` + "`" + `[4,5,6]` + "`" + `), &arr)
+	fmt.Println("array:", arr)
+
+	var short [3]int
+	json.Unmarshal([]byte(` + "`" + `[7,8]` + "`" + `), &short)
+	fmt.Println("short:", short)
+
+	var items []Inner
+	json.Unmarshal([]byte(` + "`" + `[{"a":1,"b":2},{"a":3,"b":4}]` + "`" + `), &items)
+	fmt.Printf("structs: %v\n", items)
+
+	var fixed [2]Inner
+	json.Unmarshal([]byte(` + "`" + `[{"a":5,"b":6},{"a":7,"b":8}]` + "`" + `), &fixed)
+	fmt.Printf("fixed: %v\n", fixed)
+
+	var o Outer
+	json.Unmarshal([]byte(` + "`" + `{"in":{"a":1,"b":7},"ptr":{"a":2,"b":8},"list":[{"a":3,"b":9},{"a":1,"b":2}],"deep":[[1,2],[3]],"bnum":{"x":{"a":4,"b":10}},"any":[1,2]}` + "`" + `), &o)
+	fmt.Println("in:", o.In.A, o.In.B)
+	fmt.Println("ptr:", o.Ptr.A, o.Ptr.B)
+	fmt.Printf("list: %v\n", o.List)
+	fmt.Printf("deep: %v\n", o.Deep)
+	fmt.Printf("bynum: %v\n", o.ByNum)
+	fmt.Printf("any: %v\n", o.Any)
+
+	var r Rec
+	json.Unmarshal([]byte(` + "`" + `{"val":1,"next":{"val":2,"next":{"val":3}}}` + "`" + `), &r)
+	fmt.Println("rec:", r.Val, r.Next.Val, r.Next.Next.Val)
+
+	var byName map[string]Inner
+	json.Unmarshal([]byte(` + "`" + `{"x":{"a":11,"b":12},"y":{"a":13,"b":14}}` + "`" + `), &byName)
+	fmt.Printf("byname: %v\n", byName)
+
+	var byPtr map[string]*Inner
+	json.Unmarshal([]byte(` + "`" + `{"x":{"a":15,"b":16}}` + "`" + `), &byPtr)
+	fmt.Println("byptr:", len(byPtr), byPtr["x"].A, byPtr["x"].B)
+
+	// a field a tag named differently than it is spelled is still that field
+	var c Inner
+	json.Unmarshal([]byte(` + "`" + `{"A":21,"B":22}` + "`" + `), &c)
+	fmt.Println("folded:", c.A, c.B)
+}
+`
+	got, want := runCompiledProgram(t, source)
+	if got != want {
+		t.Fatalf("json unmarshal destinations mismatch: got %q want %q", got, want)
+	}
+}
+
 func TestTimeDurationConversion(t *testing.T) {
 	source := `package main
 
