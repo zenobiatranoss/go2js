@@ -29,6 +29,9 @@ var slicesFuncs = map[string]string{
 	"Repeat":           "go2jsSlicesRepeat",
 	"Concat":           "go2jsSlicesConcat",
 	"All":              "go2jsSlicesAll",
+	"Values":           "go2jsSlicesValues",
+	"Backward":         "go2jsSlicesBackward",
+	"AppendSeq":        "go2jsSlicesAppendSeq",
 	"Sorted":           "go2jsSlicesSorted",
 }
 
@@ -435,18 +438,53 @@ function go2jsSlicesConcat(...lists) {
 
 
 
-function go2jsSlicesAll(source, predicate) {
-	for (const item of go2jsSlicesCollect(source)) {
-		if (!predicate(item)) {
-			return false;
-		}
-	}
+// A sequence is a function that hands each of its values to whoever asked for
+// them, so slices.Values and slices.All answer with one and the functions that
+// take a sequence call it with a function of their own. A sequence that is
+// walked to its end is walked eagerly, since a yield in the middle of a
+// function cannot be left half finished and taken up again where it stopped.
 
-	return true;
+function go2jsSlicesValues(source) {
+	return function (handOff) {
+		if (source === null || source === undefined) {
+			return;
+		}
+
+		for (let i = 0; i < source.length; i++) {
+			if (!handOff(source[i])) {
+				return;
+			}
+		}
+	};
 }
 
+function go2jsSlicesAll(source) {
+	return function (handOff) {
+		if (source === null || source === undefined) {
+			return;
+		}
 
+		for (let i = 0; i < source.length; i++) {
+			if (!handOff(i, source[i])) {
+				return;
+			}
+		}
+	};
+}
 
+function go2jsSlicesBackward(source) {
+	return function (handOff) {
+		if (source === null || source === undefined) {
+			return;
+		}
+
+		for (let i = source.length - 1; i >= 0; i--) {
+			if (!handOff(i, source[i])) {
+				return;
+			}
+		}
+	};
+}
 
 function go2jsSlicesCollect(source) {
 	if (source === null || source === undefined) {
@@ -456,9 +494,11 @@ function go2jsSlicesCollect(source) {
 	if (typeof source === "function") {
 		const out = [];
 
-		for (const value of source()) {
+		source(function (value) {
 			out.push(value);
-		}
+
+			return true;
+		});
 
 		return out;
 	}
@@ -468,6 +508,28 @@ function go2jsSlicesCollect(source) {
 	}
 
 	return Array.from(source);
+}
+
+function go2jsSlicesAppendSeq(destination, source) {
+	if (source === null || source === undefined) {
+		return destination;
+	}
+
+	if (typeof source === "function") {
+		source(function (value) {
+			destination.push(value);
+
+			return true;
+		});
+
+		return destination;
+	}
+
+	for (const item of source) {
+		destination.push(item);
+	}
+
+	return destination;
 }
 
 function go2jsSlicesBinarySearch(a, target) {
