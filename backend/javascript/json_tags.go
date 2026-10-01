@@ -13,6 +13,7 @@ type jsonField struct {
 	JSONName  string
 	OmitEmpty bool
 	AsString  bool
+	Type      gotypes.Type
 }
 
 // jsonFieldCandidate is a field together with where it was found. A field
@@ -72,7 +73,7 @@ func (c *jsonFieldCollector) collect(structType *gotypes.Struct, depth int) {
 		}
 
 		c.candidates = append(c.candidates, jsonFieldCandidate{
-			field: jsonField{Name: field.Name(), JSONName: name, OmitEmpty: omitEmpty, AsString: asString},
+			field: jsonField{Name: field.Name(), JSONName: name, OmitEmpty: omitEmpty, AsString: asString, Type: field.Type()},
 			depth: depth,
 		})
 	}
@@ -280,6 +281,8 @@ func (e *emitter) emitJSONCall(call *ast.CallExpr, selector *ast.SelectorExpr) (
 		e.write(e.emitJSONDestination(e.analyzedType(call.Args[1])))
 		e.write(", ")
 		e.write(e.emitJSONStringFields(e.analyzedType(call.Args[1])))
+		e.write(", ")
+		e.write(e.emitJSONFieldTypes(e.analyzedType(call.Args[1])))
 		e.write(")")
 		return true, nil
 	}
@@ -403,6 +406,8 @@ func (e *emitter) emitJSONMethodCall(call *ast.CallExpr, selector *ast.SelectorE
 		e.write(e.emitJSONDestination(e.analyzedType(call.Args[0])))
 		e.write(", ")
 		e.write(e.emitJSONStringFields(e.analyzedType(call.Args[0])))
+		e.write(", ")
+		e.write(e.emitJSONFieldTypes(e.analyzedType(call.Args[0])))
 		e.write(")")
 		return true, nil
 
@@ -426,62 +431,157 @@ func (e *emitter) emitJSONMethodCall(call *ast.CallExpr, selector *ast.SelectorE
 	return false, nil
 }
 
-func (e *emitter) emitJSONDestination(t gotypes.Type) string {
-	pointer, ok := t.(*gotypes.Pointer)
+// emitJSONFieldTypes writes what each field holds, so a value read into one is
+// built the way that field was declared rather than left as whatever JSON.parse
+// happened to hand back. A field holding something JSON has no shape for is left
+// out, and reading into it falls back to whatever it is given.
+func (e *emitter) emitJSONFieldTypes(t gotypes.Type) string {
+	structType, ok := structUnderlying(t)
+
 	if !ok {
 		return "null"
 	}
 
-	descriptor := jsonDestination(pointer.Elem())
-	if descriptor == "" {
+	_, _, fieldTypes := jsonTypeMapping(structType, map[gotypes.Type]bool{})
+
+	return fieldTypes
+}
+
+func (e *emitter) emitJSONDestination(t gotypes.Type) string {
+	// The pointer a destination is passed as is described too, so the runtime
+	// can build the value behind it as well as the value in front of it.
+	return jsonDestinationType(t)
+}
+
+// jsonDestinationType describes what a destination holds, so a value read out
+// of the text is built the way the destination was declared rather than left as
+// whatever JSON.parse happened to hand back.
+func jsonDestinationType(t gotypes.Type) string {
+	return jsonDestinationTypeSeen(t, map[gotypes.Type]bool{})
+}
+
+// jsonDestinationTypeSeen is jsonDestinationType for a type that is reached
+// from itself. A struct that holds itself, directly or through a chain of
+// structs that hold themselves, is described by its name alone: the value it
+// stands for is built from the type the program declared and is read through
+// that type's own fields, which is as much as any depth of it needs to know.
+func jsonDestinationTypeSeen(t gotypes.Type, seen map[gotypes.Type]bool) string {
+	if t == nil {
 		return "null"
 	}
 
-	return descriptor
-}
-
-func jsonDestination(t gotypes.Type) string {
-	if t == nil {
-		return ""
+	switch value := t.(type) {
+	case *gotypes.Pointer:
+		return `{"kind":"ptr","elem":` + jsonDestinationTypeSeen(value.Elem(), seen) + `}`
+	case *gotypes.Slice:
+		return `{"kind":"slice","elem":` + jsonDestinationTypeSeen(value.Elem(), seen) + `}`
+	case *gotypes.Array:
+		return `{"kind":"array","len":` + strconv.FormatInt(value.Len(), 10) + `,"elem":` + jsonDestinationTypeSeen(value.Elem(), seen) + `}`
+	case *gotypes.Map:
+		return `{"kind":"map","elem":` + jsonDestinationTypeSeen(value.Elem(), seen) + `}`
 	}
 
-	switch value := t.(type) {
-	case *gotypes.Map:
-		return `{"map":true,"value":` + strconv.Quote(jsonValueKind(value.Elem())) + `}`
-	case *gotypes.Slice:
-		if array, ok := value.Elem().Underlying().(*gotypes.Array); ok {
-			return `{"array":true,"value":` + strconv.Quote(jsonValueKind(array.Elem())) + `}`
+	// A named type is described by what it stands for, under the name the
+	// program registered it by, so a value read into one is built from that
+	// very type rather than from a shape that only looks like it.
+	name := ""
+	underlying := t
+
+	if named, ok := t.(*gotypes.Named); ok && named.Obj() != nil {
+		name = named.Obj().Name()
+
+		if pkg := named.Obj().Pkg(); pkg != nil && pkg.Name() != "" {
+			name = pkg.Name() + "." + name
 		}
 
-		return `{"slice":true,"value":` + strconv.Quote(jsonValueKind(value.Elem())) + `}`
+		underlying = named.Underlying()
 	}
 
-	return ""
-}
-
-func jsonValueKind(t gotypes.Type) string {
-	if t == nil {
-		return "any"
-	}
-
-	switch value := t.(type) {
+	switch value := underlying.(type) {
 	case *gotypes.Basic:
 		if value.Info()&gotypes.IsString == gotypes.IsString {
-			return "string"
+			return `{"kind":"string"}`
 		}
 
 		if value.Info()&gotypes.IsBoolean == gotypes.IsBoolean {
-			return "bool"
+			return `{"kind":"bool"}`
 		}
 
-		return "number"
+		return `{"kind":"number"}`
 
 	case *gotypes.Interface:
-		return "any"
+		return `{"kind":"any"}`
 
-	case *gotypes.Map, *gotypes.Slice, *gotypes.Pointer:
-		return jsonValueKind(value.Underlying())
+	case *gotypes.Struct:
+		if name != "" && seen[t] {
+			return `{"kind":"lazy","name":` + strconv.Quote(name) + `}`
+		}
+
+		if name != "" {
+			seen[t] = true
+			defer delete(seen, t)
+		}
+
+		mapping, stringFields, fieldTypes := jsonTypeMapping(value, seen)
+
+		if mapping == "" {
+			return `{"kind":"any"}`
+		}
+
+		return `{"kind":"struct","name":` + strconv.Quote(name) + `,"fields":` + mapping + `,"string":` + stringFields + `,"types":` + fieldTypes + `}`
 	}
 
-	return "any"
+	// A named type over a slice, a map or a pointer is described by that, and
+	// anything else is a type JSON has no shape for, which is said once rather
+	// than described in terms of itself.
+	if underlying == t {
+		return `{"kind":"any"}`
+	}
+
+	return jsonDestinationTypeSeen(underlying, seen)
+}
+
+// jsonTypeMapping writes what a struct type is read and written with: the names
+// JSON has for its fields, the fields whose value is written as text, and what
+// each field holds. A struct with no field of its own that JSON has a name for
+// needs no mapping, because what it holds is read through the mapping of the
+// value holding it.
+func jsonTypeMapping(structType *gotypes.Struct, seen map[gotypes.Type]bool) (mapping string, stringFields string, fieldTypes string) {
+	fields := jsonFields(structType)
+
+	if len(fields) == 0 {
+		return "", "null", "null"
+	}
+
+	parts := make([]string, 0, len(fields))
+	marked := make([]string, 0, len(fields))
+	held := make([]string, 0, len(fields))
+
+	for _, field := range fields {
+		parts = append(parts, strconv.Quote(field.Name)+": "+strconv.Quote(field.JSONName))
+
+		if field.AsString {
+			marked = append(marked, strconv.Quote(field.Name))
+		}
+
+		descriptor := jsonDestinationTypeSeen(field.Type, seen)
+
+		if descriptor == `{"kind":"any"}` || descriptor == "null" {
+			continue
+		}
+
+		held = append(held, strconv.Quote(field.Name)+": "+descriptor)
+	}
+
+	markedText := "null"
+	if len(marked) > 0 {
+		markedText = "[" + strings.Join(marked, ", ") + "]"
+	}
+
+	heldText := "null"
+	if len(held) > 0 {
+		heldText = "{" + strings.Join(held, ", ") + "}"
+	}
+
+	return "{" + strings.Join(parts, ", ") + "}", markedText, heldText
 }
