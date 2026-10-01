@@ -1624,13 +1624,13 @@ function go2jsJSONEncode(value, fields, omitEmpty) {
     }
 
     if (Array.isArray(value)) {
-        return value.map(item => go2jsJSONEncode(item, fields, omitEmpty));
+        return value.map(item => go2jsJSONEncode(item, null, null));
     }
 
     if (value instanceof go2jsNativeMap) {
         const out = {};
         for (const [key, item] of value.entries()) {
-            out[go2jsStringify(key)] = go2jsJSONEncode(item, fields, omitEmpty);
+            out[go2jsStringify(key)] = go2jsJSONEncode(item, null, null);
         }
         return out;
     }
@@ -1639,9 +1639,20 @@ function go2jsJSONEncode(value, fields, omitEmpty) {
         return value;
     }
 
+    // a value that stands for a struct is read for the fields it was declared
+    // with, which is how a struct nested in another is written with the names
+    // its own tags gave it rather than with the names of its fields
+    if (fields === null || fields === undefined) {
+        const own = go2jsJSONStructMapping(value);
+
+        if (own !== null) {
+            fields = own.fields;
+            omitEmpty = own.omitEmpty;
+        }
+    }
+
     if (fields) {
         const out = {};
-        let written = false;
 
         for (const field of Object.keys(fields)) {
             if (!(field in value)) {
@@ -1656,12 +1667,9 @@ function go2jsJSONEncode(value, fields, omitEmpty) {
             }
 
             out[name] = go2jsJSONEncode(item, null, null);
-            written = true;
         }
 
-        if (written) {
-            return out;
-        }
+        return out;
     }
 
     const out = {};
@@ -1671,6 +1679,74 @@ function go2jsJSONEncode(value, fields, omitEmpty) {
     }
 
     return out;
+}
+
+// go2jsJSONStructMapping is the fields a struct value is written with: the name
+// each field was declared under and the name its tag gave it, along with the
+// fields a tag asked to leave out when empty. It is nothing for a value that
+// does not stand for a struct.
+function go2jsJSONStructMapping(value) {
+    if (value === null || typeof value !== "object") {
+        return null;
+    }
+
+    const name = go2jsTypeNamesByConstructor.get(value.constructor);
+
+    if (name === undefined || go2jsTypeKinds[name] !== "struct") {
+        return null;
+    }
+
+    const descriptors = go2jsStructFields[name];
+
+    if (!Array.isArray(descriptors)) {
+        return null;
+    }
+
+    const fields = {};
+    const omitEmpty = [];
+
+    for (const descriptor of descriptors) {
+        // a field the package did not export is not written, which a package
+        // path on it is the mark of
+        if (descriptor.PkgPath !== "" && descriptor.Anonymous !== true) {
+            continue;
+        }
+
+        const tag = go2jsJSONTag(descriptor.Tag, descriptor.Name);
+
+        if (tag.skip) {
+            continue;
+        }
+
+        fields[descriptor.Name] = tag.name;
+
+        if (tag.omit) {
+            omitEmpty.push(tag.name);
+        }
+    }
+
+    return {fields: fields, omitEmpty: omitEmpty};
+}
+
+// go2jsJSONTag reads the name and the options a struct tag gave a field. A tag
+// that names nothing, or that names the field as left out, is not one to write
+// the field with.
+function go2jsJSONTag(tag, fallback) {
+    const match = /(?:^|\s)json:"([^"]*)"/.exec(tag === null || tag === undefined ? "" : tag);
+
+    if (match === null) {
+        return {name: fallback, omit: false, skip: false};
+    }
+
+    const parts = match[1].split(",");
+    const name = parts[0].trim();
+    const omit = parts.slice(1).some((option) => option.trim() === "omitempty");
+
+    if (name === "-") {
+        return {name: fallback, omit: omit, skip: true};
+    }
+
+    return {name: name === "" ? fallback : name, omit: omit, skip: false};
 }
 
 function go2jsJSONEmpty(value) {
@@ -1830,6 +1906,17 @@ function go2jsJSONDecode(value, target, fields) {
         return;
     }
 
+    // a struct stands in the target with the fields it was declared with, so a
+    // struct being read into is read through its own tags rather than through
+    // the tags of the struct that happened to hold it
+    if (fields === null || fields === undefined) {
+        const own = go2jsJSONStructMapping(target);
+
+        if (own !== null) {
+            fields = own.fields;
+        }
+    }
+
     for (const key of Object.keys(value)) {
         let name = key;
 
@@ -1853,7 +1940,20 @@ function go2jsJSONDecode(value, target, fields) {
             continue;
         }
 
-        target[name] = value[key];
+        const current = target[name];
+        const item = value[key];
+
+        // a field that stands for a struct of its own is written into the
+        // struct that is already there, so the tags of that struct name the
+        // fields the JSON holds rather than the field names themselves
+        if (current !== null && typeof current === "object" && !Array.isArray(current) &&
+            item !== null && typeof item === "object" && !Array.isArray(item) &&
+            go2jsJSONStructMapping(current) !== null) {
+            go2jsJSONDecode(item, current, null);
+            continue;
+        }
+
+        target[name] = item;
     }
 }
 
@@ -2706,12 +2806,19 @@ go2jsRegisterMethod("Values.Encode", go2jsURLValuesEncode);
 const go2jsInterfaces = Object.create(null);
 const go2jsStructFormats = Object.create(null);
 const go2jsTypeNames = Object.create(null);
+
+// go2jsTypeNamesByConstructor is the other way round from go2jsTypeNames: a
+// value stands on the class it was made from rather than on the name it was
+// declared under, and a struct being written has to be named before the fields
+// it was declared with can be found.
+const go2jsTypeNamesByConstructor = new WeakMap();
 const go2jsMethodSets = Object.create(null);
 const go2jsStructFields = Object.create(null);
 const go2jsTypeKinds = Object.create(null);
 
 function go2jsRegisterTypeName(constructor, name, methods, fields, kind) {
 	go2jsTypeNames[name] = constructor;
+	go2jsTypeNamesByConstructor.set(constructor, name);
 
 	// The method set travels with the name, because a type that reflect reads
 	// off a value rather than off the program has to be told what it can do.
