@@ -12,6 +12,7 @@ type jsonField struct {
 	Name      string
 	JSONName  string
 	OmitEmpty bool
+	AsString  bool
 }
 
 func jsonFields(t gotypes.Type) []jsonField {
@@ -29,7 +30,7 @@ func jsonFields(t gotypes.Type) []jsonField {
 			continue
 		}
 
-		name, omitEmpty, skip := jsonFieldName(structType.Tag(i))
+		name, omitEmpty, asString, skip := jsonFieldName(structType.Tag(i))
 		if skip {
 			continue
 		}
@@ -38,7 +39,7 @@ func jsonFields(t gotypes.Type) []jsonField {
 			name = field.Name()
 		}
 
-		fields = append(fields, jsonField{Name: field.Name(), JSONName: name, OmitEmpty: omitEmpty})
+		fields = append(fields, jsonField{Name: field.Name(), JSONName: name, OmitEmpty: omitEmpty, AsString: asString})
 	}
 
 	return fields
@@ -62,23 +63,26 @@ func structUnderlying(t gotypes.Type) (*gotypes.Struct, bool) {
 	return structType, ok
 }
 
-func jsonFieldName(tag string) (name string, omitEmpty bool, skip bool) {
+func jsonFieldName(tag string) (name string, omitEmpty bool, asString bool, skip bool) {
 	tag = reflect.StructTag(tag).Get("json")
 
 	if tag == "-" {
-		return "", false, true
+		return "", false, false, true
 	}
 
 	parts := strings.Split(tag, ",")
 	name = strings.TrimSpace(parts[0])
 
 	for _, option := range parts[1:] {
-		if strings.TrimSpace(option) == "omitempty" {
+		switch strings.TrimSpace(option) {
+		case "omitempty":
 			omitEmpty = true
+		case "string":
+			asString = true
 		}
 	}
 
-	return name, omitEmpty, false
+	return name, omitEmpty, asString, false
 }
 
 func (e *emitter) emitJSONFieldMapping(t gotypes.Type) string {
@@ -105,6 +109,24 @@ func (e *emitter) emitJSONOmitEmpty(t gotypes.Type) string {
 	for _, field := range fields {
 		if field.OmitEmpty {
 			parts = append(parts, strconv.Quote(field.JSONName))
+		}
+	}
+
+	if len(parts) == 0 {
+		return "null"
+	}
+
+	return "[" + strings.Join(parts, ", ") + "]"
+}
+
+func (e *emitter) emitJSONStringFields(t gotypes.Type) string {
+	fields := jsonFields(t)
+
+	parts := make([]string, 0, len(fields))
+
+	for _, field := range fields {
+		if field.AsString {
+			parts = append(parts, strconv.Quote(field.Name))
 		}
 	}
 
@@ -142,6 +164,24 @@ func (e *emitter) emitJSONCall(call *ast.CallExpr, selector *ast.SelectorExpr) (
 		e.write(e.emitJSONFieldMapping(e.analyzedType(call.Args[0])))
 		e.write(", ")
 		e.write(e.emitJSONOmitEmpty(e.analyzedType(call.Args[0])))
+		e.write(", ")
+		e.write(e.emitJSONStringFields(e.analyzedType(call.Args[0])))
+		e.write(", ")
+
+		if selector.Sel.Name == "MarshalIndent" && len(call.Args) >= 3 {
+			if err := e.emitExpr(call.Args[1]); err != nil {
+				return true, err
+			}
+
+			e.write(", ")
+
+			if err := e.emitExpr(call.Args[2]); err != nil {
+				return true, err
+			}
+		} else {
+			e.write(`"", ""`)
+		}
+
 		e.write(")")
 		return true, nil
 
@@ -167,6 +207,8 @@ func (e *emitter) emitJSONCall(call *ast.CallExpr, selector *ast.SelectorExpr) (
 		e.write(e.emitJSONFieldMapping(e.analyzedType(call.Args[1])))
 		e.write(", ")
 		e.write(e.emitJSONDestination(e.analyzedType(call.Args[1])))
+		e.write(", ")
+		e.write(e.emitJSONStringFields(e.analyzedType(call.Args[1])))
 		e.write(")")
 		return true, nil
 	}
