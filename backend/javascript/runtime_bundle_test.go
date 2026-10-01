@@ -137,6 +137,7 @@ func runtimeBundleSources() []string {
 		osFileRuntimeSource(),
 		sortSliceShimRuntimeSource(),
 		execRuntimeSource(),
+		netHTTPRuntimeSource(),
 		osEnvironRuntimeSource(),
 	}
 }
@@ -165,6 +166,55 @@ func TestRuntimeSourcesHaveNoDuplicateFunctions(t *testing.T) {
 
 	for _, duplicate := range duplicates {
 		t.Error("duplicate runtime function: " + duplicate)
+	}
+}
+
+// A name a shim points at has to be a function that exists, since a call
+// written out for it is a call to it by name and nothing else would say so.
+func TestShimTargetsHaveDefinitions(t *testing.T) {
+	defined := map[string]bool{}
+
+	for _, source := range runtimeBundleSources() {
+		for _, match := range runtimeFunctionPattern.FindAllStringSubmatch(source, -1) {
+			defined[match[1]] = true
+		}
+
+		for _, match := range regexp.MustCompile(`(?m)^\tconst ([A-Za-z0-9_$]+) = `).FindAllStringSubmatch(source, -1) {
+			defined[match[1]] = true
+		}
+	}
+
+	var missing []string
+
+	// Every shim map is gathered into one, since a name in any of them is a name
+	// a call can be written out for.
+	moreStdlibFuncs()
+
+	// A call on a value a program holds is written out as a call to the function
+	// the name stands for, so those names have to be there; a call on a package
+	// is looked up by the name the program gave it and can be answered another
+	// way, so the maps of package names are left out here.
+	gathered := map[string]bool{}
+
+	for _, value := range shimValueMethods {
+		gathered[value] = true
+	}
+
+	// A name in a shim map is a name a call can be written out for, which is
+	// either a function that has to be there or a value the emitter writes out
+	// as itself, and only the first kind is this test about.
+	for name := range gathered {
+		if !strings.HasPrefix(name, "go2js") || defined[name] {
+			continue
+		}
+
+		missing = append(missing, name)
+	}
+
+	sort.Strings(missing)
+
+	for _, name := range missing {
+		t.Error("shim points at a runtime function that is not defined: " + name)
 	}
 }
 
