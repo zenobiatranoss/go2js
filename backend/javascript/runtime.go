@@ -330,76 +330,6 @@ function go2jsIOReadAll(reader) {
     return [String.fromCharCode(...chunks), null];
 }
 
-function go2jsHTTPHeader() {
-    const values = {};
-
-    return {
-        Set: function(key, value) {
-            values[String(key).toLowerCase()] = String(value);
-        },
-        Get: function(key) {
-            return values[String(key).toLowerCase()] || "";
-        }
-    };
-}
-
-// go2jsHTTPNoBody is the reader a request with nothing in its body is given. It
-// reports no content and never ends, so it is not a reader over anything: every
-// read asks again and the answer is always no bytes.
-function go2jsHTTPNoBody() {
-    return {
-        Read: function() {
-            return 0;
-        },
-        Close: function() {},
-        __go2js_no_body: true
-    };
-}
-
-function go2jsHTTPNewRequest(method, url, body) {
-    try {
-        return [{
-            Method: String(method),
-            URL: {
-                value: String(url),
-                String: function() {
-                    return this.value;
-                }
-            },
-            Header: go2jsHTTPHeader(),
-            Body: body
-        }, null];
-    } catch (err) {
-        return [null, err];
-    }
-}
-
-function go2jsHTTPNewServeMux() {
-    const routes = [];
-
-    return {
-        HandleFunc: function(pattern, handler) {
-            routes.push({
-                pattern: String(pattern),
-                handler: handler
-            });
-        },
-        Handler: function(request) {
-            const path = request && request.URL
-                ? new URL(request.URL.String()).pathname
-                : "";
-
-            for (const route of routes) {
-                if (route.pattern === path) {
-                    return [route.handler, route.pattern];
-                }
-            }
-
-            return [function() {}, ""];
-        }
-    };
-}
-
 function go2jsTimeDate(year, month, day, hour, minute, second, nanosecond, location) {
     const date = new Date(0);
 
@@ -8652,6 +8582,67 @@ function go2jsUTF8RuneLen(value) {
 	}
 
 	return 4;
+}
+
+// A rune is read out of a string by its first character, which is what a string
+// of runes holds one rune at a time, and a byte or a byte slice is read out of
+// it by the width that leads the bytes there.
+function go2jsUTF8DecodeRuneInString(s) {
+	const text = String(s);
+
+	if (text.length === 0) {
+		return [0xfffd, 0];
+	}
+
+	const code = text.codePointAt(0);
+
+	return [code, text.length >= 2 && code > 0xffff ? 2 : 1];
+}
+
+function go2jsUTF8DecodeLastRuneInString(s) {
+	const text = String(s);
+
+	if (text.length === 0) {
+		return [0xfffd, 0];
+	}
+
+	// the runes of a string are read from its end, since the last one is the
+	// last character, and a character of two code units is the one before it
+	let at = text.length - 1;
+
+	if (at > 0 && text.charCodeAt(at) < 0xdc00 || (at > 0 && text.charCodeAt(at) >= 0xdc00 && text.charCodeAt(at) <= 0xdfff)) {
+		if (text.charCodeAt(at) >= 0xdc00 && text.charCodeAt(at) <= 0xdfff) {
+			at--;
+		}
+	}
+
+	const code = text.codePointAt(at);
+
+	return [code, code > 0xffff ? 2 : 1];
+}
+
+function go2jsUTF8DecodeRune(value) {
+	const bytes = Array.from(value);
+
+	if (bytes.length === 0) {
+		return [0xfffd, 0];
+	}
+
+	return go2jsUTF8DecodeRuneInString(Buffer.from(bytes).toString("utf8"));
+}
+
+function go2jsUTF8DecodeLastRune(value) {
+	const text = Buffer.from(Array.from(value)).toString("utf8");
+
+	return go2jsUTF8DecodeLastRuneInString(text);
+}
+
+// go2jsUTF8AppendRune writes a rune onto the end of a byte slice, which is the
+// rune written down as the bytes it stands for.
+function go2jsUTF8AppendRune(bytes, value) {
+	const start = bytes === null || bytes === undefined ? [] : Array.from(bytes);
+
+	return Array.from(Buffer.concat([Buffer.from(start), Buffer.from(String.fromCodePoint(go2jsUnicodeCodePoint(value)), "utf8")]));
 }
 
 function go2jsUTF8RuneStart(value) {
