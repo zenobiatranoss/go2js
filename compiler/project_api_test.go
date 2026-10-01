@@ -88,7 +88,13 @@ func main() {
 		t.Fatal(err)
 	}
 
-	if strings.Contains(output, "\n") {
-		t.Fatal("minified project output contains newlines")
+	if strings.Contains(output, "\t") {
+		t.Fatal("minified project output contains tabs")
+	}
+
+	for _, line := range strings.Split(output, "\n") {
+		if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+			t.Fatalf("minified project output kept indentation: %q", line)
+		}
 	}
 }

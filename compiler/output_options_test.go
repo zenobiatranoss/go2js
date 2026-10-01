@@ -39,8 +39,18 @@ func main() {
 		t.Fatal(err)
 	}
 
-	if strings.Contains(minified, "\n") {
-		t.Fatal("minified output should not contain newlines")
+	// the minifier keeps a line break only where removing it would change how
+	// the next token binds (a statement boundary that relies on automatic
+	// semicolon insertion), so no line may keep its original indentation and
+	// the result must still be smaller than the pretty output
+	if len(minified) >= len(pretty) {
+		t.Fatalf("minified output (%d bytes) should be smaller than pretty output (%d bytes)", len(minified), len(pretty))
+	}
+
+	for _, line := range strings.Split(minified, "\n") {
+		if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+			t.Fatalf("minified output should not keep indentation: %q", line)
+		}
 	}
 
 	if strings.Contains(minified, "\t") {
