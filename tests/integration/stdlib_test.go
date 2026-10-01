@@ -303,6 +303,42 @@ func main() {
 	}
 }
 
+func TestJSONStringOptionAndIndent(t *testing.T) {
+	source := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+)
+
+type Point struct {
+	X int     ` + "`json:\"x\"`" + `
+	Y float64 ` + "`json:\"y,string\"`" + `
+	N int     ` + "`json:\"n,string\"`" + `
+	B bool    ` + "`json:\"b,string\"`" + `
+	S string  ` + "`json:\"s,string\"`" + `
+	E string  ` + "`json:\"e,omitempty\"`" + `
+}
+
+func main() {
+	p := Point{X: 1, Y: 2.5, N: 42, B: true, S: "hi"}
+	data, err := json.Marshal(p)
+	fmt.Println(string(data), err)
+
+	indented, ierr := json.MarshalIndent(p, ">>", "  ")
+	fmt.Println(string(indented), ierr)
+
+	var back Point
+	uerr := json.Unmarshal([]byte("{\"x\":7,\"y\":\"3.5\",\"n\":\"9\",\"b\":\"false\",\"s\":\"\\\"q\\\"\"}"), &back)
+	fmt.Println(back, uerr)
+}
+`
+	got, want := runCompiledProgram(t, source)
+	if got != want {
+		t.Fatalf("json string option/indent mismatch: got %q want %q", got, want)
+	}
+}
+
 func TestTimeDurationConversion(t *testing.T) {
 	source := `package main
 
