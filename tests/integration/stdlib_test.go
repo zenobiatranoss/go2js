@@ -619,6 +619,83 @@ func main() {
 	}
 }
 
+func TestJSONTextValues(t *testing.T) {
+	source := `package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+)
+
+type Doc struct {
+	Head  json.RawMessage ` + "`json:\"head\"`" + `
+	Count json.Number     ` + "`json:\"count\"`" + `
+	Plain string          ` + "`json:\"plain\"`" + `
+}
+
+type Holder struct {
+	List  []json.RawMessage           ` + "`json:\"list\"`" + `
+	ByKey map[string]json.RawMessage ` + "`json:\"by\"`" + `
+}
+
+func main() {
+	// a raw message keeps the text it was written with, and a number keeps the
+	// digits it was written with
+	src := ` + "`" + `{"head": {  "a" : [1, 2.50]  }, "count": 1.500e2, "plain": "ok"}` + "`" + `
+	var d Doc
+	fmt.Println(json.Unmarshal([]byte(src), &d))
+	fmt.Printf("%q %q %q\n", d.Head, d.Count, d.Plain)
+
+	// and they are written back out as what they hold rather than as text
+	out, err := json.Marshal(d)
+	fmt.Printf("%s %v\n", out, err)
+
+	// a number no double keeps the digits of is kept by its text
+	var wide Doc
+	json.Unmarshal([]byte(` + "`" + `{"count":123456789012345678901234567890}` + "`" + `), &wide)
+	again, _ := json.Marshal(wide)
+	fmt.Println(string(again))
+
+	// the digits a number holds answer for what it is
+	f, ferr := d.Count.Float64()
+	i, ierr := d.Count.Int64()
+	fmt.Println(d.Count.String(), f, ferr, i, ierr)
+
+	// a raw message inside a list and a map
+	var h Holder
+	json.Unmarshal([]byte(` + "`" + `{"list":[1,"two",{"t":3}],"by":{"k":[4,5]}}` + "`" + `), &h)
+	fmt.Printf("%q %q %q\n", h.List[0], h.List[1], h.ByKey["k"])
+
+	// nothing read stays nothing
+	var empty Doc
+	fmt.Println(empty.Head == nil, empty.Count == "")
+
+	// an indented layout reaches inside a raw message
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetIndent("..", "  ")
+	enc.Encode(d)
+	fmt.Print(buf.String())
+
+	// and a raw message laid out on its own
+	var alone bytes.Buffer
+	aenc := json.NewEncoder(&alone)
+	aenc.SetIndent("|", "\t")
+	aenc.Encode(json.RawMessage(` + "`" + `{"x":[1,2],"y":{}}` + "`" + `))
+	fmt.Print(alone.String())
+
+	// a raw message written as text is escaped as one
+	raw, err := json.Marshal(json.RawMessage(` + "`" + `"<a>&b"` + "`" + `))
+	fmt.Printf("%s %v\n", raw, err)
+}
+`
+	got, want := runCompiledProgram(t, source)
+	if got != want {
+		t.Fatalf("json text values mismatch: got %q want %q", got, want)
+	}
+}
+
 func TestTimeDurationConversion(t *testing.T) {
 	source := `package main
 
