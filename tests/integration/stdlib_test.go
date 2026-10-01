@@ -424,6 +424,116 @@ func main() {
 	}
 }
 
+func TestJSONHTMLEscaping(t *testing.T) {
+	source := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+)
+
+func main() {
+	cases := []string{"<a>&b", "line\u2028sep", "tab\there", "quote\"back\\slash", "\x01ctrl", "</script>"}
+	for _, c := range cases {
+		b, _ := json.Marshal(c)
+		fmt.Printf("%q -> %s\n", c, string(b))
+	}
+
+	m, _ := json.Marshal(map[string]string{"<": ">"})
+	fmt.Println("mapkeys:", string(m))
+
+	i, _ := json.MarshalIndent(map[string]string{"k": "<a>&b"}, ">>", " ")
+	fmt.Println("indent:", string(i))
+}
+`
+	got, want := runCompiledProgram(t, source)
+	if got != want {
+		t.Fatalf("json html escaping mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestJSONEncoderDecoder(t *testing.T) {
+	source := `package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"strings"
+)
+
+type Item struct {
+	Name  string   ` + "`json:\"name\"`" + `
+	Count int      ` + "`json:\"count\"`" + `
+	Tags  []string ` + "`json:\"tags,omitempty\"`" + `
+}
+
+func main() {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetIndent("", "  ")
+	enc.Encode(Item{Name: "a", Count: 1})
+	enc.Encode(Item{Name: "b", Count: 2, Tags: []string{"x", "y"}})
+	fmt.Print(buf.String())
+
+	var flat bytes.Buffer
+	e2 := json.NewEncoder(&flat)
+	e2.Encode(Item{Name: "c", Count: 3})
+	fmt.Print(flat.String())
+
+	var escaped bytes.Buffer
+	e3 := json.NewEncoder(&escaped)
+	e3.Encode(map[string]string{"k": "<a>&b"})
+	fmt.Print(escaped.String())
+
+	var raw bytes.Buffer
+	e4 := json.NewEncoder(&raw)
+	e4.SetEscapeHTML(false)
+	e4.Encode(map[string]string{"k": "<a>&b"})
+	fmt.Print(raw.String())
+
+	dec := json.NewDecoder(strings.NewReader("{\"name\":\"d\",\"count\":4}{\"name\":\"e\",\"count\":5}"))
+	for {
+		var it Item
+		if err := dec.Decode(&it); err != nil {
+			fmt.Println("stop:", err)
+			break
+		}
+		fmt.Println("got:", it.Name, it.Count)
+	}
+
+	stream := "{\n  \"name\": \"f\",\n  \"count\": 6\n}\n{\n  \"name\": \"g\",\n  \"count\": 7\n}"
+	sdec := json.NewDecoder(strings.NewReader(stream))
+	for {
+		var it Item
+		if err := sdec.Decode(&it); err != nil {
+			fmt.Println("stream stop:", err)
+			break
+		}
+		fmt.Println("streamed:", it.Name, it.Count)
+	}
+
+	mdec := json.NewDecoder(strings.NewReader("{\"k\":1,\"j\":2}"))
+	var m map[string]int
+	fmt.Println("map:", mdec.Decode(&m), m["k"], m["j"])
+
+	odec := json.NewDecoder(strings.NewReader("{\"name\":\"h\",\"count\":8}"))
+	var one Item
+	fmt.Println("more:", odec.More())
+	fmt.Println("decode:", odec.Decode(&one))
+	fmt.Println("after:", odec.More(), one.Name, one.Count)
+
+	tdec := json.NewDecoder(strings.NewReader("{\"name\":\"i\""))
+	var bad Item
+	fmt.Println("trunc:", tdec.Decode(&bad))
+}
+`
+	got, want := runCompiledProgram(t, source)
+	if got != want {
+		t.Fatalf("json encoder/decoder mismatch: got %q want %q", got, want)
+	}
+}
+
 func TestTimeDurationConversion(t *testing.T) {
 	source := `package main
 
