@@ -264,6 +264,45 @@ func main() {
 	}
 }
 
+func TestJSONNestedStructTags(t *testing.T) {
+	source := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+)
+
+type Inner struct {
+	A int    ` + "`json:\"a\"`" + `
+	B string ` + "`json:\"b,omitempty\"`" + `
+}
+
+type Outer struct {
+	Name  string  ` + "`json:\"name\"`" + `
+	Inner Inner   ` + "`json:\"inner\"`" + `
+	Data  []Inner ` + "`json:\"data\"`" + `
+	priv  int
+}
+
+func main() {
+	o := Outer{Name: "x", Inner: Inner{A: 1}}
+	b, err := json.Marshal(o)
+	fmt.Println(string(b), err)
+
+	var back Outer
+	err = json.Unmarshal([]byte("{\"name\":\"y\",\"inner\":{\"a\":5,\"b\":\"z\"}}"), &back)
+	fmt.Println(back.Name, back.Inner.A, back.Inner.B, err)
+
+	nb, nerr := json.Marshal(Outer{Name: "n", Data: []Inner{{A: 2}, {A: 3, B: "q"}}})
+	fmt.Println(string(nb), nerr)
+}
+`
+	got, want := runCompiledProgram(t, source)
+	if got != want {
+		t.Fatalf("json nested struct mismatch: got %q want %q", got, want)
+	}
+}
+
 func TestTimeDurationConversion(t *testing.T) {
 	source := `package main
 
