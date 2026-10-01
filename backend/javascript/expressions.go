@@ -884,10 +884,13 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				return err
 			}
 
-			if handled, err := e.emitShimValueMethodCall(x, selector); handled {
+			if handled, err := e.emitJSONMethodCall(x, selector); handled {
 				return err
 			}
 
+			if handled, err := e.emitShimValueMethodCall(x, selector); handled {
+				return err
+			}
 			if handled, err := e.emitSortCall(x, selector); handled {
 				return err
 			}

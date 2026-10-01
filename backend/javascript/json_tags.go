@@ -287,6 +287,145 @@ func (e *emitter) emitJSONCall(call *ast.CallExpr, selector *ast.SelectorExpr) (
 	return false, nil
 }
 
+// jsonStreamMethods are the methods an encoder or a decoder has. The key is
+// the type that has the method and the method itself, which is how the emitter
+// tells a call on an encoder apart from any other call.
+var jsonStreamMethods = map[string]bool{
+	"encoding/json.Encoder.Encode":        true,
+	"encoding/json.Encoder.SetIndent":     true,
+	"encoding/json.Encoder.SetEscapeHTML": true,
+	"encoding/json.Decoder.Decode":        true,
+	"encoding/json.Decoder.More":          true,
+	"encoding/json.Decoder.Buffered":      true,
+}
+
+// emitJSONMethodCall writes a call on an encoder or a decoder. The value that
+// goes in or comes out is written the way Marshal and Unmarshal write theirs,
+// so the fields a tag named and the kinds they hold are known without looking
+// the value over at run time.
+func (e *emitter) emitJSONMethodCall(call *ast.CallExpr, selector *ast.SelectorExpr) (bool, error) {
+	key, ok := shimMethodKey(selector, e.analyzedType(selector.X))
+	if !ok || !jsonStreamMethods[key] {
+		return false, nil
+	}
+
+	e.needsRuntime = true
+
+	switch key {
+	case "encoding/json.Encoder.Encode":
+		if len(call.Args) == 0 {
+			return false, nil
+		}
+
+		e.write("go2jsJSONEncoderEncode(")
+
+		if err := e.emitExpr(selector.X); err != nil {
+			return true, err
+		}
+
+		e.write(", ")
+
+		if err := e.emitExpr(call.Args[0]); err != nil {
+			return true, err
+		}
+
+		e.write(", ")
+		e.write(e.emitJSONFieldMapping(e.analyzedType(call.Args[0])))
+		e.write(", ")
+		e.write(e.emitJSONOmitEmpty(e.analyzedType(call.Args[0])))
+		e.write(", ")
+		e.write(e.emitJSONStringFields(e.analyzedType(call.Args[0])))
+		e.write(")")
+		return true, nil
+
+	case "encoding/json.Encoder.SetIndent":
+		if len(call.Args) < 2 {
+			return false, nil
+		}
+
+		e.write("go2jsJSONEncoderSetIndent(")
+
+		if err := e.emitExpr(selector.X); err != nil {
+			return true, err
+		}
+
+		for _, arg := range call.Args[:2] {
+			e.write(", ")
+
+			if err := e.emitExpr(arg); err != nil {
+				return true, err
+			}
+		}
+
+		e.write(")")
+		return true, nil
+
+	case "encoding/json.Encoder.SetEscapeHTML":
+		if len(call.Args) == 0 {
+			return false, nil
+		}
+
+		e.write("go2jsJSONEncoderSetEscapeHTML(")
+
+		if err := e.emitExpr(selector.X); err != nil {
+			return true, err
+		}
+
+		e.write(", ")
+
+		if err := e.emitExpr(call.Args[0]); err != nil {
+			return true, err
+		}
+
+		e.write(")")
+		return true, nil
+
+	case "encoding/json.Decoder.Decode":
+		if len(call.Args) == 0 {
+			return false, nil
+		}
+
+		e.write("go2jsJSONDecoderDecode(")
+
+		if err := e.emitExpr(selector.X); err != nil {
+			return true, err
+		}
+
+		e.write(", ")
+
+		if err := e.emitExpr(call.Args[0]); err != nil {
+			return true, err
+		}
+
+		e.write(", ")
+		e.write(e.emitJSONFieldMapping(e.analyzedType(call.Args[0])))
+		e.write(", ")
+		e.write(e.emitJSONDestination(e.analyzedType(call.Args[0])))
+		e.write(", ")
+		e.write(e.emitJSONStringFields(e.analyzedType(call.Args[0])))
+		e.write(")")
+		return true, nil
+
+	case "encoding/json.Decoder.More", "encoding/json.Decoder.Buffered":
+		helper := "go2jsJSONDecoderMore"
+		if strings.HasSuffix(key, ".Buffered") {
+			helper = "go2jsJSONDecoderBuffered"
+		}
+
+		e.write(helper)
+		e.write("(")
+
+		if err := e.emitExpr(selector.X); err != nil {
+			return true, err
+		}
+
+		e.write(")")
+		return true, nil
+	}
+
+	return false, nil
+}
+
 func (e *emitter) emitJSONDestination(t gotypes.Type) string {
 	pointer, ok := t.(*gotypes.Pointer)
 	if !ok {
