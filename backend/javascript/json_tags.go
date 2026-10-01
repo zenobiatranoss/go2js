@@ -173,6 +173,56 @@ func (e *emitter) emitJSONFieldMapping(t gotypes.Type) string {
 	return "{" + strings.Join(parts, ", ") + "}"
 }
 
+// jsonTextValueType names the two encoding/json types whose value is the text
+// of something rather than something JSON describes: a RawMessage holds the text
+// of a value that has not been read yet, and a Number holds the text of a
+// number. Both are written out as the text they hold.
+func jsonTextValueType(t gotypes.Type) (string, bool) {
+	named, ok := t.(*gotypes.Named)
+
+	if !ok || named.Obj() == nil {
+		return "", false
+	}
+
+	pkg := named.Obj().Pkg()
+
+	if pkg == nil || pkg.Path() != "encoding/json" {
+		return "", false
+	}
+
+	switch named.Obj().Name() {
+	case "RawMessage":
+		return "json.RawMessage", true
+	case "Number":
+		return "json.Number", true
+	}
+
+	return "", false
+}
+
+// emitJSONTextFields writes the JSON names of the fields whose value is itself
+// text rather than something JSON describes: a json.RawMessage, which holds the
+// text of a value that has not been read yet, and a json.Number, which holds the
+// text of a number. A field written under one of these names is written as the
+// text it holds rather than as a string holding that text.
+func (e *emitter) emitJSONTextFields(t gotypes.Type) string {
+	fields := jsonFields(t)
+
+	parts := make([]string, 0, len(fields))
+
+	for _, field := range fields {
+		if name, ok := jsonTextValueType(field.Type); ok {
+			parts = append(parts, strconv.Quote(field.Name)+": "+strconv.Quote(name))
+		}
+	}
+
+	if len(parts) == 0 {
+		return "null"
+	}
+
+	return "{" + strings.Join(parts, ", ") + "}"
+}
+
 func (e *emitter) emitJSONOmitEmpty(t gotypes.Type) string {
 	fields := jsonFields(t)
 
@@ -225,6 +275,41 @@ func (e *emitter) emitJSONCall(call *ast.CallExpr, selector *ast.SelectorExpr) (
 			return false, nil
 		}
 
+		// a value that is itself text rather than a value JSON describes is
+		// written as the text it stands for, since writing a string would put
+		// the text in quotes and make of it something else
+		if name, ok := jsonTextValueType(e.analyzedType(call.Args[0])); ok {
+			e.needsRuntime = true
+			e.write("go2jsJSONMarshalAsText(")
+
+			if err := e.emitExpr(call.Args[0]); err != nil {
+				return true, err
+			}
+
+			e.write(", ")
+			e.write(strconv.Quote(name))
+			e.write(", ")
+
+			if selector.Sel.Name == "MarshalIndent" && len(call.Args) >= 3 {
+				if err := e.emitExpr(call.Args[1]); err != nil {
+					return true, err
+				}
+
+				e.write(", ")
+
+				if err := e.emitExpr(call.Args[2]); err != nil {
+					return true, err
+				}
+			} else {
+				e.write(`"", ""`)
+			}
+
+			e.write(", ")
+			e.write("true")
+			e.write(")")
+			return true, nil
+		}
+
 		e.needsRuntime = true
 		e.write("go2jsJSONMarshal(")
 
@@ -238,6 +323,8 @@ func (e *emitter) emitJSONCall(call *ast.CallExpr, selector *ast.SelectorExpr) (
 		e.write(e.emitJSONOmitEmpty(e.analyzedType(call.Args[0])))
 		e.write(", ")
 		e.write(e.emitJSONStringFields(e.analyzedType(call.Args[0])))
+		e.write(", ")
+		e.write(e.emitJSONTextFields(e.analyzedType(call.Args[0])))
 		e.write(", ")
 
 		if selector.Sel.Name == "MarshalIndent" && len(call.Args) >= 3 {
@@ -281,8 +368,6 @@ func (e *emitter) emitJSONCall(call *ast.CallExpr, selector *ast.SelectorExpr) (
 		e.write(e.emitJSONDestination(e.analyzedType(call.Args[1])))
 		e.write(", ")
 		e.write(e.emitJSONStringFields(e.analyzedType(call.Args[1])))
-		e.write(", ")
-		e.write(e.emitJSONFieldTypes(e.analyzedType(call.Args[1])))
 		e.write(")")
 		return true, nil
 	}
@@ -320,6 +405,27 @@ func (e *emitter) emitJSONMethodCall(call *ast.CallExpr, selector *ast.SelectorE
 			return false, nil
 		}
 
+		// a value that is itself text rather than a value JSON describes is
+		// written as the text it stands for, the same way Marshal writes one
+		if name, ok := jsonTextValueType(e.analyzedType(call.Args[0])); ok {
+			e.write("go2jsJSONEncoderEncodeAsText(")
+
+			if err := e.emitExpr(selector.X); err != nil {
+				return true, err
+			}
+
+			e.write(", ")
+
+			if err := e.emitExpr(call.Args[0]); err != nil {
+				return true, err
+			}
+
+			e.write(", ")
+			e.write(strconv.Quote(name))
+			e.write(")")
+			return true, nil
+		}
+
 		e.write("go2jsJSONEncoderEncode(")
 
 		if err := e.emitExpr(selector.X); err != nil {
@@ -338,6 +444,8 @@ func (e *emitter) emitJSONMethodCall(call *ast.CallExpr, selector *ast.SelectorE
 		e.write(e.emitJSONOmitEmpty(e.analyzedType(call.Args[0])))
 		e.write(", ")
 		e.write(e.emitJSONStringFields(e.analyzedType(call.Args[0])))
+		e.write(", ")
+		e.write(e.emitJSONTextFields(e.analyzedType(call.Args[0])))
 		e.write(")")
 		return true, nil
 
@@ -488,10 +596,25 @@ func jsonDestinationTypeSeen(t gotypes.Type, seen map[gotypes.Type]bool) string 
 	underlying := t
 
 	if named, ok := t.(*gotypes.Named); ok && named.Obj() != nil {
-		name = named.Obj().Name()
+		obj := named.Obj()
+		name = obj.Name()
 
-		if pkg := named.Obj().Pkg(); pkg != nil && pkg.Name() != "" {
+		if pkg := obj.Pkg(); pkg != nil && pkg.Name() != "" {
 			name = pkg.Name() + "." + name
+
+			// A json.RawMessage and a json.Number are both held as the text they
+			// were written as rather than as the value that text stands for: a
+			// raw message is the text itself and not what is in it, and a number
+			// is kept as text because a number no double holds the digits of is
+			// kept by holding on to how it was written.
+			if pkg.Path() == "encoding/json" {
+				switch obj.Name() {
+				case "RawMessage":
+					return `{"kind":"raw"}`
+				case "Number":
+					return `{"kind":"num"}`
+				}
+			}
 		}
 
 		underlying = named.Underlying()
