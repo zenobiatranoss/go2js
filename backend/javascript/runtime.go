@@ -1719,6 +1719,20 @@ function go2jsJSONEncode(value, fields, omitEmpty, stringFields) {
 // fields a tag asked to leave out when empty. It is nothing for a value that
 // does not stand for a struct.
 function go2jsJSONStructMapping(value) {
+    const candidates = go2jsJSONFieldCandidates(value, 0, new Set());
+
+    if (candidates === null) {
+        return null;
+    }
+
+    return go2jsJSONReduceCandidates(candidates);
+}
+
+// go2jsJSONFieldCandidates reads the fields a struct value is written with at
+// the depth they were found. A field promoted out of an embedded struct is one
+// level deeper than a field declared on the value itself, and an embedded
+// struct a tag gave no name is walked into rather than written under its own.
+function go2jsJSONFieldCandidates(value, depth, seen) {
     if (value === null || typeof value !== "object") {
         return null;
     }
@@ -1735,9 +1749,15 @@ function go2jsJSONStructMapping(value) {
         return null;
     }
 
-    const fields = {};
-    const omitEmpty = [];
-    const stringFields = [];
+    // a struct that reaches itself through an embedded pointer is walked once,
+    // which is as much as the shallower fields it repeats are worth
+    if (seen.has(value)) {
+        return null;
+    }
+
+    seen.add(value);
+
+    const candidates = [];
 
     for (const descriptor of descriptors) {
         // a field the package did not export is not written, which a package
@@ -1752,14 +1772,72 @@ function go2jsJSONStructMapping(value) {
             continue;
         }
 
-        fields[descriptor.Name] = tag.name;
+        if (descriptor.Anonymous === true && tag.named === false) {
+            const inner = go2jsJSONFieldCandidates(value[descriptor.Name], depth + 1, seen);
 
-        if (tag.omit) {
-            omitEmpty.push(tag.name);
+            if (inner !== null) {
+                seen.delete(value[descriptor.Name]);
+
+                for (const candidate of inner) {
+                    candidates.push(candidate);
+                }
+
+                continue;
+            }
         }
 
-        if (tag.string) {
-            stringFields.push(descriptor.Name);
+        candidates.push({
+            name: descriptor.Name,
+            json: tag.name,
+            depth: depth,
+            omit: tag.omit,
+            string: tag.string,
+        });
+    }
+
+    return candidates;
+}
+
+// go2jsJSONReduceCandidates settles the name a field is written under: a
+// shallower field hides a deeper one, and a name two fields at the same depth
+// disagree over is left out.
+function go2jsJSONReduceCandidates(candidates) {
+    const minDepth = {};
+    const count = {};
+
+    for (const candidate of candidates) {
+        if (minDepth[candidate.json] === undefined || candidate.depth < minDepth[candidate.json]) {
+            minDepth[candidate.json] = candidate.depth;
+        }
+    }
+
+    for (const candidate of candidates) {
+        if (candidate.depth === minDepth[candidate.json]) {
+            count[candidate.json] = (count[candidate.json] || 0) + 1;
+        }
+    }
+
+    const fields = {};
+    const omitEmpty = [];
+    const stringFields = [];
+
+    for (const candidate of candidates) {
+        if (candidate.depth !== minDepth[candidate.json] || count[candidate.json] !== 1) {
+            continue;
+        }
+
+        if (fields[candidate.name] !== undefined) {
+            continue;
+        }
+
+        fields[candidate.name] = candidate.json;
+
+        if (candidate.omit) {
+            omitEmpty.push(candidate.json);
+        }
+
+        if (candidate.string) {
+            stringFields.push(candidate.name);
         }
     }
 
@@ -1773,7 +1851,7 @@ function go2jsJSONTag(tag, fallback) {
     const match = /(?:^|\s)json:"([^"]*)"/.exec(tag === null || tag === undefined ? "" : tag);
 
     if (match === null) {
-        return {name: fallback, omit: false, string: false, skip: false};
+        return {name: fallback, named: false, omit: false, string: false, skip: false};
     }
 
     const parts = match[1].split(",");
@@ -1782,10 +1860,10 @@ function go2jsJSONTag(tag, fallback) {
     const asString = parts.slice(1).some((option) => option.trim() === "string");
 
     if (name === "-") {
-        return {name: fallback, omit: omit, string: asString, skip: true};
+        return {name: fallback, named: true, omit: omit, string: asString, skip: true};
     }
 
-    return {name: name === "" ? fallback : name, omit: omit, string: asString, skip: false};
+    return {name: name === "" ? fallback : name, named: name !== "", omit: omit, string: asString, skip: false};
 }
 
 function go2jsJSONEmpty(value) {
