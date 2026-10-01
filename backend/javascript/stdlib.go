@@ -324,8 +324,11 @@ var utf8Funcs = map[string]string{
 }
 
 var jsonFuncs = map[string]string{
-	"Marshal":   "go2jsJSONMarshal",
-	"Unmarshal": "go2jsJSONUnmarshal",
+	"Marshal":       "go2jsJSONMarshal",
+	"MarshalIndent": "go2jsJSONMarshal",
+	"Unmarshal":     "go2jsJSONUnmarshal",
+	"NewEncoder":    "go2jsJSONNewEncoder",
+	"NewDecoder":    "go2jsJSONNewDecoder",
 }
 
 var urlFuncs = map[string]string{

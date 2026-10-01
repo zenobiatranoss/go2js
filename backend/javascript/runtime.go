@@ -1614,33 +1614,60 @@ function go2jsJSONMarshal(value, fields, omitEmpty, stringFields, prefix, indent
     try {
         const encoded = go2jsJSONEncode(value, fields, omitEmpty, stringFields);
 
-        // Marshal writes the value with no room between tokens at all, while
-        // MarshalIndent starts a new line for every part and pads it with the
-        // indent, putting the prefix in front of every line but the first
-        if (prefix === "" && indent === "") {
-            return [JSON.stringify(encoded), null];
-        }
+        return [go2jsJSONText(encoded, prefix, indent, true), null];
+    } catch (err) {
+        return [null, err];
+    }
+}
 
-        let text = JSON.stringify(encoded, null, indent === "" ? " " : indent);
+// go2jsJSONEscapeHTML writes the five characters that make JSON unsafe to
+// embed in HTML as the escapes encoding/json writes for them. JSON.stringify
+// leaves every one of them alone, so they are swapped for their escapes once
+// the text is written, which never puts one outside a string.
+function go2jsJSONEscapeHTML(text) {
+    if (typeof text !== "string") {
+        return text;
+    }
+
+    return text
+        .split("<").join("\\u003c")
+        .split(">").join("\\u003e")
+        .split("&").join("\\u0026")
+        .split("\u2028").join("\\u2028")
+        .split("\u2029").join("\\u2029");
+}
+
+// go2jsJSONText writes an encoded value out. An indent of nothing writes the
+// value with no room between tokens at all, while any other indent starts a
+// new line for every part and pads it, putting the prefix in front of every
+// line but the first.
+function go2jsJSONText(encoded, prefix, indent, escapeHTML) {
+    let text;
+
+    if (prefix === "" && indent === "") {
+        text = JSON.stringify(encoded);
+    } else {
+        text = JSON.stringify(encoded, null, indent === "" ? " " : indent);
 
         if (indent === "") {
             text = text.split("\n").map(line => line.replace(/^ +/, "")).join("\n");
         }
+    }
 
-        if (prefix !== "") {
-            const lines = text.split("\n");
+    // the prefix is not part of the JSON, so it is added after the escapes
+    text = escapeHTML === false ? text : go2jsJSONEscapeHTML(text);
 
-            for (let index = 1; index < lines.length; index++) {
-                lines[index] = prefix + lines[index];
-            }
+    if (prefix !== "" && indent !== "") {
+        const lines = text.split("\n");
 
-            text = lines.join("\n");
+        for (let index = 1; index < lines.length; index++) {
+            lines[index] = prefix + lines[index];
         }
 
-        return [text, null];
-    } catch (err) {
-        return [null, err];
+        text = lines.join("\n");
     }
+
+    return text;
 }
 
 function go2jsJSONEncode(value, fields, omitEmpty, stringFields) {
@@ -1921,6 +1948,221 @@ function go2jsJSONUnmarshal(data, target, fields, destination, stringFields) {
     } catch (err) {
         return err;
     }
+}
+
+// go2jsJSONNewEncoder returns an encoder that writes to an io.Writer. What it
+// writes is the same text Marshal writes, with a newline after every value so
+// that a stream of them can be read back one at a time.
+function go2jsJSONNewEncoder(writer) {
+    return {
+        __go2js_json_encoder: true,
+        writer: writer,
+        prefix: "",
+        indent: "",
+        escapeHTML: true
+    };
+}
+
+function go2jsJSONEncoderEncode(encoder, value, fields, omitEmpty, stringFields) {
+    try {
+        const encoded = go2jsJSONEncode(value, fields, omitEmpty, stringFields);
+        const text = go2jsJSONText(encoded, encoder.prefix, encoder.indent, encoder.escapeHTML);
+
+        return go2jsJSONWrite(encoder.writer, text + "\n");
+    } catch (err) {
+        return err;
+    }
+}
+
+// go2jsJSONWrite hands text to an io.Writer as the bytes it stands for, the way
+// a program that writes a string to a file does.
+function go2jsJSONWrite(writer, text) {
+    const target = go2jsUnwrap(writer);
+
+    if (target === null || target === undefined) {
+        return go2jsJSONError("json: writer is nil");
+    }
+
+    if (typeof target.Write !== "function") {
+        return go2jsJSONError("json: writer does not implement io.Writer");
+    }
+
+    const result = target.Write(go2jsStringToBytes(text));
+
+    if (Array.isArray(result)) {
+        return result[1] === null || result[1] === undefined ? null : result[1];
+    }
+
+    return result === undefined ? null : result;
+}
+
+function go2jsJSONEncoderSetIndent(encoder, prefix, indent) {
+    encoder.prefix = String(prefix);
+    encoder.indent = String(indent);
+
+    return null;
+}
+
+function go2jsJSONEncoderSetEscapeHTML(encoder, escape) {
+    encoder.escapeHTML = escape !== false;
+
+    return null;
+}
+
+// go2jsJSONNewDecoder returns a decoder that reads values out of an io.Reader.
+// The text it has read is held onto between calls, so a stream of values that
+// arrive without anything separating them can be read one after another.
+function go2jsJSONNewDecoder(reader) {
+    return {
+        __go2js_json_decoder: true,
+        reader: reader,
+        buffer: "",
+        position: 0,
+        eof: false
+    };
+}
+
+// go2jsJSONDecoderFill reads whatever more the reader has to offer. A reader
+// that has nothing left sets the flag instead of asking again.
+function go2jsJSONDecoderFill(decoder) {
+    const reader = go2jsUnwrap(decoder.reader);
+
+    if (reader === null || reader === undefined || typeof reader.Read !== "function") {
+        decoder.eof = true;
+        return;
+    }
+
+    const chunk = new Array(4096);
+    const result = reader.Read(chunk);
+    const read = Number(result[0]) || 0;
+    const err = result[1] === undefined ? null : result[1];
+
+    if (read > 0) {
+        decoder.buffer += new TextDecoder().decode(Uint8Array.from(chunk.slice(0, read)));
+    }
+
+    if (err !== null || read <= 0) {
+        decoder.eof = true;
+    }
+}
+
+// go2jsJSONDecoderSkipSpace leaves past the space between values, reading more
+// when the text in hand ends before the next value starts.
+function go2jsJSONDecoderSkipSpace(decoder) {
+    for (;;) {
+        while (decoder.position < decoder.buffer.length && /\s/.test(decoder.buffer[decoder.position])) {
+            decoder.position++;
+        }
+
+        if (decoder.position < decoder.buffer.length || decoder.eof) {
+            return;
+        }
+
+        go2jsJSONDecoderFill(decoder);
+    }
+}
+
+// go2jsJSONDecoderOne reads the text of the value that starts at the position.
+// The text ends where the value ends rather than where the next whitespace is,
+// which is what lets a stream of values sit next to each other.
+function go2jsJSONDecoderOne(decoder) {
+    go2jsJSONDecoderSkipSpace(decoder);
+
+    if (decoder.position >= decoder.buffer.length) {
+        // a stream that has run out is the end of the input, not a failure
+        return [null, go2jsIOEOF()];
+    }
+
+    const start = decoder.position;
+    const text = decoder.buffer;
+    const first = text[start];
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    // a value that is not wrapped in brackets ends at the space or the comma
+    // after it, while one that is wrapped ends where its last bracket closes
+    const bracketed = first === "{" || first === "[";
+
+    for (let index = start; index < text.length; index++) {
+        const ch = text[index];
+
+        if (inString) {
+            if (escaped) {
+                escaped = false;
+            } else if (ch === "\\") {
+                escaped = true;
+            } else if (ch === "\"") {
+                inString = false;
+            }
+
+            continue;
+        }
+
+        if (ch === "\"") {
+            inString = true;
+            continue;
+        }
+
+        if (ch === "{" || ch === "[") {
+            depth++;
+            continue;
+        }
+
+        if (ch === "}" || ch === "]") {
+            if (depth === 0) {
+                return [null, go2jsJSONError("invalid character after top-level value")];
+            }
+
+            depth--;
+
+            if (depth === 0) {
+                return [text.slice(start, index + 1), null];
+            }
+
+            continue;
+        }
+
+        if (!bracketed && index > start && (/\s/.test(ch) || ch === ",")) {
+            return [text.slice(start, index), null];
+        }
+    }
+
+    if (inString || depth > 0) {
+        return [null, go2jsJSONError("unexpected EOF")];
+    }
+
+    return [text.slice(start), null];
+}
+
+function go2jsJSONDecoderDecode(decoder, target, fields, destination, stringFields) {
+    const [text, err] = go2jsJSONDecoderOne(decoder);
+
+    if (err !== null) {
+        return err;
+    }
+
+    decoder.position += text.length;
+
+    return go2jsJSONUnmarshal(text, target, fields, destination, stringFields);
+}
+
+// go2jsJSONDecoderMore reports whether another value is left to read, which is
+// what a loop over a stream asks before it reads one.
+function go2jsJSONDecoderMore(decoder) {
+    go2jsJSONDecoderSkipSpace(decoder);
+
+    return decoder.position < decoder.buffer.length;
+}
+
+// go2jsJSONDecoderBuffered is the text the decoder has read but not yet handed
+// out, which is what a program writes to the start of what follows.
+function go2jsJSONDecoderBuffered(decoder) {
+    return go2jsJSONCoerceString(decoder.buffer.slice(decoder.position));
+}
+
+function go2jsJSONError(message) {
+    return go2jsSentinelError(message)();
 }
 
 function go2jsJSONCoerceString(value) {
