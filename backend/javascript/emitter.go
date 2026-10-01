@@ -6,6 +6,7 @@ import (
 	"go/ast"
 	"go/token"
 	gotypesstd "go/types"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -31,6 +32,9 @@ type emitter struct {
 	expectedElementType gotypesstd.Type
 	buf                 bytes.Buffer
 	indent              int
+	sourceLines         map[int]string
+	sourcePackage       string
+	outLine             int
 	needsRuntime        bool
 	reflectTypeKeys     map[gotypesstd.Type]string
 	reflectTypeConsts   []string
@@ -649,6 +653,8 @@ func emitFilePass(file *ast.File, analysis *gotypes.Result, context *semantic.Co
 		selfPackagePath:  selfPackagePath,
 		qualifiers:       qualifiers,
 		reflectTypeUnit:  nextReflectTypeUnit(),
+		sourceLines:      make(map[int]string),
+		sourcePackage:    file.Name.Name,
 	}
 	for _, decl := range file.Decls {
 		switch d := decl.(type) {
@@ -683,16 +689,32 @@ func emitFilePass(file *ast.File, analysis *gotypes.Result, context *semantic.Co
 	if pass != emitTypesOnly && file.Name.Name == "main" {
 		for _, decl := range file.Decls {
 			if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv == nil && fn.Name.Name == "main" {
-				e.write("main();")
+				// A panic nothing recovered ends the program the way Go ends it,
+				// with a trace of the Go source on stderr and a status of two.
+				e.write("try { main(); } catch (e) { go2jsReportUncaughtPanic(e); }")
 				e.newline()
 				break
 			}
 		}
 	}
 
+	// The table of lines goes out with the program: the runtime is written above
+	// it, so a file that carries the table without the runtime still carries a
+	// table, and the runtime reaches it when the whole program is put together.
+	table := e.sourceLineTable()
+	body := e.buf.String()
+
+	if table != "" {
+		// the table is written first, so that the program begins on the line
+		// after it and the lines it names are counted from there, and the
+		// runtime the table is read through is asked for with it
+		body = table + body
+		e.needsRuntime = true
+	}
+
 	prefix := ""
 	if includeRuntime && e.needsRuntime {
-		prefix = ProgramRuntime(e.buf.String(), e.target)
+		prefix = ProgramRuntime(body, e.target)
 	}
 
 	// The reflect type descriptors are discovered while the body is emitted, so
@@ -702,7 +724,7 @@ func emitFilePass(file *ast.File, analysis *gotypes.Result, context *semantic.Co
 		prefix += strings.Join(e.reflectTypeConsts, "\n") + "\n"
 	}
 
-	return prefix + e.buf.String(), e.needsRuntime, nil
+	return prefix + body, e.needsRuntime, nil
 }
 
 // ProgramRuntime returns the runtime bundle a program needs for the given
@@ -728,6 +750,7 @@ func ProgramRuntime(requiredSource, target string) string {
 		moreRuntimeSource(),
 		funcTypeRuntimeSource(),
 		reflectRuntimeSource(),
+		stackRuntimeSource(),
 		debugRuntimeSource(),
 		httptestRuntimeSource(),
 		netRuntimeSource(),
@@ -751,6 +774,9 @@ func ProgramRuntime(requiredSource, target string) string {
 }
 
 func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
+	if fn.Name != nil {
+		e.markSourceLine(fn.Name)
+	}
 	e.receiver = ""
 	e.receiverMutable = false
 	e.channelPairTarget = false
@@ -1108,6 +1134,7 @@ func (e *emitter) emitTypeAssertAssignment(stmt *ast.AssignStmt) (bool, error) {
 }
 
 func (e *emitter) emitStmt(stmt ast.Stmt) error {
+	e.markSourceLine(stmt)
 	if e.gotoMode {
 		e.gotoStmtDepth++
 		defer func() { e.gotoStmtDepth-- }()
@@ -2972,6 +2999,63 @@ func (e *emitter) write(value string) {
 
 func (e *emitter) newline() {
 	e.buf.WriteByte('\n')
+	e.outLine++
+}
+
+// markSourceLine remembers which line of the Go source the line being written
+// came from, so that a place in a JavaScript stack can be read back as the
+// place in the Go program it stands for.
+func (e *emitter) markSourceLine(node ast.Node) {
+	if e.sourceLines == nil || node == nil {
+		return
+	}
+
+	position := e.positionOf(node)
+	if position == "" {
+		return
+	}
+
+	// the line written next is the one the position belongs to
+	e.sourceLines[e.outLine+1] = position
+}
+
+// sourceLineTable is the map from the lines of the generated program to the
+// places in the Go source they came from, written out for the runtime to read
+// when it turns a JavaScript stack into the stack a Go program would print.
+func (e *emitter) sourceLineTable() string {
+	if len(e.sourceLines) == 0 {
+		return ""
+	}
+
+	lines := make([]int, 0, len(e.sourceLines))
+	for line := range e.sourceLines {
+		lines = append(lines, line)
+	}
+
+	sort.Ints(lines)
+
+	var table strings.Builder
+
+	// a frame is written under the package its function was declared in, which
+	// the program is one file of, so the name is written out with the table
+	table.WriteString("go2jsSetPackageName(")
+	table.WriteString(strconv.Quote(e.sourcePackage))
+	table.WriteString(");\n")
+	table.WriteString("go2jsSetSourceLines({")
+
+	for index, line := range lines {
+		if index > 0 {
+			table.WriteString(", ")
+		}
+
+		table.WriteString(strconv.Itoa(line))
+		table.WriteString(": ")
+		table.WriteString(strconv.Quote(e.sourceLines[line]))
+	}
+
+	table.WriteString("});\n")
+
+	return table.String()
 }
 
 func (e *emitter) writeIndent() {
