@@ -1610,14 +1610,76 @@ function go2jsURLValuesEncode(values) {
 }
 
 
-function go2jsJSONMarshal(value, fields, omitEmpty, stringFields, prefix, indent) {
+function go2jsJSONMarshal(value, fields, omitEmpty, stringFields, textFields, prefix, indent) {
     try {
-        const encoded = go2jsJSONEncode(value, fields, omitEmpty, stringFields);
+        const encoded = go2jsJSONEncode(value, fields, omitEmpty, stringFields, textFields, prefix, indent);
 
         return [go2jsJSONText(encoded, prefix, indent, true), null];
     } catch (err) {
         return [null, err];
     }
+}
+
+// go2jsJSONRawMessage is a json.RawMessage made from the text given it, which is
+// all a raw message is: the text of a value, held as that text.
+function go2jsJSONRawMessage(value) {
+    if (typeof value === "string") {
+        return value;
+    }
+
+    return go2jsBytesToString(value);
+}
+
+// go2jsJSONMarshalAsText writes out a value that is itself text rather than a
+// value JSON describes: a json.RawMessage, which is the text of a value that
+// has not been read yet, and a json.Number, which is the text of a number. The
+// text is written as it stands rather than as a string, and a json.Number is
+// written as a number only when it is one, since a text that is not a number is
+// not one to write.
+function go2jsJSONMarshalAsText(value, typeName, prefix, indent, escapeHTML) {
+    const text = go2jsJSONNumberText(value);
+
+    try {
+        if (typeName === "json.RawMessage") {
+            // A raw message is the text of a value that has not been read yet,
+            // so what it is written out as is the value that text describes
+            // with the room taken out of it, and with the room put back by
+            // whatever the caller laid the rest of the value out with. Every
+            // token is written as it was written, so the digits of a number
+            // inside it are the digits it was written with.
+            const compact = go2jsJSONCompact(text);
+
+            if (prefix === "" && indent === "") {
+                return [escapeHTML === false ? compact : go2jsJSONEscapeHTML(compact), null];
+            }
+
+            return [go2jsJSONEscapeHTML(go2jsJSONIndent(compact, prefix, indent)), null];
+        }
+
+        if (!go2jsJSONNumberLiteral(text)) {
+            return [null, new Error("json: invalid number literal " + go2jsJSONWritten(text))];
+        }
+
+        // A number is written as the digits it holds, since a number a double
+        // holds is written as the double and a number with more digits than a
+        // double keeps would lose them.
+        return [escapeHTML === false ? text : go2jsJSONEscapeHTML(text), null];
+    } catch (err) {
+        return [null, new Error("json: error calling MarshalJSON for type " + typeName + ": invalid character")];
+    }
+}
+
+// go2jsJSONEncoderEncodeAsText is an encoder handed a value that is itself text
+// rather than a value JSON describes, which is written as the text it stands
+// for and with whatever the encoder was set up to write with.
+function go2jsJSONEncoderEncodeAsText(encoder, value, typeName) {
+    const written = go2jsJSONMarshalAsText(value, typeName, encoder.prefix, encoder.indent, encoder.escapeHTML);
+
+    if (written[1] !== null && written[1] !== undefined) {
+        return written[1];
+    }
+
+    return go2jsJSONWrite(encoder.writer, written[0] + "\n");
 }
 
 // go2jsJSONEscapeHTML writes the five characters that make JSON unsafe to
@@ -1654,6 +1716,13 @@ function go2jsJSONText(encoded, prefix, indent, escapeHTML) {
         }
     }
 
+    // the text of a value that was written rather than made goes back in before
+    // the escapes are written, since a number and a raw message both say more
+    // than the double and the value made again out of what was read would
+    if (go2jsJSONLiteralWritten) {
+        text = go2jsJSONPutLiterals(text);
+    }
+
     // the prefix is not part of the JSON, so it is added after the escapes
     text = escapeHTML === false ? text : go2jsJSONEscapeHTML(text);
 
@@ -1670,19 +1739,19 @@ function go2jsJSONText(encoded, prefix, indent, escapeHTML) {
     return text;
 }
 
-function go2jsJSONEncode(value, fields, omitEmpty, stringFields) {
+function go2jsJSONEncode(value, fields, omitEmpty, stringFields, textFields, prefix, indent) {
     if (value === null || value === undefined) {
         return null;
     }
 
     if (Array.isArray(value)) {
-        return value.map(item => go2jsJSONEncode(item, null, null, null));
+        return value.map(item => go2jsJSONEncode(item, null, null, null, null, prefix, indent));
     }
 
     if (value instanceof go2jsNativeMap) {
         const out = {};
         for (const [key, item] of value.entries()) {
-            out[go2jsStringify(key)] = go2jsJSONEncode(item, null, null, null);
+            out[go2jsStringify(key)] = go2jsJSONEncode(item, null, null, null, null, prefix, indent);
         }
         return out;
     }
@@ -1701,6 +1770,7 @@ function go2jsJSONEncode(value, fields, omitEmpty, stringFields) {
             fields = own.fields;
             omitEmpty = own.omitEmpty;
             stringFields = own.stringFields;
+            textFields = own.textFields;
         }
     }
 
@@ -1726,7 +1796,15 @@ function go2jsJSONEncode(value, fields, omitEmpty, stringFields) {
                 continue;
             }
 
-            out[name] = go2jsJSONEncode(item, null, null, null);
+            // a field declared to hold text rather than a value is written as
+            // the text it holds, since writing it as a value would write it in
+            // quotes and make of it a string holding that text
+            if (textFields !== null && textFields !== undefined && textFields[field] !== undefined) {
+                out[name] = go2jsJSONTextValue(item, textFields[field], prefix, indent);
+                continue;
+            }
+
+            out[name] = go2jsJSONEncode(item, null, null, null, null);
         }
 
         return out;
@@ -1735,7 +1813,7 @@ function go2jsJSONEncode(value, fields, omitEmpty, stringFields) {
     const out = {};
 
     for (const key of Object.keys(value)) {
-        out[key] = go2jsJSONEncode(value[key], null, null, null);
+        out[key] = go2jsJSONEncode(value[key], null, null, null, null, prefix, indent);
     }
 
     return out;
@@ -1969,6 +2047,7 @@ function go2jsJSONReduceCandidates(candidates) {
     const fields = {};
     const omitEmpty = [];
     const stringFields = [];
+    const textFields = [];
 
     for (const candidate of candidates) {
         if (candidate.depth !== minDepth[candidate.json] || count[candidate.json] !== 1) {
@@ -1985,12 +2064,23 @@ function go2jsJSONReduceCandidates(candidates) {
             omitEmpty.push(candidate.json);
         }
 
+        const written = go2jsJSONTextTypeName(candidate.type);
+
+        if (written !== "") {
+            textFields[candidate.name] = written;
+        }
+
         if (candidate.string) {
             stringFields.push(candidate.name);
         }
     }
 
-    return {fields: fields, omitEmpty: omitEmpty, stringFields: stringFields};
+    return {
+        fields: fields,
+        omitEmpty: omitEmpty,
+        stringFields: stringFields,
+        textFields: textFields,
+    };
 }
 
 // go2jsJSONTag reads the name and the options a struct tag gave a field. A tag
@@ -2045,24 +2135,21 @@ function go2jsJSONEmpty(value) {
 
 function go2jsJSONUnmarshal(data, target, fields, destination, stringFields, fieldTypes) {
     try {
-        const value = JSON.parse(
-            typeof data === "string"
-                ? data
-                : new TextDecoder().decode(Uint8Array.from(data))
-        );
+        const text = typeof data === "string" ? data : new TextDecoder().decode(Uint8Array.from(data));
+        const value = JSON.parse(text);
 
         if (target === null || target === undefined) {
             return null;
         }
 
         if (destination !== null && destination !== undefined && destination.kind !== undefined) {
-            go2jsJSONAssign(target, go2jsJSONStore(value, target, destination));
+            go2jsJSONAssign(target, go2jsJSONStore(value, target, destination, text, ""));
             return null;
         }
 
         if (typeof target === "object") {
             if (value !== null && typeof value === "object") {
-                go2jsJSONDecode(value, target, fields, stringFields, fieldTypes);
+                go2jsJSONDecode(value, target, fields, stringFields, fieldTypes, text, "");
             }
             return null;
         }
@@ -2073,10 +2160,514 @@ function go2jsJSONUnmarshal(data, target, fields, destination, stringFields, fie
     }
 }
 
+// go2jsJSONTextTypeName names the two encoding/json types whose value is the text
+// of something rather than something JSON describes: a RawMessage holds the text
+// of a value that has not been read yet, and a Number holds the text of a
+// number. Anything else is not one of them, and is written as the value it is.
+function go2jsJSONTextTypeName(typeName) {
+    if (typeName === "json.RawMessage") {
+        return "json.RawMessage";
+    }
+
+    if (typeName === "json.Number") {
+        return "json.Number";
+    }
+
+    return "";
+}
+
+// go2jsJSONTextValue is a value written as the text it was written with rather
+// than as what that text describes. JSON.stringify writes every number it is
+// given as a double, which is the same number unless the number has more digits
+// than a double keeps or more digits than it needs, and it cannot write a raw
+// message at all because the text of one is not a value. Both are therefore
+// written under a name of their own, and that name is put back to the text it
+// stood for once the value around it has been written out.
+let go2jsJSONLiteralCount = 0;
+const go2jsJSONLiteralTexts = {};
+let go2jsJSONLiteralWritten = false;
+
+function go2jsJSONLiteral(text, prefix, indent) {
+    const name = "@@go2js-json-literal-" + go2jsJSONLiteralCount++ + "@@";
+
+    go2jsJSONLiteralTexts[name] = {text: text, prefix: prefix, indent: indent};
+    go2jsJSONLiteralWritten = true;
+
+    return name;
+}
+
+// go2jsJSONTextValue is the text a field declared to hold text is written as. A
+// raw message is the text of a value that has not been read yet, so it is
+// written out as the value that text describes and laid out with whatever the
+// writer around it is laid out with; a number is the digits of a number and is
+// written as those digits, which is the only way a number no double keeps the
+// digits of is kept.
+function go2jsJSONTextValue(value, typeName, prefix, indent) {
+    const text = go2jsJSONNumberText(value);
+
+    if (typeName === "json.Number") {
+        // A number that holds no digits is not a number at all, and writing one
+        // is what the writer says is wrong rather than what it writes.
+        if (!go2jsJSONNumberLiteral(text)) {
+            throw new Error("json: invalid number literal " + go2jsJSONWritten(text));
+        }
+
+        return go2jsJSONLiteral(text, prefix, indent);
+    }
+
+    // a raw message holding nothing is nothing, which is what the writer writes
+    // for a value it has nothing of
+    if (text === "") {
+        return null;
+    }
+
+    try {
+        return go2jsJSONLiteral(go2jsJSONCompact(text), prefix, indent);
+    } catch (err) {
+        return text;
+    }
+}
+
+// go2jsJSONPutLiterals puts back the text of every value that was written rather
+// than made, which JSON.stringify wrote out under a name of its own. A value
+// that runs to more than one line is lined up under the column its name was
+// written at, since that is the column its text begins at.
+function go2jsJSONPutLiterals(text) {
+    go2jsJSONLiteralWritten = false;
+
+    return text.replace(/"@@go2js-json-literal-(\d+)@@"/g, (match, which, offset) => {
+        const name = "@@go2js-json-literal-" + which + "@@";
+
+        if (!Object.prototype.hasOwnProperty.call(go2jsJSONLiteralTexts, name)) {
+            return match;
+        }
+
+        const literal = go2jsJSONLiteralTexts[name];
+
+        delete go2jsJSONLiteralTexts[name];
+
+        if (literal.prefix === "" && literal.indent === "") {
+            return literal.text;
+        }
+
+        const laid = go2jsJSONIndent(literal.text, "", literal.indent);
+        const lineStart = text.lastIndexOf("\n", offset) + 1;
+        const leading = /^[ \t]*/.exec(text.slice(lineStart, offset))[0];
+
+        return laid.split("\n").join("\n" + leading);
+    });
+}
+
+// go2jsJSONCompact is the text of a value with the room between its tokens taken
+// out, which is what a raw message is written out as. Only the room between
+// tokens goes: a string is kept whole, so the escapes and the spacing written
+// inside one survive, and a number is kept whole, so the digits written for one
+// survive.
+function go2jsJSONCompact(text) {
+    let out = "";
+    let index = 0;
+
+    while (index < text.length) {
+        const character = text[index];
+
+        if (character === '"') {
+            const end = go2jsJSONSkipValue(text, index);
+
+            out += text.slice(index, end);
+            index = end;
+            continue;
+        }
+
+        if (character === " " || character === "\t" || character === "\n" || character === "\r") {
+            index++;
+            continue;
+        }
+
+        out += character;
+        index++;
+    }
+
+    return out;
+}
+
+// go2jsJSONIndent lays the text of a value out with room between its tokens: a
+// token that opens an object or an array, and one that opens a member or an
+// element, each begins a line of its own, and a closing one ends the last. Every
+// token is written as it was written, so the digits of a number and the escapes
+// of a string are left exactly as the text held them.
+function go2jsJSONIndent(text, prefix, indent) {
+    let out = "";
+    let depth = 0;
+    let index = 0;
+
+    const line = () => {
+        out += "\n" + prefix + indent.repeat(depth);
+    };
+
+    while (index < text.length) {
+        const character = text[index];
+
+        if (character === " " || character === "\t" || character === "\n" || character === "\r") {
+            index++;
+            continue;
+        }
+
+        if (character === '"') {
+            const end = go2jsJSONSkipValue(text, index);
+
+            out += text.slice(index, end);
+            index = end;
+            continue;
+        }
+
+        if (character === ",") {
+            out += ",";
+            index++;
+            line();
+            continue;
+        }
+
+        if (character === ":") {
+            out += ": ";
+            index++;
+            continue;
+        }
+
+        if (character === "{" || character === "[") {
+            const end = go2jsJSONSkipValue(text, index);
+
+            // an object and an array holding nothing are written as the two
+            // characters that open and close one, with no line between them
+            if (end - index <= 2) {
+                out += text.slice(index, end);
+                index = end;
+                continue;
+            }
+
+            depth++;
+            out += character;
+            index++;
+            line();
+            continue;
+        }
+
+        if (character === "}" || character === "]") {
+            depth--;
+            line();
+            out += character;
+            index++;
+            continue;
+        }
+
+        const end = go2jsJSONSkipValue(text, index);
+
+        out += text.slice(index, end);
+        index = end;
+    }
+
+    return out;
+}
+
+// go2jsJSONWritten is the text of a value made out of the value itself, for a
+// value whose own text the document could not be asked for. It is the same
+// value written out again, which is what a program is given when it asked to
+// hold something as text and the text cannot be read, and which is why it is
+// the last resort and not the first.
+function go2jsJSONWritten(value) {
+    return JSON.stringify(value);
+}
+
+// go2jsJSONNumberLiteral reports whether the text is a number as JSON writes one,
+// which is what a number read into a json.Number is required to have been
+// written as.
+function go2jsJSONNumberLiteral(text) {
+    if (typeof text !== "string" || text === "") {
+        return false;
+    }
+
+    let index = 0;
+
+    if (text[0] === "-") {
+        index++;
+    }
+
+    const first = text[index];
+
+    if (first !== undefined && first >= "0" && first <= "9") {
+        return true;
+    }
+
+    return false;
+}
+
+// go2jsJSONNumberText is the digits of a number as they are written, which for a
+// number a double already holds are the digits of the double and for one it did
+// not are whatever it can be written back as.
+function go2jsJSONNumberText(value) {
+    if (typeof value === "string") {
+        return value;
+    }
+
+    if (typeof value === "number") {
+        return String(value);
+    }
+
+    if (value === null || value === undefined) {
+        return "";
+    }
+
+    return String(value);
+}
+
+// A json.Number is the text a number was written with, so what the type's own
+// methods read are the methods of the text it holds. The names carry the Java
+// Script spelling of Number because Number is a global of the language itself.
+function Number$go2jsString(value) {
+    return go2jsJSONNumberText(value);
+}
+
+// Number$go2jsInt64 is the number as a whole number the width of a machine, read
+// the way strconv reads one, so what is wrong with text that is not a whole
+// number is said the way strconv says it.
+function Number$go2jsInt64(value) {
+    const text = go2jsJSONNumberText(value);
+
+    if (/^[+-]?\d+$/.test(text)) {
+        const parsed = Number(text);
+
+        if (Number.isSafeInteger(parsed)) {
+            return [parsed, null];
+        }
+
+        return [0, new Error("strconv.ParseInt: parsing " + JSON.stringify(text) + ": value out of range")];
+    }
+
+    return [0, new Error("strconv.ParseInt: parsing " + JSON.stringify(text) + ": invalid syntax")];
+}
+
+// Number$go2jsFloat64 is the number as a double, read the way strconv reads one.
+function Number$go2jsFloat64(value) {
+    const text = go2jsJSONNumberText(value);
+
+    if (/^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/.test(text)) {
+        return [Number(text), null];
+    }
+
+    return [0, new Error("strconv.ParseFloat: parsing " + JSON.stringify(text) + ": invalid syntax")];
+}
+
+
+// value holding it, and the name it was written under within it. A name is set
+// apart by a character no JSON may hold in a name, so a name that is a number
+// or that holds one is still told apart from an element of an array.
+function go2jsJSONPath(path, name) {
+    return path === "" || path === null || path === undefined ? name : path + "\u0000" + name;
+}
+
+// go2jsJSONSkipSpace gives the index of the next character that is not space,
+// which is where the value after the space begins.
+function go2jsJSONSkipSpace(text, index) {
+    while (index < text.length) {
+        const code = text.charCodeAt(index);
+
+        if (code !== 32 && code !== 9 && code !== 10 && code !== 13) {
+            break;
+        }
+
+        index++;
+    }
+
+    return index;
+}
+
+// go2jsJSONSkipValue gives the index just past the value written at the index,
+// which is the extent of the text of that value. A string runs to its closing
+// quote, stepping over the quote behind a backslash, and an object and an array
+// run to the match for the one they opened with, running over any string they
+// hold because a bracket or a brace in a string is only text.
+function go2jsJSONSkipValue(text, index) {
+    index = go2jsJSONSkipSpace(text, index);
+
+    if (text[index] === '"') {
+        index++;
+
+        while (index < text.length) {
+            if (text[index] === "\\") {
+                index += 2;
+                continue;
+            }
+
+            if (text[index] === '"') {
+                return index + 1;
+            }
+
+            index++;
+        }
+
+        return index;
+    }
+
+    if (text[index] === "{" || text[index] === "[") {
+        let depth = 0;
+
+        while (index < text.length) {
+            const character = text[index];
+
+            if (character === '"') {
+                index = go2jsJSONSkipValue(text, index);
+                continue;
+            }
+
+            if (character === "{" || character === "[") {
+                depth++;
+            } else if (character === "}" || character === "]") {
+                depth--;
+
+                if (depth === 0) {
+                    return index + 1;
+                }
+            }
+
+            index++;
+        }
+
+        return index;
+    }
+
+    // a number and the words a value may be written as run to the end of
+    // themselves, which is the first character that cannot be part of one
+    while (index < text.length) {
+        const character = text[index];
+
+        if (character === "," || character === "}" || character === "]" ||
+            character === " " || character === "\t" || character === "\n" || character === "\r") {
+            break;
+        }
+
+        index++;
+    }
+
+    return index;
+}
+
+// go2jsJSONRawText is the text that was written for the value the place names,
+// or nothing when the document does not hold a value there. The value itself is
+// the whole of the answer, since what is wanted is the text of a value and not
+// a part of one.
+function go2jsJSONRawText(text, path) {
+    if (typeof text !== "string" || typeof path !== "string") {
+        return null;
+    }
+
+    const wanted = path === "" ? [] : path.split("\u0000");
+    let index = go2jsJSONSkipSpace(text, 0);
+
+    for (const step of wanted) {
+        index = go2jsJSONSkipSpace(text, index);
+
+        if (text[index] === "{") {
+            index = go2jsJSONSeekMember(text, index + 1, step);
+
+            if (index < 0) {
+                return null;
+            }
+
+            continue;
+        }
+
+        if (text[index] === "[") {
+            const position = go2jsJSONSeekElement(text, index + 1, step);
+
+            if (position < 0) {
+                return null;
+            }
+
+            index = position;
+            continue;
+        }
+
+        // the place named is not written as a value holding others, so there is
+        // nothing there to read
+        return null;
+    }
+
+    return text.slice(go2jsJSONSkipSpace(text, index), go2jsJSONSkipValue(text, index));
+}
+
+// go2jsJSONSeekMember gives the index of the value written under the named key
+// of the object that opened at the index, or nothing when the object named no
+// such key. A key is read back the way JSON reads it, so a key written with
+// escapes names the same key as the same key written without them.
+function go2jsJSONSeekMember(text, index, wanted) {
+    while (index < text.length) {
+        index = go2jsJSONSkipSpace(text, index);
+
+        if (text[index] !== '"') {
+            return -1;
+        }
+
+        const start = index;
+        index = go2jsJSONSkipValue(text, index);
+        let name;
+
+        try {
+            name = JSON.parse(text.slice(start, index));
+        } catch (err) {
+            return -1;
+        }
+
+        index = go2jsJSONSkipSpace(text, index);
+
+        if (text[index] !== ":") {
+            return -1;
+        }
+
+        index = go2jsJSONSkipSpace(text, index + 1);
+
+        if (name === wanted) {
+            return index;
+        }
+
+        index = go2jsJSONSkipValue(text, index);
+        index = go2jsJSONSkipSpace(text, index);
+
+        if (text[index] === ",") {
+            index++;
+        }
+    }
+
+    return -1;
+}
+
+// go2jsJSONSeekElement gives the index of the value written at the named place
+// of the array that opened at the index, or nothing when the array is shorter
+// than that.
+function go2jsJSONSeekElement(text, index, wanted) {
+    let place = 0;
+    index = go2jsJSONSkipSpace(text, index);
+
+    while (index < text.length && text[index] !== "]") {
+        if (place === Number(wanted)) {
+            return index;
+        }
+
+        index = go2jsJSONSkipValue(text, index);
+        index = go2jsJSONSkipSpace(text, index);
+
+        if (text[index] === ",") {
+            index = go2jsJSONSkipSpace(text, index + 1);
+        }
+
+        place++;
+    }
+
+    return -1;
+}
+
 // go2jsJSONStore builds the value a destination of the given kind holds out of
 // the value the text held, and hands it back for the caller to put where that
 // destination stands.
-function go2jsJSONStore(value, target, descriptor) {
+function go2jsJSONStore(value, target, descriptor, text, path) {
     if (descriptor === null || descriptor === undefined || descriptor.kind === undefined) {
         return go2jsJSONCoerceAny(value);
     }
@@ -2086,7 +2677,7 @@ function go2jsJSONStore(value, target, descriptor) {
         // the value behind the pointer is built in place, which for a map and
         // for a plain value is what the thing behind it already knows how to
         // take, and for a struct and a slice is done below
-        return go2jsJSONStore(value, target, descriptor.elem);
+        return go2jsJSONStore(value, target, descriptor.elem, text, path);
 
     case "struct": {
         if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -2103,7 +2694,7 @@ function go2jsJSONStore(value, target, descriptor) {
             struct = constructor !== undefined && constructor !== null ? new constructor() : {};
         }
 
-        go2jsJSONDecode(value, struct, descriptor.fields, descriptor.string, descriptor.types);
+        go2jsJSONDecode(value, struct, descriptor.fields, descriptor.string, descriptor.types, text, path);
 
         return struct;
     }
@@ -2124,19 +2715,51 @@ function go2jsJSONStore(value, target, descriptor) {
         // the fields are read off the value the type declared, so a type that
         // holds itself is described once and read as many times as the text
         // holds of it, however deep that text goes
-        go2jsJSONDecode(value, struct, null, null, go2jsJSONMappingTypes(struct));
+        go2jsJSONDecode(value, struct, null, null, go2jsJSONMappingTypes(struct), text, path);
 
         return struct;
     }
 
-    case "slice":
-        return go2jsJSONStoreSlice(value, descriptor.elem);
+    case "raw":
+        // A raw message is the text that was written for the value rather than
+        // the value that text stands for, so the spacing, the escapes and the
+        // digits it was written with all come back as they were written. The
+        // text is read off the document, which is the only place it is still
+        // written; making the value again out of what it was made of would give
+        // the same value and not the same text.
+        if (text !== null && text !== undefined) {
+            const written = go2jsJSONRawText(text, path);
 
+            if (written !== null) {
+                return written;
+            }
+        }
+
+        return go2jsJSONWritten(value);
+
+    case "num": {
+        // A number is held as the digits it was written with, because a number
+        // no double holds the digits of is kept by holding on to how it was
+        // written, so the text is read back off the document rather than made
+        // out of the double JSON.parse gave.
+        if (text !== null && text !== undefined) {
+            const written = go2jsJSONRawText(text, path);
+
+            if (written !== null && go2jsJSONNumberLiteral(written)) {
+                return written;
+            }
+        }
+
+        return go2jsJSONNumberText(value);
+    }
+
+    case "slice":
+        return go2jsJSONStoreSlice(value, descriptor.elem, text, path);
     case "array":
-        return go2jsJSONStoreArray(value, go2jsJSONPointerTarget(target), descriptor.elem, descriptor.len);
+        return go2jsJSONStoreArray(value, go2jsJSONPointerTarget(target), descriptor.elem, descriptor.len, text, path);
 
     case "map":
-        return go2jsJSONStoreMap(value, target, descriptor.elem);
+        return go2jsJSONStoreMap(value, target, descriptor.elem, text, path);
 
     default:
         return go2jsJSONCoerce(value, descriptor.kind);
@@ -2145,7 +2768,7 @@ function go2jsJSONStore(value, target, descriptor) {
 
 // go2jsJSONStoreSlice builds a slice of what the descriptor holds, one element
 // for every one the text had.
-function go2jsJSONStoreSlice(value, elem) {
+function go2jsJSONStoreSlice(value, elem, text, path) {
     if (!Array.isArray(value)) {
         return [];
     }
@@ -2153,7 +2776,7 @@ function go2jsJSONStoreSlice(value, elem) {
     const out = new Array(value.length);
 
     for (let index = 0; index < value.length; index++) {
-        out[index] = go2jsJSONStore(value[index], null, elem);
+        out[index] = go2jsJSONStore(value[index], null, elem, text, go2jsJSONPath(path, String(index)));
     }
 
     return out;
@@ -2162,7 +2785,7 @@ function go2jsJSONStoreSlice(value, elem) {
 // go2jsJSONStoreArray builds an array of what the descriptor holds. An array
 // keeps the room it was declared with, so a text too long for it is refused and
 // one too short leaves the rest of it as it was declared.
-function go2jsJSONStoreArray(value, target, elem, length) {
+function go2jsJSONStoreArray(value, target, elem, length, text, path) {
     const out = go2jsToArray(target);
 
     if (!Array.isArray(value) || value.length > length) {
@@ -2172,7 +2795,7 @@ function go2jsJSONStoreArray(value, target, elem, length) {
     out.length = length;
 
     for (let index = 0; index < length; index++) {
-        out[index] = go2jsJSONStore(value[index], null, elem);
+        out[index] = go2jsJSONStore(value[index], null, elem, text, go2jsJSONPath(path, String(index)));
     }
 
     return out;
@@ -2180,7 +2803,7 @@ function go2jsJSONStoreArray(value, target, elem, length) {
 
 // go2jsJSONStoreMap builds a map of what the descriptor holds, one entry for
 // every key the text named.
-function go2jsJSONStoreMap(value, target, elem) {
+function go2jsJSONStoreMap(value, target, elem, text, path) {
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
         return go2jsJSONTargetMap(target);
     }
@@ -2191,11 +2814,11 @@ function go2jsJSONStoreMap(value, target, elem) {
         // nothing stood for the map yet, which is what a field of it that has
         // not been set comes down to, so one is built to hold what the text
         // named
-        return go2jsJSONStoreMap(value, go2jsMakeMap(), elem);
+        return go2jsJSONStoreMap(value, go2jsMakeMap(), elem, text, path);
     }
 
     for (const key of Object.keys(value)) {
-        go2jsMapSet(map, go2jsJSONCoerceString(key), go2jsJSONStore(value[key], null, elem));
+        go2jsMapSet(map, go2jsJSONCoerceString(key), go2jsJSONStore(value[key], null, elem, text, go2jsJSONPath(path, key)));
     }
 
     return map;
@@ -2239,9 +2862,9 @@ function go2jsJSONNewEncoder(writer) {
     };
 }
 
-function go2jsJSONEncoderEncode(encoder, value, fields, omitEmpty, stringFields) {
+function go2jsJSONEncoderEncode(encoder, value, fields, omitEmpty, stringFields, textFields) {
     try {
-        const encoded = go2jsJSONEncode(value, fields, omitEmpty, stringFields);
+        const encoded = go2jsJSONEncode(value, fields, omitEmpty, stringFields, textFields, encoder.prefix, encoder.indent);
         const text = go2jsJSONText(encoded, encoder.prefix, encoder.indent, encoder.escapeHTML);
 
         return go2jsJSONWrite(encoder.writer, text + "\n");
@@ -2520,7 +3143,7 @@ function go2jsJSONTargetMap(target) {
     return null;
 }
 
-function go2jsJSONDecode(value, target, fields, stringFields, fieldTypes) {
+function go2jsJSONDecode(value, target, fields, stringFields, fieldTypes, text, path) {
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
         return;
     }
@@ -2597,7 +3220,7 @@ function go2jsJSONDecode(value, target, fields, stringFields, fieldTypes) {
         if (current !== null && typeof current === "object" && !Array.isArray(current) &&
             item !== null && typeof item === "object" && !Array.isArray(item) &&
             go2jsJSONStructMapping(current) !== null) {
-            go2jsJSONDecode(item, current, null, null, go2jsJSONMappingTypes(current));
+            go2jsJSONDecode(item, current, null, null, go2jsJSONMappingTypes(current), text, path);
             continue;
         }
 
@@ -2605,7 +3228,7 @@ function go2jsJSONDecode(value, target, fields, stringFields, fieldTypes) {
         // field the program declared a type for is that type and for one it did
         // not is whatever the text held
         if (fieldTypes !== null && fieldTypes !== undefined && fieldTypes[name] !== undefined) {
-            target[name] = go2jsJSONStore(item, null, fieldTypes[name]);
+            target[name] = go2jsJSONStore(item, null, fieldTypes[name], text, go2jsJSONPath(path, key));
             continue;
         }
 

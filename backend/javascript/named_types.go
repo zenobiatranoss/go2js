@@ -68,6 +68,21 @@ func (e *emitter) emitNamedConversion(call *ast.CallExpr, named *gotypesstd.Name
 		return e.emitFuncTypeConversion(call, signature)
 	}
 
+	// A json.RawMessage is the text of a value that has not been read yet, so it
+	// is made from the text it is given and is that text rather than a value
+	// JSON could describe on its own.
+	if name, ok := jsonTextValueType(named); ok && name == "json.RawMessage" {
+		e.needsRuntime = true
+		e.write("go2jsJSONRawMessage(")
+
+		if err := e.emitExpr(call.Args[0]); err != nil {
+			return err
+		}
+
+		e.write(")")
+		return nil
+	}
+
 	basic, ok := named.Underlying().(*gotypesstd.Basic)
 	if !ok {
 		return fmt.Errorf("unsupported conversion to %s", named.Obj().Name())
