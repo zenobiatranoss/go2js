@@ -1610,27 +1610,52 @@ function go2jsURLValuesEncode(values) {
 }
 
 
-function go2jsJSONMarshal(value, fields, omitEmpty) {
+function go2jsJSONMarshal(value, fields, omitEmpty, stringFields, prefix, indent) {
     try {
-        return [JSON.stringify(go2jsJSONEncode(value, fields, omitEmpty)), null];
+        const encoded = go2jsJSONEncode(value, fields, omitEmpty, stringFields);
+
+        // Marshal writes the value with no room between tokens at all, while
+        // MarshalIndent starts a new line for every part and pads it with the
+        // indent, putting the prefix in front of every line but the first
+        if (prefix === "" && indent === "") {
+            return [JSON.stringify(encoded), null];
+        }
+
+        let text = JSON.stringify(encoded, null, indent === "" ? " " : indent);
+
+        if (indent === "") {
+            text = text.split("\n").map(line => line.replace(/^ +/, "")).join("\n");
+        }
+
+        if (prefix !== "") {
+            const lines = text.split("\n");
+
+            for (let index = 1; index < lines.length; index++) {
+                lines[index] = prefix + lines[index];
+            }
+
+            text = lines.join("\n");
+        }
+
+        return [text, null];
     } catch (err) {
         return [null, err];
     }
 }
 
-function go2jsJSONEncode(value, fields, omitEmpty) {
+function go2jsJSONEncode(value, fields, omitEmpty, stringFields) {
     if (value === null || value === undefined) {
         return null;
     }
 
     if (Array.isArray(value)) {
-        return value.map(item => go2jsJSONEncode(item, null, null));
+        return value.map(item => go2jsJSONEncode(item, null, null, null));
     }
 
     if (value instanceof go2jsNativeMap) {
         const out = {};
         for (const [key, item] of value.entries()) {
-            out[go2jsStringify(key)] = go2jsJSONEncode(item, null, null);
+            out[go2jsStringify(key)] = go2jsJSONEncode(item, null, null, null);
         }
         return out;
     }
@@ -1648,6 +1673,7 @@ function go2jsJSONEncode(value, fields, omitEmpty) {
         if (own !== null) {
             fields = own.fields;
             omitEmpty = own.omitEmpty;
+            stringFields = own.stringFields;
         }
     }
 
@@ -1666,7 +1692,14 @@ function go2jsJSONEncode(value, fields, omitEmpty) {
                 continue;
             }
 
-            out[name] = go2jsJSONEncode(item, null, null);
+            // a field a tag marked ",string" is written as the text of the
+            // value rather than as the value itself
+            if (stringFields && stringFields.indexOf(field) >= 0) {
+                out[name] = JSON.stringify(item);
+                continue;
+            }
+
+            out[name] = go2jsJSONEncode(item, null, null, null);
         }
 
         return out;
@@ -1675,7 +1708,7 @@ function go2jsJSONEncode(value, fields, omitEmpty) {
     const out = {};
 
     for (const key of Object.keys(value)) {
-        out[key] = go2jsJSONEncode(value[key], null, null);
+        out[key] = go2jsJSONEncode(value[key], null, null, null);
     }
 
     return out;
@@ -1704,6 +1737,7 @@ function go2jsJSONStructMapping(value) {
 
     const fields = {};
     const omitEmpty = [];
+    const stringFields = [];
 
     for (const descriptor of descriptors) {
         // a field the package did not export is not written, which a package
@@ -1723,9 +1757,13 @@ function go2jsJSONStructMapping(value) {
         if (tag.omit) {
             omitEmpty.push(tag.name);
         }
+
+        if (tag.string) {
+            stringFields.push(descriptor.Name);
+        }
     }
 
-    return {fields: fields, omitEmpty: omitEmpty};
+    return {fields: fields, omitEmpty: omitEmpty, stringFields: stringFields};
 }
 
 // go2jsJSONTag reads the name and the options a struct tag gave a field. A tag
@@ -1735,18 +1773,19 @@ function go2jsJSONTag(tag, fallback) {
     const match = /(?:^|\s)json:"([^"]*)"/.exec(tag === null || tag === undefined ? "" : tag);
 
     if (match === null) {
-        return {name: fallback, omit: false, skip: false};
+        return {name: fallback, omit: false, string: false, skip: false};
     }
 
     const parts = match[1].split(",");
     const name = parts[0].trim();
     const omit = parts.slice(1).some((option) => option.trim() === "omitempty");
+    const asString = parts.slice(1).some((option) => option.trim() === "string");
 
     if (name === "-") {
-        return {name: fallback, omit: omit, skip: true};
+        return {name: fallback, omit: omit, string: asString, skip: true};
     }
 
-    return {name: name === "" ? fallback : name, omit: omit, skip: false};
+    return {name: name === "" ? fallback : name, omit: omit, string: asString, skip: false};
 }
 
 function go2jsJSONEmpty(value) {
@@ -1777,7 +1816,7 @@ function go2jsJSONEmpty(value) {
     return false;
 }
 
-function go2jsJSONUnmarshal(data, target, fields, destination) {
+function go2jsJSONUnmarshal(data, target, fields, destination, stringFields) {
     try {
         const value = JSON.parse(
             typeof data === "string"
@@ -1795,7 +1834,7 @@ function go2jsJSONUnmarshal(data, target, fields, destination) {
         }
         if (typeof target === "object") {
             if (value !== null && typeof value === "object") {
-                go2jsJSONDecode(value, target, fields);
+                go2jsJSONDecode(value, target, fields, stringFields);
             }
             return null;
         }
@@ -1901,7 +1940,7 @@ function go2jsJSONDecodeMap(value, target, kind) {
     }
 }
 
-function go2jsJSONDecode(value, target, fields) {
+function go2jsJSONDecode(value, target, fields, stringFields) {
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
         return;
     }
@@ -1909,11 +1948,15 @@ function go2jsJSONDecode(value, target, fields) {
     // a struct stands in the target with the fields it was declared with, so a
     // struct being read into is read through its own tags rather than through
     // the tags of the struct that happened to hold it
-    if (fields === null || fields === undefined) {
-        const own = go2jsJSONStructMapping(target);
+    const own = go2jsJSONStructMapping(target);
 
-        if (own !== null) {
+    if (own !== null) {
+        if (fields === null || fields === undefined) {
             fields = own.fields;
+        }
+
+        if (stringFields === null || stringFields === undefined) {
+            stringFields = own.stringFields;
         }
     }
 
@@ -1943,13 +1986,24 @@ function go2jsJSONDecode(value, target, fields) {
         const current = target[name];
         const item = value[key];
 
+        // a field a tag marked ",string" holds the text of the value, so the
+        // text is read back into the value it stands for
+        if (stringFields && stringFields.indexOf(name) >= 0 && typeof item === "string") {
+            try {
+                target[name] = JSON.parse(item);
+            } catch (err) {
+                target[name] = item;
+            }
+            continue;
+        }
+
         // a field that stands for a struct of its own is written into the
         // struct that is already there, so the tags of that struct name the
         // fields the JSON holds rather than the field names themselves
         if (current !== null && typeof current === "object" && !Array.isArray(current) &&
             item !== null && typeof item === "object" && !Array.isArray(item) &&
             go2jsJSONStructMapping(current) !== null) {
-            go2jsJSONDecode(item, current, null);
+            go2jsJSONDecode(item, current, null, null);
             continue;
         }
 
