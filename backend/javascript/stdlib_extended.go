@@ -2592,7 +2592,7 @@ function go2jsErrorsAs(err, target, wanted) {
 	// A target that is not a pointer, or a pointer standing for nothing, is
 	// refused before anything is looked at in the error.
 	if (go2jsIsNilTarget(target)) {
-		throw new TypeError("errors: target must be a non-nil pointer");
+		go2jsPanic("errors: target must be a non-nil pointer");
 	}
 
 	if (wanted === undefined || wanted === null || wanted === "" || wanted === "any") {
@@ -2656,7 +2656,7 @@ function go2jsErrorsAsCheckTarget(target) {
 		element = element.slice(1);
 	} else if (!pointer) {
 		// Whatever it is, it is not a pointer, and Go asks for one.
-		throw new TypeError("errors: target must be a non-nil pointer");
+		go2jsPanic("errors: target must be a non-nil pointer");
 	}
 
 	// What the pointer points at is the type that has to hold an error, and it
@@ -2671,7 +2671,7 @@ function go2jsErrorsAsCheckTarget(target) {
 		return target;
 	}
 
-	throw new TypeError("errors: *target must be interface or implement error");
+	go2jsPanic("errors: *target must be interface or implement error");
 }
 
 // go2jsIsNilTarget reports whether a target handed to errors.As is missing,

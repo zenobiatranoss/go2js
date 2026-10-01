@@ -1,29 +1,29 @@
 package javascript
 
 // The debug package is reached by test helpers that report where a panic came
-// from. A JavaScript stack is not a Go one: it names the functions the emitter
-// wrote rather than the ones the program declared, and the frames of the Go
-// runtime it would have to imitate are not there at all. Writing one out would
-// put a claim in the program's output that no Go program could produce, so the
-// trace is left empty and the caller is told as much.
+// from. A JavaScript stack names the functions the emitter wrote rather than the
+// ones the program declared, and each frame is a line of the generated program
+// rather than a place in the Go source. Both are read back through the table the
+// emitter writes of the lines it wrote, so that a trace names the Go functions
+// and the Go places a Go program would have named.
 var debugFuncs = map[string]string{
 	"Stack":      "go2jsDebugStack",
 	"PrintStack": "go2jsDebugPrintStack",
 }
 
 func debugRuntimeSource() string {
-	return `// go2jsDebugStack reports the stack a Go program would have printed. There is
-// none to give here, because the frames of the Go runtime do not exist in the
-// program that runs, and an empty trace is the only answer that does not put a
-// claim in the output that Go would not make.
+	return `// go2jsDebugStack reports the stack a Go program would have printed for the
+// place it is in, which is the goroutine it is on and the frames of the program
+// that ran on it, one after another. The frame of debug.Stack itself is left
+// out, since the trace of a program is what was asked for.
 function go2jsDebugStack() {
-	return "";
+	return "goroutine 1 [running]:\n" + go2jsFramesText(go2jsGoFrames());
 }
 
-// go2jsDebugPrintStack writes the same empty trace, the way debug.PrintStack
-// writes what debug.Stack returns.
+// go2jsDebugPrintStack writes the same trace, which is what debug.PrintStack
+// writes of what debug.Stack returns.
 function go2jsDebugPrintStack() {
-	go2jsPrint("");
+	go2jsPrint(go2jsDebugStack());
 }`
 }
 
