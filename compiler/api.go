@@ -96,26 +96,41 @@ func (c *Compiler) CompilePackage(pkg *Package) (string, error) {
 	}
 
 	var parts []string
+	needsRuntime := false
+
 	for _, parsed := range pkg.Files {
 		if parsed == nil || parsed.File == nil {
 			return "", fmt.Errorf("package contains invalid file")
 		}
 
-		code, err := javascript.EmitWithContextOptionsTarget(
+		// The runtime is written once for the package rather than once for each
+		// file of it, so the files are emitted without it and it is put in front
+		// of the whole package if any of them asks for it.
+		code, needs, err := javascript.EmitFile(
 			parsed.File,
 			analysis.Types,
 			analysis.Semantic,
-			c.Options.Runtime,
+			false,
 			c.Options.Target,
+			"",
+			nil,
 		)
 		if err != nil {
 			return "", err
+		}
+
+		if needs {
+			needsRuntime = true
 		}
 
 		parts = append(parts, code)
 	}
 
 	code := strings.Join(parts, "\n")
+
+	if c.Options.Runtime && needsRuntime {
+		code = javascript.ProgramRuntime(code, c.Options.Target) + code
+	}
 
 	var sources []javascript.SourceMapSource
 	if c.Options.SourceMap {

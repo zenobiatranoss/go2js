@@ -819,6 +819,11 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		e.write(")")
 
 	case *ast.CallExpr:
+		// A frame is written under the place a call was made from, which is the
+		// call itself rather than the statement it stands in, so the line of the
+		// call is the one the place belongs to.
+		e.markSourceLine(x)
+
 		if name, ok := formatFuncName(x); ok && name != "" {
 			return e.emitFormatCall(x)
 		}
