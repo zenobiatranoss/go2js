@@ -339,6 +339,91 @@ func main() {
 	}
 }
 
+func TestJSONEmbeddedFlattening(t *testing.T) {
+	source := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+)
+
+type Base struct {
+	ID   int    ` + "`json:\"id\"`" + `
+	Name string ` + "`json:\"name,omitempty\"`" + `
+}
+
+type Embed struct {
+	Base
+	Extra string ` + "`json:\"extra\"`" + `
+}
+
+type Named struct {
+	Base ` + "`json:\"base\"`" + `
+	Tag  string ` + "`json:\"tag\"`" + `
+}
+
+type Top struct {
+	Embed
+	Value string ` + "`json:\"value\"`" + `
+}
+
+type Conflict struct {
+	Base
+	ID   int    ` + "`json:\"id\"`" + `
+	Name string ` + "`json:\"name\"`" + `
+}
+
+type WithPtr struct {
+	*Base
+	Note string ` + "`json:\"note\"`" + `
+}
+
+type NilPtr struct {
+	*Base
+	Code int ` + "`json:\"code\"`" + `
+}
+
+func main() {
+	e := Embed{Base: Base{ID: 1, Name: "n"}, Extra: "e"}
+	b, _ := json.Marshal(e)
+	fmt.Println(string(b))
+
+	n := Named{Base: Base{ID: 2, Name: "m"}, Tag: "t"}
+	nb, _ := json.Marshal(n)
+	fmt.Println(string(nb))
+
+	tp := Top{Embed: Embed{Base: Base{ID: 3}, Extra: "x"}, Value: "v"}
+	tb, _ := json.Marshal(tp)
+	fmt.Println(string(tb))
+
+	c := Conflict{Base: Base{ID: 9, Name: "b"}, ID: 10, Name: "c"}
+	cb, _ := json.Marshal(c)
+	fmt.Println(string(cb))
+
+	wp := WithPtr{Base: &Base{ID: 5, Name: "p"}, Note: "n"}
+	wb, _ := json.Marshal(wp)
+	fmt.Println(string(wb))
+
+	var np NilPtr
+	npb, _ := json.Marshal(np)
+	fmt.Println(string(npb))
+
+	var be Embed
+	_ = json.Unmarshal([]byte("{\"id\":7,\"name\":\"nm\",\"extra\":\"ex\"}"), &be)
+	fmt.Println(be.ID, be.Name, be.Extra)
+
+	var bp WithPtr
+	bp.Base = &Base{}
+	_ = json.Unmarshal([]byte("{\"id\":8,\"name\":\"x\",\"note\":\"y\"}"), &bp)
+	fmt.Println(bp.Base.ID, bp.Base.Name, bp.Note)
+}
+`
+	got, want := runCompiledProgram(t, source)
+	if got != want {
+		t.Fatalf("json embedded flattening mismatch: got %q want %q", got, want)
+	}
+}
+
 func TestTimeDurationConversion(t *testing.T) {
 	source := `package main
 

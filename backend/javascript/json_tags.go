@@ -15,14 +15,33 @@ type jsonField struct {
 	AsString  bool
 }
 
+// jsonFieldCandidate is a field together with where it was found. A field
+// promoted out of an embedded struct is found one level deeper than a field
+// declared on the struct itself, and a shallower field hides a deeper one of
+// the same name.
+type jsonFieldCandidate struct {
+	field jsonField
+	depth int
+}
+
 func jsonFields(t gotypes.Type) []jsonField {
 	structType, ok := structUnderlying(t)
 	if !ok {
 		return nil
 	}
 
-	fields := make([]jsonField, 0, structType.NumFields())
+	collector := jsonFieldCollector{seen: map[gotypes.Type]bool{}}
+	collector.collect(structType, 0)
 
+	return collector.reduce()
+}
+
+type jsonFieldCollector struct {
+	candidates []jsonFieldCandidate
+	seen       map[gotypes.Type]bool
+}
+
+func (c *jsonFieldCollector) collect(structType *gotypes.Struct, depth int) {
 	for i := 0; i < structType.NumFields(); i++ {
 		field := structType.Field(i)
 
@@ -35,11 +54,63 @@ func jsonFields(t gotypes.Type) []jsonField {
 			continue
 		}
 
+		// an embedded struct a tag gave no name is written as if its own
+		// fields were declared on the struct that embeds it
+		if field.Anonymous() && name == "" {
+			if inner, ok := structUnderlying(field.Type()); ok && !c.seen[field.Type()] {
+				c.seen[field.Type()] = true
+				c.collect(inner, depth+1)
+				delete(c.seen, field.Type())
+				continue
+			}
+
+			name = field.Name()
+		}
+
 		if name == "" {
 			name = field.Name()
 		}
 
-		fields = append(fields, jsonField{Name: field.Name(), JSONName: name, OmitEmpty: omitEmpty, AsString: asString})
+		c.candidates = append(c.candidates, jsonFieldCandidate{
+			field: jsonField{Name: field.Name(), JSONName: name, OmitEmpty: omitEmpty, AsString: asString},
+			depth: depth,
+		})
+	}
+}
+
+// reduce drops every candidate a shallower one hides and every name two
+// candidates at the same depth disagree over, which is how encoding/json
+// settles a name an embedded struct shares with the struct that embeds it.
+func (c *jsonFieldCollector) reduce() []jsonField {
+	minDepth := map[string]int{}
+	count := map[string]int{}
+
+	for _, candidate := range c.candidates {
+		name := candidate.field.JSONName
+
+		if depth, ok := minDepth[name]; !ok || candidate.depth < depth {
+			minDepth[name] = candidate.depth
+		}
+	}
+
+	for _, candidate := range c.candidates {
+		if candidate.depth == minDepth[candidate.field.JSONName] {
+			count[candidate.field.JSONName]++
+		}
+	}
+
+	fields := make([]jsonField, 0, len(c.candidates))
+	added := map[string]bool{}
+
+	for _, candidate := range c.candidates {
+		name := candidate.field.JSONName
+
+		if candidate.depth != minDepth[name] || count[name] != 1 || added[name] {
+			continue
+		}
+
+		added[name] = true
+		fields = append(fields, candidate.field)
 	}
 
 	return fields
