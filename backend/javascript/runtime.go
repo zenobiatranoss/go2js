@@ -3714,9 +3714,13 @@ function go2jsCloneValue(value) {
         return value;
     }
 
-    if (Array.isArray(value)) {
-        return value.slice();
-    }
+	if (Array.isArray(value)) {
+		const copy = value.slice();
+		for (let i = 0; i < copy.length; i++) {
+			copy[i] = go2jsCopy(copy[i]);
+		}
+		return copy;
+	}
 
     if (value instanceof go2jsNativeMap) {
         return new go2jsNativeMap(value);
@@ -5763,8 +5767,16 @@ function go2jsMapEntries(map) {
 }
 
 function go2jsCopy(value) {
+	if (go2jsSliceState(value)) {
+		return value;
+	}
+
 	if (Array.isArray(value)) {
-		return value.slice();
+		const copy = value.slice();
+		for (let i = 0; i < copy.length; i++) {
+			copy[i] = go2jsCopy(copy[i]);
+		}
+		return copy;
 	}
 
 	if (value instanceof go2jsNativeMap) {
@@ -5772,7 +5784,19 @@ function go2jsCopy(value) {
 	}
 
 	if (value && typeof value === "object") {
-		return Object.assign({}, value);
+		if (value.__go2js_pointer === true || value instanceof go2jsNativeDate) {
+			return value;
+		}
+		if (typeof value.constructor === "function" && value.constructor !== Object && value.constructor !== Array) {
+			if (typeof go2jsStructCopy === "function") {
+				return go2jsStructCopy(value);
+			}
+		}
+		const copy = {};
+		for (const key of Object.keys(value)) {
+			copy[key] = go2jsCopy(value[key]);
+		}
+		return copy;
 	}
 
 	return value;
@@ -6313,11 +6337,12 @@ function go2jsStringByteAt(value, index) {
 	return value.charCodeAt(Math.trunc(index));
 }
 
-function go2jsZeroArray(length) {
+function go2jsZeroArray(length, zeroFactory) {
 	const out = new Array(length);
+	const factory = typeof zeroFactory === "function" ? zeroFactory : () => 0;
 
 	for (let index = 0; index < length; index++) {
-		out[index] = 0;
+		out[index] = factory();
 	}
 
 	Object.defineProperty(out, "__go2js_cap", {

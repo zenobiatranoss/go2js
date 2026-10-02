@@ -164,6 +164,9 @@ func zeroValueForGoType(t types.Type) string {
 			if constructor := packageTypeConstructorFor(obj.Pkg().Name(), obj.Name()); constructor != "" {
 				return constructor
 			}
+			if _, isStruct := t.Underlying().(*types.Struct); isStruct {
+				return "new " + javaScriptIdentifier(obj.Name()) + "()"
+			}
 		}
 		return zeroValueForGoType(t.Underlying())
 
@@ -184,7 +187,8 @@ func zeroValueForGoType(t types.Type) string {
 		}
 
 	case *types.Array:
-		return "go2jsZeroArray(" + strconv.FormatInt(t.Len(), 10) + ")"
+		elemZero := zeroValueForGoType(t.Elem())
+		return "go2jsZeroArray(" + strconv.FormatInt(t.Len(), 10) + ", () => " + elemZero + ")"
 
 	case *types.Struct:
 		return "{}"
@@ -198,5 +202,25 @@ func zeroValueForGoType(t types.Type) string {
 
 	default:
 		return "null"
+	}
+}
+
+func isBasicZero(s string) bool {
+	switch s {
+	case "0", "false", `""`, "{re: 0, im: 0}", "null":
+		return true
+	}
+	return false
+}
+
+func isBasicKind(t types.Type) bool {
+	if t == nil {
+		return false
+	}
+	switch t.Underlying().(type) {
+	case *types.Basic:
+		return true
+	default:
+		return false
 	}
 }
