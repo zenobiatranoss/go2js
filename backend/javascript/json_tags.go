@@ -382,9 +382,16 @@ var jsonStreamMethods = map[string]bool{
 	"encoding/json.Encoder.Encode":        true,
 	"encoding/json.Encoder.SetIndent":     true,
 	"encoding/json.Encoder.SetEscapeHTML": true,
-	"encoding/json.Decoder.Decode":        true,
-	"encoding/json.Decoder.More":          true,
-	"encoding/json.Decoder.Buffered":      true,
+"encoding/json.Decoder.Decode":        true,
+"encoding/json.Decoder.More":          true,
+"encoding/json.Decoder.Buffered":      true,
+"encoding/json.Decoder.Token":         true,
+"encoding/json.Delim.String":          true,
+"encoding/json.Number.String":         true,
+"encoding/json.Number.Int64":          true,
+"encoding/json.Number.Float64":        true,
+"encoding/json.RawMessage.MarshalJSON": true,
+"encoding/json.RawMessage.UnmarshalJSON": true,
 }
 
 // emitJSONMethodCall writes a call on an encoder or a decoder. The value that
@@ -532,6 +539,22 @@ func (e *emitter) emitJSONMethodCall(call *ast.CallExpr, selector *ast.SelectorE
 			return true, err
 		}
 
+		e.write(")")
+		return true, nil
+
+	case "encoding/json.Decoder.Token":
+		e.write("go2jsJSONDecoderToken(")
+		if err := e.emitExpr(selector.X); err != nil {
+			return true, err
+		}
+		e.write(")")
+		return true, nil
+
+	case "encoding/json.Delim.String":
+		e.write("go2jsJSONDelimText(")
+		if err := e.emitExpr(call.Args[0]); err != nil {
+			return true, err
+		}
 		e.write(")")
 		return true, nil
 	}
