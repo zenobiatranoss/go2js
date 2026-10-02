@@ -2917,7 +2917,8 @@ function go2jsJSONNewDecoder(reader) {
         reader: reader,
         buffer: "",
         position: 0,
-        eof: false
+        eof: false,
+        stack: []
     };
 }
 
@@ -3059,6 +3060,81 @@ function go2jsJSONDecoderMore(decoder) {
 function go2jsJSONDecoderBuffered(decoder) {
     return go2jsJSONCoerceString(decoder.buffer.slice(decoder.position));
 }
+
+// go2jsJSONDecoderToken hands back one piece of the document at a time.
+function go2jsJSONDecoderToken(decoder) {
+    for (;;) {
+        go2jsJSONDecoderSkipSpace(decoder);
+        if (decoder.position >= decoder.buffer.length) {
+            return [null, go2jsIOEOF()];
+        }
+        const buffer = decoder.buffer;
+        const character = buffer[decoder.position];
+        if (character === "," || character === ":") {
+            decoder.position++;
+            continue;
+        }
+        if (character === "{" || character === "[" || character === "}" || character === "]") {
+            decoder.position++;
+            if (character === "{" || character === "[") {
+                decoder.stack.push(character);
+            } else {
+                const opened = decoder.stack.pop();
+                if (opened === undefined || go2jsJSONDelimPair(opened) !== character) {
+                    return [null, go2jsJSONSyntaxError("unexpected " + character + " in JSON input")];
+                }
+            }
+            return [go2jsJSONDelim(character), null];
+        }
+        const start = decoder.position;
+        const end = go2jsJSONSkipValue(buffer, start);
+        if (end <= start) {
+            return [null, go2jsJSONSyntaxError("invalid character in JSON input")];
+        }
+        decoder.position = end;
+        const literal = buffer.slice(start, end);
+        if (literal[0] === '"') {
+            return [JSON.parse(literal), null];
+        }
+        if (literal === "true" || literal === "false") {
+            return [literal === "true", null];
+        }
+        if (literal === "null") {
+            return [null, null];
+        }
+        if (go2jsJSONNumberLiteral(literal)) {
+            const num = Number(literal);
+            return [Number.isFinite(num) ? num : literal, null];
+        }
+        return [null, go2jsJSONSyntaxError("invalid character in JSON input")];
+    }
+}
+
+function go2jsJSONDelimPair(opened) {
+    return opened === "{" ? "}" : "]";
+}
+
+function go2jsJSONDelim(character) {
+    return {__go2js_json_delim: character};
+}
+
+function go2jsJSONDelimText(delim) {
+    const character = delim !== null && typeof delim === "object" && delim.__go2js_json_delim !== undefined
+        ? delim.__go2js_json_delim
+        : "";
+    return character === "{" || character === "}" || character === "[" || character === "]" ? character : "";
+}
+
+function go2jsJSONDelimCode(delim) {
+    return delim !== null && typeof delim === "object" && delim.__go2js_json_delim !== undefined
+        ? delim.__go2js_json_delim.charCodeAt(0)
+        : 0;
+}
+
+function go2jsJSONSyntaxError(message) {
+    return go2jsJSONError(message);
+}
+
 
 function go2jsJSONError(message) {
     return go2jsSentinelError(message)();
@@ -4151,6 +4227,10 @@ function go2jsGoTypeNameRaw(value) {
 		if (typeof own === "string" && own !== "") {
 			return own;
 		}
+
+		if (value.__go2js_json_delim !== undefined) {
+			return "encoding/json.Delim";
+		}
 	}
 
 	// A box standing for a nil pointer carries the name of the pointer type, so
@@ -4280,6 +4360,14 @@ function go2jsNamedFormatMethod(value, name) {
 
 		if (registered !== undefined && typeof go2jsMethodTable[registered + "." + name] === "function") {
 			return go2jsFormat(go2jsMethodTable[registered + "." + name](value));
+		}
+	}
+
+	const goType = go2jsGoTypeNameRaw(value);
+	if (typeof goType === "string" && goType !== "" && goType !== "object") {
+		const fn = go2jsMethodTable[goType + "." + name];
+		if (typeof fn === "function") {
+			return go2jsFormat(fn(value));
 		}
 	}
 
@@ -6332,7 +6420,10 @@ function go2jsStringify(value) {
 
 		return "[" + parts.join(" ") + "]";
 	}
-	if (typeof value === "object") {
+	if (typeof value === "object" && value !== null) {
+		if (value.__go2js_json_delim !== undefined) {
+			return String(value.__go2js_json_delim);
+		}
 		const parts = [];
 		for (const key of Object.keys(value)) {
 			parts.push(key + ":" + go2jsStringify(value[key]));
@@ -10069,6 +10160,8 @@ function go2jsUTF8ValidString(s) {
 	return true;
 }
 
+go2jsRegisterMethod("encoding/json.Delim.String", go2jsJSONDelimText);
 
 `
 }
+
