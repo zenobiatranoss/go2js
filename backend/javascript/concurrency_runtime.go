@@ -202,7 +202,7 @@ function go2jsChanSend(channel, value) {
 		}
 
 		if (!go2jsProgress()) {
-			throw new Error("go2js: no goroutine can unblock this channel send");
+			throw new Error("go2js: all goroutines are asleep - deadlock!");
 		}
 	}
 }

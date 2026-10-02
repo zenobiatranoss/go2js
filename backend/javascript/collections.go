@@ -663,11 +663,11 @@ function go2jsSliceAppend(value, ...items) {
 	);
 
 	for (let i = 0; i < state.length; i++) {
-		data[i] = state.data[state.offset + i];
+		data[i] = go2jsStructFieldCopy(state.data[state.offset + i]);
 	}
 
 	for (let i = 0; i < items.length; i++) {
-		data[state.length + i] = items[i];
+		data[state.length + i] = go2jsStructFieldCopy(items[i]);
 	}
 
 	return go2jsSliceView(data, 0, required, capacity);
@@ -813,7 +813,7 @@ function go2jsStructFieldCopy(item) {
 	}
 
 	if (Array.isArray(item) || item.__go2js_nil === true) {
-		return item;
+		return go2jsCopy(item);
 	}
 
 	return go2jsStructCopy(item);
@@ -838,7 +838,11 @@ function go2jsArrayCopy(value) {
 		throw new TypeError("array copy expects an array");
 	}
 
-	return value.slice();
+	const copy = value.slice();
+	for (let i = 0; i < copy.length; i++) {
+		copy[i] = go2jsStructFieldCopy(copy[i]);
+	}
+	return copy;
 }
 
 function go2jsSliceCopy(dst, src) {
@@ -856,7 +860,7 @@ function go2jsSliceCopy(dst, src) {
 	);
 
 	for (let i = 0; i < count; i++) {
-		destination.data[destination.offset + i] = values[i];
+		destination.data[destination.offset + i] = go2jsStructFieldCopy(values[i]);
 	}
 
 	return count;
