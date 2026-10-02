@@ -5767,15 +5767,23 @@ function go2jsMapEntries(map) {
 }
 
 function go2jsCopy(value) {
-	if (go2jsSliceState(value)) {
+	// A slice is a name for storage somebody else owns, so a copy of one is the
+	// same name rather than a second run of elements. The test is the metadata a
+	// slice carries and not the shape of the value, because an array is the same
+	// shape and is a value of its own.
+	if (value !== null && value !== undefined && go2jsSliceMeta.has(value)) {
 		return value;
 	}
 
 	if (Array.isArray(value)) {
+		if (!go2jsArrayMark.has(value)) {
+			return value;
+		}
 		const copy = value.slice();
 		for (let i = 0; i < copy.length; i++) {
 			copy[i] = go2jsCopy(copy[i]);
 		}
+		go2jsArrayMark.add(copy);
 		return copy;
 	}
 
@@ -6351,6 +6359,7 @@ function go2jsZeroArray(length, zeroFactory) {
 		configurable: true
 	});
 
+	go2jsArrayMark.add(out);
 	return out;
 }
 
@@ -10189,4 +10198,3 @@ go2jsRegisterMethod("encoding/json.Delim.String", go2jsJSONDelimText);
 
 `
 }
-

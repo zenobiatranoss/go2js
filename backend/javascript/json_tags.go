@@ -379,19 +379,19 @@ func (e *emitter) emitJSONCall(call *ast.CallExpr, selector *ast.SelectorExpr) (
 // the type that has the method and the method itself, which is how the emitter
 // tells a call on an encoder apart from any other call.
 var jsonStreamMethods = map[string]bool{
-	"encoding/json.Encoder.Encode":        true,
-	"encoding/json.Encoder.SetIndent":     true,
-	"encoding/json.Encoder.SetEscapeHTML": true,
-"encoding/json.Decoder.Decode":        true,
-"encoding/json.Decoder.More":          true,
-"encoding/json.Decoder.Buffered":      true,
-"encoding/json.Decoder.Token":         true,
-"encoding/json.Delim.String":          true,
-"encoding/json.Number.String":         true,
-"encoding/json.Number.Int64":          true,
-"encoding/json.Number.Float64":        true,
-"encoding/json.RawMessage.MarshalJSON": true,
-"encoding/json.RawMessage.UnmarshalJSON": true,
+	"encoding/json.Encoder.Encode":           true,
+	"encoding/json.Encoder.SetIndent":        true,
+	"encoding/json.Encoder.SetEscapeHTML":    true,
+	"encoding/json.Decoder.Decode":           true,
+	"encoding/json.Decoder.More":             true,
+	"encoding/json.Decoder.Buffered":         true,
+	"encoding/json.Decoder.Token":            true,
+	"encoding/json.Delim.String":             true,
+	"encoding/json.Number.String":            true,
+	"encoding/json.Number.Int64":             true,
+	"encoding/json.Number.Float64":           true,
+	"encoding/json.RawMessage.MarshalJSON":   true,
+	"encoding/json.RawMessage.UnmarshalJSON": true,
 }
 
 // emitJSONMethodCall writes a call on an encoder or a decoder. The value that

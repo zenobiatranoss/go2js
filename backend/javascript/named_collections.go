@@ -124,7 +124,11 @@ func (e *emitter) emitNamedCollectionLiteral(x *ast.CompositeLit, elem types.Typ
 
 	e.writeIndent()
 	e.write("return ")
-	e.write(temp)
+	if fixedLen >= 0 {
+		e.write("go2jsMarkArray(" + temp + ")")
+	} else {
+		e.write(temp)
+	}
 	e.write(";")
 	e.newline()
 

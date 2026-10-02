@@ -1415,7 +1415,38 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 
 		elementType := e.compositeElementType(x)
 
-		if x.Type != nil {
+		// A literal written as [N]T is an array and one written as []T is a
+		// slice, and the two are told apart here by the length rather than by
+		// the brackets, which are the same for both. An array is a value of its
+		// own, so one built here is marked as such and a copy of it is a copy
+		// rather than a second name for the same elements.
+		// The type of the literal is asked of the analysis rather than read off
+		// the brackets, because an element of a composite literal may leave its
+		// own type out and take the type of the element it stands in.
+		fixedArray := false
+
+		switch t := e.analyzedType(x); {
+		case t == nil:
+			if arrayType, ok := x.Type.(*ast.ArrayType); ok && arrayType.Len != nil {
+				fixedArray = true
+			}
+		default:
+			if _, ok := t.Underlying().(*gotypes.Array); ok {
+				fixedArray = true
+			}
+		}
+
+		// An array literal that names no elements is the zero value of the
+		// array type, which is as many elements as the type says and every one
+		// of them at the zero value of the element type.
+		if fixedArray && len(x.Elts) == 0 {
+			e.write(e.zeroValue(e.analyzedType(x)))
+			return nil
+		}
+
+		if fixedArray {
+			e.write("go2jsMarkArray([")
+		} else if x.Type != nil {
 			if _, ok := x.Type.(*ast.ArrayType); ok {
 				e.write("[")
 			} else {
@@ -1466,10 +1497,14 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			}
 		}
 
-		if _, ok := x.Type.(*ast.ArrayType); ok {
-			e.write("]")
+		if fixedArray {
+			e.write("])")
 		} else if x.Type != nil {
-			e.write("}")
+			if _, ok := x.Type.(*ast.ArrayType); ok {
+				e.write("]")
+			} else {
+				e.write("}")
+			}
 		} else {
 			e.write("]")
 		}
