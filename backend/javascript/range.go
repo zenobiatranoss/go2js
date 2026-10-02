@@ -212,6 +212,76 @@ func (e *emitter) rangeUsesEntries(stmt *ast.RangeStmt) bool {
 	}
 }
 
+// rangeCopiesValueTarget reports whether the loop takes its value as a copy
+// rather than as the element itself, which it does when that value is a struct
+// or an array, since those are values in Go and a name for storage is not one.
+func (e *emitter) rangeCopiesValueTarget(stmt *ast.RangeStmt, mode rangeIteration) bool {
+	if stmt.Value == nil || isBlankIdent(stmt.Value) {
+		return false
+	}
+
+	switch mode.kind {
+	case rangeValues, rangeSkip, rangeEntries:
+	default:
+		return false
+	}
+
+	if e.analysis == nil {
+		return false
+	}
+
+	// A loop over a channel hands over what the channel carries rather than an
+	// element of a container, so what the value is comes from the loop itself.
+	t := e.analysis.TypeOf(stmt.Value)
+
+	if t == nil {
+		t = e.rangeValueType(stmt)
+	}
+
+	if t == nil {
+		return false
+	}
+
+	// An interface holds a value rather than being one, so what a copy of it
+	// means is decided by what is standing in it, which only the program knows.
+	if _, ok := t.Underlying().(*gotypesstd.Interface); ok {
+		return false
+	}
+
+	switch t.Underlying().(type) {
+	case *gotypesstd.Struct, *gotypesstd.Array:
+		return true
+	default:
+		return false
+	}
+}
+
+// rangeValueType is the type of what a loop takes as its value, worked out from
+// what the loop is ranging over, since a loop variable is declared by the loop
+// and so is not a name the analysis has recorded a type for.
+func (e *emitter) rangeValueType(stmt *ast.RangeStmt) gotypesstd.Type {
+	t := e.analysis.TypeOf(stmt.X)
+
+	if t == nil {
+		return nil
+	}
+
+	switch subject := t.Underlying().(type) {
+	case *gotypesstd.Slice:
+		return subject.Elem()
+	case *gotypesstd.Array:
+		return subject.Elem()
+	case *gotypesstd.Map:
+		return subject.Elem()
+	case *gotypesstd.Chan:
+		return subject.Elem()
+	case *gotypesstd.Pointer:
+		return e.rangeValueType(stmt)
+	default:
+		return nil
+	}
+}
+
 func (e *emitter) emitEntriesRangeStmt(stmt *ast.RangeStmt) error {
 	e.needsRuntime = true
 
@@ -256,12 +326,25 @@ func (e *emitter) emitEntriesRangeStmt(stmt *ast.RangeStmt) error {
 		e.write("] of ")
 	}
 
+	// An element of a slice or an array is a value of the element type, so a
+	// loop that takes one holds a copy of it. A loop over numbers or names is
+	// left as it is, since copying one of those costs more than naming it.
+	copiesValues := e.rangeCopiesValueTarget(stmt, mode)
+
 	switch mode.kind {
 	case rangeKeys, rangeMapValues:
 		e.needsRuntime = true
 		e.write("go2jsRangeMap(")
 	default:
 		e.needsRuntime = true
+
+		switch {
+		case copiesValues && mode.kind == rangeEntries:
+			e.write("go2jsRangeCopyEntries(")
+		case copiesValues:
+			e.write("go2jsRangeCopies(")
+		}
+
 		e.write("go2jsRangeSequence(")
 	}
 
@@ -290,8 +373,16 @@ func (e *emitter) emitEntriesRangeStmt(stmt *ast.RangeStmt) error {
 		e.write(".values()) ")
 	case rangeEntries:
 		e.write(".entries()) ")
+
+		if copiesValues {
+			e.write(")")
+		}
 	default:
 		e.write(") ")
+
+		if copiesValues {
+			e.write(")")
+		}
 	}
 
 	blockErr := e.emitBlock(stmt.Body)
@@ -333,6 +424,26 @@ func (e *emitter) emitRangeBinding(lhs ast.Expr, value string, tok token.Token) 
 
 func rangeRuntimeSource() string {
 	return `
+// go2jsRangeCopies hands back the elements of a sequence as values of their
+// own, which is what ranging over a slice or an array of records gives: the
+// element is a copy, and writing to it is a write to the copy rather than a
+// write to the element the sequence is holding. A sequence of numbers is left
+// alone, because a number is a value already and copying it costs more than
+// naming it.
+function* go2jsRangeCopies(sequence) {
+	for (const item of sequence) {
+		yield go2jsStructFieldCopy(item);
+	}
+}
+
+// go2jsRangeCopyEntries is go2jsRangeCopies for a loop that takes both the key
+// and the value, where the key is left as it is and the value is the copy.
+function* go2jsRangeCopyEntries(sequence) {
+	for (const entry of sequence) {
+		yield [entry[0], go2jsStructFieldCopy(entry[1])];
+	}
+}
+
 function go2jsRangeSequence(value) {
 	if (typeof value === "function") {
 		return go2jsRangeYielded(value);
