@@ -436,6 +436,14 @@ func (e *emitter) emitCollectionBuiltinCall(call *ast.CallExpr) (bool, error) {
 func collectionRuntimeSource() string {
 	return `
 const go2jsSliceMeta = new WeakMap();
+const go2jsArrayMark = new WeakSet();
+
+function go2jsMarkArray(value) {
+	if (Array.isArray(value)) {
+		go2jsArrayMark.add(value);
+	}
+	return value;
+}
 
 function go2jsSliceView(data, offset, length, capacity) {
 	if (data === null || data === undefined) {
@@ -842,6 +850,7 @@ function go2jsArrayCopy(value) {
 	for (let i = 0; i < copy.length; i++) {
 		copy[i] = go2jsStructFieldCopy(copy[i]);
 	}
+	go2jsArrayMark.add(copy);
 	return copy;
 }
 
