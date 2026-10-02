@@ -323,9 +323,9 @@ func (e *emitter) emitRangeBinding(lhs ast.Expr, value string, tok token.Token) 
 		}
 	}
 
-	e.write(" = ")
+	e.write(" = go2jsCopy(")
 	e.write(value)
-	e.write(";")
+	e.write(");")
 	e.newline()
 
 	return nil
