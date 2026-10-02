@@ -83,3 +83,42 @@ loop:
 }
 `)
 }
+
+// A send to a channel of no room is a handover that nobody is standing there to
+// take, so it is not ready and the default case is what runs. A send to a
+// channel with room is ready until the room is used up, and then it is not.
+func TestSelectSendIsReadyOnlyWhenItCanBeTaken(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+func main() {
+	handover := make(chan int)
+
+	select {
+	case handover <- 1:
+		fmt.Println("sent to handover")
+	default:
+		fmt.Println("handover would block")
+	}
+
+	room := make(chan int, 1)
+
+	select {
+	case room <- 2:
+		fmt.Println("room has space")
+	default:
+		fmt.Println("room is full")
+	}
+
+	select {
+	case room <- 3:
+		fmt.Println("room has space again")
+	default:
+		fmt.Println("room is full")
+	}
+
+	fmt.Println(<-room)
+}
+`)
+}
