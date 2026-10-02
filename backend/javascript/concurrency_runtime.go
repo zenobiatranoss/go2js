@@ -9,7 +9,8 @@ function go2jsChannel(capacity) {
 		capacity: typeof capacity === "number" && capacity > 0 ? Math.trunc(capacity) : 0,
 		closed: false,
 		receivers: [],
-		senders: []
+		senders: [],
+		waitingReceivers: 0
 	};
 }
 
@@ -118,26 +119,37 @@ function go2jsWaitForEarliestTimer() {
 }
 
 function go2jsChanRecvPair(channel) {
-	while (true) {
-		if (channel.buffer.length > 0) {
-			const value = channel.buffer.shift();
-			go2jsChannelPump(channel);
-			return [value, true];
-		}
+	// A receive that finds nothing waits, and a send to a channel of no room
+	// is a handover that only completes once somebody has taken what was put
+	// into it. The count of how many receives are waiting is what tells a send
+	// there is somebody to hand over to, so it is kept for as long as the
+	// waiting lasts and given back when the receive is answered or gives up.
+	channel.waitingReceivers++;
 
-		if (go2jsTimerDue(channel)) {
-			const value = channel.buffer.shift();
-			go2jsChannelPump(channel);
-			return [value, true];
-		}
+	try {
+		while (true) {
+			if (channel.buffer.length > 0) {
+				const value = channel.buffer.shift();
+				go2jsChannelPump(channel);
+				return [value, true];
+			}
 
-		if (channel.closed) {
-			return [go2jsChannelZero, false];
-		}
+			if (go2jsTimerDue(channel)) {
+				const value = channel.buffer.shift();
+				go2jsChannelPump(channel);
+				return [value, true];
+			}
 
-		if (!go2jsProgress() && !go2jsWaitForEarliestTimer()) {
-			throw new Error("go2js: no goroutine can unblock this channel receive");
+			if (channel.closed) {
+				return [go2jsChannelZero, false];
+			}
+
+			if (!go2jsProgress() && !go2jsWaitForEarliestTimer()) {
+				throw new Error("go2js: all goroutines are asleep - deadlock!");
+			}
 		}
+	} finally {
+		channel.waitingReceivers--;
 	}
 }
 
@@ -176,7 +188,15 @@ function go2jsChanSendReady(channel) {
 		return false;
 	}
 
-	return channel.capacity === 0 || channel.buffer.length < channel.capacity;
+	// A channel of no room is a handover rather than a store, so a send to one
+	// is ready only while a goroutine is standing there to take it. Answering
+	// yes for one nobody is reading from is what lets a loop of sends fill a
+	// channel that can never hold anything.
+	if (channel.capacity === 0) {
+		return channel.waitingReceivers > 0;
+	}
+
+	return channel.buffer.length < channel.capacity;
 }
 
 function go2jsChanSend(channel, value) {
@@ -185,15 +205,15 @@ function go2jsChanSend(channel, value) {
 			go2jsChannelClosedPanic("send");
 		}
 
+				// A channel of no room is a handover: the value is not sent until the
+		// goroutine that was waiting for it has taken it, and that goroutine
+		// runs before the send is said to be done. A channel with room is not
+		// a handover, so a send to one carries on without waiting for whoever
+		// reads it later.
 		if (channel.capacity === 0 || channel.buffer.length < channel.capacity) {
 			channel.buffer.push(value);
 			go2jsChannelPump(channel);
 
-			// A channel of no room is a handover: the value is not sent until the
-			// goroutine that was waiting for it has taken it, and that goroutine
-			// runs before the send is said to be done. A channel with room is not
-			// a handover, so a send to one carries on without waiting for whoever
-			// reads it later.
 			if (channel.capacity === 0) {
 				go2jsRunTasks();
 			}
