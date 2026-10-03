@@ -213,7 +213,11 @@ function go2jsOSGetegid() {
 }
 
 function go2jsOSHostname() {
-    return typeof os === "object" && typeof os.hostname === "function" ? os.hostname() : "";
+    try {
+        return [require("os").hostname(), null];
+    } catch (err) {
+        return ["", go2jsOSHostError(err, "hostname", "")];
+    }
 }
 
 function go2jsOSExecutable() {
@@ -229,24 +233,10 @@ function go2jsOSSetenv(name, value) {
     return null;
 }
 
-// go2jsOSStatObject builds the FileInfo a stat call answers with. The methods
-// are the ones Go's os.FileInfo declares, so a program that asks for a field it
-// does not know here is told the same way a Go program would be.
-function go2jsOSStatObject(stats) {
-    return [{
-        Size: function() {
-            return stats.size;
-        },
-        IsDir: function() {
-            return stats.isDirectory();
-        },
-        Mode: function() {
-            return stats.mode;
-        },
-        ModTime: function() {
-            return stats.mtime;
-        }
-    }, null];
+// go2jsOSStatObject builds the FileInfo a stat call answers with, which is the
+// same thing a file answers a stat of its own with.
+function go2jsOSStatObject(stats, path) {
+    return [go2jsOSFileInfo(path === undefined || path === null ? "" : String(path), stats), null];
 }
 
 // go2jsOSLstat describes a path without following a symbolic link, which is
@@ -254,15 +244,15 @@ function go2jsOSStatObject(stats) {
 // which is what Go reports for it.
 function go2jsOSLstat(path) {
     try {
-        return go2jsOSStatObject(require("fs").lstatSync(String(path)));
+        return go2jsOSStatObject(require("fs").lstatSync(String(path)), path);
     } catch (err) {
-        return [null, err];
+        return [null, go2jsOSHostError(err, "lstat", String(path))];
     }
 }
 
 function go2jsOSStat(path) {
     try {
-        return go2jsOSStatObject(require("fs").statSync(String(path)));
+        return go2jsOSStatObject(require("fs").statSync(String(path)), path);
     } catch (err) {
         return [null, go2jsOSHostError(err, "stat", String(path))];
     }
@@ -316,7 +306,9 @@ function go2jsIOReadAll(reader) {
         }
 
         if (result[1] !== null && result[1] !== undefined) {
-            if (result[1] === go2jsIOEOF()) {
+            // The end of a text is not a failure of reading it, whether it was
+            // reported as the end itself or as an error that ends in it.
+            if (result[1] === go2jsIOEOF() || go2jsErrorsIs(result[1], go2jsIOEOF())) {
                 break;
             }
 
@@ -3702,17 +3694,13 @@ go2jsBytesBuffer.prototype.UnreadRune = function() {
 };
 
 go2jsBytesBuffer.prototype.ReadString = function(delim) {
-	if (this.data.length === 0) {
-		return go2jsBytesReadStringResult("", null);
-	}
-
 	const needle = go2jsToArray(delim);
 	const limit = needle.length;
 
 	if (limit === 0) {
 		const out = this.data.slice();
 		this.data = [];
-		return go2jsBytesReadStringResult(go2jsBytesToString(out), null);
+		return go2jsBytesReadStringResult(go2jsBytesToString(out), go2jsEOFError());
 	}
 
 	for (let i = 0; i + limit <= this.data.length; i++) {
@@ -3730,15 +3718,25 @@ go2jsBytesBuffer.prototype.ReadString = function(delim) {
 		}
 	}
 
-	return go2jsBytesReadStringResult("", go2jsEOFError());
+	// A delimiter that never came means the text ran out, so what was there is
+	// handed back with the end of it rather than dropped, which is what makes a
+	// read of the last piece of a text report the end along with the piece.
+	const rest = this.data.slice();
+	this.data = [];
+
+	return go2jsBytesReadStringResult(go2jsBytesToString(rest), go2jsEOFError());
 };
 
 go2jsBytesBuffer.prototype.ReadBytes = function(delim) {
 	const result = this.ReadString(delim);
 
-	return result[0] === "" && result[1] !== null
-		? [null, result[1]]
-		: [go2jsStringToBytes(result[0]), null];
+	// What was read before the end arrived is handed back along with the end,
+	// and only a read that found nothing at all has nothing to hand back.
+	if (result[0] === "") {
+		return [null, result[1]];
+	}
+
+	return [go2jsStringToBytes(result[0]), result[1]];
 };
 
 go2jsBytesBuffer.prototype.Next = function(n) {
@@ -3777,29 +3775,18 @@ go2jsBytesBuffer.prototype.WriteTo = function(target) {
 };
 
 go2jsBytesBuffer.prototype.ReadFrom = function(source) {
-	if (!source || typeof source.Read !== "function") {
-		return [0, null];
+	const result = go2jsIOReadAll(source);
+
+	if (result[0] === null || result[0] === undefined) {
+		return [0, result[1]];
 	}
 
-	let total = 0;
+	const text = String(result[0]);
+	const bytes = go2jsStringToBytes(text);
 
-	for (;;) {
-		const chunk = go2jsStringToBytes("");
-		const result = source.Read(chunk);
-		const value = result && result.value !== undefined ? result.value : result;
-		const err = result && result.err !== undefined ? result.err : null;
+	this.data = this.data.concat(bytes);
 
-		if (value && value.length > 0) {
-			this.data = this.data.concat(Array.from(value));
-			total += value.length;
-		}
-
-		if (err !== null || value === null || value.length === 0) {
-			break;
-		}
-	}
-
-	return [total, null];
+	return [bytes.length, result[1]];
 };
 
 function go2jsBytesReadStringResult(value, err) {
@@ -3811,7 +3798,7 @@ function go2jsIOReadAllResult(n, err) {
 }
 
 function go2jsEOFError() {
-	return go2jsSentinelError("EOF");
+	return go2jsSentinelError("EOF")();
 }
 
 function go2jsBytesEqual(a, b) {
@@ -4355,6 +4342,18 @@ function go2jsGoTypeNameRaw(value) {
 	// answers with it instead of with the type it describes.
 	if (value !== null && value !== undefined && value.__go2js_reflectType === true) {
 		return "*reflect.rtype";
+	}
+
+	// A box says what it holds rather than the place it is held, because the
+	// type a verb asks for is the type of the value and not the type standing
+	// over it. A value that answers for its own type says so by carrying the
+	// name, and only a value behind an interface is marked that way.
+	if (value !== null && value !== undefined && typeof value === "object") {
+		const held = value.__go2js_typed === true || value.__go2js_interface === true ? value.value : value;
+
+		if (held !== null && held !== undefined && typeof held.__go2js_type === "string" && held.__go2js_type !== "") {
+			return held.__go2js_type;
+		}
 	}
 
 	if (value !== null && value !== undefined && value.__go2js_typed === true) {

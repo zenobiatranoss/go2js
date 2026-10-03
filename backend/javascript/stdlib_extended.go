@@ -2076,9 +2076,9 @@ function go2jsOSIsTimeout(err) {
 
 function go2jsOSGetwd() {
 	try {
-		return require("process").cwd();
+		return [require("process").cwd(), null];
 	} catch (err) {
-		return "";
+		return ["", go2jsOSHostError(err, "getwd", "")];
 	}
 }
 
@@ -2091,11 +2091,48 @@ function go2jsOSChdir(path) {
 	}
 }
 
+// go2jsOSDirEntry is what a directory says about one name in it, asked of as the
+// methods a Go program asks it of rather than as the fields of the host.
+function go2jsOSDirEntry(dir, name) {
+	const entry = {
+		__go2js_type: "*os.unixDirent",
+		Name: function () {
+			return String(name);
+		},
+		IsDir: function () {
+			try {
+				return require("fs").statSync(String(dir) + "/" + String(name)).isDirectory();
+			} catch (err) {
+				return false;
+			}
+		},
+		Type: function () {
+			return entry.IsDir() ? 2147483648 : 32;
+		},
+		Info: function () {
+			try {
+				const stats = require("fs").statSync(String(dir) + "/" + String(name));
+
+				return go2jsOSFileInfo(String(name), stats);
+			} catch (err) {
+				return null;
+			}
+		}
+	};
+
+	return entry;
+}
+
 function go2jsOSReadDir(path) {
+	const target = String(path);
+
 	try {
-		return require("fs").readdirSync(String(path)).sort();
+		const names = require("fs").readdirSync(target).sort();
+		const entries = names.map(name => go2jsOSDirEntry(target, name));
+
+		return [entries, null];
 	} catch (err) {
-		return null;
+		return [null, go2jsOSHostError(err, "readdirent", target)];
 	}
 }
 
@@ -3612,9 +3649,83 @@ function go2jsOSFileMethods() {
 		go2jsRegisterMethod(name + ".Fd", descriptor);
 	}
 
+	// The standard input is read from the descriptor it stands for, because a
+	// read of it is a read of the stream behind it and the stream object of the
+	// host has no read of its own.
+	const readStandardInput = function(buffer) {
+		let filled = 0;
+		const start = go2jsOSStreamPosition(process.stdin);
+
+		while (filled < buffer.length) {
+			let chunk = 0;
+
+			// A read of the descriptor of the host is handed the bytes as a view
+			// over them, since that is what it reads into, and what it filled is
+			// copied back into the place the program asked for.
+			const view = Buffer.from(buffer.slice(filled, buffer.length));
+
+			try {
+				chunk = require("fs").readSync(0, view, 0, view.length, start + filled);
+			} catch (err) {
+				// Nothing left to hand over is the end of the text rather than a
+				// failure of the read, which is what a read reports it as.
+				if (err.code === "EOF" || err.code === "EAGAIN") {
+					break;
+				}
+
+				return [filled, go2jsOSHostError(err, "read", "/dev/stdin")];
+			}
+
+			if (chunk <= 0) {
+				break;
+			}
+
+			for (let i = 0; i < chunk; i++) {
+				buffer[filled + i] = view[i];
+			}
+
+			filled += chunk;
+		}
+
+		go2jsOSStreamSetPosition(process.stdin, start + filled);
+
+		return [filled, filled > 0 ? null : go2jsIOEOF()];
+	};
+
+	// What a scanner or a reader reads the standard input through is the whole
+	// of it, which is read from the descriptor it stands for.
+	Object.defineProperty(process.stdin, "__go2js_readAll", {
+		value: function () {
+			const chunks = [];
+			const buffer = new Array(4096);
+
+			for (;;) {
+				const result = readStandardInput(buffer);
+
+				if (result[0] <= 0) {
+					break;
+				}
+
+				chunks.push(...buffer.slice(0, result[0]));
+			}
+
+			return String.fromCharCode(...chunks);
+		},
+		enumerable: false,
+		writable: true,
+		configurable: true
+	});
+
 	attach(process.stdout, "/dev/stdout");
 	attach(process.stderr, "/dev/stderr");
 	attach(process.stdin, "/dev/stdin");
+
+	Object.defineProperty(process.stdin, "Read", {
+		value: readStandardInput,
+		enumerable: false,
+		writable: true,
+		configurable: true
+	});
 }
 
 function go2jsOSStdin() {
