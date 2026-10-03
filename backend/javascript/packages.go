@@ -101,9 +101,6 @@ var packageConstants = map[string]string{
 	"math.MaxUint64":              "Number.MAX_SAFE_INTEGER",
 	"math.MaxUintptr":             "Number.MAX_SAFE_INTEGER",
 
-	"os.PathSeparator":     `"/"`,
-	"os.PathListSeparator": `":"`,
-
 	"http.MethodGet":     `"GET"`,
 	"http.MethodPost":    `"POST"`,
 	"http.MethodPut":     `"PUT"`,

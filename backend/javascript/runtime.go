@@ -442,18 +442,114 @@ function go2jsTimeDateOf(value) {
     return value !== null && value !== undefined && value.value instanceof Date ? value.value : value;
 }
 
+// go2jsTimeMonths and go2jsTimeDays are the names a layout asks for by name,
+// which are written out in full rather than taken from a Date, whose names are
+// the ones of the host rather than the ones a Go program reads.
+const go2jsTimeMonths = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+];
+
+const go2jsTimeDays = [
+    "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
+];
+
+// go2jsTimeFormat writes a time the way a layout asks for it. A layout is read
+// one piece at a time and what a piece stands for is written out as it is, so
+// that digits standing for a year are never read again as a piece standing for
+// a month, which is what a layout replacing every piece in turn would do.
 function go2jsTimeFormat(date, layout) {
     const pad = function(value, width) {
         return String(value).padStart(width, "0");
     };
 
-    return layout
-        .replace(/2006/g, String(date.getUTCFullYear()))
-        .replace(/01/g, pad(date.getUTCMonth() + 1, 2))
-        .replace(/02/g, pad(date.getUTCDate(), 2))
-        .replace(/15/g, pad(date.getUTCHours(), 2))
-        .replace(/04/g, pad(date.getUTCMinutes(), 2))
-        .replace(/05/g, pad(date.getUTCSeconds(), 2));
+    const year = date.getUTCFullYear();
+    const month = date.getUTCMonth();
+    const day = date.getUTCDate();
+    const hour = date.getUTCHours();
+    const minute = date.getUTCMinutes();
+    const second = date.getUTCSeconds();
+    const milli = date.getUTCMilliseconds();
+    const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+    const monthName = go2jsTimeMonths[month];
+    const dayName = go2jsTimeDays[date.getUTCDay()];
+
+    let out = "";
+    let index = 0;
+
+    while (index < layout.length) {
+        const rest = layout.slice(index);
+
+        // The pieces are read longest first, so that a name is not read as a
+        // shorter name it begins with and a two digit piece is not read as the
+        // one digit piece it begins with.
+        const pieces = [
+            ["January", monthName],
+            ["Jan", monthName.slice(0, 3)],
+            ["Monday", dayName],
+            ["Mon", dayName.slice(0, 3)],
+            ["2006", pad(year, 4)],
+            ["06", pad(year % 100, 2)],
+            ["_2", day < 10 ? " " + day : String(day)],
+            ["01", pad(month + 1, 2)],
+            ["15", pad(hour, 2)],
+            ["03", pad(hour12, 2)],
+            ["04", pad(minute, 2)],
+            ["05", pad(second, 2)],
+            ["02", pad(day, 2)],
+            ["PM", hour < 12 ? "AM" : "PM"],
+            ["pm", hour < 12 ? "am" : "pm"],
+            ["MST", "UTC"],
+            ["Z07:00", "Z"],
+            ["Z0700", "Z"],
+            ["-07:00", "+00:00"],
+            ["-0700", "+0000"],
+            ["1", String(month + 1)],
+            ["2", String(day)],
+            ["3", String(hour12)],
+            ["4", String(minute)],
+            ["5", String(second)]
+        ];
+
+        let matched = null;
+
+        for (const [piece, text] of pieces) {
+            if (rest.startsWith(piece)) {
+                matched = [piece, text];
+                break;
+            }
+        }
+
+        if (matched !== null) {
+            out += matched[1];
+            index += matched[0].length;
+            continue;
+        }
+
+        // A fraction of a second is written as the digits it has. A layout
+        // asking for as many of them as the piece carries is answered with that
+        // many, zeros included, and one asking for nines is answered with the
+        // digits there are, since the nines are what a piece of them means is
+        // not written down.
+        const fraction = /^\.([0-9]+)/.exec(rest);
+
+        if (fraction !== null) {
+            const width = fraction[1].length;
+            const trimmed = fraction[1][0] === "9";
+            let digits = pad(milli, 3) + "000000";
+
+            digits = trimmed ? digits.slice(0, width).replace(/0+$/, "") : digits.slice(0, width);
+
+            out += digits === "" ? "" : "." + digits;
+            index += 1 + width;
+            continue;
+        }
+
+        out += layout[index];
+        index += 1;
+    }
+
+    return out;
 }
 
 function go2jsRegexpNew(pattern) {
