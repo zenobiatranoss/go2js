@@ -314,9 +314,21 @@ func narrowIntTypeName(t gotypes.Type) (string, bool) {
 		return "", false
 	}
 
+	// A type named over a narrow whole number keeps its own name through the
+	// marks written on it, so a file mode still says what it is after the marks
+	// put on it are read off it. Another package may give the type a name of
+	// its own, which is a name for it rather than another type.
+	named, isNamed := gotypes.Unalias(t).(*gotypes.Named)
+
 	switch basic.Kind() {
 	case gotypes.Int8, gotypes.Int16, gotypes.Int32,
 		gotypes.Uint8, gotypes.Uint16, gotypes.Uint32:
+		if isNamed && named.Underlying() != nil {
+			if _, isBasic := named.Underlying().(*gotypes.Basic); isBasic {
+				return named.String(), true
+			}
+		}
+
 		return basic.Name(), true
 	default:
 		return "", false
@@ -1652,6 +1664,21 @@ func (e *emitter) emitAnonymousStructLiteral(x *ast.CompositeLit, structType *go
 	return true, nil
 }
 
+// isFileModeType reports whether a type is a file mode, which os.FileMode and
+// fs.FileMode are two names for rather than two types.
+func isFileModeType(t gotypes.Type) bool {
+	if t == nil {
+		return false
+	}
+
+	named, ok := gotypes.Unalias(t).(*gotypes.Named)
+	if !ok || named.Obj() == nil || named.Obj().Pkg() == nil {
+		return false
+	}
+
+	return named.Obj().Pkg().Path() == "io/fs" && named.Obj().Name() == "FileMode"
+}
+
 // mayAliasStructValue reports whether an expression reads a struct that already
 // exists rather than building a new one, which is the case where a copy has to
 // be made to keep the two apart.
@@ -1682,6 +1709,21 @@ func mayAliasStructValue(expr ast.Expr) bool {
 // keep what it was given. JavaScript objects are references, so storing one as
 // it stands would let the later change reach back into the copy.
 func (e *emitter) emitStructFieldValue(expr ast.Expr, fieldType gotypes.Type) error {
+	// A mark of a file is asked of by its marks, so a number written where one
+	// is expected is given as one rather than left as the number it was.
+	if isFileModeType(fieldType) {
+		e.needsRuntime = true
+		e.write("go2jsFileMode(")
+
+		if err := e.emitExpr(expr); err != nil {
+			return err
+		}
+
+		e.write(")")
+
+		return nil
+	}
+
 	if !mayAliasStructValue(expr) {
 		return e.emitExpr(expr)
 	}

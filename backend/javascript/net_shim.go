@@ -574,6 +574,11 @@ func shimMethodKey(selector *ast.SelectorExpr, receiver gotypesstd.Type) (string
 		receiver = pointer.Elem()
 	}
 
+	// A name another package gives to the same type is a name and nothing more,
+	// so the methods asked of a value of it are the methods of the type behind
+	// it rather than of the name.
+	receiver = gotypesstd.Unalias(receiver)
+
 	named, ok := receiver.(*gotypesstd.Named)
 	if !ok {
 		return "", false

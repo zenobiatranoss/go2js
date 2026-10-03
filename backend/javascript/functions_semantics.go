@@ -85,6 +85,14 @@ func (e *emitter) zeroValue(t types.Type) string {
 // way down, so a field read from it is the zero of its own type rather than
 // nothing at all.
 func (e *emitter) zeroValueAt(t types.Type, depth int) string {
+	// A mark of a file is a mark of its own type even before it carries any, so
+	// a mode declared and left alone is a mode rather than a number.
+	if e != nil && isFileModeType(t) {
+		e.needsRuntime = true
+
+		return "go2jsFileMode(0)"
+	}
+
 	if e != nil && t != nil {
 		if named, ok := t.(*types.Named); ok {
 			obj := named.Obj()

@@ -154,9 +154,15 @@ func (e *emitter) emitNarrowIntAssign(target ast.Expr, operator string, rhs ast.
 		return true
 	}
 
-	e.write(" ")
-	e.write(operator)
-	e.write(" ")
+	// Go clears bits with an operator of its own, which JavaScript writes as
+	// the marks left over once what is to be cleared has been turned inside out.
+	if operator == "&^" {
+		e.write(" & ~")
+	} else {
+		e.write(" ")
+		e.write(operator)
+		e.write(" ")
+	}
 
 	if rhs == nil {
 		e.write("1")
@@ -1432,6 +1438,29 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 				e.write(");")
 				e.newline()
 				e.needsRuntime = true
+				return nil
+			}
+
+			// A mark of a file is asked of as the mark it is, so what is put
+			// where one is expected is given as one rather than left as the
+			// number or the mark it was written as.
+			if isFileModeType(e.analyzedType(s.Lhs[0])) {
+				e.writeIndent()
+
+				if err := e.emitTargetExpr(s.Lhs[0]); err != nil {
+					return err
+				}
+
+				e.needsRuntime = true
+				e.write(" = go2jsFileMode(")
+
+				if err := e.emitExpr(s.Rhs[0]); err != nil {
+					return err
+				}
+
+				e.write(");")
+				e.newline()
+
 				return nil
 			}
 		}
@@ -2756,6 +2785,21 @@ func (e *emitter) emitConversion(call *ast.CallExpr) error {
 	// any needs as much as interface{} does.
 	if isInterfaceLikeType(target) {
 		return e.emitInterfaceValue(call.Args[0], target)
+	}
+
+	// A mark of a file is asked of by its marks, so a number turned into one is
+	// a mark of a file rather than the number it was written as.
+	if isFileModeType(target) {
+		e.needsRuntime = true
+		e.write("go2jsFileMode(")
+
+		if err := e.emitExpr(call.Args[0]); err != nil {
+			return err
+		}
+
+		e.write(")")
+
+		return nil
 	}
 
 	// A whole number read as a span of time is a span of time, and the paths
