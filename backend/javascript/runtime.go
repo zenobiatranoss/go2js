@@ -3153,23 +3153,60 @@ function go2jsJSONCoerceString(value) {
     return String(value);
 }
 
+// A number the text held where no type was asked for is a float64, whatever it
+// was written with, since that is the one number type the empty interface gives
+// it. It is said so by the wrapper it is held in, which is how any other value
+// held in an interface says what it is.
+function go2jsJSONAnyNumber(value) {
+    return go2jsInterface(value, "float64");
+}
+
+// A map the text described where no type was asked for holds values nothing is
+// known about, so it says that rather than naming a type off the first of them.
+function go2jsJSONAnyMap(map) {
+    map.__go2js_type = "map[string]interface {}";
+
+    return map;
+}
+
+// A list the text described where no type was asked for is a slice of values
+// nothing is known about, so it says so rather than naming a type off the
+// first of them, which is what lets a type assertion over it be made.
+function go2jsJSONAnyList(list) {
+    Object.defineProperty(list, "__go2js_type", {
+        value: "[]interface {}",
+        enumerable: false,
+        writable: true,
+        configurable: true
+    });
+
+    return list;
+}
+
+// go2jsJSONCoerceAny is a value of the text read as a value nothing is known
+// about: a number is a float64, an object is a map of them, and an array is a
+// list of whatever its own elements are.
 function go2jsJSONCoerceAny(value) {
     if (value === null || value === undefined) {
         return null;
     }
 
     if (Array.isArray(value)) {
-        return value.map(go2jsJSONCoerceAny);
+        return go2jsJSONAnyList(value.map(go2jsJSONCoerceAny));
     }
 
     if (typeof value === "object") {
-        const map = go2jsMakeMap();
+        const map = go2jsJSONAnyMap(go2jsMakeMap());
 
         for (const key of Object.keys(value)) {
             go2jsMapSet(map, key, go2jsJSONCoerceAny(value[key]));
         }
 
         return map;
+    }
+
+    if (typeof value === "number") {
+        return go2jsJSONAnyNumber(value);
     }
 
     return value;
@@ -3309,7 +3346,10 @@ function go2jsJSONDecode(value, target, fields, stringFields, fieldTypes, text, 
             continue;
         }
 
-        target[name] = item;
+        // A field the program declared no type for holds a value nothing is
+        // known about, which is read as such rather than as the plain value the
+        // text happened to be written with.
+        target[name] = go2jsJSONCoerceAny(item);
     }
 }
 
