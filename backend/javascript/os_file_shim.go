@@ -69,7 +69,38 @@ func init() {
 }
 
 func osFileRuntimeSource() string {
-	return `// An error from a file is told by what was being done to which path, which is
+	return `// An errno the host reports is said the way Go says it, rather than in the
+// wording of the host, which names the same condition a different way.
+const go2jsErrnoMessages = new Map([
+	["ENOENT", "no such file or directory"],
+	["EEXIST", "file exists"],
+	["EACCES", "permission denied"],
+	["EPERM", "operation not permitted"],
+	["EISDIR", "is a directory"],
+	["ENOTDIR", "not a directory"],
+	["ENOTEMPTY", "directory not empty"],
+	["EMFILE", "too many open files"],
+	["ELOOP", "too many levels of symbolic links"]
+]);
+
+// An error the host reports is written as an error of a path: what was being
+// done, which path, and the condition that ended it, which is what a Go program
+// reading one is given.
+function go2jsOSHostError(err, syscall, path) {
+	if (err === null || err === undefined) {
+		return null;
+	}
+
+	const named = go2jsErrnoMessages.get(err.code);
+
+	if (named === undefined) {
+		return err;
+	}
+
+	return go2jsNameError(go2jsOSError(named, syscall, path), "*fs.PathError");
+}
+
+// An error from a file is told by what was being done to which path, which is
 // how one error is told from another that reads the same.
 function go2jsOSError(message, syscall, path, target) {
 	const text = String(message);
@@ -81,6 +112,15 @@ function go2jsOSError(message, syscall, path, target) {
 	error.syscall = syscall;
 	error.path = String(path);
 	error.errno = notExist ? 2 : 0;
+
+	// An error of a path carries the errno that ended it, which is what a chain
+	// unwraps to and what tells errors.Is that the condition it stands for is
+	// the one a sentinel of the os package names.
+	const errno = go2jsErrnoSentinel(error.code);
+
+	if (errno !== null) {
+		error.cause = errno;
+	}
 
 	return error;
 }
@@ -171,7 +211,7 @@ function go2jsOSOpenFile(path, flags, perm) {
 			}
 		}
 
-		return [null, go2jsOSError(err.code === "ENOENT" ? "no such file or directory" : String(err.message), "open", target)];
+		return [null, go2jsOSHostError(err, "open", target)];
 	}
 }
 
@@ -375,7 +415,7 @@ function go2jsOSReadFile(path) {
 	try {
 		return [go2jsStringToBytes(require("fs").readFileSync(String(path), "utf8")), null];
 	} catch (err) {
-		return [null, go2jsOSError(err.code === "ENOENT" ? "no such file or directory" : String(err.message), "open", String(path))];
+		return [null, go2jsOSHostError(err, "open", String(path))];
 	}
 }
 
@@ -393,7 +433,7 @@ function go2jsOSMkdir(path, perm) {
 	try {
 		require("fs").mkdirSync(String(path));
 	} catch (err) {
-		return go2jsOSError(err.code === "EEXIST" ? "file exists" : String(err.message), "mkdir", String(path));
+		return go2jsOSHostError(err, "mkdir", String(path));
 	}
 
 	return null;
@@ -413,7 +453,7 @@ function go2jsOSRemove(path) {
 	try {
 		require("fs").unlinkSync(String(path));
 	} catch (err) {
-		return go2jsOSError(err.code === "ENOENT" ? "no such file or directory" : String(err.message), "remove", String(path));
+		return go2jsOSHostError(err, "remove", String(path));
 	}
 
 	return null;

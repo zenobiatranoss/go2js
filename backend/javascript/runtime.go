@@ -264,7 +264,7 @@ function go2jsOSStat(path) {
     try {
         return go2jsOSStatObject(require("fs").statSync(String(path)));
     } catch (err) {
-        return [null, err];
+        return [null, go2jsOSHostError(err, "stat", String(path))];
     }
 }
 

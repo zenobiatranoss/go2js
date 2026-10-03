@@ -2565,6 +2565,34 @@ function go2jsIOEOFError() {
 // are kept by their message, which is the one thing all the names agree on.
 const go2jsSentinelErrors = new Map();
 
+// An errno and the sentinel that names the same condition are two names for one
+// thing, so a chain that carries the errno carries the sentinel with it, which
+// is what makes errors.Is find the sentinel in the error of a path that is not
+// there.
+const go2jsErrnoSentinelMessages = new Map([
+	["no such file or directory", "file does not exist"],
+	["permission denied", "permission denied"],
+	["operation not permitted", "permission denied"],
+	["file exists", "file already exists"]
+]);
+
+// go2jsErrnoSentinel is the errno a code stands for, which is the value a path
+// error unwraps to and the value errors.Is matches a sentinel against.
+function go2jsErrnoSentinel(code) {
+	switch (code) {
+	case "ENOENT":
+		return go2jsSentinelError("no such file or directory", "syscall.Errno")();
+	case "EEXIST":
+		return go2jsSentinelError("file exists", "syscall.Errno")();
+	case "EACCES":
+		return go2jsSentinelError("permission denied", "syscall.Errno")();
+	case "EPERM":
+		return go2jsSentinelError("operation not permitted", "syscall.Errno")();
+	default:
+		return null;
+	}
+}
+
 function go2jsSentinelError(message, typeName) {
 	return function go2jsSentinelErrorValue() {
 		const name = typeName === undefined || typeName === null || typeName === "" ? "*errors.errorString" : typeName;
@@ -2573,6 +2601,15 @@ function go2jsSentinelError(message, typeName) {
 
 		if (error === undefined) {
 			error = go2jsNameError(new Error(message), name);
+
+			const named = go2jsErrnoSentinelMessages.get(message);
+
+			if (named !== undefined) {
+				error.Is = function (other) {
+					return go2jsErrorMessage(other) === named;
+				};
+			}
+
 			go2jsSentinelErrors.set(key, error);
 		}
 
@@ -2850,6 +2887,17 @@ function go2jsTimeUnix(value) {
 
 function go2jsTimeParse(layout, value) {
 	return [go2jsTimeValue(new Date(String(value))), null];
+}
+
+// An errno is a number that says what a condition was, and it is asked of
+// itself what it says and whether it is the condition a sentinel names, which
+// is what an error of a path carrying one is unwrapped to and matched against.
+function ErrnoError(value) {
+	return go2jsErrorMessage(value);
+}
+
+function ErrnoIs(value, target) {
+	return go2jsErrorsIs(value, target);
 }
 
 go2jsRegisterMethod("error.Error", function(value) {
