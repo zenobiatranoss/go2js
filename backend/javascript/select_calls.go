@@ -52,6 +52,61 @@ func (e *emitter) emitSelectStmt(stmt *ast.SelectStmt) error {
 	e.newline()
 	e.indent++
 
+	// Go evaluates the channel of a case, and the value of a case that sends,
+	// once for the whole select rather than once for each time it looks again
+	// for something to do. Each one is written to a name of its own here, and
+	// everything below is written against that name, so a channel made where
+	// it was written is the channel the statement waits on for as long as the
+	// statement lasts.
+	savedOverride := e.exprOverride
+	e.exprOverride = make(map[ast.Expr]string, len(clauses))
+
+	defer func() { e.exprOverride = savedOverride }()
+
+	for _, clause := range clauses {
+		if clause.comm == nil {
+			continue
+		}
+
+		channel, err := selectCommChannel(clause.comm)
+		if err != nil {
+			return err
+		}
+
+		channelName := fmt.Sprintf("go2jsSelCh%d", clause.index)
+
+		e.writeIndent()
+		e.write("const " + channelName + " = ")
+
+		if err := e.emitExpr(channel); err != nil {
+			return err
+		}
+
+		e.write(";")
+		e.newline()
+
+		e.exprOverride[channel] = channelName
+
+		send, ok := clause.comm.(*ast.SendStmt)
+		if !ok || send.Value == nil {
+			continue
+		}
+
+		valueName := fmt.Sprintf("go2jsSelVal%d", clause.index)
+
+		e.writeIndent()
+		e.write("const " + valueName + " = ")
+
+		if err := e.emitExpr(send.Value); err != nil {
+			return err
+		}
+
+		e.write(";")
+		e.newline()
+
+		e.exprOverride[send.Value] = valueName
+	}
+
 	e.writeIndent()
 	e.write("let go2jsSelected = false;")
 	e.newline()

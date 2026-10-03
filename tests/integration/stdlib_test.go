@@ -1,6 +1,7 @@
 package integration_test
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -715,5 +716,98 @@ func main() {
 	got, want := runCompiledProgram(t, source)
 	if got != want {
 		t.Fatalf("time.Duration conversion mismatch: got %q want %q", got, want)
+	}
+}
+
+// A context carries one channel for as long as it lives, so a cancel reaches
+// every goroutine waiting on it, and a deadline ends the context at the moment
+// it names whether anyone is waiting for it or not.
+func TestContextCancelAndDeadlineEndIt(t *testing.T) {
+	js := requireGoNodeParity(t, `package main
+
+import (
+	"context"
+	"fmt"
+	"time"
+)
+
+func main() {
+	bg := context.Background()
+	fmt.Println("background done is nil", bg.Done() == nil)
+
+	timed, cancelTimed := context.WithTimeout(bg, 20*time.Millisecond)
+	fmt.Println("before", timed.Err())
+
+	select {
+	case <-timed.Done():
+		fmt.Println("deadline reached")
+	case <-time.After(2 * time.Second):
+		fmt.Println("still waiting")
+	}
+
+	fmt.Println("after", timed.Err())
+	cancelTimed()
+
+	// a cancel reaches the contexts made from the one it was called on
+	parent, cancelParent := context.WithCancel(bg)
+	child, cancelChild := context.WithTimeout(parent, 2*time.Second)
+	valued := context.WithValue(child, "key", "value")
+
+	fmt.Println("value", valued.Value("key"))
+	fmt.Println("key", valued.Value("missing"))
+
+	waiting := make(chan string, 1)
+
+	go func() {
+		<-child.Done()
+		waiting <- fmt.Sprint(child.Err())
+	}()
+
+	cancelParent()
+
+	fmt.Println("child", <-waiting)
+	fmt.Println("parent", parent.Err())
+	fmt.Println("valued", valued.Err())
+
+	cancelChild()
+
+	// a deadline that has already passed is expired at once
+	past, cancelPast := context.WithDeadline(bg, time.Now().Add(-time.Second))
+	fmt.Println("past", past.Err())
+
+	<-past.Done()
+	cancelPast()
+
+	// the earlier of two deadlines is the one that is carried
+	short, cancelShort := context.WithTimeout(bg, 20*time.Millisecond)
+	long, cancelLong := context.WithTimeout(short, 2*time.Second)
+
+	<-long.Done()
+	fmt.Println("long", long.Err())
+
+	cancelShort()
+	cancelLong()
+
+	// what AfterFunc was given runs when the context ends
+	after, cancelAfter := context.WithCancel(bg)
+	ran := make(chan bool, 2)
+
+	stopped := context.AfterFunc(after, func() { ran <- true })
+	fmt.Println("stopped early", stopped())
+
+	context.AfterFunc(after, func() { ran <- true })
+	context.AfterFunc(after, func() { ran <- true })
+	cancelAfter()
+
+	fmt.Println("ran", <-ran, <-ran)
+}
+`)
+
+	if !strings.Contains(js, "go2jsContextArmDeadline(") {
+		t.Fatalf("a deadline is not armed:\n%s", js)
+	}
+
+	if !strings.Contains(js, "state.channel.closed = true") {
+		t.Fatalf("ending a context does not close its channel:\n%s", js)
 	}
 }

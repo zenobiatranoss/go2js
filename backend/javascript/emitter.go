@@ -68,11 +68,16 @@ type emitter struct {
 
 	// True while an expression that is about to be assigned to is being
 	// written, where a bounds check has no room to stand.
-	inTarget        bool
-	gotoMode        bool
-	gotoLabels      map[string]int
-	gotoDispatcher  string
-	gotoStmtDepth   int
+	inTarget       bool
+	gotoMode       bool
+	gotoLabels     map[string]int
+	gotoDispatcher string
+	gotoStmtDepth  int
+
+	// An expression Go evaluates once for a statement that is written over it
+	// more than once is written to a name of its own, and this holds where that
+	// name stands for the expression until the statement has been written.
+	exprOverride    map[ast.Expr]string
 	inlineMode      bool
 	selfPackagePath string
 	qualifiers      map[string]string

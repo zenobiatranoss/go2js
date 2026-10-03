@@ -631,7 +631,14 @@ function go2jsWakeDueTimers() {
 
 	for (const channel of go2jsTimers.keys()) {
 		if (channel.timerDeadline <= now) {
-			go2jsWake(channel);
+			// A timer that runs a function has nothing waiting on the channel it
+			// stands for, so it is fired from here rather than left for a
+			// goroutine that may never come to look at it.
+			if (typeof channel.timerCallback === "function") {
+				go2jsTimerDue(channel);
+			} else {
+				go2jsWake(channel);
+			}
 		}
 	}
 }
@@ -712,16 +719,28 @@ function* go2jsWaitGroupWait(group) {
 }
 
 function go2jsMutex() {
-	return { locked: false, waiters: [] };
+	return { locked: false, blocked: [] };
 }
 
-function go2jsMutexLock(mutex) {
-	if (!mutex.locked) {
-		mutex.locked = true;
-		return;
+// go2jsMutexLock takes a mutex, waiting for it when another goroutine is
+// holding it. The wait is a park on the mutex itself, which the unlock wakes,
+// so a goroutine that has to wait for a lock goes to the back of the queue with
+// the goroutines that were waiting before it rather than finding the lock held
+// under it.
+function* go2jsMutexLock(mutex) {
+	while (mutex.locked) {
+		yield go2jsPark([mutex], "mutex", undefined);
+
+		// The unlock that woke this goroutine gave the lock to it as it went, so
+		// it holds the lock already and has nothing left to wait for.
+		if (go2jsRunning.answered) {
+			go2jsRunning.answered = false;
+
+			return;
+		}
 	}
 
-	throw new Error("sync.Mutex: already locked");
+	mutex.locked = true;
 }
 
 function go2jsMutexUnlock(mutex) {
@@ -731,21 +750,33 @@ function go2jsMutexUnlock(mutex) {
 
 	mutex.locked = false;
 
-	const waiting = mutex.waiters.shift();
+	// The goroutine that was waiting first for the lock is given it as the lock
+	// is let go, so it goes straight from one holder to the next without a
+	// moment of it free for anyone else to take.
+	const next = go2jsTakeBlocked(mutex, "mutex");
 
-	if (waiting !== undefined) {
+	if (next !== null) {
 		mutex.locked = true;
-		waiting.resolve();
+		go2jsAnswered(next);
 	}
 }
 
 function go2jsRWMutex() {
-	return { readers: 0, writer: false, readersWaiting: [], writersWaiting: [] };
+	return { readers: 0, writer: false, blocked: [] };
 }
 
-function go2jsRWMutexRLock(mutex) {
-	if (mutex.writer) {
-		throw new Error("sync: RLock of write-locked mutex");
+// go2jsRWMutexRLock takes a lock to read, which waits only for the writers. A
+// writer waiting for the lock asks for it to be given to no reader until it is
+// through, which is what Go does to keep a reader from starving it.
+function* go2jsRWMutexRLock(mutex) {
+	while (mutex.writer || go2jsHasBlocked(mutex, "mutexwriter")) {
+		yield go2jsPark([mutex], "mutexreader", undefined);
+
+		if (go2jsRunning.answered) {
+			go2jsRunning.answered = false;
+
+			return;
+		}
 	}
 
 	mutex.readers++;
@@ -757,15 +788,18 @@ function go2jsRWMutexRUnlock(mutex) {
 	}
 
 	mutex.readers--;
-
-	if (mutex.readers === 0) {
-		go2jsRWMutexPromote(mutex);
-	}
+	go2jsRWMutexPromote(mutex);
 }
 
-function go2jsRWMutexLock(mutex) {
-	if (mutex.writer || mutex.readers > 0) {
-		throw new Error("sync: Lock already held");
+function* go2jsRWMutexLock(mutex) {
+	while (mutex.writer || mutex.readers > 0) {
+		yield go2jsPark([mutex], "mutexwriter", undefined);
+
+		if (go2jsRunning.answered) {
+			go2jsRunning.answered = false;
+
+			return;
+		}
 	}
 
 	mutex.writer = true;
@@ -780,22 +814,36 @@ function go2jsRWMutexUnlock(mutex) {
 	go2jsRWMutexPromote(mutex);
 }
 
+// go2jsRWMutexPromote gives the lock to a writer waiting for it, or else to
+// every reader waiting for it once no writer holds it.
 function go2jsRWMutexPromote(mutex) {
 	if (mutex.writer || mutex.readers > 0) {
 		return;
 	}
 
-	if (mutex.writersWaiting.length > 0) {
-		const writer = mutex.writersWaiting.shift();
+	const writer = go2jsTakeBlocked(mutex, "mutexwriter");
+
+	if (writer !== null) {
 		mutex.writer = true;
-		writer.resolve();
+		go2jsAnswered(writer);
+
 		return;
 	}
 
-	while (mutex.readersWaiting.length > 0) {
+	while (go2jsHasBlocked(mutex, "mutexreader")) {
 		mutex.readers++;
-		mutex.readersWaiting.shift().resolve();
+		go2jsAnswered(go2jsTakeBlocked(mutex, "mutexreader"));
 	}
+}
+
+// go2jsAnswered lets a goroutine that was waiting be run again with what it was
+// waiting for already granted, so it carries on from where it stopped rather
+// than looking for it a second time.
+function go2jsAnswered(task) {
+	task.parked = null;
+	task.parkedValue = undefined;
+	task.answered = true;
+	go2jsRunnable(task);
 }
 
 function go2jsOnce() {
