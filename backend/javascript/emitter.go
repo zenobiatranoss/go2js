@@ -698,7 +698,7 @@ func emitFilePass(file *ast.File, analysis *gotypes.Result, context *semantic.Co
 			if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv == nil && fn.Name.Name == "main" {
 				// A panic nothing recovered ends the program the way Go ends it,
 				// with a trace of the Go source on stderr and a status of two.
-				e.write("try { main(); } catch (e) { go2jsReportUncaughtPanic(e); }")
+				e.write("try { go2jsRunMain((function* () { return yield* main(); })()); } catch (e) { go2jsReportUncaughtPanic(e); }")
 				e.newline()
 				break
 			}
@@ -938,7 +938,7 @@ func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 		e.write(receiverType)
 		e.write(".prototype.")
 		e.write(fn.Name.Name)
-		e.write(" = function(")
+		e.write(" = function*(")
 
 		if err := e.emitStructMethodBody(fn, receiverType); err != nil {
 			return err
@@ -946,7 +946,7 @@ func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 
 		return nil
 	} else {
-		e.write("function ")
+		e.write("function* ")
 		e.write(e.resolveName(fn.Name.Name))
 		e.write("(")
 	}
@@ -2137,7 +2137,7 @@ func (e *emitter) emitTopLevelVarDecl(decl *ast.GenDecl) error {
 			if i >= len(valueSpec.Values) {
 				e.needsRuntime = true
 				e.writeIndent()
-				e.write("go2jsDeferInit(() => {")
+				e.write("go2jsDeferInit(function* () {")
 				e.write(javaScriptIdentifier(name.Name))
 				e.write(" = ")
 				e.write(e.zeroValue(e.variableType(name)))
@@ -2158,7 +2158,7 @@ func (e *emitter) emitTopLevelVarDecl(decl *ast.GenDecl) error {
 
 	e.needsRuntime = true
 	e.writeIndent()
-	e.write("go2jsDeferInit(() => {")
+	e.write("go2jsDeferInit(function* () {")
 	e.newline()
 	e.indent++
 
@@ -3192,10 +3192,13 @@ func (e *emitter) emitStructMethodBody(fn *ast.FuncDecl, receiverType string) er
 		e.write(strconv.Quote("*" + receiverType + "." + fn.Name.Name))
 		e.write(", ")
 
+		// The method behind the wrapper is a generator, so the wrapper is one
+		// too and hands the turn to it: a caller waiting on the method waits on
+		// the goroutine the method is running in.
 		if named {
-			e.write("function(")
+			e.write("function*(")
 			e.write(e.receiver)
-			e.write(", ...args) { return ")
+			e.write(", ...args) { return yield* ")
 			e.write(receiverType)
 			e.write(".prototype.")
 			e.write(fn.Name.Name)
@@ -3203,7 +3206,7 @@ func (e *emitter) emitStructMethodBody(fn *ast.FuncDecl, receiverType string) er
 			e.write(e.receiver)
 			e.write(", ...args); }")
 		} else {
-			e.write("function(...args) { return ")
+			e.write("function*(...args) { return yield* ")
 			e.write(receiverType)
 			e.write(".prototype.")
 			e.write(fn.Name.Name)
@@ -3216,7 +3219,7 @@ func (e *emitter) emitStructMethodBody(fn *ast.FuncDecl, receiverType string) er
 		e.needsRuntime = true
 		e.write("go2jsRegisterMethod(")
 		e.write(strconv.Quote(receiverType + "." + fn.Name.Name))
-		e.write(", function(receiver, ...args) { return ")
+		e.write(", function*(receiver, ...args) { return yield* ")
 		e.write(receiverType)
 		e.write(".prototype.")
 		e.write(fn.Name.Name)

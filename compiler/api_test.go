@@ -67,7 +67,7 @@ func main() {
 		t.Fatal(err)
 	}
 
-	if !strings.Contains(output, "function main(") {
+	if !strings.Contains(output, "function* main(") {
 		t.Fatalf("missing generated function:\n%s", output)
 	}
 

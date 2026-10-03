@@ -119,8 +119,10 @@ func main() {
 		t.Fatalf("scalar named type must not use prototype dispatch:\n%s", js)
 	}
 
-	if !strings.Contains(js, "function CelsiusDouble(") {
-		t.Fatalf("scalar named method must be emitted as a plain function:\n%s", js)
+	// The method is a generator, since a method of this package may wait on a
+	// channel, but it is still reached by name rather than by prototype.
+	if !strings.Contains(js, "function* CelsiusDouble(") {
+		t.Fatalf("scalar named method must be emitted as a named function:\n%s", js)
 	}
 }
 

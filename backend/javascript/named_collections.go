@@ -86,7 +86,7 @@ func (e *emitter) emitNamedCollectionLiteral(x *ast.CompositeLit, elem types.Typ
 
 	temp := e.nextTemp("literal")
 
-	e.write("(() => {")
+	e.write("(yield* (function* () {")
 	e.newline()
 	e.indent++
 
@@ -134,7 +134,7 @@ func (e *emitter) emitNamedCollectionLiteral(x *ast.CompositeLit, elem types.Typ
 
 	e.indent--
 	e.writeIndent()
-	e.write("})()")
+	e.write("})())")
 
 	return true, nil
 }

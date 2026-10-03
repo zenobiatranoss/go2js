@@ -457,14 +457,16 @@ function go2jsRangeSequence(value) {
 // A sequence is run to its end before the first value is used, because a yield
 // in the middle of a function cannot be left half finished and taken up again
 // where it stopped, so a sequence that never ends is one this cannot walk.
+// The sequence is written as a generator, so it is run here rather than called,
+// and the callback it calls its values through answers with whether to go on.
 function go2jsRangeYielded(sequence) {
 	const handed = [];
 
-	sequence(function (...items) {
+	go2jsCallNow(sequence, null, [function (...items) {
 		handed.push(items);
 
 		return true;
-	});
+	}]);
 
 	return handed;
 }

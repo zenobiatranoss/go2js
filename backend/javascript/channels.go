@@ -110,17 +110,19 @@ func (e *emitter) emitMultiReturnExpr(expr ast.Expr) error {
 func (e *emitter) emitChannelRecv(expr ast.Expr) error {
 	e.needsRuntime = true
 
+	// A receive waits for whatever will send on the channel, so it hands the
+	// turn over rather than spinning until something arrives.
 	if e.channelPairTarget {
-		e.write("go2jsChanRecvPair(")
+		e.write("(yield* go2jsChanRecvPair(")
 	} else {
-		e.write("go2jsChanRecv(")
+		e.write("(yield* go2jsChanRecv(")
 	}
 
 	if err := e.emitExpr(expr); err != nil {
 		return err
 	}
 
-	e.write(")")
+	e.write("))")
 	return nil
 }
 
@@ -151,7 +153,7 @@ func (e *emitter) emitChannelCap(expr ast.Expr) error {
 func (e *emitter) emitChannelSend(stmt *ast.SendStmt) error {
 	e.needsRuntime = true
 	e.writeIndent()
-	e.write("go2jsChanSend(")
+	e.write("yield* go2jsChanSend(")
 
 	if err := e.emitExpr(stmt.Chan); err != nil {
 		return err
@@ -232,37 +234,77 @@ func (e *emitter) emitChannelRange(stmt *ast.RangeStmt) (bool, error) {
 		targets = []ast.Expr{nil}
 	}
 
-	temp := e.nextTemp("recv")
+	recv := e.nextTemp("recv")
+	pair := e.nextTemp("received")
+	source := e.nextTemp("rangechan")
 
+	// Go evaluates the expression a range names once, before the loop, so the
+	// channel is taken out of it here rather than asked for again on every turn
+	// of the loop.
 	e.writeIndent()
-	e.write("for (const ")
-	e.write(temp)
-	e.write(" of go2jsChannelRange(")
+	e.write("const ")
+	e.write(source)
+	e.write(" = ")
 
 	if err := e.emitExpr(stmt.X); err != nil {
 		return true, err
 	}
 
-	e.write(")) {")
+	e.write(";")
 	e.newline()
 
-	e.pushScope()
+	// Ranging over a channel is receiving from it until it is closed. The loop
+	// is written out rather than left to the for-of of JavaScript, since a
+	// receive waits, and waiting means handing the turn to another goroutine.
+	e.writeIndent()
+	e.write("for (;;) {")
+	e.newline()
 	e.indent++
 
+	e.pushScope()
+
+	e.writeIndent()
+	e.write("const ")
+	e.write(pair)
+	e.write(" = (yield* go2jsChanRecvPair(")
+	e.write(source)
+	e.write("));")
+	e.newline()
+
+	e.writeIndent()
+	e.write("if (!")
+	e.write(pair)
+	e.write("[1]) break;")
+	e.newline()
+
+	e.writeIndent()
+	e.write("const ")
+	e.write(recv)
+	e.write(" = ")
+	e.write(pair)
+	e.write("[0];")
+	e.newline()
+
 	if targets[0] != nil {
-		if err := e.emitRangeBinding(targets[0], temp, stmt.Tok); err != nil {
+		if err := e.emitRangeBinding(targets[0], recv, stmt.Tok); err != nil {
+			e.scopes = e.scopes[:len(e.scopes)-1]
+			e.indent--
+
 			return true, err
 		}
 	}
 
 	for _, body := range stmt.Body.List {
 		if err := e.emitStmt(body); err != nil {
+			e.scopes = e.scopes[:len(e.scopes)-1]
+			e.indent--
+
 			return true, err
 		}
 	}
 
-	e.indent--
 	e.scopes = e.scopes[:len(e.scopes)-1]
+	e.indent--
 
 	e.writeIndent()
 	e.write("}")

@@ -968,7 +968,7 @@ function go2jsFilepathWalkAt(path, info, visit, dirEntries) {
 	const given = dirEntries === true
 		? go2jsOSDirEntry(go2jsFilepathDir(path), go2jsFilepathBase(path), info.isDirectory())
 		: go2jsOSFileInfo(path, info);
-	const stopped = go2jsFilepathWalkStopped(visit(path, given, null));
+	const stopped = go2jsFilepathWalkStopped(go2jsCallNow(visit, null, [path, given, null]));
 
 	if (stopped !== null) {
 		return stopped;
@@ -989,7 +989,7 @@ function go2jsFilepathWalkAt(path, info, visit, dirEntries) {
 	} catch (err) {
 		const fault = go2jsOSHostError(err, "readdirent", path);
 
-		return go2jsFilepathWalkStopped(visit(path, given, fault));
+		return go2jsFilepathWalkStopped(go2jsCallNow(visit, null, [path, given, fault]));
 	}
 
 	names.sort((one, other) => one.name < other.name ? -1 : one.name > other.name ? 1 : 0);
@@ -1002,7 +1002,7 @@ function go2jsFilepathWalkAt(path, info, visit, dirEntries) {
 			childInfo = require("fs").lstatSync(child);
 		} catch (err) {
 			const fault = go2jsOSHostError(err, "lstat", child);
-			const answered = go2jsFilepathWalkStopped(visit(child, null, fault));
+			const answered = go2jsFilepathWalkStopped(go2jsCallNow(visit, null, [child, null, fault]));
 
 			if (answered !== null) {
 				return answered;
@@ -1041,7 +1041,7 @@ function go2jsFilepathWalkFilesystem(root, visit, dirEntries) {
 	try {
 		info = require("fs").lstatSync(start);
 	} catch (err) {
-		return go2jsFilepathWalkStopped(visit(start, null, go2jsOSHostError(err, "lstat", start)));
+		return go2jsFilepathWalkStopped(go2jsCallNow(visit, null, [start, null, go2jsOSHostError(err, "lstat", start)]));
 	}
 
 	return go2jsFilepathWalkAt(start, info, visit, dirEntries);

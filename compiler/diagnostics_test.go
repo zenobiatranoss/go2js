@@ -132,7 +132,7 @@ func main() {
 		t.Fatal("expected no diagnostics")
 	}
 
-	if !strings.Contains(result.Code, "function main()") {
+	if !strings.Contains(result.Code, "function* main()") {
 		t.Fatalf("unexpected output:\n%s", result.Code)
 	}
 }

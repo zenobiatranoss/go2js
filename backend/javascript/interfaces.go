@@ -484,6 +484,12 @@ func (e *emitter) emitsNamedMethod(fn *gotypes.Func) bool {
 		return true
 	}
 
+	// A file compiled on its own names no package of its own, and the one being
+	// written is the one the analysis checked.
+	if e.selfPackagePath == "" && e.analysis != nil && fn.Pkg() == e.analysis.Package {
+		return true
+	}
+
 	_, imported := e.qualifiers[fn.Pkg().Path()]
 
 	return imported
@@ -515,6 +521,9 @@ func (e *emitter) emitNamedMethodCall(expr ast.Expr, named *gotypes.Named, name 
 	local, ok := lookupNamedMethod(named, name)
 
 	if ok && e.declaresInSource(local) {
+		// The method was written as a generator, so the call hands the turn to
+		// it, in parentheses so that it can stand wherever a value is expected.
+		e.write("(yield* ")
 		e.write(scalarNamedMethodName(namedMethodRegisteredName(named), name))
 		e.write("(")
 
@@ -522,7 +531,7 @@ func (e *emitter) emitNamedMethodCall(expr ast.Expr, named *gotypes.Named, name 
 			return err
 		}
 
-		e.write(")")
+		e.write("))")
 
 		return nil
 	}
@@ -607,7 +616,7 @@ func (e *emitter) isInterfaceMethod(sel *ast.SelectorExpr) bool {
 
 func (e *emitter) emitInterfaceCall(call *ast.CallExpr, sel *ast.SelectorExpr) error {
 	e.needsRuntime = true
-	e.write("go2jsInterfaceCall(")
+	e.write("(yield* go2jsInterfaceCall(")
 
 	if err := e.emitExpr(sel.X); err != nil {
 		return err
@@ -646,7 +655,7 @@ func (e *emitter) emitInterfaceCall(call *ast.CallExpr, sel *ast.SelectorExpr) e
 		}
 	}
 
-	e.write(")")
+	e.write("))")
 	return nil
 }
 

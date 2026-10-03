@@ -458,7 +458,9 @@ func main() {
 
 	js := compileSource(t, dir, source)
 
-	if !strings.Contains(js, "function main") {
+	// A Go function is written as a generator, since it may wait, so main is
+	// spelled as one.
+	if !strings.Contains(js, "function* main") {
 		t.Fatalf("generated JavaScript does not contain main function:\n%s", js)
 	}
 
