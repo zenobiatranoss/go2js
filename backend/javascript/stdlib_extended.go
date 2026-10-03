@@ -33,6 +33,7 @@ var slicesFuncs = map[string]string{
 	"Backward":         "go2jsSlicesBackward",
 	"AppendSeq":        "go2jsSlicesAppendSeq",
 	"Sorted":           "go2jsSlicesSorted",
+	"Chunk":            "go2jsSlicesChunk",
 }
 
 var mapsFuncs = map[string]string{
@@ -43,6 +44,8 @@ var mapsFuncs = map[string]string{
 	"EqualFunc":  "go2jsMapsEqualFunc",
 	"Keys":       "go2jsMapsKeys",
 	"Values":     "go2jsMapsValues",
+	"All":        "go2jsMapsAll",
+	"Collect":    "go2jsMapsCollect",
 }
 
 var base64Funcs = map[string]string{
@@ -490,6 +493,29 @@ function go2jsSlicesBackward(source) {
 	};
 }
 
+// go2jsSlicesChunk cuts a slice into slices of at most a number of elements
+// each, and a slice whose own length does not divide evenly leaves the last
+// chunk with what is left rather than padding it out to the same size.
+function go2jsSlicesChunk(a, n) {
+	const whole = go2jsToArray(a);
+
+	if (n < 1) {
+		return null;
+	}
+
+	if (whole.length === 0) {
+		return [];
+	}
+
+	const out = [];
+
+	for (let start = 0; start < whole.length; start += n) {
+		out.push(whole.slice(start, start + n));
+	}
+
+	return out;
+}
+
 function go2jsSlicesCollect(source) {
 	if (source === null || source === undefined) {
 		return [];
@@ -568,6 +594,51 @@ function go2jsSlicesBinarySearchFunc(a, target, compare) {
 	}
 
 	return [low, low < a.length && go2jsCallNow(compare, null, [a[low], target]) === 0];
+}
+
+// go2jsMapsAll is the sequence of every key of a map along with the value it
+// stands for, which is the order Go walks a map in when the walk comes from a
+// range over this sequence rather than from a range over the map itself.
+function go2jsMapsAll(m) {
+	// A walk stops as soon as it is asked to, so the sequence hands back a
+	// question rather than an answer and the walk asks it once per entry. The
+	// key and the value arrive as two arguments of that question rather than
+	// as one pair, which is how a walk over this sequence is written.
+	return function (yielded) {
+		for (const [key, value] of go2jsMapEntries(m)) {
+			if (yielded(key, value) === false) {
+				return false;
+			}
+		}
+
+		return true;
+	};
+}
+
+// go2jsMapsCollect gathers the pairs a sequence of keys and values walks past
+// into a map of its own, which is the map the sequence stands for.
+function go2jsMapsCollect(source) {
+	if (source === null || source === undefined) {
+		return go2jsMap([]);
+	}
+
+	if (typeof source === "function") {
+		const entries = [];
+
+		go2jsCallNow(source, null, [function (key, value) {
+			entries.push([key, value]);
+
+			return true;
+		}]);
+
+		return go2jsMap(entries);
+	}
+
+	if (Array.isArray(source)) {
+		return go2jsMap(source);
+	}
+
+	return go2jsMap([]);
 }
 
 function go2jsMapsKeys(m) {
@@ -1468,6 +1539,13 @@ func extendedStdlibFuncs() {
 		"CutPrefix":       "go2jsBytesCutPrefix",
 		"CutSuffix":       "go2jsBytesCutSuffix",
 		"Compare":         "go2jsBytesCompare",
+		"Cut":             "go2jsBytesCut",
+		"Clone":           "go2jsBytesClone",
+		"ContainsRune":    "go2jsBytesContainsRune",
+		"ToTitle":         "go2jsBytesToTitle",
+		"Map":             "go2jsBytesMap",
+		"SplitAfter":      "go2jsBytesSplitAfter",
+		"LastIndexAny":    "go2jsBytesLastIndexAny",
 	})
 
 	extend(ioFuncs, map[string]string{
@@ -1788,9 +1866,15 @@ function go2jsStringsNewReplacer(...args) {
 }
 
 function go2jsStrconvAppendQuote(target, value) {
-	target.push(go2jsStrconvQuote(value));
+	// Appending to a slice that is not there yet starts one, the way appending
+	// to a nil slice in Go hands back a slice of its own.
+	const bytes = Array.isArray(target) ? target : [];
 
-	return target;
+	for (const ch of go2jsStrconvQuote(value)) {
+		bytes.push(ch.charCodeAt(0));
+	}
+
+	return bytes;
 }
 
 function go2jsStrconvQuoteRune(value) {
@@ -1803,19 +1887,38 @@ function go2jsStrconvQuoteRune(value) {
 }
 
 function go2jsStrconvAppendQuoteRune(target, value) {
-	target.push(go2jsStrconvQuoteRune(value));
+	const bytes = Array.isArray(target) ? target : [];
 
-	return target;
+	for (const ch of go2jsStrconvQuoteRune(value)) {
+		bytes.push(ch.charCodeAt(0));
+	}
+
+	return bytes;
+}
+
+// go2jsStrconvRuneText turns a rune into the one character it stands for, so a
+// question asked about a rune is asked about the character it names rather than
+// about the number that names it.
+function go2jsStrconvRuneText(value) {
+	if (typeof value === "number" && Number.isInteger(value)) {
+		if (value < 0 || value > 1114111) {
+			return "�";
+		}
+
+		return String.fromCodePoint(value);
+	}
+
+	return go2jsStringify(value);
 }
 
 function go2jsStrconvIsPrint(value) {
-	const text = go2jsStringify(value);
+	const text = go2jsStrconvRuneText(value);
 
 	return text.length > 0 && !/[\x00-\x1f\x7f]/.test(text);
 }
 
 function go2jsStrconvIsGraphic(value) {
-	const text = go2jsStringify(value);
+	const text = go2jsStrconvRuneText(value);
 
 	return text.length > 0 && !/[\x00-\x1f\x7f]/.test(text);
 }
@@ -2255,9 +2358,109 @@ function go2jsBytesCount(a, sub) {
 }
 
 function go2jsBytesContainsAny(a, chars) {
-	const set = go2jsToArray(chars);
+	const set = go2jsStringToBytes(go2jsStringify(chars));
 
 	return go2jsToArray(a).some(item => set.includes(item));
+}
+
+// go2jsBytesContainsRune answers whether a byte slice holds a rune, which is a
+// question about the characters of the slice rather than about its bytes.
+function go2jsBytesContainsRune(a, r) {
+	const bytes = go2jsToArray(a);
+	const code = Number(r);
+	const wanted = go2jsStringToBytes(String.fromCodePoint(code));
+
+	for (let index = 0; index < bytes.length; index++) {
+		// A character outside the plain range is written in more than one byte,
+		// and those bytes are compared against the bytes the rune is written as.
+		let matched = true;
+
+		for (let offset = 0; offset < wanted.length; offset++) {
+			if (bytes[index + offset] !== wanted[offset]) {
+				matched = false;
+				break;
+			}
+		}
+
+		if (matched) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+function go2jsBytesToTitle(a) {
+	return go2jsStringToBytes(go2jsRawText(a).toUpperCase());
+}
+
+// go2jsBytesMap writes each byte of a slice through a function, and a function
+// that answers a minus one takes the byte out of the slice rather than
+// replacing it.
+function go2jsBytesMap(mapping, a) {
+	if (typeof mapping !== "function") {
+		return null;
+	}
+
+	const out = [];
+
+	for (const byte of go2jsToArray(a)) {
+		// The mapping is a function of the program rather than one of the
+		// runtime, so it is called the way the runtime calls any of those.
+		const replaced = go2jsCallNow(mapping, null, [byte]);
+
+		if (Number(replaced) < 0) {
+			continue;
+		}
+
+		out.push(Number(replaced) & 255);
+	}
+
+	return out;
+}
+
+// go2jsBytesSplitAfter splits a slice in two at each separator and keeps the
+// separator at the end of the piece before it, which is the difference between
+// this and a split that leaves it out.
+function go2jsBytesSplitAfter(a, sep) {
+	const whole = go2jsToArray(a);
+	const separator = go2jsToArray(sep);
+	const out = [];
+
+	if (separator.length === 0) {
+		return [whole];
+	}
+
+	let start = 0;
+
+	while (start <= whole.length) {
+		const at = go2jsBytesIndex(whole.slice(start), separator);
+
+		if (at < 0) {
+			out.push(whole.slice(start));
+			break;
+		}
+
+		out.push(whole.slice(start, start + at + separator.length));
+		start += at + separator.length;
+	}
+
+	return out;
+}
+
+// go2jsBytesLastIndexAny answers where the last of a set of bytes sits, and a
+// byte that is not there at all is answered as one that is not there.
+function go2jsBytesLastIndexAny(a, chars) {
+	const set = go2jsStringToBytes(go2jsStringify(chars));
+	const haystack = go2jsToArray(a);
+
+	for (let index = haystack.length - 1; index >= 0; index--) {
+		if (set.includes(haystack[index])) {
+			return index;
+		}
+	}
+
+	return -1;
 }
 
 function go2jsBytesIndexAny(a, chars) {
@@ -2447,6 +2650,28 @@ function go2jsBytesCutPrefix(a, prefix) {
 	}
 
 	return [go2jsToArray(a).slice(go2jsToArray(prefix).length), true];
+}
+
+// go2jsBytesCut splits a byte slice in two at the first place a separator sits,
+// and hands back the part before it and the part after it along with whether
+// the separator was there at all. A separator that is not there leaves the slice
+// whole and says so.
+function go2jsBytesCut(a, sep) {
+	const whole = go2jsToArray(a);
+	const separator = go2jsToArray(sep);
+	const at = separator.length === 0 ? 0 : go2jsBytesIndex(whole, separator);
+
+	if (at < 0) {
+		return [whole, [], false];
+	}
+
+	return [whole.slice(0, at), whole.slice(at + separator.length), true];
+}
+
+// go2jsBytesClone copies a byte slice, and the copy is a slice of its own so
+// writing onto it leaves the one it was copied from as it was.
+function go2jsBytesClone(b) {
+	return go2jsToArray(b).slice();
 }
 
 function go2jsBytesCutSuffix(a, suffix) {
@@ -2779,6 +3004,15 @@ function go2jsErrorsAs(err, target, wanted) {
 		return true;
 	}
 
+	// The target may name an interface rather than a type of its own, and an
+	// error is stored in it whenever it has every method the interface asks
+	// for, which is the question Go asks before it stores one.
+	if (go2jsInterfaceMethods(wanted) !== undefined && go2jsSatisfiesInterface(err, wanted)) {
+		go2jsStoreErrorTarget(target, err);
+
+		return true;
+	}
+
 	return go2jsErrorUnwrapAll(err).some(part => go2jsErrorsAs(part, target, wanted));
 }
 
@@ -2946,8 +3180,363 @@ function go2jsTimeUnix(value) {
 	return go2jsTimeValue(value).getTime() / 1000;
 }
 
+// go2jsTimeParse reads a moment out of text the way a layout says it is
+// written. A layout is read one piece at a time and each piece takes what it
+// stands for from the text where it stands, so text that does not hold what a
+// piece asks for is refused rather than read as something else.
 function go2jsTimeParse(layout, value) {
-	return [go2jsTimeValue(new Date(String(value))), null];
+	const text = String(value);
+	const parts = { year: 0, month: 1, day: 1, hour: 0, minute: 0, second: 0, milli: 0 };
+
+	const refuse = function() {
+		return [null, go2jsTimeParseError(String(layout), text)];
+	};
+
+	const digits = function(width) {
+		const found = /^[0-9]+/.exec(text.slice(position));
+
+		if (found === null) {
+			return null;
+		}
+
+		if (found[0].length < width) {
+			return null;
+		}
+
+		position += width;
+
+		return parseInt(found[0].slice(0, width), 10);
+	};
+
+	const literal = function(wanted) {
+		if (text.slice(position, position + wanted.length) !== wanted) {
+			return false;
+		}
+
+		position += wanted.length;
+
+		return true;
+	};
+
+	const named = function(names) {
+		for (let i = 0; i < names.length; i++) {
+			const full = names[i];
+
+			for (const short of [full, full.slice(0, 3)]) {
+				if (text.slice(position, position + short.length) === short) {
+					position += short.length;
+
+					return i;
+				}
+			}
+		}
+
+		return -1;
+	};
+
+	let position = 0;
+	const layoutText = String(layout);
+
+	while (position < layoutText.length) {
+		const rest = layoutText.slice(position);
+
+		// The pieces are read longest first, the same order a layout is written
+		// out in, so that a name is not read as a shorter name it begins with.
+		const pieces = ["January", "Monday", "2006", "_2", "01", "15", "03", "04", "05", "02",
+			"PM", "pm", "MST", "Z07:00", "Z0700", "-07:00", "-0700", "06", "1", "2", "3", "4", "5"];
+
+		let piece = null;
+
+		for (const candidate of pieces) {
+			if (rest.startsWith(candidate)) {
+				piece = candidate;
+				break;
+			}
+		}
+
+		if (piece === null) {
+			const fraction = /^\.([0-9]+)/.exec(rest);
+
+			if (fraction !== null) {
+				const found = /^[0-9]+/.exec(text.slice(position));
+
+				if (found === null) {
+					return refuse();
+				}
+
+				position += found[0].length;
+
+				const scaled = parseInt((found[0] + "000").slice(0, 3), 10);
+
+				parts.milli = Number.isNaN(scaled) ? 0 : scaled;
+
+				if (fraction[1][0] === "9") {
+					parts.milli = Math.floor(parts.milli / Math.pow(10, 3 - fraction[1].length));
+				}
+
+				continue;
+			}
+
+			// Anything else in a layout is written out as it is, so it has to be
+			// there for the text to be read as the layout says it is written.
+			const ch = rest[0];
+
+			if (ch === "Z") {
+				if (text[position] === "Z") {
+					position += 1;
+					continue;
+				}
+
+				const zone = /^[+-][0-9]{2}:?[0-9]{2}/.exec(text.slice(position));
+
+				if (zone === null) {
+					return refuse();
+				}
+
+				position += zone[0].length;
+
+				continue;
+			}
+
+			if (!literal(ch)) {
+				return refuse();
+			}
+
+			continue;
+		}
+
+		// A piece that reads what it stands for takes it from the text as it
+		// goes and so has already moved past itself, while one that is written
+		// out as it is has its own length to move past.
+		switch (piece) {
+		case "January": {
+			const month = named(go2jsTimeMonths);
+
+			if (month < 0) {
+				return refuse();
+			}
+
+			parts.month = month + 1;
+			break;
+		}
+		case "Monday":
+			if (named(go2jsTimeDays) < 0) {
+				return refuse();
+			}
+
+			break;
+		case "2006": {
+			const year = digits(4);
+
+			if (year === null) {
+				return refuse();
+			}
+
+			parts.year = year;
+			break;
+		}
+		case "06": {
+			const year = digits(2);
+
+			if (year === null) {
+				return refuse();
+			}
+
+			parts.year = year < 69 ? 2000 + year : 1900 + year;
+			break;
+		}
+		case "01": {
+			const month = digits(2);
+
+			if (month === null) {
+				return refuse();
+			}
+
+			parts.month = month;
+			break;
+		}
+		case "02": {
+			const day = digits(2);
+
+			if (day === null) {
+				return refuse();
+			}
+
+			parts.day = day;
+			break;
+		}
+		case "_2": {
+			if (text[position] !== " ") {
+				return refuse();
+			}
+
+			position += 1;
+
+			const day = digits(2);
+
+			if (day === null) {
+				return refuse();
+			}
+
+			parts.day = day;
+			break;
+		}
+		case "15": {
+			const hour = digits(2);
+
+			if (hour === null) {
+				return refuse();
+			}
+
+			parts.hour = hour;
+			break;
+		}
+		case "03": {
+			const hour = digits(2);
+
+			if (hour === null) {
+				return refuse();
+			}
+
+			parts.hour = hour;
+			break;
+		}
+		case "04": {
+			const minute = digits(2);
+
+			if (minute === null) {
+				return refuse();
+			}
+
+			parts.minute = minute;
+			break;
+		}
+		case "05": {
+			const second = digits(2);
+
+			if (second === null) {
+				return refuse();
+			}
+
+			parts.second = second;
+			break;
+		}
+		case "1": {
+			const month = digits(1);
+
+			if (month === null) {
+				return refuse();
+			}
+
+			parts.month = month;
+			break;
+		}
+		case "2": {
+			const day = digits(1);
+
+			if (day === null) {
+				return refuse();
+			}
+
+			parts.day = day;
+			break;
+		}
+		case "3": {
+			const hour = digits(1);
+
+			if (hour === null) {
+				return refuse();
+			}
+
+			parts.hour = hour;
+			break;
+		}
+		case "4": {
+			const minute = digits(1);
+
+			if (minute === null) {
+				return refuse();
+			}
+
+			parts.minute = minute;
+			break;
+		}
+		case "5": {
+			const second = digits(1);
+
+			if (second === null) {
+				return refuse();
+			}
+
+			parts.second = second;
+			break;
+		}
+		case "MST": {
+			const zone = /^[A-Za-z]{2,5}/.exec(text.slice(position));
+
+			if (zone === null) {
+				return refuse();
+			}
+
+			position += zone[0].length;
+			break;
+		}
+		case "PM":
+		case "pm": {
+			const marker = piece === "PM" ? /^(AM|PM)/ : /^(am|pm)/;
+
+			if (marker.exec(text.slice(position)) === null) {
+				return refuse();
+			}
+
+			position += 2;
+			break;
+		}
+		case "Z07:00":
+		case "Z0700":
+		case "-07:00":
+		case "-0700": {
+			const wanted = piece[0] === "Z" ? "Z" : /^[+-]/;
+			const zone = wanted === "Z"
+				? (/^Z/.test(text.slice(position)) ? "Z" : (/^[+-][0-9]{2}:?[0-9]{2}/.exec(text.slice(position)) || [null])[0])
+				: (/^[+-][0-9]{2}:?[0-9]{2}/.exec(text.slice(position)) || [null])[0];
+
+			if (zone === null) {
+				return refuse();
+			}
+
+			position += String(zone).length;
+			break;
+		}
+		default:
+			break;
+		}
+	}
+
+	if (position !== text.length) {
+		return refuse();
+	}
+
+	if (parts.month < 1 || parts.month > 12 || parts.day < 1 || parts.day > 31 ||
+		parts.hour > 23 || parts.minute > 59 || parts.second > 59) {
+		return refuse();
+	}
+
+	const date = new Date(0);
+
+	date.setUTCFullYear(parts.year, parts.month - 1, parts.day);
+	date.setUTCHours(parts.hour, parts.minute, parts.second, parts.milli);
+
+	const parsed = go2jsTimeValue(date);
+
+	parsed.__go2js_location = "UTC";
+
+	return [parsed, null];
+}
+
+function go2jsTimeParseError(layout, value) {
+	return go2jsSentinelError("parsing time " + JSON.stringify(value) + " as " +
+		JSON.stringify(layout) + ": cannot parse")();
 }
 
 // An errno is a number that says what a condition was, and it is asked of
@@ -3235,12 +3824,51 @@ function go2jsRegexpNewRegExp(pattern, flags) {
 }
 
 function go2jsRegexpSubmatchNames(pattern) {
-	const names = [""];
+	const source = go2jsRegexpPattern(pattern).source;
 
-	go2jsRegexpPattern(pattern).source.replace(/\(\?<([A-Za-z_][A-Za-z0-9_]*)>/g, (all, name) => {
-		names.push(name);
-		return all;
-	});
+	// The whole match is the first name a pattern has, and it has none, and
+	// every group after it contributes a name whether it was given one or not.
+	const names = [""];
+	let inClass = false;
+
+	for (let index = 0; index < source.length; index++) {
+		const ch = source[index];
+
+		if (ch === "\\") {
+			index++;
+			continue;
+		}
+
+		if (inClass) {
+			if (ch === "]") {
+				inClass = false;
+			}
+
+			continue;
+		}
+
+		if (ch === "[") {
+			inClass = true;
+			continue;
+		}
+
+		if (ch !== "(") {
+			continue;
+		}
+
+		// A group that opens with a mark is one of the forms that does not
+		// capture, unless it is a mark followed by the name of a capture.
+		if (source[index + 1] !== "?") {
+			names.push("");
+			continue;
+		}
+
+		const named = /^\(\?P?<([A-Za-z_][A-Za-z0-9_]*)>/.exec(source.slice(index));
+
+		if (named !== null) {
+			names.push(named[1]);
+		}
+	}
 
 	return names;
 }

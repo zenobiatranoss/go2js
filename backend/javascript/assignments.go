@@ -105,9 +105,6 @@ func (e *emitter) declareFromLhs(lhs []ast.Expr) {
 }
 
 func (e *emitter) declareNonBlank(lhs []ast.Expr) {
-	if e.receiver == "" {
-		return
-	}
 	for _, expr := range lhs {
 		if ident, ok := expr.(*ast.Ident); ok && ident.Name != blankIdentifier {
 			e.declare(ident.Name)
@@ -571,7 +568,10 @@ func (e *emitter) multiReturnReusesTargets(stmt *ast.AssignStmt) bool {
 			continue
 		}
 
-		if e.isShadowed(ident.Name) {
+		// A name the scope already holds is handed the new value rather than
+		// declared a second time, which is what Go does when only some of the
+		// names on the left of a short declaration are new.
+		if e.isShadowed(ident.Name) || e.isDeclaredHere(ident.Name) {
 			return true
 		}
 	}
@@ -672,7 +672,10 @@ func (e *emitter) parallelAssignReusesTargets(stmt *ast.AssignStmt) bool {
 			continue
 		}
 
-		if e.isShadowed(ident.Name) {
+		// A name the scope already holds is handed the new value rather than
+		// declared a second time, which is what Go does when only some of the
+		// names on the left of a short declaration are new.
+		if e.isShadowed(ident.Name) || e.isDeclaredHere(ident.Name) {
 			return true
 		}
 	}

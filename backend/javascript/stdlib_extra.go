@@ -122,7 +122,18 @@ function go2jsBufioText(source) {
 	// the text left in it. What it read is kept on the source, so that reading
 	// it twice reads it once.
 	if (source !== null && source !== undefined && typeof source.__go2js_readAll === "function") {
-		const text = source.__go2js_readAll();
+		const text = go2jsBufioTextOf(source.__go2js_readAll());
+
+		source.__go2js_text = text;
+
+		return text;
+	}
+
+	// A buffer keeps the text it reads from as bytes, so what a reader reads is
+	// what those bytes spell rather than the shape of the buffer holding them.
+	if (source !== null && source !== undefined && typeof source.String === "function" &&
+		source.data !== undefined) {
+		const text = source.String();
 
 		source.__go2js_text = text;
 
@@ -130,6 +141,20 @@ function go2jsBufioText(source) {
 	}
 
 	return go2jsStringify(source);
+}
+
+// go2jsBufioTextOf is the text a read stands for, which is a string once the
+// bytes it was read into have been spelled out.
+function go2jsBufioTextOf(value) {
+	if (typeof value === "string") {
+		return value;
+	}
+
+	if (value !== null && value !== undefined && typeof value.String === "function") {
+		return value.String();
+	}
+
+	return go2jsBytesToString(value);
 }
 
 // go2jsBufioSeparator is the text a reader is asked to read up to, which a rune

@@ -776,6 +776,7 @@ func runtimeSourceParts() []string {
 		reflectRuntimeSource(),
 		stackRuntimeSource(),
 		debugRuntimeSource(),
+		mathBitsRuntimeSource(),
 		httptestRuntimeSource(),
 		netRuntimeSource(),
 		templateRuntimeSource(),

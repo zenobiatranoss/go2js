@@ -53,6 +53,8 @@ var osFileModeConstants = map[string]string{
 	"ModeCharDevice": "2097152",
 	"ModeSticky":     "1048576",
 	"ModeIrregular":  "524288",
+	"ModePerm":       "511",
+	"ModeType":       "2147483648 + 1073741824 + 536870912 + 268435456 + 134217728 + 67108864 + 33554432 + 16777216",
 }
 
 var osFileMethods = map[string]string{
