@@ -31,18 +31,17 @@ var osFileConstants = map[string]string{
 
 var osFileMethods = map[string]string{
 	"os.File.Read":        "go2jsOSFileRead",
+	"os.File.ReadAt":      "go2jsOSFileReadAt",
 	"os.File.ReadFile":    "go2jsOSFileReadFile",
+	"os.File.Seek":        "go2jsOSFileSeek",
 	"os.File.Sync":        "go2jsOSFileSync",
 	"os.File.Write":       "go2jsOSFileWrite",
+	"os.File.WriteAt":     "go2jsOSFileWriteAt",
 	"os.File.WriteString": "go2jsOSFileWriteString",
 	"os.File.Name":        "go2jsOSFileName",
 	"os.File.Close":       "go2jsOSFileClose",
 	"os.File.Fd":          "go2jsOSFileFd",
 	"os.File.Stat":        "go2jsOSFileStat",
-}
-
-var osFileMultiReturn = map[string]bool{
-	"os.File.Read": true,
 }
 
 func init() {
@@ -125,14 +124,52 @@ function go2jsOSError(message, syscall, path, target) {
 	return error;
 }
 
-function go2jsOSWrapFile(fd, path) {
+function go2jsOSWrapFile(fd, path, appending) {
 	// A file is a writer and a reader before it is anything else, and it says
 	// so here rather than only through the method of its own type, because what
 	// writes to a file is rarely written as that type.
-	const file = {__go2js_osfile: true, fd: fd, path: String(path), closed: false};
+	//
+	// Where reading and writing stand is kept on the file rather than left to
+	// the descriptor underneath, because a read at a place is a read from that
+	// place and the two have to agree with each other.
+	const file = {
+		__go2js_osfile: true,
+		fd: fd,
+		path: String(path),
+		closed: false,
+		position: 0,
+		append: appending === true
+	};
+
+	// The methods a file answers are on the file itself rather than reached
+	// through the file type, so that a file handed to something that takes a
+	// reader or a writer is read from and written to the way it is directly.
+	file.Read = function (buffer) {
+		return go2jsOSFileRead(file, buffer);
+	};
+
+	file.ReadAt = function (buffer, offset) {
+		return go2jsOSFileReadAt(file, buffer, offset);
+	};
+
+	file.Seek = function (offset, whence) {
+		return go2jsOSFileSeek(file, offset, whence);
+	};
+
+	file.Sync = function () {
+		return go2jsOSFileSync(file);
+	};
+
+	file.Stat = function () {
+		return go2jsOSFileStat(file);
+	};
 
 	file.Write = function (buffer) {
 		return go2jsOSFileWrite(file, buffer);
+	};
+
+	file.WriteAt = function (buffer, offset) {
+		return go2jsOSFileWriteAt(file, buffer, offset);
 	};
 
 	file.WriteString = function (text) {
@@ -201,11 +238,11 @@ function go2jsOSOpenFile(path, flags, perm) {
 	try {
 		const handle = fs.openSync(target, mode, perm);
 
-		return [go2jsOSWrapFile(handle, target), null];
+		return [go2jsOSWrapFile(handle, target, append), null];
 	} catch (err) {
 		if (err.code === "ENOENT" && create && access !== 0) {
 			try {
-				return [go2jsOSWrapFile(fs.openSync(target, access === 2 ? "w+" : "w", perm), target), null];
+				return [go2jsOSWrapFile(fs.openSync(target, access === 2 ? "w+" : "w", perm), target, append), null];
 			} catch (retry) {
 				return [null, go2jsOSError(String(retry.message), "open", target)];
 			}
@@ -266,9 +303,15 @@ function go2jsOSFileWrite(file, buffer) {
 		return [bytes.length, null];
 	}
 
-	require("fs").writeSync(target.fd, Buffer.from(bytes));
+	const result = go2jsOSFileWriteAt(target, buffer, target.position);
 
-	return [bytes.length, null];
+	// A write that went through moves the file along with it, and one that did
+	// not leaves it where it was.
+	if (result[1] === null) {
+		target.position += bytes.length;
+	}
+
+	return result;
 }
 
 function go2jsOSFileSync(file) {
@@ -300,6 +343,10 @@ function go2jsOSFileName(file) {
 
 	if (value === process.stderr) {
 		return "/dev/stderr";
+	}
+
+	if (value === process.stdin) {
+		return "/dev/stdin";
 	}
 
 	const target = go2jsOSFileOf(value);
@@ -335,24 +382,173 @@ function go2jsOSFileClose(file) {
 	return null;
 }
 
-function go2jsOSFileRead(file, buffer) {
+// go2jsOSFileReadAt reads into the bytes the program gave at a place, and says
+// how many of them were filled. A file that has nothing left hands back no bytes
+// at all, which is what tells a read at the end of a file from one that filled
+// what it was given.
+function go2jsOSFileReadAt(file, buffer, offset) {
 	const target = go2jsOSFileOf(go2jsUnwrap(file));
 
-	if (target === null) {
+	if (target === null || target.closed === true) {
 		return [0, go2jsOSFileInvalid()];
 	}
 
-	const size = buffer === undefined || buffer === null ? 512 : go2jsToArray(buffer).length;
-	const chunk = Buffer.alloc(size);
-	const read = require("fs").readSync(target.fd, chunk, 0, size, null);
-	const bytes = Array.prototype.slice.call(chunk.subarray(0, read));
-	const view = go2jsToArray(buffer);
+	const size = buffer === undefined || buffer === null ? 512 : go2jsLen(buffer);
 
-	for (let index = 0; index < view.length; index++) {
-		view[index] = bytes[index] === undefined ? 0 : bytes[index];
+	if (size === 0) {
+		return [0, null];
 	}
 
-	return [read, read === 0 ? go2jsOSError(go2jsIOEOF().message, "read", target.path) : null];
+	const chunk = Buffer.alloc(size);
+
+	let read = 0;
+
+	try {
+		read = require("fs").readSync(target.fd, chunk, 0, size, Number(offset));
+	} catch (err) {
+		return [0, go2jsOSHostError(err, "read", target.path)];
+	}
+
+	for (let index = 0; index < read; index++) {
+		go2jsIndexSet(buffer, index, chunk[index]);
+	}
+
+	// A file that has nothing left is the end of the text rather than a failure
+	// of a read, which is the one thing a read reports it as.
+	return [read, read === 0 ? go2jsIOEOF() : null];
+}
+
+function go2jsOSFileRead(file, buffer) {
+	const target = go2jsOSFileOf(go2jsUnwrap(file));
+
+	if (target === null || target.closed === true) {
+		return [0, go2jsOSFileInvalid()];
+	}
+
+	const result = go2jsOSFileReadAt(target, buffer, target.position);
+
+	target.position += result[0];
+
+	return result;
+}
+
+// go2jsOSStreamFd is the descriptor one of the streams of the process stands
+// for, which is what a seek or a stat of one is carried out on.
+function go2jsOSStreamFd(value) {
+	if (value === process.stdin) {
+		return 0;
+	}
+
+	if (value === process.stdout) {
+		return 1;
+	}
+
+	if (value === process.stderr) {
+		return 2;
+	}
+
+	return null;
+}
+
+// go2jsOSStreamPosition is where reading one of the streams of the process
+// stands, which is kept on the stream rather than left to the descriptor
+// underneath, so that a seek of one can put it back.
+function go2jsOSStreamPosition(stream) {
+	return typeof stream.__go2js_position === "number" ? stream.__go2js_position : 0;
+}
+
+function go2jsOSStreamSetPosition(stream, position) {
+	stream.__go2js_position = position;
+}
+
+// A file is put at a place, which is where reading and writing after it stand
+// and is what a write at a place of its own leaves alone.
+function go2jsOSFileSeek(file, offset, whence) {
+	const value = go2jsUnwrap(file);
+	const target = go2jsOSFileOf(value);
+
+	if (target !== null && target.closed === true) {
+		return [0, go2jsOSFileInvalid()];
+	}
+
+	if (target === null) {
+		const fd = go2jsOSStreamFd(value);
+
+		if (fd === null) {
+			return [0, go2jsOSFileInvalid()];
+		}
+
+		const where = Number(whence) || 0;
+		let stream = go2jsOSStreamPosition(value);
+
+		if (where === 1) {
+			stream += Number(offset);
+		} else if (where === 2) {
+			try {
+				stream = require("fs").fstatSync(fd).size + Number(offset);
+			} catch (err) {
+				return [0, go2jsOSHostError(err, "seek", go2jsOSFileName(value))];
+			}
+		} else if (where !== 0) {
+			return [0, go2jsOSError("invalid whence", "seek", go2jsOSFileName(value))];
+		} else {
+			stream = Number(offset);
+		}
+
+		if (stream < 0) {
+			return [0, go2jsOSError("invalid argument", "seek", go2jsOSFileName(value))];
+		}
+
+		go2jsOSStreamSetPosition(value, stream);
+
+		return [stream, null];
+	}
+
+	const from = Number(whence) || 0;
+	let position = 0;
+
+	if (from === 0) {
+		position = Number(offset);
+	} else if (from === 1) {
+		position = target.position + Number(offset);
+	} else if (from === 2) {
+		try {
+			position = require("fs").fstatSync(target.fd).size + Number(offset);
+		} catch (err) {
+			return [0, go2jsOSHostError(err, "seek", target.path)];
+		}
+	} else {
+		return [0, go2jsOSError("invalid whence", "seek", target.path)];
+	}
+
+	if (position < 0) {
+		return [0, go2jsOSError("invalid argument", "seek", target.path)];
+	}
+
+	target.position = position;
+
+	return [position, null];
+}
+
+// A write at a place leaves where the file stands alone, which is what tells it
+// from a write that moves it along.
+function go2jsOSFileWriteAt(file, buffer, offset) {
+	const target = go2jsOSFileOf(go2jsUnwrap(file));
+
+	if (target === null || target.closed === true) {
+		return [0, go2jsOSFileInvalid()];
+	}
+
+	const bytes = go2jsToArray(buffer);
+	const at = Number(offset);
+
+	try {
+		require("fs").writeSync(target.fd, Buffer.from(bytes), 0, bytes.length, target.append ? null : at);
+	} catch (err) {
+		return [0, go2jsOSHostError(err, "write", target.path)];
+	}
+
+	return [bytes.length, null];
 }
 
 function go2jsOSFileReadFile(file) {
@@ -394,20 +590,43 @@ function go2jsOSFileReadAll(file) {
 	return parts.join("");
 }
 
+// go2jsOSFileInfo is what a stat answers with: a set of methods rather than the
+// fields the host happens to keep the same information in, so that a program
+// asks a file what it wants to know the way it asks one in Go.
+function go2jsOSFileInfo(path, stats) {
+	const text = String(path);
+	const info = {
+		__go2js_type: "*os.fileStat",
+		Name: function () {
+			return text.slice(text.lastIndexOf("/") + 1);
+		},
+		Size: function () {
+			return Number(stats.size);
+		},
+		IsDir: function () {
+			return typeof stats.isDirectory === "function" ? stats.isDirectory() : false;
+		},
+		Mode: function () {
+			return stats.mode === undefined ? 0 : stats.mode;
+		},
+		ModTime: function () {
+			const when = stats.mtime instanceof Date ? stats.mtime : new Date(Number(stats.mtime));
+
+			return go2jsTimeValue(isNaN(when.getTime()) ? new Date(0) : when);
+		}
+	};
+
+	return info;
+}
+
 function go2jsOSFileStat(file) {
 	const target = go2jsOSFileOf(go2jsUnwrap(file));
+	const path = target === null ? "/dev/stdout" : target.path;
 
 	try {
-		const stat = require("fs").fstatSync(target === null ? 1 : target.fd);
-		const info = {
-			name: target === null ? "/dev/stdout" : target.path,
-			size: stat.size,
-			isDir: stat.isDirectory()
-		};
-
-		return [info, null];
+		return [go2jsOSFileInfo(path, require("fs").fstatSync(target === null ? 1 : target.fd)), null];
 	} catch (err) {
-		return [null, go2jsOSError(String(err.message), "stat", target === null ? "" : target.path)];
+		return [null, go2jsOSHostError(err, "stat", path)];
 	}
 }
 
