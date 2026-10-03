@@ -43,7 +43,7 @@ func main() {
 
 	result := string(data)
 
-	if !strings.Contains(result, "function main()") {
+	if !strings.Contains(result, "function* main()") {
 		t.Fatalf("missing main function:\n%s", result)
 	}
 

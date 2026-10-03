@@ -158,7 +158,7 @@ function go2jsSlicesMergeSort(a, compare) {
 		let out = lo;
 
 		while (left < mid && right < hi) {
-			if (compare(scratch[right], scratch[left]) < 0) {
+			if (go2jsCallNow(compare, null, [scratch[right], scratch[left]]) < 0) {
 				a[out++] = scratch[right++];
 			} else {
 				a[out++] = scratch[left++];
@@ -191,7 +191,7 @@ function go2jsSlicesMergeSort(a, compare) {
 
 function go2jsSlicesSortFunc(a, compare) {
 	a.sort((x, y) => {
-		const result = compare(x, y);
+		const result = go2jsCallNow(compare, null, [x, y]);
 
 		return result < 0 ? -1 : result > 0 ? 1 : 0;
 	});
@@ -227,7 +227,7 @@ function go2jsSlicesIndex(a, value) {
 
 function go2jsSlicesIndexFunc(a, predicate) {
 	for (let index = 0; index < a.length; index++) {
-		if (predicate(a[index])) {
+		if (go2jsCallNow(predicate, null, [a[index]])) {
 			return index;
 		}
 	}
@@ -335,7 +335,7 @@ function go2jsSlicesMaxFunc(a, compare) {
 	let best = a[0];
 
 	for (const item of a) {
-		if (compare(item, best) > 0) {
+		if (go2jsCallNow(compare, null, [item, best]) > 0) {
 			best = item;
 		}
 	}
@@ -351,7 +351,7 @@ function go2jsSlicesMinFunc(a, compare) {
 	let best = a[0];
 
 	for (const item of a) {
-		if (compare(item, best) < 0) {
+		if (go2jsCallNow(compare, null, [item, best]) < 0) {
 			best = item;
 		}
 	}
@@ -405,7 +405,7 @@ function go2jsSlicesDelete(a, start, end) {
 }
 
 function go2jsSlicesDeleteFunc(a, predicate) {
-	return a.filter(item => !predicate(item));
+	return a.filter(item => !go2jsCallNow(predicate, null, [item]));
 }
 
 function go2jsSlicesGrow(a, count) {
@@ -455,7 +455,7 @@ function go2jsSlicesValues(source) {
 		}
 
 		for (let i = 0; i < source.length; i++) {
-			if (!handOff(source[i])) {
+			if (!go2jsCallNow(handOff, null, [source[i]])) {
 				return;
 			}
 		}
@@ -469,7 +469,7 @@ function go2jsSlicesAll(source) {
 		}
 
 		for (let i = 0; i < source.length; i++) {
-			if (!handOff(i, source[i])) {
+			if (!go2jsCallNow(handOff, null, [i, source[i]])) {
 				return;
 			}
 		}
@@ -483,7 +483,7 @@ function go2jsSlicesBackward(source) {
 		}
 
 		for (let i = source.length - 1; i >= 0; i--) {
-			if (!handOff(i, source[i])) {
+			if (!go2jsCallNow(handOff, null, [i, source[i]])) {
 				return;
 			}
 		}
@@ -498,11 +498,11 @@ function go2jsSlicesCollect(source) {
 	if (typeof source === "function") {
 		const out = [];
 
-		source(function (value) {
+		go2jsCallNow(source, null, [function (value) {
 			out.push(value);
 
 			return true;
-		});
+		}]);
 
 		return out;
 	}
@@ -520,11 +520,11 @@ function go2jsSlicesAppendSeq(destination, source) {
 	}
 
 	if (typeof source === "function") {
-		source(function (value) {
+		go2jsCallNow(source, null, [function (value) {
 			destination.push(value);
 
 			return true;
-		});
+		}]);
 
 		return destination;
 	}
@@ -560,14 +560,14 @@ function go2jsSlicesBinarySearchFunc(a, target, compare) {
 	while (low < high) {
 		const mid = (low + high) >>> 1;
 
-		if (compare(a[mid], target) < 0) {
+		if (go2jsCallNow(compare, null, [a[mid], target]) < 0) {
 			low = mid + 1;
 		} else {
 			high = mid;
 		}
 	}
 
-	return [low, low < a.length && compare(a[low], target) === 0];
+	return [low, low < a.length && go2jsCallNow(compare, null, [a[low], target]) === 0];
 }
 
 function go2jsMapsKeys(m) {
@@ -599,7 +599,7 @@ function go2jsMapsCopy(destination, ...sources) {
 
 function go2jsMapsDeleteFunc(m, predicate) {
 	for (const entry of go2jsMapEntries(m)) {
-		if (predicate(entry[0], entry[1])) {
+		if (go2jsCallNow(predicate, null, [entry[0], entry[1]])) {
 			go2jsMapDelete(m, entry[0]);
 		}
 	}
@@ -967,7 +967,7 @@ function go2jsLogWriteTo(target, text) {
 	}
 
 	if (typeof inner.Write === "function") {
-		inner.Write(go2jsStringToBytes(text));
+		go2jsCallNow(inner.Write, inner, [go2jsStringToBytes(text)]);
 		return;
 	}
 
@@ -1626,7 +1626,7 @@ function go2jsStringsIndexFunc(value, predicate) {
 	const { chars, starts } = go2jsStringsByteOffsets(go2jsStringify(value));
 
 	for (let index = 0; index < chars.length; index++) {
-		if (predicate(chars[index].codePointAt(0))) {
+		if (go2jsCallNow(predicate, null, [chars[index].codePointAt(0)])) {
 			return starts[index];
 		}
 	}
@@ -1644,7 +1644,7 @@ function go2jsStringsFieldsFunc(value, predicate) {
 	let current = "";
 
 	for (const char of chars) {
-		if (predicate(char.codePointAt(0))) {
+		if (go2jsCallNow(predicate, null, [char.codePointAt(0)])) {
 			if (current !== "") {
 				out.push(current);
 				current = "";
@@ -1690,11 +1690,11 @@ function go2jsStringsTrimFunc(value, predicate) {
 	let start = 0;
 	let end = chars.length;
 
-	while (start < end && predicate(chars[start].codePointAt(0))) {
+	while (start < end && go2jsCallNow(predicate, null, [chars[start].codePointAt(0)])) {
 		start++;
 	}
 
-	while (end > start && predicate(chars[end - 1].codePointAt(0))) {
+	while (end > start && go2jsCallNow(predicate, null, [chars[end - 1].codePointAt(0)])) {
 		end--;
 	}
 
@@ -1705,7 +1705,7 @@ function go2jsStringsTrimLeftFunc(value, predicate) {
 	const chars = Array.from(go2jsStringify(value));
 	let start = 0;
 
-	while (start < chars.length && predicate(chars[start].codePointAt(0))) {
+	while (start < chars.length && go2jsCallNow(predicate, null, [chars[start].codePointAt(0)])) {
 		start++;
 	}
 
@@ -1716,7 +1716,7 @@ function go2jsStringsTrimRightFunc(value, predicate) {
 	const chars = Array.from(go2jsStringify(value));
 	let end = chars.length;
 
-	while (end > 0 && predicate(chars[end - 1].codePointAt(0))) {
+	while (end > 0 && go2jsCallNow(predicate, null, [chars[end - 1].codePointAt(0)])) {
 		end--;
 	}
 
@@ -1750,7 +1750,7 @@ function go2jsStringsTitle(value) {
 
 function go2jsStringsMap(mapping, value) {
 	return Array.from(go2jsRawText(value))
-		.map(char => mapping(char.codePointAt(0)))
+		.map(char => go2jsCallNow(mapping, null, [char.codePointAt(0)]))
 		.filter(code => code >= 0)
 		.map(code => String.fromCodePoint(code))
 		.join("");
@@ -1920,7 +1920,7 @@ function go2jsMathMaxUint64() { return 18446744073709551615; }
 function go2jsMathMaxFloat32() { return 3.4028234663852886e+38; }
 
 function go2jsSortOrderCompare(left, right, less) {
-	const result = less(left, right);
+	const result = go2jsCallNow(less, null, [left, right]);
 
 	if (typeof result === "boolean") {
 		return result ? -1 : 1;
@@ -2467,7 +2467,7 @@ function go2jsCallMethod(target, method, ...args) {
 	}
 
 	if (target.__go2js_interface === true) {
-		return go2jsInterfaceCall(target, method, ...args);
+		return go2jsInterfaceCallNow(target, method, ...args);
 	}
 
 	const fn = target[method];
@@ -2476,7 +2476,7 @@ function go2jsCallMethod(target, method, ...args) {
 		throw new TypeError("method " + method + " is not implemented");
 	}
 
-	return fn.apply(target, args);
+	return go2jsCallNow(fn, target, args);
 }
 
 function go2jsIOWriteString(writer, value) {
@@ -2935,17 +2935,11 @@ function go2jsTimeNow() {
 	return new Date();
 }
 
-function go2jsTimeSleep(d) {
-	const ms = go2jsDurationNanos(d) / 1e6;
-
-	go2jsLetGoroutinesRun();
-
-	if (ms > 0) {
-		try {
-			require("child_process").execFileSync("sleep", [String(ms / 1000)]);
-		} catch (err) {
-		}
-	}
+// A sleep is a receive on a channel that comes due at the moment it names, so
+// it is written as one: the goroutine sleeping waits there like any other, and
+// the scheduler decides when the moment has arrived.
+function* go2jsTimeSleep(d) {
+	yield* go2jsChanRecv(go2jsTimeAfter(d));
 }
 
 function go2jsTimeUnix(value) {
@@ -3055,10 +3049,11 @@ function go2jsTimeAfterFunc(d, fn) {
 
 	// The channel is drained by the schedule, so the function is run from there
 	// rather than from a timer of its own, which keeps one clock for the whole
-	// program.
-	channel.timerCallback = function() {
+	// program. The timer starts it as a goroutine of its own, which is what
+	// Go writes it to mean.
+	channel.timerCallback = function* () {
 		timer.ran = true;
-		fn();
+		yield* go2jsCall(fn, null, []);
 	};
 
 	return timer;

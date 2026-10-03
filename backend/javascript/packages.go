@@ -511,8 +511,7 @@ func (e *emitter) emitSyncMethodCall(call *ast.CallExpr, selector *ast.SelectorE
 		return false, nil
 	}
 
-	e.needsRuntime = true
-	e.write(helper)
+	e.writeRuntimeHelper(helper)
 	e.write("(")
 
 	if err := e.emitExpr(selector.X); err != nil {
@@ -677,8 +676,7 @@ func (e *emitter) emitPackageVarCall(call *ast.CallExpr, selector *ast.SelectorE
 			pkg.Name, inner.Sel.Name, selector.Sel.Name)
 	}
 
-	e.needsRuntime = true
-	e.write(helper)
+	e.writeRuntimeHelper(helper)
 	e.write("(")
 
 	if value, ok := packageVarValues[pkg.Name+"."+inner.Sel.Name]; ok {

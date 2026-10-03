@@ -605,7 +605,7 @@ function go2jsHTTPBodyBytes(reader) {
 	const buffer = new Array(8192).fill(0);
 
 	for (;;) {
-		const result = source.Read(buffer);
+		const result = go2jsCallNow(source.Read, source, [buffer]);
 		const read = Number(Array.isArray(result) ? result[0] : result) || 0;
 
 		if (read > 0) {
@@ -1561,7 +1561,9 @@ function go2jsHTTPResponseWriter() {
 // with that value instead.
 function go2jsHTTPInvokeHandler(handler, writer, request, self) {
 	try {
-		const result = self === null || self === undefined ? handler(writer, request) : handler.call(self, writer, request);
+		const result = self === null || self === undefined
+			? go2jsCallNow(handler, null, [writer, request])
+			: go2jsCallNow(handler, self, [writer, request]);
 
 		if (result !== null && result !== undefined && result !== true) {
 			// a handler that answered with a response of its own is written out

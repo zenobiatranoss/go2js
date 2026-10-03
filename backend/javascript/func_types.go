@@ -32,7 +32,7 @@ func funcTypeRuntimeSource() string {
 			args = trimmed;
 		}
 
-		const produced = fn.apply(this, args);
+		const produced = go2jsCallNow(fn, this, args);
 
 		if (!wantsTuple) {
 			return produced;

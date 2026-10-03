@@ -42,11 +42,11 @@ func main() {
 		t.Fatalf("expected array return:\n%s", output)
 	}
 
-	if !strings.Contains(output, "let [x, y] = divide(10, 3)") {
+	if !strings.Contains(output, "let [x, y] = (yield* divide(10, 3))") {
 		t.Fatalf("expected destructuring declaration:\n%s", output)
 	}
 
-	if !strings.Contains(output, "[x, y] = divide(20, 6)") {
+	if !strings.Contains(output, "[x, y] = (yield* divide(20, 6))") {
 		t.Fatalf("expected destructuring assignment:\n%s", output)
 	}
 

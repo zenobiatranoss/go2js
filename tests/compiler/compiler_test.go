@@ -36,11 +36,12 @@ func main() {
 	}
 
 	expected := []string{
-		"function add(a, b)",
+		// a Go function is written as a generator, since it may wait
+		"function* add(a, b)",
 		// the sum of two numbers a double cannot be trusted with is worked out
 		// by the runtime, which keeps every digit of it
 		`return go2jsWideAdd(a, b, "int");`,
-		"let result = add(10, 20);",
+		"let result = (yield* add(10, 20));",
 		"if (result > 20)",
 		"for (let i = 0; i < 3; i++)",
 		"console.log(result);",
@@ -477,12 +478,13 @@ func main() {
 	}
 
 	for _, want := range []string{
-		"User.prototype.Greet = function()",
-		"User.prototype.SetAge = function(age)",
+		"User.prototype.Greet = function*()",
+		"User.prototype.SetAge = function*(age)",
 		"return this.Name;",
 		"this.Age = age;",
-		"user.Greet();",
-		"user.SetAge(30);",
+		// a call of a method the program declares hands the turn to it
+		"(yield* user.Greet());",
+		"(yield* user.SetAge(30));",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("generated JavaScript missing %q:\n%s", want, output)

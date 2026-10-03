@@ -64,11 +64,12 @@ func main() {
 		t.Fatalf("compile failed: %v", err)
 	}
 
-	if !strings.Contains(js, "function sum(...values)") {
+	// A Go function is written as a generator, since it may wait.
+	if !strings.Contains(js, "function* sum(...values)") {
 		t.Fatalf("missing variadic sum:\n%s", js)
 	}
 
-	if !strings.Contains(js, "function add(base, ...values)") {
+	if !strings.Contains(js, "function* add(base, ...values)") {
 		t.Fatalf("missing variadic add:\n%s", js)
 	}
 

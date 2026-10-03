@@ -444,7 +444,9 @@ function go2jsRandShuffleOf(source, n, swap) {
 			? go2jsRandFastInt31n(source, i + 1)
 			: Number(go2jsRandSourceInt63n(source, i + 1));
 
-		swap(i, j);
+		// The swap is a function the program wrote, which waits like any other
+		// call of it.
+		go2jsCallNow(swap, null, [i, j]);
 	}
 }
 

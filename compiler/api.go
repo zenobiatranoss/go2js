@@ -79,7 +79,7 @@ func runDeferredInits(code string) string {
 		return code
 	}
 
-	return strings.Replace(code, "main();", "go2jsRunInitializers();\nmain();", 1)
+	return strings.Replace(code, "return yield* main();", "go2jsRunInitializers();\nreturn yield* main();", 1)
 }
 
 func (c *Compiler) CompilePackage(pkg *Package) (string, error) {

@@ -137,7 +137,7 @@ func compileProjectWithOptions(dir string, options Options) (string, error) {
 		initCalls = "go2jsRunInitializers();\n" + initCalls
 	}
 
-	mainCode = strings.Replace(mainCode, "main();", initCalls+"main();", 1)
+	mainCode = strings.Replace(mainCode, "return yield* main();", initCalls+"return yield* main();", 1)
 	out.WriteString(mainCode)
 
 	program := out.String()
@@ -317,12 +317,18 @@ func (p *project) emitNamespace(pkg *projectPackage) (string, error) {
 
 	// A package level variable is assigned once every declaration in the package
 	// is in place, which is before the init functions of that package run, so
-	// the assignments that were held back are made here.
+	// the assignments that were held back are made here. The init functions are
+	// Go functions, which are generators, and a namespace is not one, so they
+	// are run through rather than stepped from here.
 	if strings.Contains(code, "go2jsDeferInit(") {
 		out.WriteString("go2jsRunInitializers();\n")
 	}
 
-	out.WriteString(initCalls)
+	if initCalls != "" {
+		out.WriteString("go2jsRunSync(function* () {\n")
+		out.WriteString(initCalls)
+		out.WriteString("});\n")
+	}
 
 	out.WriteString("\nreturn {")
 
@@ -429,6 +435,23 @@ func (p *project) emitFiles(pkg *projectPackage) (string, error) {
 		}
 
 		qualifiers[path] = list[0]
+	}
+
+	// A dot import brings its names in unqualified, so there is no qualifier to
+	// write, but the package is still one this compilation writes out, which is
+	// what an empty one records.
+	for _, imported := range pkg.pkg.Imports() {
+		if !p.isTranspilable(imported) {
+			continue
+		}
+
+		if _, ok := qualifiers[imported]; ok {
+			continue
+		}
+
+		if p.isDotImport(pkg.pkg, imported) {
+			qualifiers[imported] = ""
+		}
 	}
 
 	ordered := moveMainFileLast(orderPackageFiles(pkg.pkg))
@@ -817,8 +840,8 @@ func renameInitFunctions(pkg *Package, code string) (string, string) {
 				continue
 			}
 			name := fmt.Sprintf("go2js_init_%d", index)
-			code = strings.Replace(code, "function init(", "function "+name+"(", 1)
-			calls.WriteString(name + "();\n")
+			code = strings.Replace(code, "function* init(", "function* "+name+"(", 1)
+			calls.WriteString("\tyield* " + name + "();\n")
 			index++
 		}
 	}
