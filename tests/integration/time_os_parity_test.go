@@ -133,3 +133,45 @@ func main() {
 }
 `)
 }
+
+// A time is a moment held by the runtime rather than a struct of fields, so one
+// declared and left alone is the zero moment and answers what a time is asked,
+// and rounding a moment to a span is counted from that zero moment as Go counts
+// it.
+func TestZeroTimeAndRoundingToASpan(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"time"
+)
+
+func main() {
+	var zero time.Time
+
+	fmt.Println(zero.IsZero())
+	fmt.Println(zero.Year(), zero.Month(), zero.Day())
+	fmt.Println(zero.Before(time.Now()))
+	fmt.Println(time.Time{}.IsZero())
+
+	base := time.Date(2024, time.March, 5, 6, 7, 8, 0, time.UTC)
+
+	fmt.Println(base.IsZero())
+	fmt.Println(base.Truncate(time.Hour).Format("2006-01-02 15:04:05"))
+	fmt.Println(base.Truncate(10 * time.Minute).Format("15:04:05"))
+	fmt.Println(base.Truncate(24 * time.Hour).Format("2006-01-02 15:04:05"))
+	fmt.Println(base.Round(time.Hour).Format("15:04:05"))
+	fmt.Println(base.Round(time.Minute).Format("15:04:05"))
+	fmt.Println(base.Round(2 * time.Hour).Format("15:04:05"))
+
+	var deadline time.Time
+
+	if deadline.IsZero() {
+		fmt.Println("no deadline")
+	}
+
+	deadline = base.Add(time.Hour)
+	fmt.Println(deadline.Sub(base), deadline.After(base))
+}
+`)
+}

@@ -93,6 +93,15 @@ func (e *emitter) zeroValueAt(t types.Type, depth int) string {
 		return "go2jsFileMode(0)"
 	}
 
+	// A moment of the clock is held by the runtime as a date rather than as a
+	// struct of fields, so a time declared and left alone is the zero moment and
+	// answers the methods of a time as one.
+	if e != nil && isTimeType(t) {
+		e.needsRuntime = true
+
+		return "go2jsTimeZero()"
+	}
+
 	if e != nil && t != nil {
 		if named, ok := t.(*types.Named); ok {
 			obj := named.Obj()

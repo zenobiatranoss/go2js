@@ -829,14 +829,45 @@ function go2jsStringsLastIndexFunc(value, fn) {
 
 const go2jsContextStates = new WeakMap();
 
-function go2jsContextState(cancelled, err, deadline) {
-	return {
-		done: cancelled === true,
-		err: err || null,
+// go2jsContextState makes the state of a context: what it carries, the moment it
+// ends, and the channel that says it has. The channel is made once and handed
+// back by every call of Done, since a goroutine that is waiting for a context to
+// end has to be waiting on the same channel the cancel that ends it will close.
+function go2jsContextState(parent) {
+	const state = {
+		parent: parent !== undefined && parent !== null ? parent : null,
+		done: false,
+		err: null,
 		values: new go2jsNativeMap(),
-		deadline: deadline || 0,
-		callbacks: []
+		deadline: 0,
+		channel: null,
+		children: [],
+		callbacks: [],
+		timerChannel: null
 	};
+
+	if (state.parent !== null) {
+		// A context made from another ends when that one ends, which is what
+		// makes a deadline or a cancel on it reach the work underneath, so it
+		// carries a channel of its own to be closed when that happens.
+		state.deadline = state.parent.deadline;
+		state.channel = go2jsChannel(0);
+		state.parent.children.push(state);
+	}
+
+	return state;
+}
+
+// go2jsContextChild makes the state of a context derived from a parent, ended
+// already when the parent was ended before it was made, as Go does.
+function go2jsContextChildState(parent) {
+	const state = go2jsContextState(parent);
+
+	if (parent.done) {
+		go2jsContextEnd(state, parent.err);
+	}
+
+	return state;
 }
 
 function go2jsContextWrap(state) {
@@ -845,14 +876,7 @@ function go2jsContextWrap(state) {
 			return state.err;
 		},
 		Done() {
-			if (!state.done) {
-				return null;
-			}
-
-			const channel = go2jsChannel(0);
-			channel.closed = true;
-
-			return channel;
+			return state.channel;
 		},
 		Deadline() {
 			if (state.deadline === 0) {
@@ -886,40 +910,32 @@ function go2jsContextWrap(state) {
 }
 
 function go2jsContextBackground() {
-	return go2jsContextWrap(go2jsContextState(false, null, 0));
+	// The background context is never ended, so it has no channel to hand back:
+	// Done answers nil, as Go answers a nil channel there, and a receive from a
+	// channel of no value waits for ever.
+	const state = go2jsContextState(null);
+
+	return go2jsContextWrap(state);
 }
 
 function go2jsContextWithValue(parent, key, value) {
-	const base = go2jsContextStateOf(parent);
-	const child = go2jsContextState(base.done, base.err, base.deadline);
-	child.values = new go2jsNativeMap(base.values);
+	const child = go2jsContextChildState(go2jsContextStateOf(parent));
+
+	child.values = new go2jsNativeMap(child.parent.values);
 	child.values.set(key, value);
-	child.parent = base;
 
 	return go2jsContextWrap(child);
 }
 
 function go2jsContextWithCancel(parent) {
-	const base = go2jsContextStateOf(parent);
-	const child = go2jsContextState(false, null, base.deadline);
-	child.parent = base;
-	child.cancel = go2jsCancelFunc(child);
+	const child = go2jsContextChildState(go2jsContextStateOf(parent));
 
 	return [go2jsContextWrap(child), go2jsCancelFunc(child)];
 }
 
 function go2jsCancelFunc(state) {
 	const cancel = () => {
-		if (state.done) {
-			return;
-		}
-
-		state.done = true;
-		state.err = go2jsContextCanceled();
-
-		for (const fn of state.callbacks || []) {
-			go2jsCallNow(fn, null, [state.err]);
-		}
+		go2jsContextEnd(state, go2jsContextCanceled());
 	};
 
 	cancel.__go2js_context_cancel = true;
@@ -929,19 +945,102 @@ function go2jsCancelFunc(state) {
 
 function go2jsContextWithDeadline(parent, deadline) {
 	const base = go2jsContextStateOf(parent);
-	const at = Number(deadline);
-	const child = go2jsContextState(at <= Date.now(), null, at === 0 ? 0 : at);
-	child.parent = base;
+	const child = go2jsContextChildState(base);
+	const at = go2jsContextDeadlineAt(deadline);
 
-	if (child.done) {
-		child.err = go2jsContextDeadlineExceeded();
+	// A context carries the earlier of the deadline it was given and the one it
+	// was made from, since the work under it stops by whichever comes first. Only
+	// the earlier of the two is armed, since ending this one ends the others.
+	if (at !== 0 && (child.deadline === 0 || at < child.deadline)) {
+		child.deadline = at;
+
+		if (base.deadline === 0 || at < base.deadline) {
+			go2jsContextArmDeadline(child);
+		}
+	}
+
+	// A deadline that has already passed is a context that has already ended, so
+	// there is nothing to wait for: it is expired at once, before it is handed
+	// back.
+	if (child.deadline !== 0 && child.deadline <= Date.now()) {
+		go2jsContextEnd(child, go2jsContextDeadlineExceeded());
 	}
 
 	return [go2jsContextWrap(child), go2jsCancelFunc(child)];
 }
 
+// go2jsContextDeadlineAt reads the moment a deadline names. A deadline is a time,
+// and a time is asked of itself for the moment it stands for, since what a
+// context is given is that moment rather than the count of a duration.
+function go2jsContextDeadlineAt(deadline) {
+	if (deadline === null || deadline === undefined) {
+		return 0;
+	}
+
+	const at = typeof deadline === "number" ? deadline : go2jsTimeDateOf(deadline).getTime();
+
+	return isNaN(at) ? 0 : at;
+}
+
 function go2jsContextWithTimeout(parent, timeout) {
-	return go2jsContextWithDeadline(parent, Date.now() + Number(timeout));
+	const span = go2jsDurationNanosAsNumber(timeout);
+
+	return go2jsContextWithDeadline(parent, Date.now() + span / 1000000);
+}
+
+// go2jsContextArmDeadline puts the moment a context ends in the schedule, so
+// that reaching it ends the context whether anyone is waiting for it or not.
+function go2jsContextArmDeadline(state) {
+	const wait = go2jsDuration((state.deadline - Date.now()) * 1000000);
+	const channel = go2jsTimeAfter(wait);
+
+	state.timerChannel = channel;
+
+	channel.timerCallback = function* () {
+		go2jsContextEnd(state, go2jsContextDeadlineExceeded());
+	};
+}
+
+// go2jsContextEnd is what a cancel and what a deadline reaching its moment both
+// do: the context keeps the error it ended with, its channel is closed so every
+// goroutine waiting on it goes again, the contexts made from it are ended with
+// the same error, and the functions handed to AfterFunc run.
+function go2jsContextEnd(state, err) {
+	if (state.done) {
+		return;
+	}
+
+	state.done = true;
+	state.err = err;
+
+	if (state.timerChannel !== null) {
+		go2jsTimeStopChannel(state.timerChannel);
+		state.timerChannel = null;
+	}
+
+	if (state.channel !== null) {
+		state.channel.closed = true;
+		go2jsWake(state.channel);
+	}
+
+	for (const child of state.children) {
+		go2jsContextEnd(child, err);
+	}
+
+	// The functions handed to AfterFunc are taken off the context as they are
+	// started, so a stop asked for after the context ended says it stopped
+	// nothing, which is what Go answers.
+	const callbacks = state.callbacks;
+
+	state.callbacks = [];
+
+	for (const fn of callbacks) {
+		// AfterFunc runs what it was given in a goroutine of its own, which is
+		// what Go writes it to mean.
+		go2jsGo(function* () {
+			yield* go2jsCall(fn, null, []);
+		});
+	}
 }
 
 function go2jsContextStateOf(ctx) {
@@ -949,13 +1048,46 @@ function go2jsContextStateOf(ctx) {
 		return go2jsContextStates.get(ctx);
 	}
 
-	return go2jsContextState(false, null, 0);
+	return go2jsContextBackgroundState();
 }
 
-function go2jsContextAfterFunc(ctx, fn) {
-	go2jsContextStateOf(ctx).callbacks.push(fn);
+// go2jsContextBackgroundState is the state of a context that carries nothing and
+// is never ended, which is what a context the compiler could not read is given.
+function go2jsContextBackgroundState() {
+	if (go2jsContextEmpty === null) {
+		go2jsContextEmpty = go2jsContextState(null);
+	}
 
-	return 2;
+	return go2jsContextEmpty;
+}
+
+var go2jsContextEmpty = null;
+
+function go2jsContextAfterFunc(ctx, fn) {
+	const state = go2jsContextStateOf(ctx);
+
+	if (state.done) {
+		go2jsGo(function* () {
+			yield* go2jsCall(fn, null, [state.err]);
+		});
+
+		return function() { return false; };
+	}
+
+	state.callbacks.push(fn);
+
+	// A stop says whether it was the one that kept the function from running.
+	return function() {
+		const index = state.callbacks.indexOf(fn);
+
+		if (index < 0) {
+			return false;
+		}
+
+		state.callbacks.splice(index, 1);
+
+		return true;
+	};
 }
 
 var go2jsContextCanceledError = null;

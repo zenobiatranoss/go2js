@@ -372,3 +372,100 @@ func main() {
 
 	requireGoNodeParity(t, source)
 }
+
+// A lock that is already held is waited for rather than taken anyway, so a
+// goroutine that has to wait for it is given the lock when it is let go, in the
+// order the goroutines began waiting.
+func TestContendedLocksAreWaitedFor(t *testing.T) {
+	js := requireGoNodeParity(t, `package main
+
+import (
+	"fmt"
+	"sync"
+	"time"
+)
+
+func main() {
+	var mu sync.Mutex
+	counter := 0
+
+	var wg sync.WaitGroup
+
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			for j := 0; j < 5; j++ {
+				mu.Lock()
+				time.Sleep(time.Millisecond)
+				counter++
+				mu.Unlock()
+			}
+		}()
+	}
+
+	wg.Wait()
+	fmt.Println("counter", counter)
+
+	// a lock held by one goroutine and let go by another is waited for as well
+	held := make(chan bool)
+	relock := make(chan bool)
+
+	mu.Lock()
+
+	go func() {
+		<-held
+		mu.Unlock()
+		close(relock)
+	}()
+
+	close(held)
+
+	mu.Lock()
+	fmt.Println("relocked")
+	mu.Unlock()
+
+	<-relock
+
+	var rw sync.RWMutex
+	shared := 0
+
+	var readers sync.WaitGroup
+
+	for i := 0; i < 3; i++ {
+		readers.Add(1)
+
+		go func() {
+			defer readers.Done()
+			rw.RLock()
+			_ = shared
+			rw.RUnlock()
+		}()
+	}
+
+	readers.Wait()
+
+	rw.Lock()
+	shared = 5
+	rw.Unlock()
+
+	fmt.Println("shared", shared)
+}
+`)
+
+	for _, helper := range []string{
+		"go2jsMutexLock(",
+		"go2jsRWMutexRLock(",
+		"go2jsRWMutexPromote(",
+	} {
+		if !strings.Contains(js, helper) {
+			t.Fatalf("lock helper %s missing:\n%s", helper, js)
+		}
+	}
+
+	if !strings.Contains(js, "yield* go2jsMutexLock(") {
+		t.Fatalf("a lock that waits is not delegated to:\n%s", js)
+	}
+}

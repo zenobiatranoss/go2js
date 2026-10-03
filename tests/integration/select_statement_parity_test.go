@@ -122,3 +122,64 @@ func main() {
 }
 `)
 }
+
+// The channel of a case, and the value a case sends, are evaluated once for the
+// select rather than once for each time it looks again for something to do, so
+// a channel made where it was written is the channel the statement waits on.
+func TestSelectEvaluatesItsChannelsOnce(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"time"
+)
+
+func main() {
+	select {
+	case <-time.After(20 * time.Millisecond):
+		fmt.Println("timeout")
+	}
+
+	made := 0
+
+	next := func() int {
+		made++
+		return made
+	}
+
+	work := make(chan int)
+	results := make(chan int, 1)
+
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		work <- 1
+	}()
+
+	select {
+	case v := <-work:
+		results <- v
+	case <-time.After(2 * time.Second):
+		results <- 0
+	}
+
+	fmt.Println("result", <-results)
+
+	handover := make(chan int)
+	consumed := make(chan int, 1)
+
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		consumed <- <-handover
+	}()
+
+	select {
+	case handover <- next():
+		fmt.Println("sent", made)
+	case <-time.After(2 * time.Second):
+		fmt.Println("gave up")
+	}
+
+	fmt.Println("consumed", <-consumed)
+}
+`)
+}

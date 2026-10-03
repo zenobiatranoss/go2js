@@ -336,6 +336,11 @@ func narrowIntTypeName(t gotypes.Type) (string, bool) {
 }
 
 func (e *emitter) emitExpr(expr ast.Expr) error {
+	if name, ok := e.exprOverride[expr]; ok {
+		e.write(name)
+		return nil
+	}
+
 	switch x := expr.(type) {
 	case *ast.Ident:
 		if x.Name == "nil" {
@@ -1740,6 +1745,21 @@ func isFileModeType(t gotypes.Type) bool {
 	}
 
 	return named.Obj().Pkg().Path() == "io/fs" && named.Obj().Name() == "FileMode"
+}
+
+// isTimeType reports whether a type is a moment of the clock, which the runtime
+// holds as a date rather than as a struct with fields of its own.
+func isTimeType(t gotypes.Type) bool {
+	if t == nil {
+		return false
+	}
+
+	named, ok := gotypes.Unalias(t).(*gotypes.Named)
+	if !ok || named.Obj() == nil || named.Obj().Pkg() == nil {
+		return false
+	}
+
+	return named.Obj().Pkg().Path() == "time" && named.Obj().Name() == "Time"
 }
 
 // mayAliasStructValue reports whether an expression reads a struct that already

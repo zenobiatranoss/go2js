@@ -2932,7 +2932,7 @@ function go2jsTimeUntil(t) {
 }
 
 function go2jsTimeNow() {
-	return new Date();
+	return go2jsTimeValue(new Date());
 }
 
 // A sleep is a receive on a channel that comes due at the moment it names, so
