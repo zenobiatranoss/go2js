@@ -364,10 +364,23 @@ function go2jsMonthName(month) {
 // The year is out of the range that Date.UTC maps straight onto, so the
 // instant is given as the number of milliseconds before the epoch instead.
 function go2jsTimeZero() {
-    return go2jsTimeValue(new Date(-62135596800000));
+    const zero = go2jsTimeValue(new Date(-62135596800000));
+
+    // The zero time is a moment like any other, so it is marked as this one
+    // rather than only being the moment it stands for, since a moment far from
+    // the clock of the host is not a moment nothing was ever told.
+    zero.__go2js_time_zero = true;
+
+    return zero;
 }
 
 function go2jsTimeValue(date) {
+    // A moment that already carries the methods of a time is left as it is,
+    // since wrapping it again would bury the moment it holds.
+    if (date !== null && date !== undefined && date.value instanceof Date) {
+        return date;
+    }
+
     const self = {
         value: date,
         Year: function() {
@@ -401,7 +414,7 @@ function go2jsTimeValue(date) {
             return this.value.getTime() * 1000000;
         },
         IsZero: function() {
-            return this.value.getTime() === 0;
+            return this.value.getTime() === 0 || this.__go2js_time_zero === true;
         },
         Before: function(other) {
             return this.value.getTime() < go2jsTimeDateOf(other).getTime();
@@ -424,11 +437,39 @@ function go2jsTimeValue(date) {
         },
         Sub: function(other) {
             return go2jsDuration((this.value.getTime() - go2jsTimeDateOf(other).getTime()) * 1000000);
+        },
+        Truncate: function(duration) {
+            return go2jsTimeValue(new Date(go2jsTimeRoundedTo(this.value, duration, false)));
+        },
+        Round: function(duration) {
+            return go2jsTimeValue(new Date(go2jsTimeRoundedTo(this.value, duration, true)));
         }
     };
 
     return self;
 }
+
+// go2jsTimeRoundedTo gives a moment rounded to a multiple of a span counted from
+// the zero time, which is where Go counts the multiples of a span from. A span
+// under half a millisecond rounds to the millisecond the host can hold, since a
+// moment it cannot hold cannot be written down.
+function go2jsTimeRoundedTo(date, duration, nearest) {
+    const span = Number(go2jsDurationNanos(duration)) / 1000000;
+
+    if (!(span > 0)) {
+        return date.getTime();
+    }
+
+    const since = date.getTime() - go2jsTimeZeroMillis;
+    const counted = Math.floor(since / span) * span;
+    const rounded = nearest && since - counted >= span / 2 ? counted + span : counted;
+
+    return go2jsTimeZeroMillis + rounded;
+}
+
+// go2jsTimeZeroMillis is the moment Go counts from: January 1 of year 1 at
+// midnight UTC.
+const go2jsTimeZeroMillis = -62135596800000;
 
 function go2jsTimeDateOf(value) {
     return value !== null && value !== undefined && value.value instanceof Date ? value.value : value;

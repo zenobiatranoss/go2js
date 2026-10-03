@@ -589,7 +589,16 @@ func (e *emitter) emitPackageCall(call *ast.CallExpr, selector *ast.SelectorExpr
 		}
 		e.needsRuntime = true
 		e.write(helper)
-		e.write("()")
+		e.write("(")
+		for i, arg := range call.Args {
+			if i > 0 {
+				e.write(", ")
+			}
+			if err := e.emitExpr(arg); err != nil {
+				return true, err
+			}
+		}
+		e.write(")")
 		return true, nil
 	case "errors":
 		helper, ok := errorsFunctions[selector.Sel.Name]
