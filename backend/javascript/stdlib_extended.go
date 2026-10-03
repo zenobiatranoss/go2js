@@ -86,6 +86,11 @@ var packageVarMethods = map[string]string{
 	"base64.Encoding.Strict":         "go2jsBase64Strict",
 	"base64.NewEncoder.Encode":       "go2jsBase64EncoderWrite",
 	"base64.NewDecoder.Decode":       "go2jsBase64DecoderRead",
+	"fs.FileMode.String":             "go2jsFileModeStringMethod",
+	"fs.FileMode.IsDir":              "go2jsFileModeIsDirMethod",
+	"fs.FileMode.IsRegular":          "go2jsFileModeIsRegularMethod",
+	"fs.FileMode.Type":               "go2jsFileModeTypeMethod",
+	"fs.FileMode.Perm":               "go2jsFileModePermMethod",
 }
 
 var packageVarValues = map[string]string{
@@ -2093,13 +2098,18 @@ function go2jsOSChdir(path) {
 
 // go2jsOSDirEntry is what a directory says about one name in it, asked of as the
 // methods a Go program asks it of rather than as the fields of the host.
-function go2jsOSDirEntry(dir, name) {
+function go2jsOSDirEntry(dir, name, isDirectory) {
+	const known = typeof isDirectory === "boolean" ? isDirectory : null;
 	const entry = {
 		__go2js_type: "*os.unixDirent",
 		Name: function () {
 			return String(name);
 		},
 		IsDir: function () {
+			if (known !== null) {
+				return known;
+			}
+
 			try {
 				return require("fs").statSync(String(dir) + "/" + String(name)).isDirectory();
 			} catch (err) {
@@ -2107,15 +2117,35 @@ function go2jsOSDirEntry(dir, name) {
 			}
 		},
 		Type: function () {
-			return entry.IsDir() ? 2147483648 : 32;
+			// A file that is only a file has no mark of its own to say so with,
+			// and a directory is the one that is marked as being one.
+			let mode = 0;
+
+			if (entry.IsDir()) {
+				mode = 2147483648;
+			} else {
+				try {
+					if (require("fs").lstatSync(String(dir) === "" || String(dir) === "." ? String(name) : (String(dir).endsWith("/") ? String(dir) + String(name) : String(dir) + "/" + String(name))).isSymbolicLink()) {
+						mode = 67108864;
+					}
+				} catch (err) {
+					mode = 0;
+				}
+			}
+
+			// The mode a file is given is asked of by its marks, and the marks
+			// are written the way a file mode is written when it is shown.
+			return go2jsFileMode(mode);
 		},
+		// What an entry says about itself is asked of as the pair a Go method
+		// answers with, since asking costs a look at the filesystem.
 		Info: function () {
 			try {
-				const stats = require("fs").statSync(String(dir) + "/" + String(name));
+				const stats = require("fs").lstatSync(String(dir) + "/" + String(name));
 
-				return go2jsOSFileInfo(String(name), stats);
+				return [go2jsOSFileInfo(String(name), stats), null];
 			} catch (err) {
-				return null;
+				return [null, go2jsOSHostError(err, "lstat", String(dir) + "/" + String(name))];
 			}
 		}
 	};

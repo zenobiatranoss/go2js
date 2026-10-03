@@ -786,6 +786,18 @@ function go2jsFilepathToSlash(value) {
 // shape rather than matched a mark at a time, because the marks are only ever
 // matched together.
 function go2jsFilepathMatch(pattern, name) {
+	const compiled = go2jsFilepathPatternSource(pattern);
+
+	if (compiled[1] !== null) {
+		return compiled;
+	}
+
+	return [new RegExp(compiled[0]).test(go2jsStringify(name)), null];
+}
+
+// go2jsFilepathPatternSource writes a pattern as one of the same shape, which is
+// what a name is asked against, and reports a pattern that cannot be written.
+function go2jsFilepathPatternSource(pattern) {
 	let source = "^";
 
 	for (let index = 0; index < pattern.length; index++) {
@@ -865,7 +877,7 @@ function go2jsFilepathMatch(pattern, name) {
 
 	source += "$";
 
-	return [new RegExp(source).test(go2jsStringify(name)), null];
+	return [source, null];
 }
 
 // go2jsFilepathClassChar reads one character of a class as it was written,
@@ -891,6 +903,156 @@ function go2jsFilepathClassChar(pattern, index) {
 	}
 
 	return ["\u00001", go2jsFilepathClassQuote(char)];
+}
+
+// The marks of a mode are written in the order Go writes them: the letters of
+// what sort of file it is from the highest mark down, and then the nine marks
+// of what may be done with it, a mark that is not set being a dash.
+const go2jsFileModeLetters = "dalTLDpSugct?";
+const go2jsFileModeRights = "rwxrwxrwx";
+
+function go2jsFileModeString(mode) {
+	let text = "";
+
+	for (let index = 0; index < go2jsFileModeLetters.length; index++) {
+		if ((mode & Math.pow(2, 31 - index)) !== 0) {
+			text += go2jsFileModeLetters[index];
+		}
+	}
+
+	// A file that is only a file has no letter to say what it is, and the place
+	// one would take is a dash rather than nothing at all.
+	if (text === "") {
+		text = "-";
+	}
+
+	for (let index = 0; index < go2jsFileModeRights.length; index++) {
+		text += (mode & Math.pow(2, 8 - index)) !== 0 ? go2jsFileModeRights[index] : "-";
+	}
+
+	return text;
+}
+
+// go2jsIsFileMode reports whether a value is a mode of marks rather than a
+// number, which is what a file mode is.
+function go2jsIsFileMode(value) {
+	if (value === null || value === undefined || typeof value !== "object") {
+		return false;
+	}
+
+	const name = value.__go2js_type_name === undefined ? value.type : value.__go2js_type_name;
+
+	return name === "io/fs.FileMode" || name === "fs.FileMode";
+}
+
+// go2jsFileMode reads the bits of a mode off whatever a mode is written as,
+// which is a number behind a box or the box itself.
+function go2jsFileModeBits(mode) {
+	if (mode !== null && mode !== undefined && typeof mode === "object" && mode.__go2js_typed === true) {
+		return Number(mode.value) >>> 0;
+	}
+
+	return Number(mode) >>> 0;
+}
+
+// The marks of a file in the filesystem of the host are in the places the
+// filesystem itself keeps them, and Go keeps its own in places of its own, so a
+// mode read from one is moved into the marks of the other.
+const go2jsFileModeHostTypes = [
+	[16384, 2147483648], [40960, 134217728], [4096, 33554432], [49152, 16777216],
+	[8192, 34505216], [24576, 67108864], [32768, 0]
+];
+
+// The marks of a file in Go are in the places Go keeps them, and the host takes
+// only the marks of what may be done with it, which are the same nine.
+function go2jsFileModeToHost(mode) {
+	return mode & 511;
+}
+
+function go2jsFileModeFromHost(mode) {
+	let bits = mode & 511;
+
+	if ((mode & 2048) !== 0) {
+		bits |= 8388608;
+	}
+
+	if ((mode & 1024) !== 0) {
+		bits |= 4194304;
+	}
+
+	if ((mode & 512) !== 0) {
+		bits |= 1048576;
+	}
+
+	for (const [host, own] of go2jsFileModeHostTypes) {
+		if ((mode & 61440) === host) {
+			bits |= own;
+			break;
+		}
+	}
+
+	return bits;
+}
+
+// go2jsFileMode is a mark of a file as its own type rather than as a number,
+// which is what lets it write itself out and be asked what it is.
+function go2jsFileMode(bits) {
+	// The marks of a mode are thirty-two of them and no more, so a mode read
+	// through an operator that works in signed ones is read as what it is.
+	const mode = Number(bits) >>> 0;
+
+	const boxed = go2jsTyped({
+		// A mode is a named number of its own, and a verb that asks what it is
+		// says so whether it is handed the mode or what the mode holds.
+		type: "fs.FileMode",
+		valueOf: function () {
+			return mode;
+		},
+		String: function () {
+			return go2jsFileModeString(mode);
+		},
+		IsDir: function () {
+			return (mode & 2147483648) !== 0;
+		},
+		IsRegular: function () {
+			return (mode & 2401763328) === 0;
+		},
+		Type: function () {
+			return go2jsFileMode(mode & 2401763328);
+		},
+		Perm: function () {
+			return go2jsFileMode(mode & 511);
+		}
+	}, "fs.FileMode", "uint32");
+
+	// The box is what an operator is handed, so the marks behind it are read
+	// through the box rather than through what it holds.
+	boxed.valueOf = function () {
+		return mode;
+	};
+
+	return boxed;
+}
+
+// A mark of a file is asked of as the mark it is, which is the number behind it.
+function go2jsFileModeStringMethod(mode) {
+	return go2jsFileModeString(go2jsFileModeBits(mode));
+}
+
+function go2jsFileModeIsDirMethod(mode) {
+	return (go2jsFileModeBits(mode) & 2147483648) !== 0;
+}
+
+function go2jsFileModeIsRegularMethod(mode) {
+	return (go2jsFileModeBits(mode) & 2401763328) === 0;
+}
+
+function go2jsFileModeTypeMethod(mode) {
+	return go2jsFileMode(go2jsFileModeBits(mode) & 2401763328);
+}
+
+function go2jsFileModePermMethod(mode) {
+	return go2jsFileMode(go2jsFileModeBits(mode) & 511);
 }
 
 // go2jsFilepathClassQuote writes one character of a class, where a character
@@ -4492,6 +4654,15 @@ function go2jsNamedFormatMethod(value, name) {
 	if (typeof value[name] === "function") {
 		return go2jsFormat(value[name]());
 	}
+	// A box standing for a named type carries its own way of writing itself
+	// out, which is what a type with a String method of its own is shown by.
+	// A pointer that points at nothing is asked what it is rather than what it
+	// holds, since looking for a method on it would be reaching through a
+	// pointer that is not there.
+	if (value.__go2js_typed === true && value.value !== null && value.value !== undefined &&
+		go2jsIsTypedNilPointer(value.value) === false && typeof value.value[name] === "function") {
+		return go2jsFormat(value.value[name]());
+	}
 
 	const ctor = value.constructor;
 
@@ -4798,6 +4969,13 @@ function go2jsEqual(a, b) {
 		return true;
 	}
 
+	// Two errors are two names for two conditions, and they are one condition
+	// only when they are one value, since what an error holds is a message
+	// rather than a set of fields to be read one by one.
+	if (go2jsIsErrorValue(a) && go2jsIsErrorValue(b)) {
+		return false;
+	}
+
 	if (typeof a === "object" || typeof b === "object") {
 		if (typeof a !== typeof b || a === null || b === null) {
 			return false;
@@ -4824,6 +5002,20 @@ function go2jsEqual(a, b) {
 	}
 
 	return a === b;
+}
+
+// go2jsIsErrorValue reports whether a value is an error rather than some other
+// value that happens to be built the same way.
+function go2jsIsErrorValue(value) {
+	if (value === null || value === undefined || typeof value !== "object") {
+		return false;
+	}
+
+	if (value instanceof Error) {
+		return true;
+	}
+
+	return typeof value.Error === "function" && typeof value.message === "string";
 }
 
 function go2jsInterfaceValue(value) {
@@ -6222,7 +6414,28 @@ function go2jsWideXor(left, right, typeName) {
 }
 
 function go2jsWideAndNot(left, right, typeName) {
-	return go2jsWideBinary(left, right, (a, b) => a & ~b, typeName);
+	left = go2jsDurationOperand(left);
+	right = go2jsDurationOperand(right);
+
+	// Turning a number inside out in JavaScript is a thirty-two bit thing, so
+	// marks above the thirty-second are cleared through whole numbers rather
+	// than through an operator that would lose every one of them.
+	if (go2jsIsWide(left) || go2jsIsWide(right) ||
+		go2jsFitsThirtyTwoBits(left) === false || go2jsFitsThirtyTwoBits(right) === false) {
+		return go2jsWideBinary(go2jsWide(left), go2jsWide(right), (a, b) => a & ~b, typeName);
+	}
+
+	// The marks to clear are a subset of the marks held, so taking them off by
+	// what they are worth clears them without borrowing from the ones above.
+	return go2jsWideWrap(left - (left & right), typeName);
+}
+
+// go2jsFitsThirtyTwoBits reports whether a whole number is one a thirty-two bit
+// operation reaches every mark of.
+function go2jsFitsThirtyTwoBits(value) {
+	const number = Number(value);
+
+	return Number.isInteger(number) && number >= -2147483648 && number <= 4294967295;
 }
 
 // go2jsWideFloat turns a whole number into the nearest number a double holds,
@@ -6397,8 +6610,45 @@ function go2jsShr(left, right, typeName) {
 // too wide for its type is not an error in Go, it is the number that fits, so
 // an int8 one past its largest is the smallest int8 and a uint8 one below its
 // smallest is the largest uint8.
+// go2jsIntWidthName gives back the name of a whole number as a width rather than
+// as a name of its own, since a name a package gives a whole number says what
+// the number is and the width it is held in is the one underneath it.
+function go2jsIntWidthName(typeName) {
+	switch (typeName) {
+		case "int8":
+		case "int16":
+		case "int32":
+		case "int64":
+		case "int":
+		case "uint8":
+		case "uint16":
+		case "uint32":
+		case "uint64":
+		case "uint":
+		case "uintptr":
+		case "byte":
+		case "rune":
+			return typeName;
+	}
+
+	const kind = go2jsTypeKinds[typeName];
+
+	return typeof kind === "string" ? kind : typeName;
+}
+
 function go2jsIntWrap(value, typeName) {
+	// A file mode is a set of marks rather than a number, so marks put on it or
+	// taken off it leave it a mode rather than a plain number.
+	if (typeName === "fs.FileMode" || typeName === "os.FileMode" || typeName === "io/fs.FileMode" || typeName === "fs.FileMode " || typeName === "io/fs.FileMode ") {
+		return go2jsFileMode(go2jsFileModeBits(value));
+	}
+
 	value = go2jsDurationOperand(value);
+
+	// A type named over a whole number is held as the number it stands for
+	// rather than as the name it was given, since a name says what a value is
+	// and not how wide it is.
+	typeName = go2jsIntWidthName(typeName);
 
 	// a whole number with more digits than a double keeps is given the width of
 	// its type as digits, since the digits a double is carrying past that point
@@ -6657,6 +6907,12 @@ function go2jsNumericValue(value) {
 	// a verb wanting digits writes down
 	if (go2jsIsDuration(value)) {
 		return Number(value.nanoseconds);
+	}
+
+	// a mark of a file is asked for the whole number of marks it holds, since
+	// that is what a verb wanting digits writes down
+	if (go2jsIsFileMode(value)) {
+		return go2jsFileModeBits(value);
 	}
 
 	if (typeof value === "number") {
@@ -7434,6 +7690,12 @@ function go2jsTyped(value, type, kind, shape) {
 	// A span of time already carries the name of its own type and a way of
 	// writing itself out, so wrapping it would bury both of them.
 	if (go2jsIsDuration(value)) {
+		return value;
+	}
+
+	// A value that already stands as the type it is being given again keeps the
+	// way of writing itself out that came with it.
+	if (value !== null && value !== undefined && typeof value === "object" && value.__go2js_typed === true && value.type === type) {
 		return value;
 	}
 

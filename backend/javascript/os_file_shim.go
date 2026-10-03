@@ -1,5 +1,12 @@
 package javascript
 
+// filepathSkipVars are the two marks a walk is stopped with, which Go gives as
+// errors under both names, so the names of both packages are one value.
+var filepathSkipVars = map[string]string{
+	"SkipDir": "go2jsFilepathSkipDir",
+	"SkipAll": "go2jsFilepathSkipAll",
+}
+
 var osFileFuncs = map[string]string{
 	"Open":       "go2jsOSOpen",
 	"OpenFile":   "go2jsOSOpenFile",
@@ -27,6 +34,25 @@ var osFileConstants = map[string]string{
 	"O_EXCL":   "128",
 	"O_SYNC":   "1052672",
 	"O_TRUNC":  "512",
+
+	// A file is given a mode of marks, and the marks are the same nine of
+	// them the io/fs ones are, each of them one bit of the number behind it.
+}
+
+var osFileModeConstants = map[string]string{
+	"ModeDir":        "2147483648",
+	"ModeAppend":     "1073741824",
+	"ModeExclusive":  "536870912",
+	"ModeTemporary":  "268435456",
+	"ModeSymlink":    "134217728",
+	"ModeDevice":     "67108864",
+	"ModeNamedPipe":  "33554432",
+	"ModeSocket":     "16777216",
+	"ModeSetuid":     "8388608",
+	"ModeSetgid":     "4194304",
+	"ModeCharDevice": "2097152",
+	"ModeSticky":     "1048576",
+	"ModeIrregular":  "524288",
 }
 
 var osFileMethods = map[string]string{
@@ -60,11 +86,58 @@ func init() {
 		packageConstants["os."+name] = value
 	}
 
+	// A mark of a file is a mark of its own type rather than a plain number, so
+	// it is asked of as one and it writes itself out the way Go writes it.
+	for name, value := range osFileModeConstants {
+		functions[name] = ""
+		packageConstants["os."+name] = "go2jsFileMode(" + value + ")"
+		packageVarTypes["os."+name] = "fs.FileMode"
+		packageVarValues["os."+name] = "go2jsFileMode(" + value + ")"
+	}
+
 	supportedStdlibPackages["os"] = funcSet(functions)
+
+	// The marks of a file are named by the package a file is read for as well
+	// as by the package a file is written to, and both names are one value.
+	for name, value := range osFileModeConstants {
+		for _, path := range []string{"io/fs", "fs"} {
+			packageConstants[path+"."+name] = "go2jsFileMode(" + value + ")"
+			packageVarTypes[path+"."+name] = "fs.FileMode"
+			packageVarValues[path+"."+name] = "go2jsFileMode(" + value + ")"
+		}
+	}
+
+	// The marks a walk is stopped with are named by both the package that walks
+	// and the package the walking is written for, and both names are one value.
+	skips := make(map[string]string, len(filepathSkipVars))
+
+	for name := range osFileModeConstants {
+		skips[name] = ""
+	}
+
+	for name, value := range filepathSkipVars {
+		skips[name] = ""
+
+		for _, path := range []string{"filepath", "io/fs", "fs"} {
+			packageConstants[path+"."+name] = value
+			packageVarValues[path+"."+name] = value
+			packageVarTypes[path+"."+name] = "error"
+		}
+	}
+
+	supportedStdlibPackages["io/fs"] = funcSet(skips)
 
 	for name, value := range osFileMethods {
 		shimValueMethods[name] = value
 	}
+
+	// A mark of a file is asked of as the mark it is, whether it stands on its
+	// own or comes off a file that says what it is.
+	shimValueMethods["io/fs.FileMode.String"] = "go2jsFileModeStringMethod"
+	shimValueMethods["io/fs.FileMode.IsDir"] = "go2jsFileModeIsDirMethod"
+	shimValueMethods["io/fs.FileMode.IsRegular"] = "go2jsFileModeIsRegularMethod"
+	shimValueMethods["io/fs.FileMode.Type"] = "go2jsFileModeTypeMethod"
+	shimValueMethods["io/fs.FileMode.Perm"] = "go2jsFileModePermMethod"
 }
 
 func osFileRuntimeSource() string {
@@ -607,7 +680,10 @@ function go2jsOSFileInfo(path, stats) {
 			return typeof stats.isDirectory === "function" ? stats.isDirectory() : false;
 		},
 		Mode: function () {
-			return stats.mode === undefined ? 0 : stats.mode;
+			// What may be done with a file is a mode of marks rather than a
+			// number of bits, since that is what a program asks about, and the
+			// marks of the host are in the places Go keeps its own.
+			return go2jsFileMode(go2jsFileModeFromHost(stats.mode === undefined ? 0 : stats.mode));
 		},
 		ModTime: function () {
 			const when = stats.mtime instanceof Date ? stats.mtime : new Date(Number(stats.mtime));
@@ -645,6 +721,20 @@ function go2jsOSWriteFile(path, data, perm) {
 		return go2jsOSError(String(err.message), "open", String(path));
 	}
 
+	// What a file may be done with is asked of as what it is, and what it was
+	// written to be asked for is not left to what the host would decide.
+	return go2jsOSChmod(String(path), perm);
+}
+
+// go2jsOSChmod puts the marks of a file where it was asked for, since the host
+// takes them in the places it keeps its own.
+function go2jsOSChmod(path, perm) {
+	try {
+		require("fs").chmodSync(String(path), go2jsFileModeToHost(Number(perm) === undefined ? 0o666 : go2jsFileModeBits(perm)) & 511);
+	} catch (err) {
+		return go2jsOSHostError(err, "chmod", String(path));
+	}
+
 	return null;
 }
 
@@ -655,17 +745,53 @@ function go2jsOSMkdir(path, perm) {
 		return go2jsOSHostError(err, "mkdir", String(path));
 	}
 
-	return null;
+	return go2jsOSChmod(String(path), perm);
 }
 
 function go2jsOSMkdirAll(path, perm) {
+	const target = String(path);
+	const before = new Set(go2jsOSDirectoriesUnder(target));
+
 	try {
-		require("fs").mkdirSync(String(path), {recursive: true});
+		require("fs").mkdirSync(target, {recursive: true});
 	} catch (err) {
-		return go2jsOSError(String(err.message), "mkdir", String(path));
+		return go2jsOSError(String(err.message), "mkdir", target);
+	}
+
+	// Every directory made here is given the marks asked for and not only the
+	// last one, while a directory that was already there is left as it was.
+	for (const made of go2jsOSDirectoriesUnder(target)) {
+		if (before.has(made) === false) {
+			go2jsOSChmod(made, perm);
+		}
 	}
 
 	return null;
+}
+
+// go2jsOSDirectoriesUnder is every directory at or below a name, the last one
+// being the name itself.
+function go2jsOSDirectoriesUnder(path) {
+	const found = [];
+	let head = "/";
+
+	for (const piece of String(path).split("/")) {
+		if (piece === "") {
+			continue;
+		}
+
+		head = head === "/" ? head + piece : head + "/" + piece;
+
+		try {
+			if (require("fs").statSync(head).isDirectory()) {
+				found.push(head);
+			}
+		} catch (err) {
+			// a name that is not there was not made here
+		}
+	}
+
+	return found;
 }
 
 function go2jsOSRemove(path) {
@@ -747,6 +873,205 @@ function go2jsOSMkdirTemp(dir, pattern) {
 	}
 
 	return [null, go2jsOSError("cannot create temporary directory", "mkdir", String(dir))];
+}
+
+// go2jsFilepathGlobNames is every name below a directory, each as it is written
+// from the root, which is what a pattern is asked against.
+function go2jsFilepathGlobNames(dir, prefix, names) {
+	let entries = [];
+
+	try {
+		entries = require("fs").readdirSync(dir, {withFileTypes: true});
+	} catch (err) {
+		return;
+	}
+
+	for (const entry of entries) {
+		const path = prefix === "" ? dir + "/" + entry.name : prefix + "/" + entry.name;
+		let isDirectory = entry.isDirectory();
+
+		if (entry.isSymbolicLink()) {
+			try {
+				isDirectory = require("fs").statSync(path).isDirectory();
+			} catch (err) {
+				isDirectory = false;
+			}
+		}
+
+		names.push(path);
+
+		if (isDirectory) {
+			go2jsFilepathGlobNames(path, path, names);
+		}
+	}
+}
+
+// A pattern names the files that stand under the directory it begins with, and
+// the whole of it says which of the names found there are answered with. The
+// names are answered in the order Go sorts them into.
+function go2jsFilepathGlob(pattern, err) {
+	const compiled = go2jsFilepathPatternSource(pattern);
+
+	if (compiled[1] !== null) {
+		return [null, compiled[1]];
+	}
+
+	const matcher = new RegExp(compiled[0]);
+
+	// The part of the pattern before its first mark says where to look, since
+	// nothing after a mark can be known without looking.
+	let cut = pattern.length;
+
+	for (let index = 0; index < pattern.length; index++) {
+		if (pattern[index] === "\\") {
+			index++;
+			continue;
+		}
+
+		if ("*?[".indexOf(pattern[index]) !== -1) {
+			cut = index;
+			break;
+		}
+	}
+
+	const head = pattern.slice(0, cut);
+	const slash = head.lastIndexOf("/");
+	const root = slash === -1 ? "." : head.slice(0, slash === 0 ? 1 : slash);
+	const prefix = slash === -1 ? "" : head.slice(0, slash);
+	const names = [];
+
+	go2jsFilepathGlobNames(root, prefix, names);
+
+	const found = names.filter(name => matcher.test(name));
+
+	found.sort();
+
+	return [found, null];
+}
+
+// A walk is stopped by handing back one of two marks, and both are the errors
+// Go gives them as, so that a program printing one prints what Go prints and a
+// program comparing two names for the same mark finds them equal.
+const go2jsFilepathSkipDir = go2jsSentinelError("skip this directory")();
+const go2jsFilepathSkipAll = go2jsSentinelError("skip everything and stop the walk")();
+
+// go2jsFilepathWalkStopped reads what a reader of a walk answered with: nothing
+// at all means to keep walking, and anything else is either a mark to stop at
+// or the fault to stop at.
+function go2jsFilepathWalkStopped(answered) {
+	return answered === null || answered === undefined || answered === false ? null : answered;
+}
+
+// go2jsFilepathWalkAt is the reading of one directory and of what is in it, in
+// the order the names in it sort into, a directory before what is in it.
+function go2jsFilepathWalkAt(path, info, visit, dirEntries) {
+	const given = dirEntries === true
+		? go2jsOSDirEntry(go2jsFilepathDir(path), go2jsFilepathBase(path), info.isDirectory())
+		: go2jsOSFileInfo(path, info);
+	const stopped = go2jsFilepathWalkStopped(visit(path, given, null));
+
+	if (stopped !== null) {
+		return stopped;
+	}
+
+	if (info.isDirectory() === false) {
+		return null;
+	}
+
+	// A directory that could not be read is read once more with the fault in
+	// hand, and a fault in what is read is the walk's to carry rather than the
+	// reader's to invent.
+
+	let names = null;
+
+	try {
+		names = require("fs").readdirSync(path, {withFileTypes: true});
+	} catch (err) {
+		const fault = go2jsOSHostError(err, "readdirent", path);
+
+		return go2jsFilepathWalkStopped(visit(path, given, fault));
+	}
+
+	names.sort((one, other) => one.name < other.name ? -1 : one.name > other.name ? 1 : 0);
+
+	for (const entry of names) {
+		const child = path === "/" ? "/" + entry.name : path + "/" + entry.name;
+		let childInfo = null;
+
+		try {
+			childInfo = require("fs").lstatSync(child);
+		} catch (err) {
+			const fault = go2jsOSHostError(err, "lstat", child);
+			const answered = go2jsFilepathWalkStopped(visit(child, null, fault));
+
+			if (answered !== null) {
+				return answered;
+			}
+
+			continue;
+		}
+
+		const answer = go2jsFilepathWalkAt(child, childInfo, visit, dirEntries);
+
+		// A directory asked to be skipped is left alone and the walk goes on to
+		// what is beside it, while a file asked to be skipped takes the rest of
+		// the directory it is in with it.
+		if (answer === go2jsFilepathSkipDir) {
+			if (childInfo.isDirectory()) {
+				continue;
+			}
+
+			return go2jsFilepathSkipDir;
+		}
+
+		if (answer !== null) {
+			return answer;
+		}
+	}
+
+	return null;
+}
+
+// go2jsFilepathWalkFilesystem is a reading of a filesystem in order, and the
+// name the reading starts at is asked about first, whether or not it is there.
+function go2jsFilepathWalkFilesystem(root, visit, dirEntries) {
+	const start = go2jsStringify(root);
+	let info = null;
+
+	try {
+		info = require("fs").lstatSync(start);
+	} catch (err) {
+		return go2jsFilepathWalkStopped(visit(start, null, go2jsOSHostError(err, "lstat", start)));
+	}
+
+	return go2jsFilepathWalkAt(start, info, visit, dirEntries);
+}
+
+// go2jsFilepathWalkFault is what a walk answers with once it is over: a mark to
+// stop at is not a fault, and a walk that was asked to stop one way does not
+// always carry that mark out of the door.
+function go2jsFilepathWalkFault(answer, skipAll) {
+	if (answer === go2jsFilepathSkipDir) {
+		return null;
+	}
+
+	if (answer === go2jsFilepathSkipAll) {
+		return skipAll === true ? null : answer;
+	}
+
+	return answer;
+}
+
+// A walk answers with nothing but a fault, and a fault is a fault of the walk
+// rather than of the name it happened at.
+function go2jsFilepathWalk(root, visit) {
+	return go2jsFilepathWalkFault(go2jsFilepathWalkFilesystem(root, visit, false), false);
+}
+
+// A walk that gives back what it reads gives back no mark at all, since both of
+// the marks a reader may hand it are marks of stopping rather than faults.
+function go2jsFilepathWalkDir(root, visit) {
+	return go2jsFilepathWalkFault(go2jsFilepathWalkFilesystem(root, visit, true), true);
 }
 `
 }
