@@ -298,7 +298,7 @@ function go2jsIOReadAll(reader) {
     const buffer = new Array(4096);
 
     while (true) {
-        const result = reader.Read(buffer);
+        const result = go2jsCallNow(reader.Read, reader, [buffer]);
         const read = Number(result[0]) || 0;
 
         if (read > 0) {
@@ -3137,7 +3137,7 @@ function go2jsJSONWrite(writer, text) {
         return go2jsJSONError("json: writer does not implement io.Writer");
     }
 
-    const result = target.Write(go2jsStringToBytes(text));
+    const result = go2jsCallNow(target.Write, target, [go2jsStringToBytes(text)]);
 
     if (Array.isArray(result)) {
         return result[1] === null || result[1] === undefined ? null : result[1];
@@ -3184,7 +3184,7 @@ function go2jsJSONDecoderFill(decoder) {
     }
 
     const chunk = new Array(4096);
-    const result = reader.Read(chunk);
+    const result = go2jsCallNow(reader.Read, reader, [chunk]);
     const read = Number(result[0]) || 0;
     const err = result[1] === undefined ? null : result[1];
 
@@ -3928,7 +3928,7 @@ go2jsBytesBuffer.prototype.WriteTo = function(target) {
 	const written = this.data.length;
 
 	if (written > 0) {
-		target.Write(go2jsStringToBytes(go2jsBytesToString(this.data)));
+		go2jsCallNow(target.Write, target, [go2jsStringToBytes(go2jsBytesToString(this.data))]);
 	}
 
 	this.data = [];
@@ -4069,7 +4069,7 @@ function go2jsMethodValue(receiver, method, copyReceiver) {
 			throw new TypeError("method " + method + " is not implemented");
 		}
 
-		return (...args) => fn.apply(captured, args);
+		return (...args) => go2jsCallNow(fn, captured, args);
 	}
 
 	let target = receiver;
@@ -4089,7 +4089,7 @@ function go2jsMethodValue(receiver, method, copyReceiver) {
 		throw new TypeError("method " + method + " is not implemented");
 	}
 
-	return (...args) => fn.apply(captured, args);
+	return (...args) => go2jsCallNow(fn, captured, args);
 }
 
 function go2jsMethodExpression(method, copyReceiver) {
@@ -4123,7 +4123,10 @@ function go2jsNamedMethodCall(receiver, typeName, method, ...args) {
 		throw new TypeError("method " + typeName + "." + method + " is not implemented");
 	}
 
-	return fn(receiver, ...args);
+	// A registered method takes the value it works on as its first argument,
+	// rather than as the value it is called on, since it is reached by name
+	// rather than as a member of the value.
+	return go2jsCallNow(fn, null, [receiver, ...args]);
 }
 
 function go2jsInvokeMethod(receiver, method, args) {
@@ -4132,7 +4135,7 @@ function go2jsInvokeMethod(receiver, method, args) {
 	}
 
 	if (receiver.__go2js_interface === true) {
-		return go2jsInterfaceCall(receiver, method, ...args);
+		return go2jsInterfaceCallNow(receiver, method, ...args);
 	}
 
 	if (receiver.__go2js_pointer === true) {
@@ -4149,7 +4152,7 @@ function go2jsInvokeMethod(receiver, method, args) {
 		throw new TypeError("method " + method + " is not implemented");
 	}
 
-	return fn.apply(receiver, args);
+	return go2jsCallNow(fn, receiver, args);
 }
 
 // go2jsLookupMember reads a method or field from a plain value, a pointer box,
@@ -4180,7 +4183,7 @@ function go2jsLookupMember(target, name) {
 			const fn = go2jsMethodTable[target.type + "." + name];
 
 			if (typeof fn === "function") {
-				return function(...args) { return fn(target.value, ...args); };
+				return function(...args) { return go2jsCallNow(fn, null, [target.value, ...args]); };
 			}
 		}
 
@@ -4296,8 +4299,8 @@ function go2jsPointerAccessor(ptr, accessor) {
 
 function go2jsPtr(get, set, typeName) {
 	const pointer = {
-		[go2jsPointerGet]: get,
-		[go2jsPointerSet]: set
+		[go2jsPointerGet]: function () { return go2jsRunNow(get()); },
+		[go2jsPointerSet]: function (value) { return go2jsRunNow(set(value)); }
 	};
 
 	if (typeName !== undefined) {
@@ -4387,10 +4390,10 @@ function go2jsToRune(value) {
 // object the way a plain JavaScript property access would.
 function go2jsMethodOn(receiver, ctor, name, args) {
 	if (receiver === null || receiver === undefined) {
-		return ctor.prototype[name].apply(null, args);
+		return go2jsCallNow(ctor.prototype[name], null, args);
 	}
 
-	return receiver[name].apply(receiver, args);
+	return go2jsCallNow(receiver[name], receiver, args);
 }
 
 function go2jsNew(value, typeName) {
@@ -4429,13 +4432,20 @@ function go2jsNewTypeOf(value) {
 const go2jsInitializers = [];
 
 function go2jsDeferInit(assign) {
-	go2jsInitializers.push(assign);
+	go2jsInitializers.push(function () { return go2jsRunNow(assign()); });
 }
 
 function go2jsRunInitializers() {
 	while (go2jsInitializers.length > 0) {
 		go2jsInitializers.shift()();
 	}
+}
+
+// go2jsRunSync runs a body written as a generator where a plain call stands,
+// which is what the compiler writes in front of main: there is no goroutine of
+// its own there to hand the turn to, so the body is run through.
+function go2jsRunSync(body) {
+	return go2jsRunNow(body());
 }
 
 const go2jsMethodTable = Object.create(null);
@@ -4652,7 +4662,7 @@ function go2jsNamedFormatMethod(value, name) {
 	}
 
 	if (typeof value[name] === "function") {
-		return go2jsFormat(value[name]());
+		return go2jsFormat(go2jsCallNow(value[name], value, []));
 	}
 	// A box standing for a named type carries its own way of writing itself
 	// out, which is what a type with a String method of its own is shown by.
@@ -4661,7 +4671,7 @@ function go2jsNamedFormatMethod(value, name) {
 	// pointer that is not there.
 	if (value.__go2js_typed === true && value.value !== null && value.value !== undefined &&
 		go2jsIsTypedNilPointer(value.value) === false && typeof value.value[name] === "function") {
-		return go2jsFormat(value.value[name]());
+		return go2jsFormat(go2jsCallNow(value.value[name], value.value, []));
 	}
 
 	const ctor = value.constructor;
@@ -4670,7 +4680,7 @@ function go2jsNamedFormatMethod(value, name) {
 		const registered = go2jsLookupTypeName(ctor.name);
 
 		if (registered !== undefined && typeof go2jsMethodTable[registered + "." + name] === "function") {
-			return go2jsFormat(go2jsMethodTable[registered + "." + name](value));
+			return go2jsFormat(go2jsCallNow(go2jsMethodTable[registered + "." + name], null, [value]));
 		}
 	}
 
@@ -4678,7 +4688,7 @@ function go2jsNamedFormatMethod(value, name) {
 	if (typeof goType === "string" && goType !== "" && goType !== "object") {
 		const fn = go2jsMethodTable[goType + "." + name];
 		if (typeof fn === "function") {
-			return go2jsFormat(fn(value));
+			return go2jsFormat(go2jsCallNow(fn, null, [value]));
 		}
 	}
 
@@ -4713,7 +4723,7 @@ function go2jsLookupNamedMethod(receiver, name) {
 		const registered = go2jsLookupTypeName(ctor.name);
 
 		if (registered !== undefined && typeof go2jsMethodTable[registered + "." + name] === "function") {
-			return (...args) => go2jsMethodTable[registered + "." + name](receiver, ...args);
+			return (...args) => go2jsCallNow(go2jsMethodTable[registered + "." + name], null, [receiver, ...args]);
 		}
 	}
 
@@ -5030,7 +5040,18 @@ function go2jsInterfaceValue(value) {
 	return value;
 }
 
-function go2jsInterfaceCall(value, method, ...args) {
+// The method behind an interface is a Go function, so it is a generator: the
+// call is delegated, which lets the method wait on a channel without taking the
+// caller down with it, and lets the caller wait on the method.
+// go2jsInterfaceCallNow is the interface call the runtime itself makes, which
+// is one it makes from inside something that cannot wait: the method is run to
+// its end here, answering whatever it waits on by running the goroutines that
+// are runnable until it is through.
+function go2jsInterfaceCallNow(value, method, ...args) {
+	return go2jsRunNow(go2jsInterfaceCall(value, method, ...args));
+}
+
+function* go2jsInterfaceCall(value, method, ...args) {
 	if (value === null || value === undefined) {
 		throw new TypeError(go2jsRuntimeErrorPrefix + "invalid memory address or nil pointer dereference");
 	}
@@ -5041,11 +5062,11 @@ function go2jsInterfaceCall(value, method, ...args) {
 
 	if (value.__go2js_interface !== true) {
 		if (value.__go2js_pointer === true) {
-			return go2jsInterfaceCall(value[go2jsPointerGet](), method, ...args);
+			return yield* go2jsInterfaceCall(value[go2jsPointerGet](), method, ...args);
 		}
 
 		if (typeof value[method] === "function") {
-			return value[method](...args);
+			return yield* go2jsCall(value[method], value, args);
 		}
 
 		throw new TypeError("value is not an interface");
@@ -5063,28 +5084,30 @@ function go2jsInterfaceCall(value, method, ...args) {
 			: value.type + "." + method;
 		const registered = go2jsMethodTable[key];
 
+		// A method reached through the table is a wrapper that takes the value
+		// it works on as its first argument, so that is how it is called here.
 		if (typeof registered === "function") {
-			return registered(target, ...args);
+			return yield* go2jsCall(registered, null, [target, ...args]);
 		}
 	}
 
 	let fn = target[method];
-	let bound = false;
+	let registered = false;
 
 	if (typeof fn !== "function" && typeof value.type === "string") {
 		fn = go2jsMethodTable[value.type + "." + method];
-		bound = true;
+		registered = true;
 	}
 
 	if (typeof fn !== "function") {
 		throw new TypeError("interface method " + method + " is not implemented");
 	}
 
-	if (bound) {
-		return fn(target, ...args);
+	if (registered) {
+		return yield* go2jsCall(fn, null, [target, ...args]);
 	}
 
-	return fn.call(target, ...args);
+	return yield* go2jsCall(fn, target, args);
 }
 
 // A pointer that is nil is still a value Go knows the type of once an interface
@@ -7038,13 +7061,13 @@ function go2jsFormat(value, typeName, kind, shape, plus, nested, raw) {
 			const errorer = go2jsMethodTable[value.type + ".Error"];
 
 			if (typeof errorer === "function") {
-				return errorer(value.value);
+				return go2jsCallNow(errorer, null, [value.value]);
 			}
 
 			const stringer = go2jsMethodTable[value.type + ".String"];
 
 			if (typeof stringer === "function") {
-				return stringer(value.value);
+				return go2jsCallNow(stringer, null, [value.value]);
 			}
 		}
 
@@ -7110,11 +7133,11 @@ function go2jsFormat(value, typeName, kind, shape, plus, nested, raw) {
 	}
 
 	if (raw !== true && typeof value.String === "function") {
-		return value.String();
+		return go2jsCallNow(value.String, value, []);
 	}
 
 	if (raw !== true && typeof value.Error === "function") {
-		return value.Error();
+		return go2jsCallNow(value.Error, value, []);
 	}
 
 	const parts = [];
@@ -7126,7 +7149,7 @@ function go2jsFormat(value, typeName, kind, shape, plus, nested, raw) {
 			const formatter = go2jsMethodTable[fields[key]];
 
 			if (typeof formatter === "function") {
-				parts.push(formatter(value[key]));
+				parts.push(go2jsCallNow(formatter, null, [value[key]]));
 				continue;
 			}
 		}
@@ -7200,7 +7223,7 @@ function go2jsWriteDestination(destination, text) {
 	}
 
 	if (typeof target.Write === "function") {
-		const written = target.Write(go2jsStringToBytes(text));
+		const written = go2jsCallNow(target.Write, target, [go2jsStringToBytes(text)]);
 		return Array.isArray(written) ? written : [written, null];
 	}
 
@@ -7237,7 +7260,7 @@ function go2jsWriterMethod(writer, method) {
 	if (typeof target[method] === "function") {
 		const own = target[method];
 		return function(...args) {
-			return own.apply(target, args);
+			return go2jsCallNow(own, target, args);
 		};
 	}
 
@@ -7247,7 +7270,7 @@ function go2jsWriterMethod(writer, method) {
 		const registered = go2jsMethodTable[type + "." + method];
 		if (typeof registered === "function") {
 			return function(...args) {
-				return registered.call(target, ...args);
+				return go2jsCallNow(registered, null, [target, ...args]);
 			};
 		}
 	}
@@ -8120,7 +8143,7 @@ function go2jsSelfWrittenText(operand, value) {
 			const registered = go2jsMethodTable[operand.type + "." + method];
 
 			if (typeof registered === "function") {
-				return go2jsBytesToString(registered(operand.value));
+				return go2jsBytesToString(go2jsCallNow(registered, null, [operand.value]));
 			}
 		}
 	}
@@ -8197,7 +8220,7 @@ function go2jsFormatSelf(value, verb, flags, width, precision) {
 		const method = go2jsMethodTable[receiver.type + ".Format"];
 
 		if (typeof method === "function") {
-			format = (...args) => method(receiver.value, ...args);
+			format = (...args) => go2jsCallNow(method, null, [receiver.value, ...args]);
 		}
 	}
 
@@ -8213,7 +8236,7 @@ function go2jsFormatSelf(value, verb, flags, width, precision) {
 	const rune = String(verb).codePointAt(0);
 
 	try {
-		format.call(receiver, state, rune);
+		go2jsCallNow(format, receiver, [state, rune]);
 	} catch (error) {
 		// A Format method that gives up is reported the way fmt reports a panic
 		// inside one, rather than being allowed to end the program.
@@ -9626,7 +9649,7 @@ function go2jsHexDumper(dst) {
 			const text = go2jsHexDump(bytes);
 
 			if (target !== null && target !== undefined && typeof target.Write === "function") {
-				target.Write(text);
+				go2jsCallNow(target.Write, target, [text]);
 			} else {
 				for (let i = 0; i < text.length; i++) {
 					target[i] = text.charCodeAt(i);
@@ -10046,7 +10069,7 @@ function go2jsSortTableMethod(target, typeName, method) {
 		const fn = go2jsMethodTable[key];
 
 		if (typeof fn === "function") {
-			return function(...args) { return fn(target, ...args); };
+			return function(...args) { return go2jsCallNow(fn, null, [target, ...args]); };
 		}
 	}
 
@@ -10079,7 +10102,7 @@ go2jsSortReverse.prototype.Len = function() {
 	const fn = go2jsSortMethod(this.data, this.typeName, "Len");
 
 	if (typeof fn === "function") {
-		return fn();
+		return go2jsCallNow(fn, null, []);
 	}
 
 	return go2jsLen(this.data);
@@ -10089,7 +10112,7 @@ go2jsSortReverse.prototype.Less = function(i, j) {
 	const fn = go2jsSortMethod(this.data, this.typeName, "Less");
 
 	if (typeof fn === "function") {
-		return fn(j, i);
+		return go2jsCallNow(fn, null, [j, i]);
 	}
 
 	return go2jsCompareValues(this.data[j], this.data[i]) < 0;
@@ -10099,7 +10122,7 @@ go2jsSortReverse.prototype.Swap = function(i, j) {
 	const fn = go2jsSortMethod(this.data, this.typeName, "Swap");
 
 	if (typeof fn === "function") {
-		fn(i, j);
+		go2jsCallNow(fn, null, [i, j]);
 		return;
 	}
 
@@ -10124,7 +10147,7 @@ function go2jsSortInterface(data, typeName) {
 		for (let index = 1; index < count; index++) {
 			let current = index;
 
-			while (current > 0 && less(current, current - 1)) {
+			while (current > 0 && go2jsCallNow(less, null, [current, current - 1])) {
 				swap(current, current - 1);
 				current--;
 			}
@@ -10149,7 +10172,7 @@ function go2jsSortIsSortedInterface(data, typeName) {
 
 	for (let index = 1; index < items.length; index++) {
 		const outOfOrder = typeof less === "function"
-			? less(index, index - 1)
+			? go2jsCallNow(less, null, [index, index - 1])
 			: items[index] < items[index - 1];
 
 		if (outOfOrder) {
@@ -10168,7 +10191,7 @@ function go2jsSortSearch(values, target, less) {
 	while (low < high) {
 		const mid = Math.floor((low + high) / 2);
 
-		if (less(target, items[mid])) {
+		if (go2jsCallNow(less, null, [target, items[mid]])) {
 			high = mid;
 		} else {
 			low = mid + 1;
@@ -10182,7 +10205,7 @@ function go2jsSortIsSorted(values, less) {
 	const items = go2jsToArray(values);
 
 	for (let i = 1; i < items.length; i++) {
-		if (less(items[i], items[i - 1])) {
+		if (go2jsCallNow(less, null, [items[i], items[i - 1]])) {
 			return false;
 		}
 	}

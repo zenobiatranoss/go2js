@@ -8,8 +8,9 @@ import (
 
 // emitSelectStmt lowers a Go select statement onto the cooperative channel
 // runtime. It polls every communication for readiness, picks uniformly at
-// random among the ready ones (as Go does), and only blocks by draining pending
-// goroutine tasks when nothing is ready and there is no default clause.
+// random among the ready ones (as Go does), and hands the turn over when
+// nothing is ready and there is no default clause, coming back to look again
+// once one of the channels it was written over has changed.
 func (e *emitter) emitSelectStmt(stmt *ast.SelectStmt) error {
 	if stmt == nil || stmt.Body == nil {
 		return fmt.Errorf("invalid select statement")
@@ -120,8 +121,37 @@ func (e *emitter) emitSelectStmt(stmt *ast.SelectStmt) error {
 		e.write("continue;")
 		e.newline()
 	} else {
+		// Nothing any of the cases was written over is ready, so the select
+		// waits on all of them at once and looks again when one of them changes.
+		// Whether that leaves anything to run at all is the scheduler's answer,
+		// not this statement's.
 		e.writeIndent()
-		e.write("if (!go2jsProgress()) { throw go2jsFatalError(\"all goroutines are asleep - deadlock!\"); }")
+		e.write("yield* go2jsSelectWait([")
+
+		first := true
+
+		for _, clause := range clauses {
+			if clause.comm == nil {
+				continue
+			}
+
+			channel, err := selectCommChannel(clause.comm)
+			if err != nil {
+				return err
+			}
+
+			if !first {
+				e.write(", ")
+			}
+
+			first = false
+
+			if err := e.emitExpr(channel); err != nil {
+				return err
+			}
+		}
+
+		e.write("]);")
 		e.newline()
 		e.writeIndent()
 		e.write("continue;")

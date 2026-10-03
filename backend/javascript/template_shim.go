@@ -486,7 +486,7 @@ function go2jsTemplateEval(pipeline, dot, root, funcs, vars) {
 			throw new Error("template: non-function in pipeline");
 		}
 
-		value = fn(value);
+		value = go2jsCallNow(fn, null, [value]);
 	}
 
 	return value;
@@ -685,7 +685,7 @@ function go2jsTemplateResolve(token, args, dot, root, funcs, vars) {
 	const builtin = go2jsTemplateBuiltin(word, funcs, vars);
 
 	if (builtin !== undefined) {
-		return builtin.apply(null, args);
+		return go2jsCallNow(builtin, null, args);
 	}
 
 	if (funcs[word] !== undefined) {
@@ -774,7 +774,7 @@ function go2jsTemplateCall(fn, args) {
 		return fn;
 	}
 
-	return fn.apply(null, args);
+	return go2jsCallNow(fn, null, args);
 }
 
 function go2jsTemplateBuiltin(word, funcs, vars) {

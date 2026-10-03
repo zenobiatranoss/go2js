@@ -22,7 +22,7 @@ func main() {
 		t.Fatal("inline source map was not emitted")
 	}
 
-	if !strings.Contains(output, "function main(") {
+	if !strings.Contains(output, "function* main(") {
 		t.Fatal("compiled function missing")
 	}
 }

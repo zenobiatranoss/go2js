@@ -7,13 +7,13 @@ import (
 func (e *emitter) emitGoStmt(stmt *ast.GoStmt) error {
 	e.writeIndent()
 	e.needsRuntime = true
-	e.write("go2jsGo(() => ")
+	e.write("go2jsGo(function* () { ")
 
 	if err := e.emitExpr(stmt.Call); err != nil {
 		return err
 	}
 
-	e.write(")")
+	e.write(" })")
 	e.write(";")
 	e.newline()
 

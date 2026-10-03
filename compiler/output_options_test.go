@@ -57,7 +57,8 @@ func main() {
 		t.Fatal("minified output should not contain tabs")
 	}
 
-	if !strings.Contains(minified, "function main(){") {
+	// the minifier drops the space a generator star sits next to its name
+	if !strings.Contains(minified, "function*main(){") {
 		t.Fatalf("unexpected minified output: %s", minified)
 	}
 }

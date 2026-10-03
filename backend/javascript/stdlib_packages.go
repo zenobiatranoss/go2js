@@ -376,7 +376,7 @@ function go2jsSortReverseOf(data) {
 
 function go2jsSortSliceIsSorted(a, less) {
 	for (let index = 1; index < go2jsLen(a); index++) {
-		if (less(index, index - 1)) {
+		if (go2jsCallNow(less, null, [index, index - 1])) {
 			return false;
 		}
 	}
@@ -819,7 +819,7 @@ function go2jsStringsLastIndexFunc(value, fn) {
 	}
 
 	for (let index = graphemes.length - 1; index >= 0; index--) {
-		if (fn(graphemes[index].codePointAt(0))) {
+		if (go2jsCallNow(fn, null, [graphemes[index].codePointAt(0)])) {
 			return starts[index];
 		}
 	}
@@ -918,7 +918,7 @@ function go2jsCancelFunc(state) {
 		state.err = go2jsContextCanceled();
 
 		for (const fn of state.callbacks || []) {
-			fn(state.err);
+			go2jsCallNow(fn, null, [state.err]);
 		}
 	};
 
@@ -1360,7 +1360,7 @@ function go2jsFlagSetValue(target, value) {
 
 function go2jsFlagVisit(fn) {
 	for (const name of go2jsFlagState().order) {
-		fn(go2jsFlagLookup(name));
+		go2jsCallNow(fn, null, [go2jsFlagLookup(name)]);
 	}
 }
 
@@ -1436,7 +1436,7 @@ function go2jsFlagVisitAll(fn) {
 	const state = go2jsFlagState();
 
 	for (const name of go2jsFlagNames(state)) {
-		fn(go2jsFlagLookupIn(state, name));
+		go2jsCallNow(fn, null, [go2jsFlagLookupIn(state, name)]);
 	}
 }
 
@@ -1874,7 +1874,7 @@ function go2jsFlagObject(state) {
 		Visit(fn) {
 			for (const name of go2jsFlagNames(set)) {
 				if (set.values.get(name).changed === true) {
-					fn(go2jsFlagLookupIn(set, name));
+					go2jsCallNow(fn, null, [go2jsFlagLookupIn(set, name)]);
 				}
 			}
 		},
@@ -2401,10 +2401,10 @@ function go2jsSimpleHash(digest, size) {
 
 function go2jsHashCall(hash, method, ...args) {
 	if (hash !== null && hash !== undefined && hash.__go2js_interface === true) {
-		return go2jsInterfaceCall(hash, method, ...args);
+		return go2jsInterfaceCallNow(hash, method, ...args);
 	}
 
-	return hash[method](...args);
+	return go2jsCallNow(hash[method], hash, args);
 }
 
 function go2jsHashBytes(hashFn, bytes) {
@@ -2614,7 +2614,7 @@ function go2jsCSVNewWriter(target) {
 		}
 
 		if (sink !== null && sink !== undefined && typeof sink.Write === "function") {
-			const written = sink.Write(go2jsStringToBytes(text));
+			const written = go2jsCallNow(sink.Write, sink, [go2jsStringToBytes(text)]);
 
 			if (Array.isArray(written) && written[1] !== null && written[1] !== undefined) {
 				writer.failed = written[1];
@@ -2701,11 +2701,11 @@ function go2jsHeapSift(items, index) {
 		const right = left + 1;
 		let smallest = index;
 
-		if (left < items.length && less(items[left], items[smallest])) {
+		if (left < items.length && go2jsCallNow(less, null, [items[left], items[smallest]])) {
 			smallest = left;
 		}
 
-		if (right < items.length && less(items[right], items[smallest])) {
+		if (right < items.length && go2jsCallNow(less, null, [items[right], items[smallest]])) {
 			smallest = right;
 		}
 

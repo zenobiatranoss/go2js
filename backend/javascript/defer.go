@@ -176,8 +176,10 @@ func (e *emitter) emitFuncBody(body *ast.BlockStmt) error {
 	e.write("for (let i = go2jsDefers.length - 1; i >= 0; i--) {")
 	e.newline()
 	e.indent++
+	// A deferred call is run as the goroutine unwinds, so it is stepped here
+	// rather than called: a deferred function may wait like any other.
 	e.writeIndent()
-	e.write("go2jsDefers[i]();")
+	e.write("yield* go2jsDefers[i]();")
 	e.newline()
 	e.indent--
 	e.writeIndent()
@@ -251,7 +253,7 @@ func (e *emitter) emitDeferStmt(stmt *ast.DeferStmt) error {
 		e.write("go2jsDeferArg" + strconv.Itoa(i))
 	}
 
-	e.write(") => go2jsDefers.push(() => ")
+	e.write(") => go2jsDefers.push(function* () { ")
 
 	deferredCall := &ast.CallExpr{
 		Fun:  stmt.Call.Fun,
@@ -273,7 +275,7 @@ func (e *emitter) emitDeferStmt(stmt *ast.DeferStmt) error {
 		return err
 	}
 
-	e.write("))(")
+	e.write(" }))(")
 
 	for i, arg := range stmt.Call.Args {
 		if i > 0 {

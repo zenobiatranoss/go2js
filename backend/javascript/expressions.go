@@ -831,6 +831,13 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		e.write(")")
 
 	case *ast.CallExpr:
+		// What the call has to be written as comes from what the target turned
+		// out to be: a function of this package is a generator the call steps, a
+		// name whose shape is not settled is one the runtime runs, and anything
+		// else is called where it stands. The same question is answered by the
+		// opening and the closing of the call, so it is answered once here.
+		callForm := e.callFormFor(x.Fun)
+
 		// A frame is written under the place a call was made from, which is the
 		// call itself rather than the statement it stands in, so the line of the
 		// call is the one the place belongs to.
@@ -880,6 +887,10 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		}
 
 		if selector, ok := x.Fun.(*ast.SelectorExpr); ok {
+			// A helper that waits is written as a delegation, which is closed
+			// in parentheses so that it can stand wherever a value is expected.
+			delegated := false
+
 			if handled, err := e.emitFileCall(x, selector); handled {
 				return err
 			}
@@ -909,6 +920,14 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 
 			if pkg, ok := selector.X.(*ast.Ident); ok {
 				if name, ok := e.stdlibFuncNameForIdent(pkg, selector.Sel.Name); ok {
+					// A helper that waits is a delegation, which is what lets a
+					// sleep hand the turn to another goroutine.
+					if runtimeGeneratorHelpers[name] {
+						e.needsRuntime = true
+						e.write("(yield* ")
+						delegated = true
+					}
+
 					e.write(name)
 					if pkg.Name != "math" || selector.Sel.Name == "Signbit" || selector.Sel.Name == "IsInf" {
 						e.needsRuntime = true
@@ -935,6 +954,9 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 							e.write(")")
 						}
 					}
+					if delegated {
+						e.write(")")
+					}
 					e.write(")")
 					return nil
 				}
@@ -956,6 +978,16 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 					return err
 				}
 
+				// A method the file being written declares was written as a
+				// generator, so the call hands the turn to it. A method that
+				// came in with an import is a helper in the runtime, which runs
+				// where it stands.
+				programMethod := false
+				if selection := e.selectionOf(selector); selection != nil && e.programFunction(selection.Obj()) {
+					programMethod = true
+					e.write("(yield* ")
+				}
+
 				if err := e.emitExpr(selector.X); err != nil {
 					return err
 				}
@@ -969,6 +1001,9 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 					if err := e.emitCallArgument(x, i, arg); err != nil {
 						return err
 					}
+				}
+				if programMethod {
+					e.write(")")
 				}
 				e.write(")")
 				return nil
@@ -996,6 +1031,15 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				return nil
 			}
 		} else {
+			if callForm == callYield {
+				e.write("(yield* ")
+			}
+
+			if callForm == callDelegate {
+				e.needsRuntime = true
+				e.write("(yield* go2jsCall(")
+			}
+
 			if _, ok := e.genericInstance(x.Fun); ok {
 				switch fun := x.Fun.(type) {
 				case *ast.IndexExpr:
@@ -1016,9 +1060,17 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 					return err
 				}
 			}
+
+			if callForm == callDelegate {
+				e.write(", null, [")
+			}
 		}
 
-		e.write("(")
+		// A delegated call carries its arguments in a list rather than between
+		// parentheses, since the runtime is the one making the call.
+		if callForm != callDelegate {
+			e.write("(")
+		}
 
 		if _, ok := e.genericInstance(x.Fun); ok {
 			if err := e.emitGenericDescriptors(x.Fun); err != nil {
@@ -1074,7 +1126,15 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			e.write(", []")
 		}
 
-		e.write(")")
+		if callForm == callDelegate {
+			e.write("]))")
+		} else {
+			if callForm == callYield {
+				e.write(")")
+			}
+
+			e.write(")")
+		}
 
 	case *ast.SelectorExpr:
 		if handled, err := e.emitPackageValue(x); handled {
@@ -1525,7 +1585,10 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		}
 
 	case *ast.FuncLit:
-		e.write("function(")
+		// A Go function is a generator: calling it delegates with yield*, which
+		// is what lets it wait on a channel without taking its caller down with
+		// it, and lets the caller wait on it in turn.
+		e.write("function*(")
 
 		if x.Type.Params != nil {
 			first := true

@@ -1301,7 +1301,7 @@ function go2jsReflectValueCall(receiver, ...args) {
 		throw new TypeError("reflect: call of reflect.Value.Call on a value that is not callable");
 	}
 
-	return fn(value, ...args);
+	return go2jsCallNow(fn, null, [value, ...args]);
 }
 
 // go2jsReflectValueAddr is the address of a value, which is a pointer to the
@@ -1349,7 +1349,7 @@ function go2jsReflectInvoke(owner, name, receiver, ...rest) {
 		throw new TypeError("reflect: call of reflect." + name + " on " + owner + " Value");
 	}
 
-	return fn(receiver, ...rest);
+	return go2jsCallNow(fn, null, [receiver, ...rest]);
 }
 
 // go2jsReflectStructField describes one field of a struct: its name, its type

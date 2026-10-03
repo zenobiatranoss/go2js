@@ -8,9 +8,8 @@ function go2jsChannel(capacity) {
 		buffer: [],
 		capacity: typeof capacity === "number" && capacity > 0 ? Math.trunc(capacity) : 0,
 		closed: false,
-		receivers: [],
-		senders: [],
-		waitingReceivers: 0
+		blocked: [],
+		handoff: []
 	};
 }
 
@@ -60,17 +59,20 @@ function go2jsTimerDue(channel) {
 	channel.timerDeadline = undefined;
 
 	// A timer that runs a function has no value to send: the function is what
-	// the timer was asked for, and the moment it fires at is not a result.
+	// the timer was asked for, and the moment it fires at is not a result. The
+	// function runs as a goroutine of its own, which is what the timer is
+	// written in Go to mean.
 	if (typeof channel.timerCallback === "function") {
 		const run = channel.timerCallback;
 
 		delete channel.timerCallback;
-		run();
+		go2jsGo(run);
 
 		return true;
 	}
 
 	channel.buffer.push(go2jsTimeValue(new Date(channel.timerDue)));
+	go2jsWake(channel);
 
 	// A ticker sends again once its period is up, so the deadline it leaves
 	// behind is the next one rather than none at all. A ticker that was stopped
@@ -118,43 +120,253 @@ function go2jsWaitForEarliestTimer() {
 	return true;
 }
 
-function go2jsChanRecvPair(channel) {
-	// A receive that finds nothing waits, and a send to a channel of no room
-	// is a handover that only completes once somebody has taken what was put
-	// into it. The count of how many receives are waiting is what tells a send
-	// there is somebody to hand over to, so it is kept for as long as the
-	// waiting lasts and given back when the receive is answered or gives up.
-	channel.waitingReceivers++;
+// go2jsPark suspends the goroutine that is running until one of the channels
+// it names changes in a way that might let its operation through. The task is
+// registered on every one of them, so a change to any of them makes it
+// runnable again, and the operation is then tried once more from the top.
+const go2jsParked = {};
 
-	try {
-		while (true) {
-			if (channel.buffer.length > 0) {
-				const value = channel.buffer.shift();
-				go2jsChannelPump(channel);
-				return [value, true];
-			}
+function go2jsPark(channels, kind, value) {
+	const task = go2jsRunning;
 
-			if (go2jsTimerDue(channel)) {
-				const value = channel.buffer.shift();
-				go2jsChannelPump(channel);
-				return [value, true];
-			}
+	if (task === null || task === undefined) {
+		throw new Error("go2js: blocking operation outside a goroutine");
+	}
 
-			if (channel.closed) {
-				return [go2jsChannelZero, false];
-			}
+	for (const channel of channels) {
+		channel.blocked.push(task);
+		task.waiting.push(channel);
+	}
 
-			if (!go2jsProgress() && !go2jsWaitForEarliestTimer()) {
-				throw go2jsFatalError("all goroutines are asleep - deadlock!");
+	task.parked = kind;
+	task.parkedValue = value;
+
+	// A goroutine that parks to send or to receive makes a case of a select
+	// that is waiting on the same channel ready, so any select parked there is
+	// woken to look again. Go hands a value straight from one goroutine to
+	// another without either of them waiting again, and a select is a
+	// goroutine that is waiting to be given one.
+	if (kind === "receiver" || kind === "sender") {
+		const selects = [];
+
+		for (const channel of channels) {
+			for (const entry of channel.blocked) {
+				if (entry.parked === "select") {
+					selects.push(entry);
+				}
 			}
 		}
-	} finally {
-		channel.waitingReceivers--;
+
+		for (const entry of selects) {
+			go2jsRunnable(entry);
+		}
+	}
+
+	return go2jsParked;
+}
+
+// go2jsNeverReady parks a goroutine on nothing at all, which is what an
+// operation on a channel that was never made waits for: it never becomes
+// ready, so the goroutine waits for ever.
+function go2jsNeverReady() {
+	return go2jsPark([], "never", undefined);
+}
+
+// go2jsWake makes every goroutine waiting on the channel runnable, since the
+// channel it was waiting on has just changed.
+function go2jsWake(channel) {
+	if (channel.blocked.length === 0) {
+		return;
+	}
+
+	const waiting = channel.blocked;
+
+	channel.blocked = [];
+
+	for (const task of waiting) {
+		go2jsRunnable(task);
 	}
 }
 
-function go2jsChanRecv(channel) {
-	return go2jsChanRecvPair(channel)[0];
+function go2jsRunnable(task) {
+	if (task.finished || go2jsReady.indexOf(task) >= 0) {
+		return;
+	}
+
+	for (const channel of task.waiting) {
+		const index = channel.blocked.indexOf(task);
+
+		if (index >= 0) {
+			channel.blocked.splice(index, 1);
+		}
+	}
+
+	task.waiting = [];
+	task.parked = null;
+	go2jsReady.push(task);
+}
+
+// go2jsTakeBlocked takes a goroutine that is waiting on the channel for the
+// kind of operation named, so that a send can be handed to a receiver or a
+// receive answered by a sender without either of them waiting again.
+function go2jsTakeBlocked(channel, kind) {
+	for (let index = 0; index < channel.blocked.length; index++) {
+		const task = channel.blocked[index];
+
+		if (task.parked === kind) {
+			channel.blocked.splice(index, 1);
+			task.waiting = task.waiting.filter((entry) => entry !== channel);
+			return task;
+		}
+	}
+
+	return null;
+}
+
+function go2jsHasBlocked(channel, kind) {
+	for (const task of channel.blocked) {
+		if (task.parked === kind) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+// A channel of no room keeps a value that has been handed to a goroutine which
+// has not taken it yet, since a goroutine that was parked waiting for a value
+// does not hold it until it runs again. Whoever runs next and receives from the
+// channel takes the value that is waiting there.
+function go2jsChanHandoff(channel, value) {
+	if (channel.handoff === undefined) {
+		channel.handoff = [];
+	}
+
+	channel.handoff.push(value);
+}
+
+function go2jsChanHandoffWaiting(channel) {
+	return channel.handoff !== undefined && channel.handoff.length > 0;
+}
+
+// A Go function is written as a generator, so calling one is stepping it: the
+// call is delegated with yield*, which runs the callee as part of the caller's
+// own goroutine and lets either of them wait. A value the compiler could not
+// tell the shape of is called through go2jsCall instead, which runs a generator
+// and passes through anything else unchanged.
+
+// go2jsGenerator says whether a value handed back from a call is a goroutine
+// that has been started but not run.
+function go2jsGenerator(value) {
+	return value !== null && typeof value === "object" && typeof value.next === "function";
+}
+
+function* go2jsCall(fn, self, args) {
+	const result = fn.apply(self, args);
+
+	if (go2jsGenerator(result)) {
+		return yield* result;
+	}
+
+	return result;
+}
+
+// go2jsCallNow calls a value the runtime was handed as a callback. The
+// callback runs to its end here, and if it waits on something then the
+// goroutines that can be run are run until it is through, which is what a
+// callback such as a comparison or a visitor has to be given: nothing here
+// waits with it, so the wait it makes is one the scheduler answers.
+function go2jsCallNow(fn, self, args) {
+	const result = fn.apply(self, args);
+
+	if (go2jsGenerator(result)) {
+		return go2jsRunNow(result);
+	}
+
+	return result;
+}
+
+function go2jsRunNow(generator) {
+	// A thunk the compiler could not see the shape of may well turn out not to
+	// be a generator, and then there is nothing to run: the value it produced is
+	// the answer.
+	if (!go2jsGenerator(generator)) {
+		return generator;
+	}
+
+	for (;;) {
+		const step = generator.next();
+
+		if (step.done) {
+			return step.value;
+		}
+
+		if (!go2jsWaitForWork()) {
+			throw go2jsFatalError("all goroutines are asleep - deadlock!");
+		}
+	}
+}
+
+function* go2jsChanRecvPair(channel) {
+	// A receive from a channel that was never made waits for ever, the same
+	// way it does in Go, and no send can ever answer it.
+	if (go2jsChannelIsNil(channel)) {
+		yield go2jsNeverReady();
+
+		return [go2jsChannelZero, false];
+	}
+
+	while (true) {
+		if (channel.buffer.length > 0) {
+			const value = channel.buffer.shift();
+			go2jsWake(channel);
+
+			return [value, true];
+		}
+
+		if (go2jsTimerDue(channel)) {
+			const value = channel.buffer.shift();
+
+			return [value, true];
+		}
+
+		// A value handed over to this goroutine while it was parked is taken
+		// here, before the close of the channel is looked at, since a value
+		// that was sent is still there to be read after the close.
+		if (go2jsChanHandoffWaiting(channel)) {
+			const value = channel.handoff.shift();
+
+			return [value, true];
+		}
+
+		if (channel.closed) {
+			return [go2jsChannelZero, false];
+		}
+
+		// A goroutine already waiting to send on this channel has the value
+		// in hand, so the receive takes it from there and lets the send finish
+		// rather than storing it for a moment and taking it back out again.
+		const sender = go2jsTakeBlocked(channel, "sender");
+
+		if (sender !== null) {
+			const value = sender.parkedValue;
+
+			sender.parked = null;
+			sender.parkedValue = undefined;
+			sender.answered = true;
+			go2jsRunnable(sender);
+
+			return [value, true];
+		}
+
+		yield go2jsPark([channel], "receiver", undefined);
+	}
+}
+
+function* go2jsChanRecv(channel) {
+	const pair = yield* go2jsChanRecvPair(channel);
+
+	return pair[0];
 }
 
 function go2jsChanTryRecv(channel) {
@@ -164,7 +376,8 @@ function go2jsChanTryRecv(channel) {
 
 	if (channel.buffer.length > 0) {
 		const value = channel.buffer.shift();
-		go2jsChannelPump(channel);
+		go2jsWake(channel);
+
 		return [value, true];
 	}
 
@@ -180,7 +393,18 @@ function go2jsChanRecvReady(channel) {
 		return false;
 	}
 
-	return channel.buffer.length > 0 || channel.closed || go2jsTimerDue(channel);
+	if (channel.buffer.length > 0 || channel.closed || go2jsTimerDue(channel)) {
+		return true;
+	}
+
+	if (go2jsChanHandoffWaiting(channel)) {
+		return true;
+	}
+
+	// A receive from a channel of no room is answered by whoever is holding a
+	// value for it, so a send already waiting on this channel is what makes it
+	// ready.
+	return go2jsHasBlocked(channel, "sender");
 }
 
 function go2jsChanSendReady(channel) {
@@ -193,36 +417,55 @@ function go2jsChanSendReady(channel) {
 	// yes for one nobody is reading from is what lets a loop of sends fill a
 	// channel that can never hold anything.
 	if (channel.capacity === 0) {
-		return channel.waitingReceivers > 0;
+		return go2jsHasBlocked(channel, "receiver");
 	}
 
 	return channel.buffer.length < channel.capacity;
 }
 
-function go2jsChanSend(channel, value) {
+function* go2jsChanSend(channel, value) {
+	if (go2jsChannelIsNil(channel)) {
+		yield go2jsNeverReady();
+
+		return;
+	}
+
 	while (true) {
 		if (channel.closed) {
 			go2jsChannelClosedPanic("send");
 		}
 
-				// A channel of no room is a handover: the value is not sent until the
-		// goroutine that was waiting for it has taken it, and that goroutine
-		// runs before the send is said to be done. A channel with room is not
-		// a handover, so a send to one carries on without waiting for whoever
-		// reads it later.
-		if (channel.capacity === 0 || channel.buffer.length < channel.capacity) {
-			channel.buffer.push(value);
-			go2jsChannelPump(channel);
+		// A channel of no room is a handover: the value is not sent until the
+		// goroutine that was waiting for it has taken it, so the value goes
+		// straight into the hands of a receiver that is already waiting.
+		if (channel.capacity === 0) {
+			// A goroutine that was parked in a select is waiting for a value as
+			// surely as one parked in a receive, so it is handed the value the
+			// same way and looks at the channel again when it runs.
+			const receiver = go2jsTakeBlocked(channel, "receiver") ||
+				go2jsTakeBlocked(channel, "select");
 
-			if (channel.capacity === 0) {
-				go2jsRunTasks();
+			if (receiver !== null) {
+				go2jsChanHandoff(channel, value);
+				go2jsRunnable(receiver);
+
+				return;
 			}
+		} else if (channel.buffer.length < channel.capacity) {
+			channel.buffer.push(value);
+			go2jsWake(channel);
 
 			return;
 		}
 
-		if (!go2jsProgress()) {
-			throw go2jsFatalError("all goroutines are asleep - deadlock!");
+		yield go2jsPark([channel], "sender", value);
+
+		// The receive that took the value off this goroutine has already made
+		// the send complete, so there is nothing left to hand over.
+		if (go2jsRunning !== null && go2jsRunning.answered) {
+			go2jsRunning.answered = false;
+
+			return;
 		}
 	}
 }
@@ -241,22 +484,9 @@ function go2jsChanTrySend(channel, value) {
 	}
 
 	channel.buffer.push(value);
-	go2jsChannelPump(channel);
+	go2jsWake(channel);
+
 	return true;
-}
-
-function go2jsChannelPump(channel) {
-	if (channel.buffer.length === 0) {
-		return;
-	}
-
-	const receiver = channel.receivers.shift();
-
-	if (receiver === undefined) {
-		return;
-	}
-
-	receiver.resolve({ channel, value: channel.buffer.shift() });
 }
 
 function go2jsChannelClose(channel) {
@@ -266,57 +496,39 @@ function go2jsChannelClose(channel) {
 
 	channel.closed = true;
 
-	const waiting = channel.receivers.splice(0, channel.receivers.length);
-
-	for (const receiver of waiting) {
-		receiver.resolve({ channel, value: go2jsChannelZero, closed: true });
-	}
-
-	const blocked = channel.senders.splice(0, channel.senders.length);
-
-	for (const sender of blocked) {
-		sender.reject(new Error("send on closed channel"));
-	}
+	// Closing a channel is what lets everything waiting on it go again: a
+	// receive reads the zero value, a send finds the channel closed under it,
+	// and a select chooses whichever of its cases the close made ready.
+	go2jsWake(channel);
 }
 
 function go2jsChannelZero() {
 	return undefined;
 }
 
-function go2jsChannelRange(channel) {
-	return {
-		[Symbol.iterator]() {
-			return {
-				next() {
-					// Ranging over a channel is receiving from it until it is
-					// closed, and a receive waits for whatever will send on it,
-					// a goroutine or the moment a timer comes due.
-					if (channel === null || channel === undefined) {
-						throw go2jsFatalError("all goroutines are asleep - deadlock!");
-					}
+// go2jsSelectWait waits for one of the channels a select was written over to
+// become ready. It is what a select that had nothing to choose from waits on,
+// and it parks on every channel the select mentioned, so whichever one changes
+// first brings the select back to look at all of them again.
+function* go2jsSelectWait(channels) {
+	yield go2jsPark(channels.filter((channel) => !go2jsChannelIsNil(channel)), "select", undefined);
 
-					const result = go2jsChanRecvPair(channel);
-
-					if (result[1] === false) {
-						return { done: true, value: undefined };
-					}
-
-					return { done: false, value: result[0] };
-				}
-			};
-		}
-	};
+	if (channels.length === 0) {
+		yield go2jsNeverReady();
+	}
 }
 
 function go2jsWaitGroup() {
 	return {
+		__go2js_channel: true,
+		blocked: [],
+		capacity: 0,
+		buffer: [],
+		closed: false,
 		count: 0,
-		waiters: []
+		handoff: []
 	};
 }
-
-const go2jsTasks = [];
-let go2jsDraining = false;
 
 function go2jsWaitGroupAdd(group, delta) {
 	group.count += delta;
@@ -325,12 +537,10 @@ function go2jsWaitGroupAdd(group, delta) {
 		throw new Error("sync: negative WaitGroup counter");
 	}
 
+	// A wait group is reached at zero, which is the moment every goroutine
+	// waiting on it is free to carry on.
 	if (group.count === 0) {
-		const waiting = group.waiters.splice(0, group.waiters.length);
-
-		for (const waiter of waiting) {
-			waiter.resolve();
-		}
+		go2jsWake(group);
 	}
 }
 
@@ -338,86 +548,166 @@ function go2jsWaitGroupDone(group) {
 	go2jsWaitGroupAdd(group, -1);
 }
 
-function go2jsRunTasks() {
-	if (go2jsDraining) {
-		return 0;
-	}
+// A task is one goroutine. The body of every Go function is written as a
+// generator, so a task is that generator together with the channels its
+// current operation is waiting on. Running the task means giving the generator
+// its next step; where it stops is where it waits until a channel changes.
+function go2jsTask(generator) {
+	return {
+		generator,
+		waiting: [],
+		parked: null,
+		parkedValue: undefined,
+		answered: false,
+		finished: false
+	};
+}
 
-	go2jsDraining = true;
+// go2jsReady holds the goroutines that can be stepped right now, and
+// go2jsRunning holds the one being stepped, so that a goroutine that is waiting
+// knows what it is waiting as.
+const go2jsReady = [];
+let go2jsRunning = null;
+let go2jsLiveTasks = 0;
 
-	let executed = 0;
+function go2jsStep() {
+	let steps = 0;
 
-	try {
-		while (go2jsTasks.length > 0) {
-			if (executed >= 1000000) {
-				throw new Error("go2js: goroutine task limit exceeded");
-			}
+	while (go2jsReady.length > 0) {
+		if (steps >= 1000000) {
+			go2jsReady.length = 0;
+			throw new Error("go2js: goroutine task limit exceeded");
+		}
 
-		const task = go2jsTasks.shift();
+		const task = go2jsReady.shift();
+
+		go2jsRunning = task;
+
+		let step;
 
 		try {
-			task();
+			step = task.generator.next();
 		} catch (thrown) {
+			go2jsRunning = null;
+			task.finished = true;
+			go2jsLiveTasks--;
+
 			// A goroutine that was told to end stops there, and the rest of them
 			// carry on. Anything else is a failure and belongs to the program, so
 			// it is left to travel up.
-			if (!go2jsIsGoexit(thrown)) {
-				go2jsDraining = false;
-				throw thrown;
+			if (go2jsIsGoexit(thrown)) {
+				steps++;
+				continue;
 			}
+
+			go2jsReady.length = 0;
+			throw thrown;
 		}
 
-		executed++;
+		go2jsRunning = null;
+		steps++;
 
+		if (step.done) {
+			task.finished = true;
+			go2jsLiveTasks--;
+			continue;
 		}
-	} finally {
-		go2jsDraining = false;
+
+		// A step that stopped without parking its goroutine asked for the turn
+		// to be handed to another one, so it goes back into the queue.
+		if (step.value !== go2jsParked) {
+			go2jsReady.push(task);
+		}
 	}
 
-	return executed;
+	return steps;
 }
 
-function go2jsGo(task) {
-	go2jsTasks.push(task);
-	queueMicrotask(() => {
-		go2jsRunTasks();
-	});
+// go2jsWakeDueTimers wakes what is waiting on a timer that has come due. A
+// timer is noticed by the goroutine that is waiting on it when that goroutine
+// runs, so reaching the moment a timer names is what makes it runnable again.
+function go2jsWakeDueTimers() {
+	const now = Date.now();
+
+	for (const channel of go2jsTimers.keys()) {
+		if (channel.timerDeadline <= now) {
+			go2jsWake(channel);
+		}
+	}
 }
 
-// go2jsLetGoroutinesRun lets the goroutines that are waiting to start go. A Go
+// go2jsWaitForWork runs the goroutines that can be run, and if none of them can
+// then waits for the moment the earliest timer comes due. It says whether
+// there was anything at all to wait for.
+function go2jsWaitForWork() {
+	if (go2jsStep() > 0) {
+		return true;
+	}
+
+	if (!go2jsWaitForEarliestTimer()) {
+		return false;
+	}
+
+	go2jsWakeDueTimers();
+
+	return true;
+}
+
+function go2jsStart(generator) {
+	const task = go2jsTask(generator);
+
+	go2jsLiveTasks++;
+	go2jsReady.push(task);
+
+	return task;
+}
+
+// go2jsGo writes "go f(x)": f runs as a goroutine of its own, starting from the
+// moment it was written rather than straight away. What it is handed is the
+// generator function holding the body, which is started and then left to be
+// stepped by the scheduler like any other goroutine.
+function go2jsGo(body) {
+	go2jsStart(body());
+}
+
+// go2jsRunMain runs main as a goroutine too, so that everything else in the
+// program is written the same way and the scheduler has one place it all goes.
+function go2jsRunMain(generator) {
+	const main = go2jsStart(generator);
+
+	while (go2jsLiveTasks > 0) {
+		if (go2jsWaitForWork()) {
+			continue;
+		}
+
+		// Nothing is runnable and nothing is coming due. A program whose main
+		// has already returned has ended, as a Go program does, and the
+		// goroutines still waiting are left where they are; a program still
+		// inside main has every goroutine asleep, which Go calls a deadlock and
+		// says so.
+		if (main.finished) {
+			go2jsReady.length = 0;
+			break;
+		}
+
+		throw go2jsFatalError("all goroutines are asleep - deadlock!");
+	}
+}
+
+// go2jsLetGoroutinesRun hands the turn to the goroutines that can be run. A Go
 // program that has reached something which waits on another process has already
 // had the goroutines written above it scheduled, so a listener opened in one of
 // them is open by then; waiting for a process is one of the moments at which
 // that has to be so, since nothing else here would ever hand the turn over.
-function go2jsLetGoroutinesRun() {
-	if (go2jsTasks.length === 0) {
-		return 0;
-	}
-
-	return go2jsRunTasks();
+function* go2jsLetGoroutinesRun() {
+	yield;
 }
 
-// go2jsProgress lets the goroutines that are runnable run, and says whether any
-// of them did. A goroutine waiting on a timer is runnable once its moment comes,
-// so a select with nothing else to do waits for the earliest one rather than
-// reporting that every goroutine is asleep.
-function go2jsProgress() {
-	if (go2jsTasks.length > 0 && go2jsRunTasks() > 0) {
-		return true;
-	}
-
-	return go2jsWaitForEarliestTimer();
-}
-
-function go2jsWaitGroupWait(group) {
-	let budget = 1000000;
-
+function* go2jsWaitGroupWait(group) {
+	// Waiting on a wait group is parking on it, which the group wakes when the
+	// count it holds comes back to zero.
 	while (group.count > 0) {
-		if (budget-- === 0) {
-			throw new Error("go2js: wait group did not reach zero");
-		}
-
-		go2jsRunTasks();
+		yield go2jsPark([group], "waitgroup", undefined);
 	}
 }
 
@@ -518,7 +808,7 @@ function go2jsOnceDo(once, fn) {
 	}
 
 	once.done = true;
-	fn();
+	go2jsCallNow(fn, null, []);
 }
 
 function go2jsSyncMap() {
@@ -583,7 +873,7 @@ function go2jsSyncMapCompareAndSwap(store, key, old, next) {
 
 function go2jsSyncMapRange(store, fn) {
 	for (const [key, value] of store.entries) {
-		fn(key, value);
+		go2jsCallNow(fn, null, [key, value]);
 	}
 }
 
@@ -656,7 +946,7 @@ function go2jsErrorMethodCall(err, name, ...args) {
 			const fn = go2jsMethodTable[err.type + "." + name];
 
 			if (typeof fn === "function") {
-				return fn.apply(null, [err.value, ...args]);
+				return go2jsCallNow(fn, null, [err.value, ...args]);
 			}
 		}
 
@@ -671,7 +961,7 @@ function go2jsErrorMethodCall(err, name, ...args) {
 		const fn = receiver[name];
 
 		if (typeof fn === "function") {
-			return fn.apply(receiver, args);
+			return go2jsCallNow(fn, receiver, args);
 		}
 	}
 
@@ -1058,7 +1348,7 @@ function go2jsErrorString(value) {
 	}
 
 	if (typeof value === "object" && typeof value.Error === "function") {
-		return value.Error();
+		return go2jsCallNow(value.Error, value, []);
 	}
 
 	return go2jsStringify(value);

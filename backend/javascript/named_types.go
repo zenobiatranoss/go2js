@@ -55,6 +55,19 @@ func scalarNamedTypeName(t gotypesstd.Type) (string, bool) {
 	return named.Obj().Name(), true
 }
 
+// scalarNamedMethodObject answers with the function a method of a scalar named
+// type stands for, which is what says whether the program declares it or the
+// runtime carries it.
+func (e *emitter) scalarNamedMethodObject(selector *ast.SelectorExpr) *gotypesstd.Func {
+	if selection := e.selectionOf(selector); selection != nil {
+		if method, ok := selection.Obj().(*gotypesstd.Func); ok {
+			return method
+		}
+	}
+
+	return nil
+}
+
 func scalarNamedMethodName(typeName, method string) string {
 	return typeJavaScriptName(typeName) + method
 }
@@ -390,6 +403,15 @@ func (e *emitter) emitScalarNamedMethodCall(call *ast.CallExpr, selector *ast.Se
 		return e.emitScalarNamedPointerCall(call, selector, typeName, method.Name())
 	}
 
+	// A method of a type the program declares was written as a generator, so
+	// the call hands the turn to it. A method the runtime carries runs where it
+	// stands.
+	declared := e.declaresInSource(method)
+
+	if declared {
+		e.write("(yield* ")
+	}
+
 	e.write(scalarNamedMethodName(typeName, method.Name()))
 	e.write("(")
 
@@ -402,6 +424,10 @@ func (e *emitter) emitScalarNamedMethodCall(call *ast.CallExpr, selector *ast.Se
 		if err := e.emitExpr(arg); err != nil {
 			return true, err
 		}
+	}
+
+	if declared {
+		e.write(")")
 	}
 
 	e.write(")")
@@ -427,13 +453,19 @@ func (e *emitter) emitScalarNamedPointerCall(call *ast.CallExpr, selector *ast.S
 
 	e.needsRuntime = true
 	e.write(e.resolveName(ident.Name))
-	e.write(" = (() => {")
+	e.write(" = yield* (function* () {")
 	e.write("const cell = go2jsNew(")
 	e.write(e.resolveName(ident.Name))
 	e.write(");")
 
 	if results == 1 {
 		e.write("const result = ")
+	}
+
+	declared := e.declaresInSource(e.scalarNamedMethodObject(selector))
+
+	if declared {
+		e.write("(yield* ")
 	}
 
 	e.write(scalarNamedMethodName(typeName, method))
@@ -446,7 +478,11 @@ func (e *emitter) emitScalarNamedPointerCall(call *ast.CallExpr, selector *ast.S
 		}
 	}
 
-	e.write(");")
+	if declared {
+		e.write("));")
+	} else {
+		e.write(");")
+	}
 
 	if results == 1 {
 		e.write(e.resolveName(ident.Name))
@@ -475,7 +511,9 @@ func (e *emitter) emitScalarNamedMethodValue(selector *ast.SelectorExpr) (bool, 
 		return false, nil
 	}
 
-	e.write("(...args) => ")
+	e.write("function* (...args) { return yield* ")
+	// The method was written as a generator, so the call hands the turn to it.
+	e.write("yield* ")
 	e.write(scalarNamedMethodName(typeName, method.Name()))
 	e.write("(")
 
@@ -483,7 +521,7 @@ func (e *emitter) emitScalarNamedMethodValue(selector *ast.SelectorExpr) (bool, 
 		return true, err
 	}
 
-	e.write(", ...args)")
+	e.write(", ...args); }")
 	return true, nil
 }
 
@@ -549,7 +587,7 @@ func (e *emitter) emitScalarNamedFuncDecl(fn *ast.FuncDecl) (bool, error) {
 		e.scalarReceiver = receiver.Names[0].Name
 	}
 
-	e.write("function ")
+	e.write("function* ")
 	e.write(scalarNamedMethodName(typeName, fn.Name.Name))
 	e.write("(")
 	e.write(receiver.Names[0].Name)
@@ -1065,7 +1103,7 @@ func (e *emitter) emitNamedAggregateFuncDecl(fn *ast.FuncDecl) (bool, error) {
 	e.aggregateReceiver = aggregateReceiver
 
 	e.needsRuntime = true
-	e.write("function ")
+	e.write("function* ")
 	e.write(namedAggregateMethodName(typeName, fn.Name.Name))
 	e.write("(")
 	e.write(aggregateReceiver)
