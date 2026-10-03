@@ -132,6 +132,20 @@ function go2jsBufioText(source) {
 	return go2jsStringify(source);
 }
 
+// go2jsBufioSeparator is the text a reader is asked to read up to, which a rune
+// names as much as a string of it does.
+function go2jsBufioSeparator(separator) {
+	if (typeof separator === "number") {
+		return String.fromCodePoint(separator);
+	}
+
+	if (separator !== null && separator !== undefined && separator.value !== undefined) {
+		return go2jsBufioSeparator(separator.value);
+	}
+
+	return go2jsStringify(separator);
+}
+
 function go2jsBufioNewReader(source) {
 	let position = 0;
 	const text = go2jsBufioText(source);
@@ -154,7 +168,13 @@ function go2jsBufioNewReader(source) {
 
 	return {
 		ReadString: function (separator) {
-			return [takeUntil(go2jsStringify(separator), true), null];
+			const needle = go2jsBufioSeparator(separator);
+			const chunk = takeUntil(needle, true);
+			// A separator that never came means the text ran out, which is what a
+			// read that did not reach one reports.
+			const ended = needle === "" || !chunk.endsWith(needle);
+
+			return [chunk, ended ? go2jsEOFError() : null];
 		},
 		ReadLine: function () {
 			if (position >= text.length) {

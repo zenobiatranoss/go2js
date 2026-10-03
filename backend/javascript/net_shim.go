@@ -600,10 +600,6 @@ func (e *emitter) emitShimValueMethodCall(call *ast.CallExpr, selector *ast.Sele
 
 	e.needsRuntime = true
 
-	if osFileMultiReturn[key] {
-		e.write("[")
-	}
-
 	e.write(helper)
 	e.write("(")
 
@@ -620,10 +616,6 @@ func (e *emitter) emitShimValueMethodCall(call *ast.CallExpr, selector *ast.Sele
 	}
 
 	e.write(")")
-
-	if osFileMultiReturn[key] {
-		e.write("]")
-	}
 
 	return true, nil
 }
