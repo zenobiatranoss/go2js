@@ -779,13 +779,10 @@ function go2jsErrorMessage(err) {
 		return "<nil>";
 	}
 
-	err = go2jsUnwrap(err);
-
-	if (err === null || err === undefined) {
-		return "<nil>";
-	}
-
-	return typeof err === "object" && err.message !== undefined ? err.message : String(err);
+	// An error is asked of itself what it says, which a value carrying an Error
+	// method of its own is asked the same way, so that joining errors says what
+	// each of them says rather than what it is built from.
+	return go2jsErrorString(go2jsUnwrap(err));
 }
 
 function go2jsDuration(nanoseconds) {
