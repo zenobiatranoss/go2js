@@ -59,6 +59,19 @@ func scalarNamedMethodName(typeName, method string) string {
 	return typeJavaScriptName(typeName) + method
 }
 
+// scalarNamedMethodAnswers reports whether a method of a named type is answered
+// under that name. A method of a type the program declares is written out
+// alongside the type, so it is answered whatever it is called, and a method
+// that came in with an import is answered only when the runtime carries it,
+// since nothing was written out for it.
+func (e *emitter) scalarNamedMethodAnswers(fn *gotypesstd.Func, typeName, method string) bool {
+	if fn != nil && e.declaresInSource(fn) {
+		return true
+	}
+
+	return runtimeHelperNames()[scalarNamedMethodName(typeName, method)]
+}
+
 func (e *emitter) emitNamedConversion(call *ast.CallExpr, named *gotypesstd.Named, typeName *gotypesstd.TypeName) error {
 	if call == nil || len(call.Args) == 0 {
 		return fmt.Errorf("unsupported conversion")
@@ -369,6 +382,10 @@ func (e *emitter) emitScalarNamedMethodCall(call *ast.CallExpr, selector *ast.Se
 		return false, nil
 	}
 
+	if !e.scalarNamedMethodAnswers(method, typeName, method.Name()) {
+		return false, nil
+	}
+
 	if e.scalarNamedPointerReceiver(selector) {
 		return e.emitScalarNamedPointerCall(call, selector, typeName, method.Name())
 	}
@@ -451,6 +468,10 @@ func (e *emitter) emitScalarNamedMethodValue(selector *ast.SelectorExpr) (bool, 
 
 	method, ok := e.analysis.Selections[selector].Obj().(*gotypesstd.Func)
 	if !ok {
+		return false, nil
+	}
+
+	if !e.scalarNamedMethodAnswers(method, typeName, method.Name()) {
 		return false, nil
 	}
 

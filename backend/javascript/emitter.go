@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/zenobiatranoss/go2js/compiler/semantic"
 	gotypes "github.com/zenobiatranoss/go2js/types"
@@ -730,8 +731,20 @@ func emitFilePass(file *ast.File, analysis *gotypes.Result, context *semantic.Co
 // ProgramRuntime returns the runtime bundle a program needs for the given
 // generated code, so callers that concatenate several files can emit it once.
 func ProgramRuntime(requiredSource, target string) string {
-	prefix := runtimeBundle(
-		requiredSource,
+	prefix := runtimeBundle(requiredSource, runtimeSourceParts()...)
+	prefix = lowerJavaScriptTarget(prefix, normalizeTarget(target))
+
+	if prefix != "" {
+		prefix += "\n"
+	}
+
+	return prefix
+}
+
+// runtimeSourceParts are the sources the runtime is written in, which the
+// bundle is cut from.
+func runtimeSourceParts() []string {
+	return []string{
 		runtimeSource(),
 		collectionRuntimeSource(),
 		rangeRuntimeSource(),
@@ -763,14 +776,27 @@ func ProgramRuntime(requiredSource, target string) string {
 		netHTTPRuntimeSource(),
 		osEnvironRuntimeSource(),
 		randGeneratorSource(),
-	)
-	prefix = lowerJavaScriptTarget(prefix, normalizeTarget(target))
-
-	if prefix != "" {
-		prefix += "\n"
 	}
+}
 
-	return prefix
+var runtimeNamesOnce sync.Once
+var runtimeNames map[string]bool
+
+// runtimeHelperNames are the names the runtime declares, which is what tells a
+// method of a type that came in with an import apart from one the runtime has no
+// answer for, since nothing was written out for the latter.
+func runtimeHelperNames() map[string]bool {
+	runtimeNamesOnce.Do(func() {
+		runtimeNames = map[string]bool{}
+
+		for _, source := range runtimeSourceParts() {
+			for _, name := range runtimeDeclaredNames(source) {
+				runtimeNames[name] = true
+			}
+		}
+	})
+
+	return runtimeNames
 }
 
 func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
