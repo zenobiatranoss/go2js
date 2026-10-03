@@ -261,3 +261,89 @@ func TestPackageVarValuesEmitSingleCall(t *testing.T) {
 		}
 	}
 }
+
+// A unit the program reaches is still made of parts, and only the parts it
+// reaches are carried, since a helper nobody calls is a helper nobody needs.
+func TestRuntimeBundleLeavesOutTheHelpersNobodyCalls(t *testing.T) {
+	source := runtimeBundle(
+		`function main(){go2jsWanted(value);}`,
+		`function go2jsWanted(value) {
+	return go2jsHelper(value);
+}
+
+function go2jsHelper(value) {
+	return value + 1;
+}
+
+function go2jsUncalled(value) {
+	return value - 1;
+}
+
+const go2jsTable = new Map();
+`,
+	)
+
+	if !strings.Contains(source, "function go2jsWanted") {
+		t.Fatal("required runtime helper missing")
+	}
+
+	if !strings.Contains(source, "function go2jsHelper") {
+		t.Fatal("runtime dependency missing")
+	}
+
+	if strings.Contains(source, "function go2jsUncalled") {
+		t.Fatal("runtime helper nothing calls was included")
+	}
+
+	if strings.Contains(source, "go2jsTable") {
+		t.Fatal("runtime global nothing asks for was included")
+	}
+}
+
+// A declaration spread over lines without a semicolon of its own still ends
+// where the declaration after it begins.
+func TestRuntimeBundleSplitsDeclarationsWithoutSemicolons(t *testing.T) {
+	source := runtimeBundle(
+		`function main(){go2jsWanted(value);}`,
+		`var go2jsWanted = [
+	1,
+	2
+]
+
+function go2jsUncalled(value) {
+	return value;
+}
+`,
+	)
+
+	if !strings.Contains(source, "go2jsWanted = [") {
+		t.Fatal("required runtime declaration missing")
+	}
+
+	if strings.Contains(source, "function go2jsUncalled") {
+		t.Fatal("declaration after one without a semicolon was left out")
+	}
+}
+
+// A statement standing at the top of a source is there for what it does rather
+// than for what can be asked of it, so it is carried whether or not anything
+// points back at it.
+func TestRuntimeBundleKeepsStatementsThatOnlyRun(t *testing.T) {
+	source := runtimeBundle(
+		`function main(){go2jsLookup("Named");}`,
+		`function go2jsLookup(name) {
+	return go2jsTable[name];
+}
+
+const go2jsTable = {};
+
+go2jsTable["Named"] = function() {
+	return 1;
+};
+`,
+	)
+
+	if !strings.Contains(source, `go2jsTable["Named"] = function()`) {
+		t.Fatalf("statement that only runs was left out:\n%s", source)
+	}
+}
