@@ -145,7 +145,7 @@ function go2jsChanRecvPair(channel) {
 			}
 
 			if (!go2jsProgress() && !go2jsWaitForEarliestTimer()) {
-				throw new Error("go2js: all goroutines are asleep - deadlock!");
+				throw go2jsFatalError("all goroutines are asleep - deadlock!");
 			}
 		}
 	} finally {
@@ -222,7 +222,7 @@ function go2jsChanSend(channel, value) {
 		}
 
 		if (!go2jsProgress()) {
-			throw new Error("go2js: all goroutines are asleep - deadlock!");
+			throw go2jsFatalError("all goroutines are asleep - deadlock!");
 		}
 	}
 }
@@ -292,7 +292,7 @@ function go2jsChannelRange(channel) {
 					// closed, and a receive waits for whatever will send on it,
 					// a goroutine or the moment a timer comes due.
 					if (channel === null || channel === undefined) {
-						throw new Error("go2js: no goroutine can unblock this channel receive");
+						throw go2jsFatalError("all goroutines are asleep - deadlock!");
 					}
 
 					const result = go2jsChanRecvPair(channel);

@@ -1,6 +1,9 @@
 package integration_test
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestRuntimeFaultsSpeakGo(t *testing.T) {
 	source := `package main
@@ -303,4 +306,140 @@ func main() {
 `
 
 	requireGoNodeOutput(t, source)
+}
+
+// A fault the program never deals with ends the run the way Go ends it: the
+// words of the fault, the goroutine it happened on, the frames of the program,
+// and a status of two. A trace of the engine underneath is not part of it, since
+// Go has no engine underneath to trace.
+func TestUncaughtFaultsEndTheRunAsGoDoes(t *testing.T) {
+	cases := []struct {
+		name   string
+		source string
+	}{
+		{
+			name: "index past the end",
+			source: `package main
+
+func main() {
+	s := []int{}
+	i := 3
+	println(s[i])
+}
+`,
+		},
+		{
+			name: "index below the start",
+			source: `package main
+
+func main() {
+	a := [2]int{1, 2}
+	i := -1
+	println(a[i])
+}
+`,
+		},
+		{
+			name: "dividing by nothing",
+			source: `package main
+
+func main() {
+	a := 1
+	b := 0
+	println(a / b)
+}
+`,
+		},
+		{
+			name: "reaching through nothing",
+			source: `package main
+
+type box struct{ X int }
+
+func main() {
+	var p *box
+	println(p.X)
+}
+`,
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			goTrace, _, jsTrace, jsStatus, _ := runTraceParity(t, testCase.source)
+
+			// The run of a Go program is not the program, so what it printed about
+			// the status it ended with is what says the program ended with two.
+			if !strings.Contains(goTrace, "exit status 2") {
+				t.Fatalf("go did not end with a status of two:\n%s", goTrace)
+			}
+
+			if jsStatus != 2 {
+				t.Fatalf("node status = %d, want 2\n%s", jsStatus, jsTrace)
+			}
+
+			want := traceLines(goTrace)
+			got := traceLines(jsTrace)
+
+			if len(got) == 0 || len(want) == 0 {
+				t.Fatalf("no trace written\ngo:\n%s\njs:\n%s", goTrace, jsTrace)
+			}
+
+			if got[0] != want[0] {
+				t.Fatalf("fault line\nwant: %s\ngot:  %s", want[0], got[0])
+			}
+
+			if !strings.HasPrefix(jsTrace, "panic: ") {
+				t.Fatalf("fault is not written as a panic:\n%s", jsTrace)
+			}
+
+			for _, engine := range []string{"Node.js", "at Object.", "at Module.", "RangeError:", "at run_main"} {
+				if strings.Contains(jsTrace, engine) {
+					t.Fatalf("trace of the engine underneath leaked through:\n%s", jsTrace)
+				}
+			}
+		})
+	}
+}
+
+// Every goroutine asleep with nothing left to wake one is not a panic but a
+// fatal error, and Go writes it with its own words rather than as a panic. The
+// status is two either way.
+func TestDeadlockIsWrittenAsAFatalError(t *testing.T) {
+	source := `package main
+
+func main() {
+	ch := make(chan int, 1)
+
+	for i := 0; i < 3; i++ {
+		ch <- i
+	}
+
+	println("sent all")
+}
+`
+
+	goTrace, _, jsTrace, jsStatus, _ := runTraceParity(t, source)
+
+	if !strings.Contains(goTrace, "exit status 2") {
+		t.Fatalf("go did not end with a status of two:\n%s", goTrace)
+	}
+
+	if jsStatus != 2 {
+		t.Fatalf("node status = %d, want 2\n%s", jsStatus, jsTrace)
+	}
+
+	if !strings.HasPrefix(jsTrace, "fatal error: all goroutines are asleep - deadlock!\n") {
+		t.Fatalf("deadlock is not written as a fatal error:\n%s", jsTrace)
+	}
+
+	if strings.Contains(jsTrace, "panic:") {
+		t.Fatalf("deadlock is written as a panic:\n%s", jsTrace)
+	}
+
+	for _, engine := range []string{"Node.js", "at Object.", "at Module.", "Error:", "at run_main"} {
+		if strings.Contains(jsTrace, engine) {
+			t.Fatalf("trace of the engine underneath leaked through:\n%s", jsTrace)
+		}
+	}
 }

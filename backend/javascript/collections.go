@@ -543,11 +543,11 @@ function go2jsSliceView(data, offset, length, capacity) {
 			const index = Number(property);
 			if (Number.isInteger(index) && String(index) === String(property)) {
 				if (index < 0) {
-					throw new RangeError(go2jsRuntimeErrorPrefix + "index out of range [" + index + "]");
+					throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "index out of range [" + index + "]");
 				}
 
 				if (index >= state.length) {
-					throw new RangeError(go2jsRuntimeErrorPrefix + "index out of range [" + index + "] with length " + state.length);
+					throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "index out of range [" + index + "] with length " + state.length);
 				}
 				state.data[state.offset + index] = value;
 				return true;

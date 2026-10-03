@@ -121,7 +121,7 @@ func (e *emitter) emitSelectStmt(stmt *ast.SelectStmt) error {
 		e.newline()
 	} else {
 		e.writeIndent()
-		e.write("if (!go2jsProgress()) { throw new Error(\"go2js: all goroutines are asleep - deadlock\"); }")
+		e.write("if (!go2jsProgress()) { throw go2jsFatalError(\"all goroutines are asleep - deadlock!\"); }")
 		e.newline()
 		e.writeIndent()
 		e.write("continue;")
