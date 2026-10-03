@@ -6,6 +6,7 @@ const go2jsNativeMap = globalThis.Map;
 const go2jsNativeSet = globalThis.Set;
 const go2jsNativeDate = globalThis.Date;
 const go2jsNativeTypeError = globalThis.TypeError;
+const go2jsNativeRangeError = globalThis.RangeError;
 const go2jsNativeError = globalThis.Error;
 
 // The words Go puts in front of every fault it raises on its own.
@@ -5902,11 +5903,11 @@ function go2jsIndexSet(value, index, next) {
 	const position = Math.trunc(Number(index));
 
 	if (position < 0) {
-		throw new RangeError(go2jsRuntimeErrorPrefix + "index out of range [" + position + "]");
+		throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "index out of range [" + position + "]");
 	}
 
 	if (position >= go2jsLen(value)) {
-		throw new RangeError(go2jsRuntimeErrorPrefix + "index out of range [" + position + "] with length " + go2jsLen(value));
+		throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "index out of range [" + position + "] with length " + go2jsLen(value));
 	}
 
 	if (value instanceof Uint8Array) {
@@ -5921,13 +5922,13 @@ function go2jsIndex(value, index) {
 	const position = Math.trunc(Number(index));
 
 	if (position < 0) {
-		throw new RangeError(go2jsRuntimeErrorPrefix + "index out of range [" + position + "]");
+		throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "index out of range [" + position + "]");
 	}
 
 	const length = go2jsLen(value);
 
 	if (position >= length) {
-		throw new RangeError(go2jsRuntimeErrorPrefix + "index out of range [" + position + "] with length " + length);
+		throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "index out of range [" + position + "] with length " + length);
 	}
 
 	return value[position];
@@ -6056,7 +6057,7 @@ function go2jsWideMul(left, right, typeName) {
 function go2jsWideQuo(left, right, typeName) {
 	return go2jsWideBinary(left, right, (a, b) => {
 		if (b === 0) {
-			throw new RangeError(go2jsRuntimeErrorPrefix + "integer divide by zero");
+			throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "integer divide by zero");
 		}
 
 		return a / b;
@@ -6066,7 +6067,7 @@ function go2jsWideQuo(left, right, typeName) {
 function go2jsWideRem(left, right, typeName) {
 	return go2jsWideBinary(left, right, (a, b) => {
 		if (b === 0) {
-			throw new RangeError(go2jsRuntimeErrorPrefix + "integer divide by zero");
+			throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "integer divide by zero");
 		}
 
 		return a % b;
@@ -6192,7 +6193,7 @@ function go2jsDivide(left, right) {
 	}
 
 	if (right === 0) {
-		throw new RangeError(go2jsRuntimeErrorPrefix + "integer divide by zero");
+		throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "integer divide by zero");
 	}
 
 	return Math.trunc(left / right);
@@ -6331,7 +6332,7 @@ function go2jsMod(left, right) {
 	}
 
 	if (right === 0) {
-		throw new RangeError(go2jsRuntimeErrorPrefix + "integer divide by zero");
+		throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "integer divide by zero");
 	}
 
 	return left - Math.trunc(left / right) * right;
@@ -6389,7 +6390,11 @@ function go2jsPanic(value) {
 // Go says a runtime fault in the same words however it was reached, so a
 // JavaScript error about a missing value is given Go's wording on the way out.
 function go2jsRuntimeErrorText(value) {
-	if (!(value instanceof go2jsNativeTypeError)) {
+	// An index past the end of something and a division by nothing are faults
+	// the engine raises on its own behalf, in the same way that reaching
+	// through a standing-for-nothing value is, and Go words all three the same
+	// way however they were reached.
+	if (!(value instanceof go2jsNativeTypeError) && !(value instanceof go2jsNativeRangeError)) {
 		return null;
 	}
 
@@ -6403,11 +6408,29 @@ function go2jsRuntimeErrorText(value) {
 		return go2jsRuntimeErrorPrefix + "invalid memory address or nil pointer dereference";
 	}
 
-	if (message.startsWith("index out of range") || message.startsWith("integer divide by zero")) {
-		return go2jsRuntimeErrorPrefix + message;
+	// A fault the runtime raised carries the words Go puts in front of one
+	// already, so the fault itself is what is judged and the words are put
+	// back on the way out rather than left where they were found.
+	const fault = message.startsWith(go2jsRuntimeErrorPrefix)
+		? message.slice(go2jsRuntimeErrorPrefix.length)
+		: message;
+
+	if (fault.startsWith("index out of range") || fault.startsWith("integer divide by zero")) {
+		return go2jsRuntimeErrorPrefix + fault;
 	}
 
 	return null;
+}
+
+// A fault the runtime raises about itself rather than about the program, such as
+// every goroutine being asleep with nothing left to wake one, is not a panic:
+// Go ends the program with a fatal error instead, and the difference is what
+// tells the two apart on the way out.
+function go2jsFatalError(text) {
+	const error = new Error(text);
+	error.__go2js_fatal = text;
+
+	return error;
 }
 
 function go2jsPanicPayload(value) {

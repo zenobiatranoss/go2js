@@ -216,6 +216,15 @@ function go2jsPanicMessage(value) {
 function go2jsReportUncaughtPanic(thrown) {
 	const value = thrown === null || thrown === undefined ? undefined : thrown.__go2js_panic_value;
 
+	// A fault the runtime raised about itself rather than about the program is
+	// a fatal error, which Go writes with its own words in place of a panic and
+	// ends the program the same way.
+	if (thrown !== null && thrown !== undefined && thrown.__go2js_fatal !== undefined) {
+		process.stderr.write("fatal error: " + thrown.__go2js_fatal + "\n\ngoroutine 1 [running]:\n" +
+			go2jsFramesText(go2jsGoFrames(go2jsThrownLines(thrown))));
+		process.exit(2);
+	}
+
 	// A fault of the runtime itself is written the way Go writes it as well, so a
 	// member reached through a standing-for-nothing value is the nil dereference
 	// Go would have raised rather than the wording of the engine underneath.
