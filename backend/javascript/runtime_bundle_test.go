@@ -129,6 +129,7 @@ func runtimeBundleSources() []string {
 		funcTypeRuntimeSource(),
 		reflectRuntimeSource(),
 		debugRuntimeSource(),
+		mathBitsRuntimeSource(),
 		httptestRuntimeSource(),
 		netRuntimeSource(),
 		runtimeShimRuntimeSource(),

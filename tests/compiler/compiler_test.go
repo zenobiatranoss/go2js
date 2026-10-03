@@ -95,7 +95,9 @@ func main() {
 		t.Fatal(err)
 	}
 
-	if !strings.Contains(output, "let values = [1, 2, 3];") {
+	// A slice literal is written with the type it was written as, the same way
+	// a map literal is, so that a printed slice carries the type Go writes.
+	if !strings.Contains(output, `let values = go2jsSliceTyped("[]int", [1, 2, 3]);`) {
 		t.Fatalf("unexpected slice output:\n%s", output)
 	}
 

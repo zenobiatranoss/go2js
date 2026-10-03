@@ -70,6 +70,13 @@ func (e *emitter) constLiteral(name *ast.Ident) (string, error) {
 			return javaScriptStringLiteral(constant.StringVal(value)), nil
 		}
 
+		// A whole number wider than a double cannot hold exactly is written the
+		// way JavaScript keeps whole numbers of that size, so the digits the
+		// program was given are the digits the program keeps.
+		if value.Kind() == constant.Int {
+			return normalizedIntegerLiteral(value)
+		}
+
 		return value.ExactString(), nil
 	}
 

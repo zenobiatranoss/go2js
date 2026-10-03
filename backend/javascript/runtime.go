@@ -233,6 +233,61 @@ function go2jsOSSetenv(name, value) {
     return null;
 }
 
+// go2jsOSUnsetenv takes a name out of the environment, and a name that is not
+// there is not an error: Go answers nothing either way.
+function go2jsOSUnsetenv(name) {
+    delete process.env[String(name)];
+    return null;
+}
+
+// go2jsOSLookupEnv answers a name and whether it was there at all, which is the
+// difference between a name set to nothing and a name that is not set.
+function go2jsOSLookupEnv(name) {
+    const value = process.env[String(name)];
+
+    if (value === undefined) {
+        return ["", false];
+    }
+
+    return [value, true];
+}
+
+// go2jsOSUserHomeDir is the directory a program keeps a user's own files in,
+// which is the one the environment names and the one the system has of its own
+// accord.
+function go2jsOSUserHomeDir() {
+    try {
+        const home = require("os").homedir();
+
+        if (typeof home === "string" && home !== "") {
+            return [home, null];
+        }
+    } catch (err) {
+        return ["", go2jsOSPathError(err, "user home directory")];
+    }
+
+    return ["", new Error("neither $HOME nor $USERPROFILE is set")];
+}
+
+// go2jsOSUserCacheDir is the directory a program keeps what it has worked out
+// between runs in, which is the one the environment names and the one the
+// system has of its own accord.
+function go2jsOSUserCacheDir() {
+    try {
+        if (typeof require("os").tmpdir === "function") {
+            const cache = require("os").tmpdir();
+
+            if (typeof cache === "string" && cache !== "") {
+                return [cache, null];
+            }
+        }
+    } catch (err) {
+        return ["", go2jsOSPathError(err, "user cache directory")];
+    }
+
+    return ["", new Error("neither $XDG_CACHE_HOME nor $HOME is set")];
+}
+
 // go2jsOSStatObject builds the FileInfo a stat call answers with, which is the
 // same thing a file answers a stat of its own with.
 function go2jsOSStatObject(stats, path) {
@@ -337,18 +392,15 @@ function go2jsTimeDate(year, month, day, hour, minute, second, nanosecond, locat
     return go2jsTimeValue(date);
 }
 
-// go2jsTimeMonth wraps a month number so it prints as its Go name while still
-// comparing and converting like the underlying integer.
-function go2jsTimeMonth(month) {
-    return {
-        __go2js_month: month,
-        valueOf: function() {
-            return this.__go2js_month;
-        },
-        String: function() {
-            return go2jsMonthName(this.__go2js_month);
-        }
-    };
+// MonthString and WeekdayString are the String methods of the two named numbers
+// the time package keeps a name for, which a method called on a value of either
+// type reaches under the name its type and the method make between them.
+function MonthString(month) {
+	return go2jsMonthName(month);
+}
+
+function WeekdayString(weekday) {
+	return go2jsWeekdayName(weekday);
 }
 
 function go2jsMonthName(month) {
@@ -358,6 +410,37 @@ function go2jsMonthName(month) {
     ];
 
     return names[month - 1] || "";
+}
+
+function go2jsWeekdayName(weekday) {
+    const names = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+    return names[weekday] || "";
+}
+
+// go2jsTimeLocation names where a moment is being read, which is what a location
+// prints and what a moment read in it carries.
+function go2jsTimeLocation(name) {
+    return {
+        __go2js_location: name,
+        String: function() {
+            return this.__go2js_location;
+        }
+    };
+}
+
+// go2jsTimeLocationName is the name a location prints, which is the name it was
+// given and UTC for the location a moment carries when it was never told.
+function go2jsTimeLocationName(location) {
+    if (location === null || location === undefined) {
+        return "UTC";
+    }
+
+    if (typeof location === "object" && typeof location.__go2js_location === "string") {
+        return location.__go2js_location;
+    }
+
+    return String(location);
 }
 
 // go2jsTimeZero is the zero time, which is January 1 of year 1 at midnight UTC.
@@ -387,7 +470,7 @@ function go2jsTimeValue(date) {
             return this.value.getUTCFullYear();
         },
         Month: function() {
-            return go2jsTimeMonth(this.value.getUTCMonth() + 1);
+            return this.value.getUTCMonth() + 1;
         },
         Day: function() {
             return this.value.getUTCDate();
@@ -406,6 +489,44 @@ function go2jsTimeValue(date) {
         },
         Clock: function() {
             return [this.Hour(), this.Minute(), this.Second()];
+        },
+        YearDay: function() {
+            const year = this.value.getUTCFullYear();
+            const start = Date.UTC(year, 0, 1);
+
+            return Math.floor((Date.UTC(this.value.getUTCFullYear(), this.value.getUTCMonth(), this.value.getUTCDate()) - start) / 86400000) + 1;
+        },
+        Weekday: function() {
+            return this.value.getUTCDay();
+        },
+        UTC: function() {
+            const self = go2jsTimeValue(this.value);
+            self.__go2js_location = "UTC";
+            return self;
+        },
+        Local: function() {
+            const self = go2jsTimeValue(this.value);
+            self.__go2js_location = "Local";
+            return self;
+        },
+        In: function(location) {
+            const self = go2jsTimeValue(this.value);
+            self.__go2js_location = go2jsTimeLocationName(location);
+            return self;
+        },
+        Location: function() {
+            return go2jsTimeLocation(this.__go2js_location === undefined ? "UTC" : this.__go2js_location);
+        },
+        Zone: function() {
+            const name = this.__go2js_location === undefined ? "UTC" : this.__go2js_location;
+            return [name, name === "UTC" ? 0 : 0];
+        },
+        AddDate: function(years, months, days) {
+            const date = new Date(this.value.getTime());
+            date.setUTCFullYear(date.getUTCFullYear() + Number(years), date.getUTCMonth() + Number(months), date.getUTCDate() + Number(days));
+            const next = go2jsTimeValue(date);
+            next.__go2js_location = this.__go2js_location;
+            return next;
         },
         Unix: function() {
             return Math.floor(this.value.getTime() / 1000);
@@ -671,6 +792,18 @@ function go2jsRegexpNew(pattern) {
         ReplaceAllLiteral(value, replacement) {
             return go2jsStringify(value).replace(go2jsRegexpNewRegExp(source, "g"), () => go2jsStringify(replacement));
         },
+        ReplaceAllStringFunc(value, replacer) {
+            return String(value).replace(go2jsRegexpNewRegExp(source, "g"), match => go2jsCallNow(replacer, null, [match]));
+        },
+        ReplaceAllFunc(value, replacer) {
+            return go2jsBytesToString(value).replace(go2jsRegexpNewRegExp(source, "g"), match => go2jsCallNow(replacer, null, [match]));
+        },
+        ReplaceStringFunc(value, replacer) {
+            return String(value).replace(go2jsRegexpNewRegExp(source), match => go2jsCallNow(replacer, null, [match]));
+        },
+        ReplaceFunc(value, replacer) {
+            return go2jsStringify(value).replace(go2jsRegexpNewRegExp(source), match => go2jsCallNow(replacer, null, [match]));
+        },
         Split(value, limit) {
             return go2jsRegexpSplit(source, value, limit);
         },
@@ -779,41 +912,57 @@ function go2jsFilepathIsAbs(value) {
 }
 
 function go2jsFilepathRel(base, target) {
-	const from = go2jsFilepathClean(base).split("/").filter(part => part !== "");
-	const to = go2jsFilepathClean(target).split("/").filter(part => part !== "");
+	const from = go2jsFilepathClean(base);
+	const to = go2jsFilepathClean(target);
+
+	if (from === to) {
+		return [".", null];
+	}
+
+	// A pair of paths only reaches one another when both name a location the
+	// same way, so a root in one and not the other is refused.
+	if (go2jsFilepathIsAbs(from) !== go2jsFilepathIsAbs(to)) {
+		return ["", go2jsErrorsNew("Rel: can't make " + String(target) + " relative to " + String(base))];
+	}
+
+	const fromParts = from.split("/").filter(part => part !== "");
+	const toParts = to.split("/").filter(part => part !== "");
 
 	let shared = 0;
 
-	while (shared < from.length && shared < to.length && from[shared] === to[shared]) {
+	while (shared < fromParts.length && shared < toParts.length && fromParts[shared] === toParts[shared]) {
 		shared++;
+	}
+
+	// A path cannot step above a directory it was never inside of.
+	if (fromParts[shared] === "..") {
+		return ["", go2jsErrorsNew("Rel: can't make " + String(target) + " relative to " + String(base))];
 	}
 
 	const parts = [];
 
-	for (let i = shared; i < from.length; i++) {
+	for (let i = shared; i < fromParts.length; i++) {
 		parts.push("..");
 	}
 
-	for (let i = shared; i < to.length; i++) {
-		parts.push(to[i]);
+	for (let i = shared; i < toParts.length; i++) {
+		parts.push(toParts[i]);
 	}
 
-	return parts.join("/");
+	return [parts.join("/"), null];
 }
 
 function go2jsFilepathSplit(value) {
 	const path = String(value);
 	const index = path.lastIndexOf("/");
 
+	// The directory a split leaves behind still carries the separator that
+	// divided it from the file, so joining the two gives the path again.
 	if (index < 0) {
 		return ["", path];
 	}
 
-	if (index === 0) {
-		return ["/", path.slice(1)];
-	}
-
-	return [path.slice(0, index), path.slice(index + 1)];
+	return [path.slice(0, index + 1), path.slice(index + 1)];
 }
 
 function go2jsFilepathToSlash(value) {
@@ -2426,6 +2575,8 @@ function go2jsJSONEmpty(value) {
 }
 
 function go2jsJSONUnmarshal(data, target, fields, destination, stringFields, fieldTypes) {
+    go2jsJSONFirstError = null;
+
     try {
         const text = typeof data === "string" ? data : new TextDecoder().decode(Uint8Array.from(data));
         const value = JSON.parse(text);
@@ -2436,14 +2587,14 @@ function go2jsJSONUnmarshal(data, target, fields, destination, stringFields, fie
 
         if (destination !== null && destination !== undefined && destination.kind !== undefined) {
             go2jsJSONAssign(target, go2jsJSONStore(value, target, destination, text, ""));
-            return null;
+            return go2jsJSONFirstError;
         }
 
         if (typeof target === "object") {
             if (value !== null && typeof value === "object") {
                 go2jsJSONDecode(value, target, fields, stringFields, fieldTypes, text, "");
             }
-            return null;
+            return go2jsJSONFirstError;
         }
 
         return null;
@@ -2956,6 +3107,70 @@ function go2jsJSONSeekElement(text, index, wanted) {
     return -1;
 }
 
+// go2jsJSONZeroStruct builds an anonymous struct with the fields it was
+// declared with, each holding what that kind of field holds before anything has
+// been read into it, since a field is only read into a place that stands for it
+// already.
+function go2jsJSONZeroStruct(descriptor) {
+    const out = {};
+
+    if (descriptor === null || descriptor === undefined || descriptor.fields === null || descriptor.fields === undefined) {
+        return out;
+    }
+
+    const types = descriptor.types === null || descriptor.types === undefined ? null : descriptor.types;
+
+    for (const name of Object.keys(descriptor.fields)) {
+        out[name] = go2jsJSONZeroValue(types === null ? null : types[name]);
+    }
+
+    return out;
+}
+
+// go2jsJSONFillZeroFields gives an anonymous struct the fields it was declared
+// with that nothing stands for yet, leaving the ones that already stand for
+// something as they are.
+function go2jsJSONFillZeroFields(struct, descriptor) {
+    if (struct === null || struct === undefined || descriptor === null || descriptor === undefined ||
+        descriptor.fields === null || descriptor.fields === undefined) {
+        return;
+    }
+
+    const types = descriptor.types === null || descriptor.types === undefined ? null : descriptor.types;
+
+    for (const name of Object.keys(descriptor.fields)) {
+        if (!(name in struct)) {
+            struct[name] = go2jsJSONZeroValue(types === null ? null : types[name]);
+        }
+    }
+}
+
+// go2jsJSONZeroValue is what a field holds before the text has anything to say
+// about it, which for a struct is a struct of its own with its own fields.
+function go2jsJSONZeroValue(descriptor) {
+    if (descriptor === null || descriptor === undefined || descriptor.kind === undefined) {
+        return null;
+    }
+
+    switch (descriptor.kind) {
+    case "struct":
+    case "lazy":
+        return go2jsJSONZeroStruct(descriptor);
+    case "slice":
+        return [];
+    case "map":
+        return {};
+    case "number":
+        return 0;
+    case "string":
+        return "";
+    case "bool":
+        return false;
+    default:
+        return null;
+    }
+}
+
 // go2jsJSONStore builds the value a destination of the given kind holds out of
 // the value the text held, and hands it back for the caller to put where that
 // destination stands.
@@ -2981,9 +3196,16 @@ function go2jsJSONStore(value, target, descriptor, text, path) {
         // into a pointer with nothing behind it comes down to
         let struct = go2jsJSONPointerTarget(target);
 
-        if (struct === null || struct === undefined || go2jsJSONStructMapping(struct) === null) {
+        // A struct with a name of its own is read through that type, so a value
+        // carrying no type is built from the one it was declared under. An
+        // anonymous struct is described by the mapping written beside it rather
+        // than by a type, so whatever already stands for it is read into.
+        if (struct === null || struct === undefined ||
+            (descriptor.name !== "" && go2jsJSONStructMapping(struct) === null)) {
             const constructor = descriptor.name === "" ? undefined : go2jsTypeNames[descriptor.name];
-            struct = constructor !== undefined && constructor !== null ? new constructor() : {};
+            struct = constructor !== undefined && constructor !== null ? new constructor() : go2jsJSONZeroStruct(descriptor);
+        } else {
+            go2jsJSONFillZeroFields(struct, descriptor);
         }
 
         go2jsJSONDecode(value, struct, descriptor.fields, descriptor.string, descriptor.types, text, path);
@@ -3432,6 +3654,98 @@ function go2jsJSONError(message) {
     return go2jsSentinelError(message)();
 }
 
+// A read keeps the first failure it ran into, since that is the one a program
+// is told about, and it keeps reading so that a partial value is still there
+// for whatever the program does with the fields that did fit.
+let go2jsJSONFirstError = null;
+
+function go2jsJSONSaveError(err) {
+    if (go2jsJSONFirstError === null) {
+        go2jsJSONFirstError = err;
+    }
+}
+
+// go2jsJSONValueKind names what the text held, the way a read that was handed
+// something of the wrong kind describes what it was handed.
+function go2jsJSONValueKind(value) {
+    if (value === null || value === undefined) {
+        return "null";
+    }
+
+    if (Array.isArray(value)) {
+        return "array";
+    }
+
+    switch (typeof value) {
+    case "string":
+        return "string";
+    case "number":
+    case "bigint":
+        return "number";
+    case "boolean":
+        return "bool";
+    case "object":
+        return "object";
+    default:
+        return "value";
+    }
+}
+
+// go2jsJSONFitsKind answers whether what the text held can stand for a field of
+// the kind it was declared to hold. Nothing in the text stands for anything, so
+// a null fits whatever it is read into, which is how Go reads a null into a
+// number and leaves it as it was.
+function go2jsJSONFitsKind(value, kind) {
+    if (value === null || value === undefined) {
+        return true;
+    }
+
+    switch (kind) {
+    case "number":
+        return typeof value === "number" || typeof value === "bigint";
+    case "string":
+        return typeof value === "string";
+    case "bool":
+        return typeof value === "boolean";
+    case "slice":
+        return Array.isArray(value);
+    case "map":
+        return value !== null && typeof value === "object" && !Array.isArray(value);
+    case "struct":
+    case "lazy":
+        return value !== null && typeof value === "object" && !Array.isArray(value);
+    default:
+        return true;
+    }
+}
+
+// go2jsJSONElemKind is the kind of what a destination holds, which for a
+// pointer is the kind of what it points at.
+function go2jsJSONElemKind(descriptor) {
+    if (descriptor === null || descriptor === undefined || descriptor.kind === undefined) {
+        return null;
+    }
+
+    return descriptor.kind === "ptr" ? go2jsJSONElemKind(descriptor.elem) : descriptor.kind;
+}
+
+function go2jsJSONTypeName(kind) {
+    switch (kind) {
+    case "number":
+        return "number";
+    case "string":
+        return "string";
+    case "bool":
+        return "bool";
+    case "slice":
+        return "slice";
+    case "map":
+        return "map";
+    default:
+        return "value";
+    }
+}
+
 function go2jsJSONCoerceString(value) {
     if (value === null || value === undefined) {
         return "";
@@ -3633,7 +3947,16 @@ function go2jsJSONDecode(value, target, fields, stringFields, fieldTypes, text, 
         // field the program declared a type for is that type and for one it did
         // not is whatever the text held
         if (fieldTypes !== null && fieldTypes !== undefined && fieldTypes[name] !== undefined) {
-            target[name] = go2jsJSONStore(item, null, fieldTypes[name], text, go2jsJSONPath(path, key));
+            const declared = fieldTypes[name];
+
+            if (declared !== null && declared !== undefined && declared.kind !== undefined &&
+                !go2jsJSONFitsKind(item, go2jsJSONElemKind(declared))) {
+                go2jsJSONSaveError(go2jsJSONError("json: cannot unmarshal " + go2jsJSONValueKind(item) +
+                    " into Go struct field " + name + " of type " + go2jsJSONTypeName(go2jsJSONElemKind(declared))));
+                continue;
+            }
+
+            target[name] = go2jsJSONStore(item, null, declared, text, go2jsJSONPath(path, key));
             continue;
         }
 
@@ -3679,7 +4002,7 @@ go2jsStringsBuilder.prototype.Len = function() {
     let total = 0;
 
     for (const part of this.parts) {
-        total += part.length;
+        total += go2jsStringByteLength(part);
     }
 
     return total;
@@ -3770,10 +4093,14 @@ go2jsBytesBuffer.prototype.UnreadByte = function() {
 
 go2jsBytesBuffer.prototype.ReadByte = function() {
     if (this.data.length === 0) {
-        return -1;
+        // A buffer with nothing left in it is emptied of its room and answers
+        // the end of the input rather than a byte it does not have.
+        this.data = [];
+
+        return [0, go2jsIOEOF()];
     }
 
-    return this.data.shift();
+    return [this.data.shift(), null];
 };
 
 go2jsBytesBuffer.prototype.Available = function() {
@@ -4499,6 +4826,16 @@ go2jsRegisterMethod("Values.Add", go2jsURLValuesAdd);
 go2jsRegisterMethod("Values.Del", go2jsURLValuesDel);
 go2jsRegisterMethod("Values.Has", go2jsURLValuesHas);
 go2jsRegisterMethod("Values.Encode", go2jsURLValuesEncode);
+
+// A month and a weekday are written as the number they are, so the name they
+// print is registered under the name of their type for a value that was boxed
+// as that type and so has nowhere of its own to keep the method.
+go2jsRegisterMethod("time.Month.String", function(value) {
+	return go2jsMonthName(Number(go2jsUnwrap(value)));
+});
+go2jsRegisterMethod("time.Weekday.String", function(value) {
+	return go2jsWeekdayName(Number(go2jsUnwrap(value)));
+});
 const go2jsInterfaces = Object.create(null);
 const go2jsStructFormats = Object.create(null);
 const go2jsTypeNames = Object.create(null);
@@ -4640,6 +4977,13 @@ function go2jsGoTypeNameRaw(value) {
 	}
 
 	if (Array.isArray(value)) {
+		// A list that was made from a declaration of its own knows what it was
+		// declared to hold, and one that was not holds values nothing is known
+		// about, so it says that rather than naming a type off the first of them.
+		if (typeof value.__go2js_type === "string" && value.__go2js_type !== "") {
+			return value.__go2js_type;
+		}
+
 		return "[]interface {}";
 	}
 
@@ -4860,6 +5204,13 @@ function go2jsPointerTargets(pointer) {
 	try {
 		value = pointer[go2jsPointerGet]();
 	} catch (error) {
+		return false;
+	}
+
+	// Only a pointer to a struct, an array, a slice or a map is written with a
+	// leading &. A pointer to a pointer is written as a bare address, since the
+	// value it points at is itself only an address.
+	if (value !== null && value !== undefined && value.__go2js_pointer === true) {
 		return false;
 	}
 
@@ -5968,6 +6319,22 @@ function go2jsMapTypeName(typeName) {
 	return String(typeName).replace(/\bany\b/g, "interface {}");
 }
 
+// go2jsSliceTyped says what a list was written as, the same way a map literal
+// is marked with the type it was written as, so that a printed slice carries
+// the type Go writes rather than one read off the first value it holds.
+function go2jsSliceTyped(typeName, list) {
+	if (list !== null && list !== undefined && typeName !== undefined && typeName !== null && typeName !== "") {
+		Object.defineProperty(list, "__go2js_type", {
+			value: typeName,
+			writable: true,
+			configurable: true,
+			enumerable: false
+		});
+	}
+
+	return list;
+}
+
 function go2jsMapTyped(typeName, map) {
 	if (map !== null && map !== undefined && typeName !== undefined && typeName !== null && typeName !== "") {
 		Object.defineProperty(map, "__go2js_type", {
@@ -7031,6 +7398,18 @@ function go2jsFormat(value, typeName, kind, shape, plus, nested, raw) {
 
 	value = go2jsUntyped(value);
 
+	// A month and a weekday are numbers that are written down under a name, and
+	// fmt writes the name rather than the number. Only the verbs that hand a
+	// value over to what it says of itself do so, which is what the raw flag,
+	// standing for %#v, says is not wanted here.
+	if (raw !== true) {
+		const calendar = go2jsCalendarName(typeName);
+
+		if (calendar !== null && typeof value === "number") {
+			return calendar(value);
+		}
+	}
+
 	// A number too big for a double is held as the whole number it is, and the
 	// verbs are written against the number itself, so a plain number of that
 	// kind is shown as the digits it is made of. Which verb is in play is worked
@@ -7097,7 +7476,7 @@ function go2jsFormat(value, typeName, kind, shape, plus, nested, raw) {
 	// A slice or an array carries the wrapper on itself, so there is nothing
 	// left to unwrap and it formats as the composite it is rather than as a
 	// value pointing at itself.
-	if (value.__go2js_interface === true && value.value !== value) {
+	if ((value.__go2js_interface === true || value.__go2js_typed === true) && value.value !== value) {
 		if (raw !== true && typeof value.type === "string") {
 			const errorer = go2jsMethodTable[value.type + ".Error"];
 
@@ -7217,7 +7596,9 @@ function go2jsJoinOperands(values, alwaysSpace) {
 			}
 		}
 
-		text += go2jsFormat(values[i]);
+		// Println and Print have no format to read a type from, so the type an
+		// operand is boxed as is what a verb would have been given.
+		text += go2jsFormat(values[i], go2jsTypedType(values[i]), go2jsTypedKind(values[i]), go2jsTypedShape(values[i]));
 	}
 
 	return text;
@@ -7629,8 +8010,14 @@ function go2jsFormatForPrinter(format, args, wrapErrs) {
 		// where fmt says it may, and only around an error, so every other use is
 		// a verb no operand takes.
 		if (verb === "w" && !(wrapErrs === true && go2jsIsErrorOperand(arg))) {
-			result += "%!w(" + go2jsDynamicTypeName(arg, go2jsTypedType(arg)) + "=" +
-				go2jsFormatValue("v", spec.replace(/w$/, "v"), arg, true) + ")";
+			// A nil operand is written as the name of its type alone, with
+			// nothing after an equals sign, because there is no value to write
+			// there. Any other operand is written the way a verb no operand
+			// takes is written: its type and its value beside one another.
+			result += "%!w(" + go2jsDynamicTypeName(arg, go2jsTypedType(arg)) +
+				(arg === null || arg === undefined
+					? ""
+					: "=" + go2jsFormatValue("v", spec.replace(/w$/, "v"), arg, true)) + ")";
 		} else {
 			result += verb === "w"
 				? go2jsFormatValue("v", spec.replace(/w$/, "v"), arg)
@@ -7803,6 +8190,18 @@ function go2jsTyped(value, type, kind, shape) {
 	// still prints as [] rather than <nil>.
 	if (typeof shape === "string" && shape !== "") {
 		wrapper.shape = shape;
+	}
+
+	// A type that says how it is written out has that written on the box, so a
+	// method called on the value reaches the same answer printing it would give.
+	if (typeof type === "string" && type !== "") {
+		const stringer = go2jsMethodTable[type + ".String"];
+
+		if (typeof stringer === "function") {
+			wrapper.String = function() {
+				return go2jsCallNow(stringer, null, [this.value]);
+			};
+		}
 	}
 
 	return wrapper;
@@ -8024,9 +8423,28 @@ function go2jsIsBasicScalarName(typeName) {
 	}
 }
 
-function go2jsGoSyntax(value) {
+function go2jsGoSyntax(value, typeName) {
+	// A value held in an interface is written out as the value it holds, named
+	// by the type it was held as, since the wrapper itself is not written.
+	if (value !== null && value !== undefined &&
+		(value.__go2js_typed === true || value.__go2js_interface === true)) {
+		const held = value.value;
+
+		if (go2jsDeclaredTypeName(typeName) === "" &&
+			typeof value.type === "string" && value.type !== "") {
+			typeName = value.type;
+		}
+
+		return go2jsGoSyntax(held, typeName);
+	}
+
 	if (value === null || value === undefined) {
-		return "<nil>";
+		// A value held in an interface has no value of its own when the value it
+		// holds is nothing, so what is written is the type it was held as rather
+		// than the nothing itself.
+		const declared = go2jsDeclaredTypeName(typeName);
+
+		return declared === "" ? "<nil>" : declared + "(nil)";
 	}
 
 	if (value.__go2js_pointer === true) {
@@ -8049,12 +8467,15 @@ function go2jsGoSyntax(value) {
 		const entries = Array.from(value.entries());
 		entries.sort((a, b) => go2jsCompareValues(a[0], b[0]));
 
-		return "map[" + go2jsGoTypeName(value) + "]" +
+		// The name of a map already says what it holds keys and values of, so it
+		// is written out as it stands rather than wrapped in brackets again.
+		return go2jsCollectionTypeName(value, typeName) +
 			"{" + entries.map(([key, item]) => go2jsGoSyntax(key) + ":" + go2jsGoSyntax(item)).join(", ") + "}";
 	}
 
 	if (Array.isArray(value)) {
-		return "[]" + go2jsGoTypeName(value) + "{" + value.map(item => go2jsGoSyntax(item)).join(", ") + "}";
+		return go2jsCollectionTypeName(value, typeName) +
+			"{" + value.map(item => go2jsGoSyntax(item)).join(", ") + "}";
 	}
 
 	const ctor = value.constructor;
@@ -8072,6 +8493,46 @@ function go2jsGoSyntax(value) {
 	}
 
 	return go2jsQualifiedTypeName(go2jsGoTypeName(value)) + "{" + parts.join(", ") + "}";
+}
+
+// go2jsCollectionTypeName is the name a list or a map is written out under. A
+// value held in an interface carries the type it was held as, which is the one
+// to write, while a value of its own is named by what it holds.
+function go2jsCollectionTypeName(value, typeName) {
+	const declared = go2jsDeclaredTypeName(typeName);
+
+	return declared === "" ? go2jsGoTypeName(value) : declared;
+}
+
+// go2jsDeclaredTypeName is the type a value was declared as, or nothing when
+// what is offered names nothing in particular. An interface names no type of its
+// own, and a value the host holds in a slot of its own is given a name that says
+// where it sits rather than what it is.
+function go2jsDeclaredTypeName(name) {
+	if (typeof name !== "string") {
+		return "";
+	}
+
+	if (name === "" || name === "interface {}" || name === "null" ||
+		name === "undefined" || name === "unknown" || name === "Object" || name === "Array") {
+		return "";
+	}
+
+	return name;
+}
+
+// go2jsCalendarName is the helper that writes a month or a weekday under the
+// name it is known by, or nothing when the type is neither of them.
+function go2jsCalendarName(typeName) {
+	if (typeName === "time.Month") {
+		return go2jsMonthName;
+	}
+
+	if (typeName === "time.Weekday") {
+		return go2jsWeekdayName;
+	}
+
+	return null;
 }
 
 function go2jsQualifiedTypeName(name) {
@@ -8351,7 +8812,8 @@ function go2jsFormatValue(verb, spec, value, raw) {
 	// because a String or an Error method is reached through the type the box
 	// names rather than through the value it wraps.
 	const operand = value;
-	const boxed = operand !== null && operand !== undefined && operand.__go2js_interface === true;
+	const boxed = operand !== null && operand !== undefined &&
+		(operand.__go2js_interface === true || operand.__go2js_typed === true);
 	const boxedType = boxed && typeof operand.type === "string" ? operand.type : null;
 
 	value = go2jsUnwrap(go2jsUntyped(value));
@@ -8383,6 +8845,22 @@ function go2jsFormatValue(verb, spec, value, raw) {
 	// answered before anything tries to treat it as a plain number.
 	if (typeof value === "bigint") {
 		return go2jsBigintFormat(value, {verb: verb, flags: flags, precision: precision, width: parsed.width}, tagName, kind);
+	}
+
+	// A month and a weekday are numbers that are written down under a name, and
+	// fmt hands them to what they say of themselves rather than reading them as
+	// the whole numbers they are, so the verbs that accept a string are answered
+	// here rather than refused against the number underneath.
+	const calendar = go2jsCalendarName(tagName);
+
+	if (calendar !== null && typeof value === "number" && go2jsVerbInSet(verb, "vsq")) {
+		if (verb === "q") {
+			return go2jsPad(JSON.stringify(calendar(value)), parsed, false);
+		}
+
+		if (verb === "s") {
+			return go2jsPad(calendar(value), parsed, false);
+		}
 	}
 
 	const accepted = kind || go2jsInferTypeName(value, tagName);
@@ -8482,8 +8960,10 @@ function go2jsFormatValue(verb, spec, value, raw) {
 	// slice is the exception: the quoted verbs and the hex verbs read it as a
 	// string rather than as a list of numbers.
 	const isBytes = go2jsIsByteCompound(accepted);
-	// %T and %p answer for the whole operand, so they never reach the elements.
-	const compound = verb === "T" || verb === "p" || (isBytes && go2jsVerbInSet(verb, "qsxX"))
+	// The sharp flag with %v asks for the value as Go writes it, which is the
+	// whole of it with its type in front rather than the elements one by one.
+	const compound = verb === "T" || verb === "p" || (verb === "v" && flags.includes("#")) ||
+		(isBytes && go2jsVerbInSet(verb, "qsxX"))
 		? null
 		: go2jsCompoundElements(value, accepted);
 
@@ -8605,7 +9085,7 @@ function go2jsFormatValue(verb, spec, value, raw) {
 			let sign = "";
 
 			if (flags.includes("#")) {
-				text = go2jsGoSyntax(value);
+				text = go2jsGoSyntax(value, boxedType);
 			} else if (flags.includes("+") && !go2jsHasFormatMethod(operand)) {
 				text = go2jsFormatFields(value);
 			} else {
@@ -9753,48 +10233,201 @@ function go2jsStringsCount(s, substr) {
 	return s.split(substr).length - 1;
 }
 
-function go2jsStrconvItoa(value) {
-	return String(Math.trunc(value));
+function go2jsStrconvItoa(value, base) {
+	base = base === undefined || base === 0 ? 10 : base;
+
+	// A count wider than a double holds exactly keeps its own kind of whole
+	// number, and the digits of that number are the digits Go writes.
+	if (typeof value === "bigint") {
+		return value.toString(base);
+	}
+
+	return Math.trunc(value).toString(base);
+}
+
+// go2jsStrconvParseInteger reads a whole number in the way Go's strconv does:
+// nothing but the digits of the number and an optional sign may be there, and
+// JavaScript's own parsing is far more forgiving, so the text is checked first.
+function go2jsStrconvParseInteger(text, base) {
+	if (typeof text === "string") {
+		text = text.trim();
+	} else {
+		text = go2jsStringify(text);
+	}
+
+	const sign = /^[+-]/.test(text) ? text[0] : "";
+
+	if (sign) {
+		text = text.slice(1);
+	}
+
+	if (text.length === 0) {
+		return null;
+	}
+
+	base = base === undefined || base === 0 ? 10 : base;
+
+	// A base that is not one of the ones Go accepts names no number at all.
+	if (![2, 8, 10, 16].includes(base)) {
+		return null;
+	}
+
+	const digits = base === 16 ? /^[0-9a-fA-F]+$/ : base === 10 ? /^[0-9]+$/ : base === 8 ? /^[0-7]+$/ : /^[01]+$/;
+
+	if (!digits.test(text)) {
+		return null;
+	}
+
+	if (sign === "+" && /^0/.test(text)) {
+		return null;
+	}
+
+	let value;
+
+	if (base === 10) {
+		value = Number(text);
+	} else {
+		value = parseInt(text, base);
+	}
+
+	if (typeof value !== "number" || !Number.isFinite(value)) {
+		return null;
+	}
+
+	return sign === "-" ? -value : value;
+}
+
+// go2jsStrconvFitsWidth reports whether a number is inside the width it was
+// asked to be read at, because Go answers a count that does not fit with an
+// error rather than with the number it could not hold.
+function go2jsStrconvFitsWidth(value, bitSize) {
+	switch (bitSize) {
+	case 0:
+	case 8:
+		return value >= -128 && value <= 255;
+	case 16:
+		return value >= -32768 && value <= 65535;
+	case 32:
+		return value >= -2147483648 && value <= 4294967295;
+	default:
+		return true;
+	}
 }
 
 function go2jsStrconvAtoi(s) {
-	const value = parseInt(s, 10);
-	if (Number.isNaN(value)) {
+	const value = go2jsStrconvParseInteger(s, 10);
+
+	if (value === null) {
 		return [0, new Error("strconv.Atoi: parsing " + JSON.stringify(s) + ": invalid syntax")];
 	}
+
+	if (!go2jsStrconvFitsWidth(value, 64)) {
+		return [0, new Error("strconv.Atoi: parsing " + JSON.stringify(s) + ": value out of range")];
+	}
+
 	return [value, null];
 }
 
 function go2jsStrconvParseInt(s, base, bitSize) {
-	const value = parseInt(s, base || 10);
-	if (Number.isNaN(value)) {
-		return [0, new Error("strconv.ParseInt: parsing " + JSON.stringify(s) + ": invalid syntax")];
+	const text = go2jsStringify(s).trim();
+
+	base = base === undefined || base === 0 ? 10 : base;
+
+	const parsed = go2jsStrconvParseInteger(text, base);
+
+	if (parsed === null) {
+		return [0, new Error('strconv.ParseInt: parsing "' + text + '": invalid syntax')];
 	}
-	return [value, null];
+
+	// A signed count at the full sixty four bits keeps the digits it was given,
+	// because a double cannot hold them and rounding them would answer with a
+	// number Go never wrote.
+	if (bitSize === 64 || bitSize === 0 || bitSize === undefined) {
+		const digits = text.replace(/^[+-]/, "");
+
+		if (base === 10 && /^[0-9]+$/.test(digits)) {
+			const exact = BigInt(digits);
+
+			if (text.startsWith("-")) {
+				if (exact <= 9223372036854775808n) {
+					return [-exact, null];
+				}
+
+				return [0, new Error('strconv.ParseInt: parsing "' + text + '": value out of range')];
+			}
+
+			if (exact <= 9223372036854775807n) {
+				return [exact, null];
+			}
+
+			return [0, new Error('strconv.ParseInt: parsing "' + text + '": value out of range')];
+		}
+
+		if (base === 16 && /^[0-9a-fA-F]+$/.test(digits)) {
+			const exact = BigInt("0x" + digits);
+
+			return text.startsWith("-") ? [-exact, null] : [exact, null];
+		}
+	}
+
+	if (!go2jsStrconvFitsWidth(parsed, bitSize)) {
+		return [0, new Error('strconv.ParseInt: parsing "' + text + '": value out of range')];
+	}
+
+	return [parsed, null];
 }
 
 function go2jsStrconvParseUint(s, base, bitSize) {
 	const text = go2jsStringify(s).trim();
-	const negative = text.startsWith("-");
 
-	if (negative) {
+	if (text.startsWith("-") || text.startsWith("+")) {
 		return [0, new Error('strconv.ParseUint: parsing "' + text + '": invalid syntax')];
 	}
 
-	const value = parseInt(text, base || 10);
+	// A count wider than a double can hold exactly is a count JavaScript keeps as
+	// a whole number of its own kind, which is where the digits are kept.
+	const digits = go2jsStrconvParseInteger(text, base);
 
-	if (Number.isNaN(value) || value < 0) {
+	if (digits === null) {
 		return [0, new Error('strconv.ParseUint: parsing "' + text + '": invalid syntax')];
+	}
+
+	if (bitSize === 64 || bitSize === 0 || bitSize === undefined) {
+		const exact = BigInt(text);
+
+		if (exact >= 0n && exact <= 18446744073709551615n) {
+			return [exact, null];
+		}
+	}
+
+	const value = digits;
+
+	if (value < 0 || !go2jsStrconvFitsWidth(value, bitSize)) {
+		return [0, new Error('strconv.ParseUint: parsing "' + text + '": value out of range')];
 	}
 
 	return [value, null];
 }
 
 function go2jsStrconvParseFloat(s, bitSize) {
-	const value = parseFloat(s);
-	if (Number.isNaN(value)) {
-		return [0, new Error("strconv.ParseFloat: parsing " + JSON.stringify(s) + ": invalid syntax")];
+	const text = go2jsStringify(s).trim();
+
+	// JavaScript reads a whole number as an integer no matter which fraction was
+	// asked for, so the fraction is asked about on its own.
+	if (!/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(text)) {
+		return [0, new Error('strconv.ParseFloat: parsing "' + text + '": invalid syntax')];
 	}
+
+	const value = parseFloat(text);
+
+	if (Number.isNaN(value)) {
+		return [0, new Error('strconv.ParseFloat: parsing "' + text + '": invalid syntax')];
+	}
+
+	if (bitSize === 32) {
+		return [Math.fround(value), null];
+	}
+
 	return [value, null];
 }
 
@@ -10014,7 +10647,9 @@ function go2jsStrconvUnquote(s) {
 		}
 		return [JSON.parse(s), null];
 	} catch (err) {
-		return ["", new Error("strconv.Unquote: invalid syntax")];
+		// The error a quoted string that cannot be read gives back is the plain
+		// one Go hands back, with nothing said about which function ran.
+		return ["", new Error("invalid syntax")];
 	}
 }
 
@@ -10036,10 +10671,25 @@ function go2jsStrconvFormatVerb(value) {
 	return String.fromCodePoint(code);
 }
 
+// go2jsStrconvExponent writes an exponent the way Go writes one: a sign and at
+// least two digits, because a one digit exponent is written 0 in front of it.
+function go2jsStrconvExponent(text, upper) {
+	return text.replace(/[eE]([+-]?\d+)$/, (_, digits) => {
+		const sign = digits.startsWith("-") ? "-" : "+";
+		const rest = digits.replace(/^[+-]/, "");
+
+		return (upper ? "E" : "e") + sign + (rest.length < 2 ? "0" + rest : rest);
+	});
+}
+
 function go2jsStrconvFormatFloat(value, format, precision, bitSize) {
-	const number = Number(value);
+	let number = Number(value);
 
 	format = go2jsStrconvFormatVerb(format);
+
+	if (typeof value === "bigint") {
+		return value.toString();
+	}
 
 	if (Number.isNaN(number)) {
 		return "NaN";
@@ -10049,47 +10699,92 @@ function go2jsStrconvFormatFloat(value, format, precision, bitSize) {
 		return number < 0 ? "-Inf" : "+Inf";
 	}
 
+	// A number that was asked about as a smaller kind of number is rounded to
+	// that kind first, so the digits written are the digits it keeps.
+	if (bitSize === 32) {
+		number = Math.fround(number);
+	}
+
 	switch (format) {
 	case "f":
 		return precision >= 0 ? number.toFixed(precision) : String(number);
 	case "e":
-		return number.toExponential(Math.max(0, precision)).replace("E", "e");
+		return go2jsStrconvExponent(number.toExponential(precision < 0 ? 6 : precision), false);
 	case "E":
-		return number.toExponential(Math.max(0, precision)).replace("e", "E");
+		return go2jsStrconvExponent(number.toExponential(precision < 0 ? 6 : precision), true);
 	case "g":
 	case "G":
-		return String(number);
+		// The shortest form is the number as JavaScript writes it, and it is
+		// written as an exponent once the position of the first digit is far
+		// enough from the point, which is the same distance Go uses.
+		const text = go2jsStrconvShortestFloat(number);
+
+		if (precision >= 0 && (format === "g" ? precision !== 0 : precision !== 0)) {
+			const fixed = format === "g" ? number.toPrecision(precision) : number.toExponential(precision - 1);
+
+			return format === "g" ? go2jsStrconvExponent(fixed, false) : go2jsStrconvExponent(fixed, true);
+		}
+
+		return go2jsStrconvExponent(text, format === "G");
 	default:
 		return String(number);
 	}
+}
+
+// go2jsStrconvShortestFloat writes a number the way the shortest form of Go's
+// strconv writes it, which switches to an exponent once the digits run far from
+// the point in either direction.
+function go2jsStrconvShortestFloat(number) {
+	if (number === 0) {
+		return String(number);
+	}
+
+	const magnitude = Math.abs(number);
+	const exponent = Math.floor(Math.log10(magnitude));
+	const digits = String(number).replace(/^-/, "").replace(".", "").replace(/e.*$/, "").replace(/0+$/, "") || "0";
+
+	// Go writes the exponent form once the first digit is left of one past the
+	// point for a large number, or right of four under it for a small one.
+	if (exponent < -4 || exponent >= 6) {
+		const mantissa = number / Math.pow(10, exponent);
+		const rounded = Number(mantissa.toPrecision(17));
+
+		return String(rounded) + "e" + (exponent < 0 ? "-" : "+") + Math.abs(exponent);
+	}
+
+	return String(number);
 }
 
 function go2jsStrconvFormatBool(value) {
 	return value ? "true" : "false";
 }
 
-function go2jsStrconvAppendInt(dst, value, base) {
-	const text = Math.trunc(value).toString(base || 10);
-	if (Array.isArray(dst)) {
-		return dst.concat(Array.from(text, (ch) => ch.charCodeAt(0)));
+// go2jsStrconvAppendText writes text onto the end of a byte slice, starting a
+// slice of its own when there is not one yet.
+function go2jsStrconvAppendText(dst, text) {
+	const bytes = Array.isArray(dst) ? dst.slice() : [];
+
+	for (const ch of String(text)) {
+		bytes.push(ch.charCodeAt(0));
 	}
-	return String(dst) + text;
+
+	return bytes;
+}
+
+function go2jsStrconvAppendInt(dst, value, base) {
+	const text = go2jsStrconvItoa(value, base || 10);
+
+	return go2jsStrconvAppendText(dst, text);
 }
 
 function go2jsStrconvAppendFloat(dst, value, format, precision, bitSize) {
 	const text = go2jsStrconvFormatFloat(value, format, precision, bitSize);
-	if (Array.isArray(dst)) {
-		return dst.concat(Array.from(text, (ch) => ch.charCodeAt(0)));
-	}
-	return String(dst) + text;
+
+	return go2jsStrconvAppendText(dst, text);
 }
 
 function go2jsStrconvAppendBool(dst, value) {
-	const text = value ? "true" : "false";
-	if (Array.isArray(dst)) {
-		return dst.concat(Array.from(text, (ch) => ch.charCodeAt(0)));
-	}
-	return String(dst) + text;
+	return go2jsStrconvAppendText(dst, value ? "true" : "false");
 }
 
 function go2jsSortInts(values) {
@@ -10224,15 +10919,17 @@ function go2jsSortIsSortedInterface(data, typeName) {
 	return true;
 }
 
-function go2jsSortSearch(values, target, less) {
-	const items = go2jsToArray(values);
+function go2jsSortSearch(count, found) {
+	const total = Number(count);
 	let low = 0;
-	let high = items.length;
+	let high = total;
 
 	while (low < high) {
 		const mid = Math.floor((low + high) / 2);
 
-		if (go2jsCallNow(less, null, [target, items[mid]])) {
+		// The function says whether the item at a position sorts at or after
+		// what is being looked for, and the search keeps the half it describes.
+		if (go2jsCallNow(found, null, [mid])) {
 			high = mid;
 		} else {
 			low = mid + 1;
