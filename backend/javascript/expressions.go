@@ -1127,14 +1127,6 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			}
 		}
 
-		if pkg, ok := x.X.(*ast.Ident); ok && pkg.Name == "os" {
-			switch x.Sel.Name {
-			case "PathSeparator":
-				e.write(`"/"`)
-				return nil
-			}
-		}
-
 		if method, signature, kind, ok := e.selectorMethod(x); ok {
 			if kind == gotypes.MethodVal {
 				if handled, err := e.emitScalarNamedMethodValue(x); handled {

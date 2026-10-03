@@ -115,7 +115,6 @@ var packageVarValues = map[string]string{
 	"os.Args": `go2jsOSArgs`,
 
 	"filepath.Separator":     `47`,
-	"path.Separator":         `47`,
 	"os.PathSeparator":       `47`,
 	"os.PathListSeparator":   `58`,
 	"filepath.ListSeparator": `58`,
@@ -1119,11 +1118,10 @@ var packageVarTypes = map[string]string{
 
 	"os.Args": "[]string",
 
-	"filepath.Separator":     "uint8",
-	"path.Separator":         "uint8",
-	"os.PathSeparator":       "uint8",
-	"filepath.ListSeparator": "uint8",
-	"os.PathListSeparator":   "uint8",
+	"filepath.Separator":     "rune",
+	"os.PathSeparator":       "rune",
+	"filepath.ListSeparator": "rune",
+	"os.PathListSeparator":   "rune",
 
 	"os.ErrNotExist":         "error",
 	"os.ErrExist":            "error",
