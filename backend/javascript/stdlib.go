@@ -237,7 +237,7 @@ var mathFuncs = map[string]string{
 	"Pow":     "Math.pow",
 	"Floor":   "Math.floor",
 	"Ceil":    "Math.ceil",
-	"Round":   "Math.round",
+	"Round":   "go2jsMathRound",
 	"Trunc":   "Math.trunc",
 	"Log":     "Math.log",
 	"Log2":    "Math.log2",
@@ -472,24 +472,36 @@ var httpStatusCodes = map[string]int{"StatusContinue": 100,
 }
 
 var osFuncs = map[string]string{
-	"Environ":    "go2jsOSEnviron",
-	"Getenv":     "go2jsOSGetenv",
-	"Setenv":     "go2jsOSSetenv",
-	"Stat":       "go2jsOSStat",
-	"Lstat":      "go2jsOSLstat",
-	"Getpid":     "go2jsOSGetpid",
-	"Getppid":    "go2jsOSGetppid",
-	"Getuid":     "go2jsOSGetuid",
-	"Geteuid":    "go2jsOSGeteuid",
-	"Getgid":     "go2jsOSGetgid",
-	"Getegid":    "go2jsOSGetegid",
-	"Hostname":   "go2jsOSHostname",
-	"Executable": "go2jsOSExecutable",
-	"Args":       "go2jsOSArgs",
+	"Environ":      "go2jsOSEnviron",
+	"Getenv":       "go2jsOSGetenv",
+	"Setenv":       "go2jsOSSetenv",
+	"Unsetenv":     "go2jsOSUnsetenv",
+	"LookupEnv":    "go2jsOSLookupEnv",
+	"UserHomeDir":  "go2jsOSUserHomeDir",
+	"UserCacheDir": "go2jsOSUserCacheDir",
+	"Stat":         "go2jsOSStat",
+	"Lstat":        "go2jsOSLstat",
+	"Getpid":       "go2jsOSGetpid",
+	"Getppid":      "go2jsOSGetppid",
+	"Getuid":       "go2jsOSGetuid",
+	"Geteuid":      "go2jsOSGeteuid",
+	"Getgid":       "go2jsOSGetgid",
+	"Getegid":      "go2jsOSGetegid",
+	"Hostname":     "go2jsOSHostname",
+	"Executable":   "go2jsOSExecutable",
+	"Args":         "go2jsOSArgs",
 }
 
 var bytesFuncs = map[string]string{
 	"Equal": "go2jsBytesEqual",
+}
+
+// bytesConstants are the numbers and errors the bytes package names. A Reader
+// keeps a buffer at least this long, and reading a buffer larger than
+// ErrTooLarge is refused rather than tried.
+var bytesConstants = map[string]string{
+	"MinRead":     "512",
+	"ErrTooLarge": `new Error("bytes.Buffer: too large")`,
 }
 
 var bufioFuncs = map[string]string{
@@ -578,6 +590,8 @@ var multiReturnStdlibFuncs = map[string]bool{
 	"io.CopyN":             true,
 	"io.ReadAtLeast":       true,
 	"strings.Cut":          true,
+	"bytes.Cut":            true,
+	"slices.Chunk":         true,
 	"path.Split":           true,
 	"bufio.ScanLines":      true,
 	"strconv.Atoi":         true,
@@ -588,5 +602,7 @@ var multiReturnStdlibFuncs = map[string]bool{
 	"time.ParseDuration":   true,
 	"json.Marshal":         true,
 	"json.Unmarshal":       false,
+	"os.UserHomeDir":       true,
+	"os.UserCacheDir":      true,
 	"url.Parse":            true,
 }

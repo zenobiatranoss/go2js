@@ -200,6 +200,10 @@ func moreStdlibFuncs() {
 		packageConstants["bufio."+name] = value
 	}
 
+	for name, value := range bytesConstants {
+		packageConstants["bytes."+name] = value
+	}
+
 	for name, value := range httpConstants {
 		packageConstants["http."+name] = value
 	}
@@ -250,6 +254,31 @@ func moreRuntimeSource() string {
 
 function go2jsMathPow10(value) {
 	return Math.pow(10, Number(value));
+}
+
+// go2jsMathRound rounds a number to the whole number nearest it, and a number
+// exactly halfway between two takes the one further from zero. JavaScript rounds
+// a half upwards whatever the sign, so a half below zero is turned around by
+// hand rather than asked of Math.round.
+function go2jsMathRound(value) {
+	const x = Number(value);
+
+	if (!Number.isFinite(x)) {
+		return x;
+	}
+
+	const floor = Math.floor(x);
+	const difference = x - floor;
+
+	// A number above the whole number below it has half a step or more to go up
+	// towards, and a number below zero has that same half step to go down. A
+	// number exactly halfway between two is not nearer one of them, so it takes
+	// the one further from zero either way.
+	if (x >= 0) {
+		return difference < 0.5 ? floor : floor + 1;
+	}
+
+	return difference > 0.5 ? floor + 1 : floor;
 }
 
 function go2jsMathRoundToEven(value) {
@@ -586,21 +615,26 @@ function go2jsStrconvQuoteRuneToASCII(value) {
 }
 
 function go2jsStrconvAppendQuoteToGraphic(target, value) {
-	go2jsStrconvAppendBytes(target, go2jsStrconvQuoteToGraphic(value));
-
-	return target;
+	return go2jsStrconvAppendBytes(target, go2jsStrconvQuoteToGraphic(value));
 }
 
 function go2jsStrconvAppendQuoteToASCII(target, value) {
-	go2jsStrconvAppendBytes(target, go2jsStrconvQuoteGraphic(go2jsStringify(value), true, false));
-
-	return target;
+	return go2jsStrconvAppendBytes(target, go2jsStrconvQuoteGraphic(go2jsStringify(value), true, false));
 }
 
+// go2jsStrconvAppendBytes writes text onto the end of a byte slice. Appending to
+// a slice that is not there yet starts one, so the slice that is written to and
+// the slice that is handed back are the same slice either way.
 function go2jsStrconvAppendBytes(target, text) {
+	if (!Array.isArray(target)) {
+		target = [];
+	}
+
 	for (let index = 0; index < text.length; index++) {
 		target.push(text.charCodeAt(index));
 	}
+
+	return target;
 }
 
 const go2jsQuoteEscapes = {
@@ -661,6 +695,19 @@ function go2jsStrconvQuoteGraphic(text, asciiOnly, singleRune) {
 const go2jsStrconvDigits = "0123456789abcdefghijklmnopqrstuvwxyz";
 
 function go2jsStrconvFormatUint(value, base) {
+	base = base === undefined || base === 0 ? 10 : base;
+
+	// A count wider than a double holds exactly is a whole number of its own
+	// kind in JavaScript, and the digits of it are written here rather than
+	// worked out of a number that cannot hold them.
+	if (typeof value === "bigint") {
+		if (value < 0n) {
+			throw go2jsStdlibError("strconv: invalid unsigned integer");
+		}
+
+		return value.toString(base);
+	}
+
 	let remaining = Number(value);
 
 	if (!Number.isFinite(remaining) || remaining < 0 || Math.floor(remaining) !== remaining) {
@@ -687,9 +734,7 @@ function go2jsStrconvFormatUint(value, base) {
 }
 
 function go2jsStrconvAppendUint(target, value, base) {
-	go2jsStrconvAppendBytes(target, go2jsStrconvFormatUint(value, base));
-
-	return target;
+	return go2jsStrconvAppendBytes(target, go2jsStrconvFormatUint(value, base));
 }
 
 function go2jsStrconvCanBackquote(value) {

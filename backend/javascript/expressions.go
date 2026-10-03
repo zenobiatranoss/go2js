@@ -1146,56 +1146,6 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			return err
 		}
 
-		if pkg, ok := x.X.(*ast.Ident); ok && pkg.Name == "time" {
-			switch x.Sel.Name {
-			case "January":
-				e.write("1")
-				return nil
-			case "February":
-				e.write("2")
-				return nil
-			case "March":
-				e.write("3")
-				return nil
-			case "April":
-				e.write("4")
-				return nil
-			case "May":
-				e.write("5")
-				return nil
-			case "June":
-				e.write("6")
-				return nil
-			case "July":
-				e.write("7")
-				return nil
-			case "August":
-				e.write("8")
-				return nil
-			case "September":
-				e.write("9")
-				return nil
-			case "October":
-				e.write("10")
-				return nil
-			case "November":
-				e.write("11")
-				return nil
-			case "December":
-				e.write("12")
-				return nil
-			case "UTC":
-				e.write("0")
-				return nil
-			case "Hour":
-				e.write("3600000000000")
-				return nil
-			case "Minute":
-				e.write("60000000000")
-				return nil
-			}
-		}
-
 		if pkg, ok := x.X.(*ast.Ident); ok && pkg.Name == "http" {
 			switch x.Sel.Name {
 			case "MethodGet":
@@ -1513,7 +1463,25 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			return nil
 		}
 
-		if fixedArray {
+		// A slice of a type of its own says what it holds when it is asked, the
+		// same way a map literal is marked with the type it was written as, so
+		// that a printed slice is written out with the type Go gives it.
+		sliceTypeName := ""
+
+		if !fixedArray {
+			if declared := e.analyzedType(x); declared != nil {
+				if _, ok := declared.Underlying().(*gotypes.Slice); ok {
+					sliceTypeName = declared.String()
+				}
+			}
+		}
+
+		if sliceTypeName != "" {
+			e.needsRuntime = true
+			e.write("go2jsSliceTyped(")
+			e.write(strconv.Quote(sliceTypeName))
+			e.write(", [")
+		} else if fixedArray {
 			e.write("go2jsMarkArray([")
 		} else if x.Type != nil {
 			if _, ok := x.Type.(*ast.ArrayType); ok {
@@ -1566,7 +1534,9 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			}
 		}
 
-		if fixedArray {
+		if sliceTypeName != "" {
+			e.write("])")
+		} else if fixedArray {
 			e.write("])")
 		} else if x.Type != nil {
 			if _, ok := x.Type.(*ast.ArrayType); ok {
@@ -2164,6 +2134,7 @@ var stdlibMethodMultiReturn = map[string]bool{
 	"bytes.Buffer.WriteTo":         true,
 	"bytes.Buffer.ReadFrom":        true,
 	"bytes.Buffer.Read":            true,
+	"bytes.Buffer.ReadByte":        true,
 	"html/template.Template.Parse": true,
 	"html/template.Template.New":   true,
 	"text/template.Template.Parse": true,
