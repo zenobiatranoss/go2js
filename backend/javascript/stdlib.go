@@ -368,6 +368,9 @@ var filepathFuncs = map[string]string{
 	"ToSlash":    "go2jsFilepathToSlash",
 	"Match":      "go2jsFilepathMatch",
 	"VolumeName": "go2jsFilepathVolumeName",
+	"Glob":       "go2jsFilepathGlob",
+	"Walk":       "go2jsFilepathWalk",
+	"WalkDir":    "go2jsFilepathWalkDir",
 }
 
 var regexpFuncs = map[string]string{

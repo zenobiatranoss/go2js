@@ -260,3 +260,69 @@ func main() {
 }
 `)
 }
+
+func TestFileModeIsItsOwnType(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+)
+
+func main() {
+	// every mark a file mode can carry, written as Go writes them
+	modes := []os.FileMode{
+		0,
+		os.ModeDir,
+		os.ModeDir | 0o755,
+		0o644,
+		0o777,
+		os.ModeSymlink | 0o777,
+		os.ModeNamedPipe,
+		os.ModeSocket,
+		os.ModeDevice,
+		os.ModeCharDevice | 0o600,
+		os.ModeSetuid | 0o755,
+		os.ModeSticky | 0o777,
+		os.ModeAppend,
+		os.ModeExclusive,
+		os.ModeTemporary,
+		os.ModeIrregular,
+	}
+
+	for _, mode := range modes {
+		fmt.Println(mode, mode.IsDir(), mode.IsRegular(), mode.Type(), mode.Perm())
+	}
+
+	// marks put on a mode leave it a mode rather than a number
+	mode := os.FileMode(0o644)
+	mode |= 0o111
+	mode &^= 0o044
+
+	fmt.Println(mode, mode.IsDir(), mode.Perm())
+	fmt.Printf("%v %d %T\n", mode, mode, mode)
+
+	// what a file says about itself is a mode too
+	dir := filepath.Join(os.TempDir(), "go2js_modes")
+	os.RemoveAll(dir)
+	os.MkdirAll(filepath.Join(dir, "inner"), 0o750)
+	os.WriteFile(filepath.Join(dir, "file"), []byte("content"), 0o640)
+
+	info, err := os.Stat(dir)
+	fmt.Println("dir:", err, info.Mode(), info.Mode().IsDir(), info.Mode().Perm())
+
+	info, err = os.Stat(filepath.Join(dir, "file"))
+	fmt.Println("file:", err, info.Mode(), info.Mode().IsRegular(), info.Mode().Perm())
+
+	entries, err := os.ReadDir(dir)
+	fmt.Println("entries:", err)
+
+	for _, entry := range entries {
+		fmt.Println(entry.Name(), entry.Type(), entry.Type().IsDir(), entry.Type().Perm())
+	}
+
+	os.RemoveAll(dir)
+}
+`)
+}
