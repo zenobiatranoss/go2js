@@ -41,11 +41,13 @@ var goBuiltinCalls = map[string]bool{
 // running it where it stands.
 var runtimeGeneratorHelpers = map[string]bool{
 	"go2jsCall":             true,
+	"go2jsCondWait":         true,
 	"go2jsInterfaceCall":    true,
 	"go2jsLetGoroutinesRun": true,
 	"go2jsMutexLock":        true,
 	"go2jsRWMutexLock":      true,
 	"go2jsRWMutexRLock":     true,
+	"go2jsRuntimeGosched":   true,
 	"go2jsSelectWait":       true,
 	"go2jsTimeSleep":        true,
 	"go2jsWaitGroupWait":    true,

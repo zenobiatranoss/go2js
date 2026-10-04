@@ -55,7 +55,7 @@ var packageConstants = map[string]string{
 	"time.StampMicro":         strconv.Quote("Jan _2 15:04:05.000000"),
 	"time.StampNano":          strconv.Quote("Jan _2 15:04:05.000000000"),
 	"time.DateTime":           strconv.Quote("2006-01-02 15:04:05"),
-	"time.Local":              `go2jsTimeLocation("Local")`,
+	"time.Local":              `go2jsTimeHostLocation()`,
 	"time.Sunday":             "0",
 	"time.Monday":             "1",
 	"time.Tuesday":            "2",
@@ -584,6 +584,12 @@ func (e *emitter) emitPackageCall(call *ast.CallExpr, selector *ast.SelectorExpr
 
 	if pkg.Name == "sync" {
 		if handled, err := e.emitAtomicCall(call, selector); handled {
+			return handled, err
+		}
+	}
+
+	if pkg.Name == "unsafe" {
+		if handled, err := e.emitUnsafeCall(call, selector); handled {
 			return handled, err
 		}
 	}

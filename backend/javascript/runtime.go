@@ -379,7 +379,13 @@ function go2jsIOReadAll(reader) {
 }
 
 function go2jsTimeDate(year, month, day, hour, minute, second, nanosecond, location) {
-    const date = new Date(0);
+    const name = go2jsTimeLocationName(location);
+
+    // The pieces are the clock of the location rather than of UTC, so the moment
+    // is the one at which that clock shows them. A zone that moves its offset
+    // across the year is asked twice, since the offset at the moment found for
+    // one offset may not be the offset that moment actually falls under.
+    let date = new Date(0);
 
     date.setUTCFullYear(Number(year), Number(month) - 1, Number(day));
     date.setUTCHours(
@@ -389,7 +395,79 @@ function go2jsTimeDate(year, month, day, hour, minute, second, nanosecond, locat
         Math.floor(Number(nanosecond) / 1000000)
     );
 
-    return go2jsTimeValue(date);
+    const offset = go2jsTimeLocationOffsetSeconds(location, date);
+
+    if (offset === 0) {
+        const at = go2jsTimeValue(date);
+
+        at.__go2js_nsec = go2jsTimeFine(Number(nanosecond));
+        at.__go2js_location = name;
+        at.__go2js_zone = location !== null && location !== undefined && typeof location === "object"
+            ? location.__go2js_zone
+            : null;
+
+        return at;
+    }
+
+    let instant = new Date(date.getTime() - offset * 1000);
+    const second_ = go2jsTimeLocationOffsetSeconds(location, instant);
+
+    if (second_ !== offset) {
+        instant = new Date(date.getTime() - second_ * 1000);
+    }
+
+    const at = go2jsTimeValue(instant);
+
+    at.__go2js_nsec = go2jsTimeFine(Number(nanosecond));
+    at.__go2js_location = name;
+    at.__go2js_zone = location !== null && location !== undefined && typeof location === "object"
+        ? location.__go2js_zone
+        : null;
+
+    return at;
+}
+
+// go2jsTimeFine is what a count of nanoseconds holds finer than the millisecond
+// the host keeps a moment to, brought inside the count of a millisecond it is
+// counted in.
+function go2jsTimeFine(nanosecond) {
+    if (!Number.isFinite(nanosecond)) {
+        return 0;
+    }
+
+    return ((Math.trunc(nanosecond) % 1000000) + 1000000) % 1000000;
+}
+
+// go2jsTimeFixedZone is a zone kept at a number of seconds east of UTC, which is
+// what a name and an offset make without asking the host for anything.
+function go2jsTimeFixedZone(name, offset) {
+    return go2jsTimeLocation(String(name), Number(offset));
+}
+
+// go2jsTimeLoadLocation is a zone the host knows by name, which is asked of the
+// host rather than carried along, since where the zones of the world are is not
+// something a translation carries. A name the host does not know has no zone,
+// and Go answers for one that cannot be found with an error.
+function go2jsTimeLoadLocation(name) {
+    const wanted = String(name);
+
+    if (wanted === "" || wanted === "UTC") {
+        return [go2jsTimeLocation("UTC"), null];
+    }
+
+    if (wanted === "Local") {
+        return [go2jsTimeHostLocation(), null];
+    }
+
+    if (go2jsTimeZoneFormat(wanted) === null) {
+        return [null, go2jsTimeLoadLocationError(wanted)];
+    }
+
+    return [go2jsTimeLocation(wanted, wanted), null];
+}
+
+function go2jsTimeLoadLocationError(name) {
+    return go2jsNameError(new Error("unknown time zone " + name), "*errors.errorString");
 }
 
 // MonthString and WeekdayString are the String methods of the two named numbers
@@ -420,13 +498,270 @@ function go2jsWeekdayName(weekday) {
 
 // go2jsTimeLocation names where a moment is being read, which is what a location
 // prints and what a moment read in it carries.
-function go2jsTimeLocation(name) {
+// A location is a name and, where the name stands for one, what it stands for:
+// a number of seconds east of UTC for a zone fixed at one, the name of a zone
+// the host knows for a zone it keeps, and nothing at all for UTC itself and for
+// the zone of the machine, which the host answers for.
+function go2jsTimeLocation(name, zone) {
     return {
         __go2js_location: name,
+        __go2js_zone: zone === undefined ? null : zone,
         String: function() {
             return this.__go2js_location;
         }
     };
+}
+
+// go2jsTimeZoneFormat is the host's way of reading a moment in a zone it knows,
+// which is where the offset of that zone at that moment is read from. One
+// formatter is kept for a zone, since making one costs more than asking it a
+// question does.
+const go2jsTimeZoneFormats = new Map();
+
+function go2jsTimeZoneFormat(name) {
+    if (go2jsTimeZoneFormats.has(name)) {
+        return go2jsTimeZoneFormats.get(name);
+    }
+
+    let formatter = null;
+
+    try {
+        formatter = new Intl.DateTimeFormat("en-US", {
+            timeZone: name,
+            hourCycle: "h23",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit"
+        });
+    } catch (error) {
+        formatter = null;
+    }
+
+    go2jsTimeZoneFormats.set(name, formatter);
+
+    return formatter;
+}
+
+// go2jsTimeZoneNameLocales are the bundles a zone is looked for a name in. The
+// name of a zone is carried in the bundle of the place it belongs to rather than
+// in one bundle for the whole world, so Berlin is named in the British bundle and
+// not in the American one, and a zone is asked of each until one answers with
+// something better than an offset.
+const go2jsTimeZoneNameLocales = ["und", "en-GB", "en-US", "en-IN", "ja-JP", "pt-BR", "en-AU"];
+const go2jsTimeZoneNameFormats = new Map();
+
+function go2jsTimeZoneNameFormat(name) {
+    if (go2jsTimeZoneNameFormats.has(name)) {
+        return go2jsTimeZoneNameFormats.get(name);
+    }
+
+    const formats = [];
+
+    for (const locale of go2jsTimeZoneNameLocales) {
+        try {
+            formats.push(new Intl.DateTimeFormat(locale, {timeZone: name, timeZoneName: "short"}));
+        } catch (error) {
+            break;
+        }
+    }
+
+    go2jsTimeZoneNameFormats.set(name, formats);
+
+    return formats;
+}
+
+// go2jsTimeZoneAbbreviation is the name a zone is known by at a moment, which is
+// what a layout naming a zone writes out and what Zone answers with. A bundle
+// that answers with an offset has no name to give, and a zone with no name is
+// written out as the offset it keeps, which is what Go writes for such a zone.
+function go2jsTimeZoneAbbreviation(name, date) {
+    for (const formatter of go2jsTimeZoneNameFormat(name)) {
+        for (const part of formatter.formatToParts(date)) {
+            if (part.type !== "timeZoneName") {
+                continue;
+            }
+
+            const short = String(part.value).trim();
+
+            if (short !== "" && !/^GMT[+-]/.test(short)) {
+                return short;
+            }
+        }
+    }
+
+    return null;
+}
+
+// go2jsTimeZoneOffsetSeconds is the number of seconds a zone is east of UTC at
+// a moment, which is the difference between the moment as UTC reads it and the
+// same moment as that zone reads it.
+function go2jsTimeZoneOffsetSeconds(name, date) {
+    const formatter = go2jsTimeZoneFormat(name);
+
+    if (formatter === null) {
+        return 0;
+    }
+
+    const read = {};
+
+    for (const part of formatter.formatToParts(date)) {
+        if (part.type !== "literal") {
+            read[part.type] = parseInt(part.value, 10);
+        }
+    }
+
+    if (!Number.isFinite(read.year) || !Number.isFinite(read.month) ||
+        !Number.isFinite(read.day) || !Number.isFinite(read.hour)) {
+        return 0;
+    }
+
+    const asRead = Date.UTC(read.year, read.month - 1, read.day, read.hour, read.minute || 0, read.second || 0);
+    const asUTC = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(),
+        date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds());
+
+    // A zone east of UTC reads the moment later than UTC does, so the wall clock
+    // of the zone is ahead of UTC by however far east it keeps.
+    return Math.round((asRead - asUTC) / 1000);
+}
+
+// go2jsTimeLocationOffsetSeconds is the offset of a location at a moment. A zone
+// fixed at a number of seconds is always that far east, a zone the host knows
+// is asked, and the zone of the machine is the one the moment itself answers.
+function go2jsTimeLocationOffsetSeconds(location, date) {
+    const zone = location !== null && location !== undefined ? location.__go2js_zone : null;
+
+    if (zone === null || zone === undefined) {
+        const name = go2jsTimeLocationName(location);
+
+        if (name === "UTC") {
+            return 0;
+        }
+
+        if (name === "Local") {
+            const host = go2jsTimeHostZoneName();
+
+            if (host !== "UTC") {
+                return go2jsTimeZoneOffsetSeconds(host, date);
+            }
+        }
+
+        return go2jsTimeZoneOffsetSeconds(name, date);
+    }
+
+    if (typeof zone === "number") {
+        return zone;
+    }
+
+    return go2jsTimeZoneOffsetSeconds(zone, date);
+}
+
+// go2jsTimeHostZoneName is the name of the zone the machine keeps its clock in.
+// A machine told which zone to keep it in is named by that, since Go keeps the
+// name it was given rather than renaming it to whatever the host calls the same
+// place; a machine left to itself is named by what the host resolved.
+function go2jsTimeHostZoneName() {
+    const told = go2jsTimeToldZoneName();
+
+    if (told !== null) {
+        return told;
+    }
+
+    let name = null;
+
+    try {
+        name = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+    } catch (error) {
+        name = null;
+    }
+
+    return name === undefined || name === null || name === "" ? "UTC" : String(name);
+}
+
+// go2jsTimeToldZoneName is the zone the machine was told to keep its clock in, or
+// nothing for a machine that was told nothing, or nothing for a telling the host
+// does not know a zone by, which is a rule of its own rather than a name.
+function go2jsTimeToldZoneName() {
+    let told = null;
+
+    try {
+        told = process.env.TZ;
+    } catch (error) {
+        told = null;
+    }
+
+    if (told === undefined || told === null) {
+        return null;
+    }
+
+    // A telling may name the system database with a mark in front of it, as the
+    // C library allows, which is not part of the name.
+    let name = String(told);
+
+    if (name.startsWith(":")) {
+        name = name.slice(1);
+    }
+
+    if (name === "" || go2jsTimeZoneFormat(name) === null) {
+        return null;
+    }
+
+    return name;
+}
+
+// go2jsTimeHostLocation is the zone of the machine, which is the zone Go means
+// by Local, named after wherever the machine keeps its clock rather than left
+// standing as a word for it.
+function go2jsTimeHostLocation() {
+    const name = go2jsTimeHostZoneName();
+
+    return go2jsTimeLocation(name, name === "UTC" ? null : name);
+}
+
+// go2jsTimeQuotient is the whole part of one count divided by another, read
+// without trusting the division: a count long enough for the division to round
+// can answer with a quotient a whole part above the one it names, which would
+// put a moment a second later than it is.
+function go2jsTimeQuotient(value, divisor) {
+    let whole = Math.floor(value / divisor);
+
+    if (whole * divisor > value) {
+        whole -= 1;
+    } else if ((whole + 1) * divisor <= value) {
+        whole += 1;
+    }
+
+    return whole;
+}
+
+// go2jsTimeNanos is the nanoseconds a moment carries within its second. The host
+// keeps a moment to the millisecond, so what is finer than that is carried beside
+// it, and Go counts a second in nanoseconds rather than in milliseconds.
+function go2jsTimeNanos(value) {
+    return value.value.getUTCMilliseconds() * 1000000 + (value.__go2js_nsec === undefined ? 0 : value.__go2js_nsec);
+}
+
+// go2jsTimeNanosCarry is the finer part of a moment put on a new one, which is
+// what moving a moment about carries with it.
+function go2jsTimeNanosCarry(value, next) {
+    next.__go2js_nsec = value.__go2js_nsec === undefined ? 0 : value.__go2js_nsec;
+
+    return next;
+}
+
+// go2jsTimeLocalDate is the moment as a location reads it, and it is what the
+// fields of a moment are read from: the fields are the ones a clock in that
+// location would show, and the moment itself has not moved.
+function go2jsTimeLocalDate(date, location) {
+    if (date === null || date === undefined || !(date instanceof Date)) {
+        return date;
+    }
+
+    const offset = go2jsTimeLocationOffsetSeconds(location, date);
+
+    return offset === 0 ? date : new Date(date.getTime() + offset * 1000);
 }
 
 // go2jsTimeLocationName is the name a location prints, which is the name it was
@@ -464,75 +799,101 @@ function go2jsTimeValue(date) {
         return date;
     }
 
+    // The fields of a moment are the ones a clock in its own location would
+    // show, so they are read from the moment as that location reads it rather
+    // than from the moment as UTC reads it.
+    const fields = function(self) {
+        return go2jsTimeLocalDate(self.value, self);
+    };
+
     const self = {
         value: date,
         Year: function() {
-            return this.value.getUTCFullYear();
+            return fields(this).getUTCFullYear();
         },
         Month: function() {
-            return this.value.getUTCMonth() + 1;
+            return fields(this).getUTCMonth() + 1;
         },
         Day: function() {
-            return this.value.getUTCDate();
+            return fields(this).getUTCDate();
         },
         Hour: function() {
-            return this.value.getUTCHours();
+            return fields(this).getUTCHours();
         },
         Minute: function() {
-            return this.value.getUTCMinutes();
+            return fields(this).getUTCMinutes();
         },
         Second: function() {
-            return this.value.getUTCSeconds();
+            return fields(this).getUTCSeconds();
         },
         Nanosecond: function() {
-            return this.value.getUTCMilliseconds() * 1000000;
+            return go2jsTimeNanos(this);
         },
         Clock: function() {
             return [this.Hour(), this.Minute(), this.Second()];
         },
         YearDay: function() {
-            const year = this.value.getUTCFullYear();
+            const local = fields(this);
+            const year = local.getUTCFullYear();
             const start = Date.UTC(year, 0, 1);
 
-            return Math.floor((Date.UTC(this.value.getUTCFullYear(), this.value.getUTCMonth(), this.value.getUTCDate()) - start) / 86400000) + 1;
+            return Math.floor((Date.UTC(year, local.getUTCMonth(), local.getUTCDate()) - start) / 86400000) + 1;
         },
         Weekday: function() {
-            return this.value.getUTCDay();
+            return fields(this).getUTCDay();
         },
         UTC: function() {
-            const self = go2jsTimeValue(this.value);
-            self.__go2js_location = "UTC";
-            return self;
+            const next = go2jsTimeNanosCarry(this, go2jsTimeValue(this.value));
+
+            next.__go2js_location = "UTC";
+            next.__go2js_zone = null;
+
+            return next;
         },
         Local: function() {
-            const self = go2jsTimeValue(this.value);
-            self.__go2js_location = "Local";
-            return self;
+            const next = go2jsTimeNanosCarry(this, go2jsTimeValue(this.value));
+
+            next.__go2js_location = go2jsTimeHostZoneName();
+            next.__go2js_zone = next.__go2js_location === "UTC" ? null : next.__go2js_location;
+
+            return next;
         },
         In: function(location) {
-            const self = go2jsTimeValue(this.value);
-            self.__go2js_location = go2jsTimeLocationName(location);
-            return self;
+            const next = go2jsTimeNanosCarry(this, go2jsTimeValue(this.value));
+
+            next.__go2js_location = go2jsTimeLocationName(location);
+            next.__go2js_zone = location !== null && location !== undefined &&
+                typeof location === "object" ? location.__go2js_zone : null;
+
+            return next;
         },
         Location: function() {
-            return go2jsTimeLocation(this.__go2js_location === undefined ? "UTC" : this.__go2js_location);
+            return go2jsTimeLocation(
+               	this.__go2js_location === undefined ? "UTC" : this.__go2js_location,
+               	this.__go2js_zone === undefined ? null : this.__go2js_zone
+            );
         },
         Zone: function() {
-            const name = this.__go2js_location === undefined ? "UTC" : this.__go2js_location;
-            return [name, name === "UTC" ? 0 : 0];
+            return [go2jsTimeFormatZone(this.value, this).name, go2jsTimeLocationOffsetSeconds(this, this.value)];
         },
         AddDate: function(years, months, days) {
             const date = new Date(this.value.getTime());
             date.setUTCFullYear(date.getUTCFullYear() + Number(years), date.getUTCMonth() + Number(months), date.getUTCDate() + Number(days));
             const next = go2jsTimeValue(date);
+
             next.__go2js_location = this.__go2js_location;
+            next.__go2js_zone = this.__go2js_zone;
+
             return next;
         },
         Unix: function() {
             return Math.floor(this.value.getTime() / 1000);
         },
         UnixNano: function() {
-            return this.value.getTime() * 1000000;
+            // The count of nanoseconds since the epoch is counted in seconds
+            // and then in what is left of the second, which for a moment before
+            // the epoch is a count of the second it sits before it.
+            return go2jsTimeQuotient(this.value.getTime(), 1000) * 1000000000 + go2jsTimeNanos(this);
         },
         IsZero: function() {
             return this.value.getTime() === 0 || this.__go2js_time_zero === true;
@@ -547,23 +908,67 @@ function go2jsTimeValue(date) {
             return this.value.getTime() === go2jsTimeDateOf(other).getTime();
         },
         Format: function(layout) {
-            return go2jsTimeFormat(this.value, String(layout));
+            return go2jsTimeFormat(this.value, String(layout), this);
         },
         String: function() {
             return this.value.toISOString();
         },
         Add: function(duration) {
-            const next = new Date(this.value.getTime() + go2jsDurationNanos(duration) / 1000000);
-            return go2jsTimeValue(next);
+            const nanos = go2jsDurationNanos(duration);
+            const held = this.__go2js_nsec === undefined ? 0 : this.__go2js_nsec;
+            let fine = held + (nanos % 1000000);
+            let millis = this.value.getTime() + go2jsTimeQuotient(nanos, 1000000);
+
+            // A moment moved past the end of a second carries what it was holding
+            // into the next second rather than dropping it, which is what moving a
+            // moment by a duration does in Go as well.
+            if (fine >= 1000000) {
+                fine -= 1000000;
+                millis += 1;
+            } else if (fine < 0) {
+                fine += 1000000;
+                millis -= 1;
+            }
+
+            const next = go2jsTimeValue(new Date(millis));
+
+            next.__go2js_nsec = fine;
+            next.__go2js_location = this.__go2js_location;
+            next.__go2js_zone = this.__go2js_zone;
+
+            return next;
         },
         Sub: function(other) {
-            return go2jsDuration((this.value.getTime() - go2jsTimeDateOf(other).getTime()) * 1000000);
+            // The span between two moments is counted in nanoseconds, so it is
+            // counted in whole seconds and in what each of them holds within its
+            // second rather than in the milliseconds the two are kept to.
+            const that = go2jsTimeOf(other);
+            const here = go2jsTimeQuotient(this.value.getTime(), 1000);
+            const there = go2jsTimeQuotient(that.value.getTime(), 1000);
+
+            return go2jsDuration((here - there) * 1000000000 + go2jsTimeNanos(this) - go2jsTimeNanos(that));
         },
         Truncate: function(duration) {
-            return go2jsTimeValue(new Date(go2jsTimeRoundedTo(this.value, duration, false)));
+            const rounded = go2jsTimeRounded(this, duration, false);
+            const next = go2jsTimeValue(new Date(rounded.millis));
+
+            next.__go2js_nsec = rounded.nsec;
+
+            next.__go2js_location = this.__go2js_location;
+            next.__go2js_zone = this.__go2js_zone;
+
+            return next;
         },
         Round: function(duration) {
-            return go2jsTimeValue(new Date(go2jsTimeRoundedTo(this.value, duration, true)));
+            const rounded = go2jsTimeRounded(this, duration, true);
+            const next = go2jsTimeValue(new Date(rounded.millis));
+
+            next.__go2js_nsec = rounded.nsec;
+
+            next.__go2js_location = this.__go2js_location;
+            next.__go2js_zone = this.__go2js_zone;
+
+            return next;
         }
     };
 
@@ -574,6 +979,60 @@ function go2jsTimeValue(date) {
 // the zero time, which is where Go counts the multiples of a span from. A span
 // under half a millisecond rounds to the millisecond the host can hold, since a
 // moment it cannot hold cannot be written down.
+// go2jsTimeOf is a moment as it is held, whether it was handed over as one or as
+// the date standing behind one.
+function go2jsTimeOf(value) {
+    const raw = go2jsUnwrap(value);
+
+    if (raw !== null && typeof raw === "object" && raw.value instanceof Date) {
+        return raw;
+    }
+
+    return go2jsTimeValue(raw instanceof Date ? raw : new Date(Number(raw)));
+}
+
+// go2jsTimeRounded is a moment cut back to a multiple of a span, counted from the
+// zero time as Go counts one. A span finer than a millisecond is measured in the
+// nanoseconds a moment holds within its second, which the host does not keep and
+// which is carried beside the moment for that reason.
+function go2jsTimeRounded(value, duration, nearest) {
+    const held = value.__go2js_nsec === undefined ? 0 : value.__go2js_nsec;
+    const span = Math.trunc(Number(go2jsDurationNanos(duration)));
+
+    if (!(span > 0)) {
+        return {millis: value.value.getTime(), nsec: held};
+    }
+
+    // A span of a millisecond or more is measured in milliseconds, which a moment
+    // is kept to, and leaves nothing of the second behind: a moment cut back to
+    // one does not hold what it was holding.
+    if (span >= 1000000) {
+        return {millis: go2jsTimeRoundedTo(value.value, duration, nearest), nsec: 0};
+    }
+
+    // A moment counted in nanoseconds since the zero time is a count far past what
+    // a whole number of doubles holds, so a span finer than a millisecond is
+    // counted in whole numbers rather than in ones that lose their ends.
+    const since = BigInt(value.value.getTime() - go2jsTimeZeroMillis) * 1000000n + BigInt(held);
+    const width = BigInt(span);
+    let rest = since % width;
+
+    if (rest < 0n) {
+        rest += width;
+    }
+
+    let counted = since - rest;
+
+    if (nearest && width - rest < rest) {
+        counted += width;
+    }
+
+    return {
+        millis: go2jsTimeZeroMillis + Number(counted / 1000000n),
+        nsec: Number(((counted % 1000000n) + 1000000n) % 1000000n)
+    };
+}
+
 function go2jsTimeRoundedTo(date, duration, nearest) {
     const span = Number(go2jsDurationNanos(duration)) / 1000000;
 
@@ -612,21 +1071,90 @@ const go2jsTimeDays = [
 // one piece at a time and what a piece stands for is written out as it is, so
 // that digits standing for a year are never read again as a piece standing for
 // a month, which is what a layout replacing every piece in turn would do.
-function go2jsTimeFormat(date, layout) {
+// go2jsTimeFormatZone is how a moment's location is written out: the name the
+// location answers to, the zulu a layout asks a zone for when it stands at
+// zero, and the signed number of hours and minutes east of UTC.
+// go2jsTimeFormatZone is how the location of a moment is written out: the name
+// the location answers to, and the offset in the two shapes a layout asks for,
+// which differ only in whether they carry the mark separating hours from minutes
+// and whether a zone standing at zero is written as the letter for it.
+function go2jsTimeFormatZone(date, location) {
+    const name = go2jsTimeLocationName(location);
+    const seconds = go2jsTimeLocationOffsetSeconds(location, date);
+    const zone = location !== null && location !== undefined ? location.__go2js_zone : null;
+    const number = go2jsTimeFormatZoneNumber(seconds);
+    const zulu = seconds === 0 ? "Z" : number;
+
+    if (name === "UTC") {
+        return {name: "UTC", zulu: zulu, number: number};
+    }
+
+    if (name === "Local") {
+        return {name: go2jsTimeLocalZoneName(date), zulu: zulu, number: number};
+    }
+
+    if (typeof zone === "number") {
+        return {name: name === "" ? number : name, zulu: zulu, number: number};
+    }
+
+    const known = go2jsTimeZoneAbbreviation(name, date);
+
+    return {name: known === null ? go2jsTimeFormatZoneCompact(seconds) : known, zulu: zulu, number: number};
+}
+
+// go2jsTimeFormatZoneCompact is the offset of a zone written the way a zone
+// without a name is named, which is the offset without the mark between its
+// hours and its minutes.
+function go2jsTimeFormatZoneCompact(seconds) {
+    return go2jsTimeFormatZoneNumber(seconds).replace(":", "");
+}
+
+// go2jsTimeFormatZoneNumber is the signed number of hours and minutes a zone is
+// east of UTC, which is what Go writes out for a zone that has no name.
+function go2jsTimeFormatZoneNumber(seconds) {
+    const sign = seconds < 0 ? "-" : "+";
+    const held = Math.abs(seconds);
+
+    return sign + String(Math.floor(held / 3600)).padStart(2, "0") +
+        ":" + String(Math.floor((held % 3600) / 60)).padStart(2, "0");
+}
+
+// go2jsTimeLocalZoneName is the name the zone of the machine answers to, which
+// Go names by the offset it keeps rather than by anything the host calls it.
+function go2jsTimeLocalZoneName(date) {
+    const seconds = -date.getTimezoneOffset() * 60;
+
+    if (seconds === 0) {
+        return "UTC";
+    }
+
+    const sign = seconds < 0 ? "-" : "+";
+    const held = Math.abs(seconds);
+
+    return sign + String(Math.floor(held / 3600)).padStart(2, "0") +
+        String(Math.floor((held % 3600) / 60)).padStart(2, "0");
+}
+
+function go2jsTimeFormat(date, layout, location) {
     const pad = function(value, width) {
         return String(value).padStart(width, "0");
     };
 
-    const year = date.getUTCFullYear();
-    const month = date.getUTCMonth();
-    const day = date.getUTCDate();
-    const hour = date.getUTCHours();
-    const minute = date.getUTCMinutes();
-    const second = date.getUTCSeconds();
-    const milli = date.getUTCMilliseconds();
+    // The pieces are what a clock in the location of the moment would show, and
+    // the zone of the moment is written out from that same location, so a layout
+    // naming a zone names the one the moment is in rather than UTC.
+    const local = go2jsTimeLocalDate(date, location);
+    const year = local.getUTCFullYear();
+    const month = local.getUTCMonth();
+    const day = local.getUTCDate();
+    const hour = local.getUTCHours();
+    const minute = local.getUTCMinutes();
+    const second = local.getUTCSeconds();
+    const milli = local.getUTCMilliseconds();
     const hour12 = hour % 12 === 0 ? 12 : hour % 12;
     const monthName = go2jsTimeMonths[month];
-    const dayName = go2jsTimeDays[date.getUTCDay()];
+    const dayName = go2jsTimeDays[local.getUTCDay()];
+    const zone = go2jsTimeFormatZone(date, location);
 
     let out = "";
     let index = 0;
@@ -653,11 +1181,11 @@ function go2jsTimeFormat(date, layout) {
             ["02", pad(day, 2)],
             ["PM", hour < 12 ? "AM" : "PM"],
             ["pm", hour < 12 ? "am" : "pm"],
-            ["MST", "UTC"],
-            ["Z07:00", "Z"],
-            ["Z0700", "Z"],
-            ["-07:00", "+00:00"],
-            ["-0700", "+0000"],
+            ["MST", zone.name],
+            ["Z07:00", zone.zulu],
+            ["Z0700", zone.zulu.replace(":", "")],
+            ["-07:00", zone.number],
+            ["-0700", zone.number.replace(":", "")],
             ["1", String(month + 1)],
             ["2", String(day)],
             ["3", String(hour12)],
@@ -690,7 +1218,9 @@ function go2jsTimeFormat(date, layout) {
         if (fraction !== null) {
             const width = fraction[1].length;
             const trimmed = fraction[1][0] === "9";
-            let digits = pad(milli, 3) + "000000";
+            const nanos = date.getUTCMilliseconds() * 1000000 +
+                (location !== null && location !== undefined && location.__go2js_nsec !== undefined ? location.__go2js_nsec : 0);
+            let digits = String(nanos).padStart(9, "0");
 
             digits = trimmed ? digits.slice(0, width).replace(/0+$/, "") : digits.slice(0, width);
 
@@ -5395,6 +5925,13 @@ function go2jsEqual(a, b) {
 				return false;
 			}
 
+			// What a value can be done with is not part of the value: two values
+			// of a type are one value when what they hold is one, and the methods
+			// of the type are the same for both of them.
+			if (typeof a[key] === "function" && typeof b[key] === "function") {
+				continue;
+			}
+
 			if (!go2jsEqual(a[key], b[key])) {
 				return false;
 			}
@@ -5607,6 +6144,18 @@ function go2jsTypeOf(value) {
 	// to be built from.
 	if (typeof value.__go2js_type === "string" && value.__go2js_type !== "") {
 		return value.__go2js_type;
+	}
+
+	// A type of the standard library is a class of the runtime standing for it,
+	// and the Go name of that type is registered against the class, so a value of
+	// one is asked about by the type it is rather than by the class it was built
+	// from.
+	if (typeof value === "object") {
+		const registered = go2jsTypeNamesByConstructor.get(value.constructor);
+
+		if (typeof registered === "string" && registered !== "") {
+			return registered;
+		}
 	}
 
 	if (value instanceof Error) {
@@ -7660,6 +8209,21 @@ function go2jsSprintln(...values) {
 	return go2jsJoinOperands(values, true) + "\n";
 }
 
+// go2jsOutputBytes is a run of bytes as the standard output takes it. Bytes that
+// spell text are handed over as the text they spell, which the host writes far
+// faster than a walk over every byte of it, and bytes that do not spell text are
+// handed over as the bytes they are, since writing a byte that is not the UTF-8
+// of a rune writes that byte and not the character that stands in for it.
+function go2jsOutputBytes(value) {
+	const bytes = Uint8Array.from(Array.from(go2jsToArray(value), item => Number(item) & 255));
+
+	try {
+		return go2jsStrictDecoder.decode(bytes);
+	} catch (error) {
+		return Buffer.from(bytes);
+	}
+}
+
 function go2jsWriterMethod(writer, method) {
 	const target = go2jsUnwrap(writer);
 
@@ -7674,7 +8238,7 @@ function go2jsWriterMethod(writer, method) {
 				return go2jsStringify(args[0]).length;
 			}
 
-			target.write(go2jsBytesToString(args[0]));
+			target.write(go2jsOutputBytes(args[0]));
 			return go2jsToArray(args[0]).length;
 		};
 	}

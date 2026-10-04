@@ -13,6 +13,12 @@ var osFileFuncs = map[string]string{
 	"Create":     "go2jsOSCreate",
 	"ReadFile":   "go2jsOSReadFile",
 	"WriteFile":  "go2jsOSWriteFile",
+	"Chmod":      "go2jsOSChmod",
+	"Truncate":   "go2jsOSTruncate",
+	"Symlink":    "go2jsOSSymlink",
+	"Readlink":   "go2jsOSReadlink",
+	"Link":       "go2jsOSLink",
+	"Chtimes":    "go2jsOSChtimes",
 	"Mkdir":      "go2jsOSMkdir",
 	"MkdirAll":   "go2jsOSMkdirAll",
 	"Remove":     "go2jsOSRemove",
@@ -154,13 +160,19 @@ const go2jsErrnoMessages = new Map([
 	["ENOTDIR", "not a directory"],
 	["ENOTEMPTY", "directory not empty"],
 	["EMFILE", "too many open files"],
-	["ELOOP", "too many levels of symbolic links"]
+	["ELOOP", "too many levels of symbolic links"],
+	["EINVAL", "invalid argument"],
+	["EBADF", "bad file descriptor"],
+	["ENOSPC", "no space left on device"],
+	["EXDEV", "invalid cross-device link"],
+	["ENOTTY", "inappropriate ioctl for device"]
 ]);
 
 // An error the host reports is written as an error of a path: what was being
 // done, which path, and the condition that ended it, which is what a Go program
-// reading one is given.
-function go2jsOSHostError(err, syscall, path) {
+// reading one is given. An error of a link is told of two names rather than one,
+// and carries the old and the new rather than a path.
+function go2jsOSHostError(err, syscall, path, old) {
 	if (err === null || err === undefined) {
 		return null;
 	}
@@ -171,7 +183,33 @@ function go2jsOSHostError(err, syscall, path) {
 		return err;
 	}
 
+	if (old !== undefined && old !== null) {
+		return go2jsOSLinkError(named, err.code, syscall, old, path);
+	}
+
 	return go2jsNameError(go2jsOSError(named, syscall, path), "*fs.PathError");
+}
+
+// go2jsOSLinkError is what a link that was refused or could not be made answers
+// with: what was being done, the name that was pointed at, the name that was made
+// to point at it, and the condition that ended it.
+function go2jsOSLinkError(message, code, op, old, path) {
+	const error = new Error(String(op) + " " + String(old) + " " + String(path) + ": " + String(message));
+
+	error.__go2js_errno = true;
+	error.code = code;
+	error.op = op;
+	error.old = old;
+	error.path = path;
+	error.syscall = op;
+
+	const errno = go2jsErrnoSentinel(code);
+
+	if (errno !== null) {
+		error.cause = errno;
+	}
+
+	return go2jsNameError(error, "*fs.LinkError");
 }
 
 // An error from a file is told by what was being done to which path, which is
@@ -738,6 +776,91 @@ function go2jsOSChmod(path, perm) {
 	}
 
 	return null;
+}
+
+// go2jsOSTruncate cuts a file down to a length, which is a length of bytes the
+// file is made to be rather than a position read or written at, so a length past
+// the end of the file is filled out to it and one short of nothing is refused.
+function go2jsOSTruncate(path, size) {
+	const target = String(path);
+	const wanted = Math.floor(Number(size));
+
+	if (!Number.isFinite(wanted) || wanted < 0) {
+		return go2jsOSError("invalid argument", "truncate", target);
+	}
+
+	try {
+		require("fs").truncateSync(target, wanted);
+	} catch (err) {
+		return go2jsOSHostError(err, "truncate", target);
+	}
+
+	return null;
+}
+
+// go2jsOSSymlink makes one name stand for another, which is a mark the host keeps
+// on the name rather than a copy of what it stands for.
+function go2jsOSSymlink(target, path) {
+	const from = String(target);
+	const to = String(path);
+
+	try {
+		require("fs").symlinkSync(from, to);
+	} catch (err) {
+		return go2jsOSHostError(err, "symlink", to, from);
+	}
+
+	return null;
+}
+
+function go2jsOSLink(target, path) {
+	const from = String(target);
+	const to = String(path);
+
+	try {
+		require("fs").linkSync(from, to);
+	} catch (err) {
+		return go2jsOSHostError(err, "link", to, from);
+	}
+
+	return null;
+}
+
+// go2jsOSReadlink answers with the name a link stands for rather than with what
+// it stands for, since a link may stand for another link.
+function go2jsOSReadlink(path) {
+	const target = String(path);
+
+	try {
+		return [require("fs").readlinkSync(target), null];
+	} catch (err) {
+		return [null, go2jsOSHostError(err, "readlink", target)];
+	}
+}
+
+// go2jsOSChtimes puts the two moments a file is read at, which are when it was
+// there and when it was last written, where they were asked for.
+function go2jsOSChtimes(path, atime, mtime) {
+	const target = String(path);
+
+	try {
+		require("fs").utimesSync(target, go2jsTimeDateValue(atime), go2jsTimeDateValue(mtime));
+	} catch (err) {
+		return go2jsOSHostError(err, "chtimes", target);
+	}
+
+	return null;
+}
+
+// go2jsTimeDateValue is a moment as the host is given one, since the two moments
+// of Chtimes are times and are handed over as such.
+function go2jsTimeDateValue(value) {
+	const raw = go2jsUnwrap(value);
+	const date = raw instanceof Date ? raw
+		: raw !== null && typeof raw === "object" && raw.value instanceof Date ? raw.value
+		: new Date(Number(value));
+
+	return isNaN(date.getTime()) ? new Date(0) : date;
 }
 
 function go2jsOSMkdir(path, perm) {

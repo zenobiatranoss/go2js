@@ -12,6 +12,7 @@ var runtimeFuncs = map[string]string{
 	"KeepAlive":     "go2jsRuntimeKeepAlive",
 	"Goexit":        "go2jsRuntimeGoexit",
 	"Version":       "go2jsRuntimeVersion",
+	"Gosched":       "go2jsRuntimeGosched",
 }
 
 var runtimeConstants = map[string]string{
@@ -168,6 +169,15 @@ const go2jsGoexitSignal = {__go2js_goexit: true};
 // go2jsRuntimeGoexit ends the goroutine that called it, which is what
 // runtime.Goexit does. Every deferred call of the frames being left runs on the
 // way out, and nothing after the call in that goroutine runs at all.
+// go2jsRuntimeGosched hands the turn over to whatever else is runnable and comes
+// back when the scheduler has nothing better to run, which is what a program
+// asking to be scheduled again is asking for. It waits on nothing, so nothing
+// wakes it: the scheduler that brings the goroutines that are runnable into it is
+// what brings this one back.
+function* go2jsRuntimeGosched() {
+	yield* go2jsLetGoroutinesRun();
+}
+
 function go2jsRuntimeGoexit() {
 	throw go2jsGoexitSignal;
 }

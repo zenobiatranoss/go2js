@@ -34,6 +34,12 @@ var slicesFuncs = map[string]string{
 	"AppendSeq":        "go2jsSlicesAppendSeq",
 	"Sorted":           "go2jsSlicesSorted",
 	"Chunk":            "go2jsSlicesChunk",
+	"Clear":            "go2jsSlicesClear",
+	"SortedFunc":       "go2jsSlicesSortedFunc",
+	"SortedStableFunc": "go2jsSlicesSortedStableFunc",
+	"After":            "go2jsSlicesAfter",
+	"Before":           "go2jsSlicesBefore",
+	"Replace":          "go2jsSlicesReplace",
 }
 
 var mapsFuncs = map[string]string{
@@ -46,6 +52,7 @@ var mapsFuncs = map[string]string{
 	"Values":     "go2jsMapsValues",
 	"All":        "go2jsMapsAll",
 	"Collect":    "go2jsMapsCollect",
+	"Clear":      "go2jsMapsClear",
 }
 
 var base64Funcs = map[string]string{
@@ -419,6 +426,34 @@ function go2jsSlicesGrow(a, count) {
 	return a;
 }
 
+// go2jsSlicesClear empties a slice, which is what a slice full of zeroes is set
+// to and what a slice that had something in it gives back its elements of.
+function go2jsSlicesClear(a) {
+	if (a === null || a === undefined) {
+		return a;
+	}
+
+	a.length = 0;
+}
+
+// go2jsSlicesAfter and go2jsSlicesBefore are the slice views that start after an
+// index or end before one, which is what a slice expression of three indices
+// stands for: the elements between the two bounds.
+function go2jsSlicesAfter(a, index) {
+	return a.slice(index);
+}
+
+function go2jsSlicesBefore(a, index) {
+	return a.slice(0, index);
+}
+
+// go2jsSlicesReplace answers a slice with some of its own elements replaced by
+// others, which is the assignment to an element of a slice rather than to the
+// slice itself.
+function go2jsSlicesReplace(a, index, values) {
+	a[index] = values;
+}
+
 function go2jsSlicesClip(a) {
 	if (a.length === 0) {
 		return [];
@@ -639,6 +674,15 @@ function go2jsMapsCollect(source) {
 	}
 
 	return go2jsMap([]);
+}
+
+// go2jsMapsClear empties a map, which is what a map literal is given before the
+// entries of one are put into it and what a map is left as once its keys have all
+// been deleted.
+function go2jsMapsClear(m) {
+	for (const key of go2jsMapKeys(m)) {
+		go2jsMapDelete(m, key);
+	}
 }
 
 function go2jsMapsKeys(m) {
@@ -1491,6 +1535,12 @@ func extendedStdlibFuncs() {
 		"CreateTemp":   "go2jsOSCreateTemp",
 		"MkdirTemp":    "go2jsOSMkdirTemp",
 		"MkdirAll":     "go2jsOSMkdirAll",
+		"Chmod":        "go2jsOSChmod",
+		"Truncate":     "go2jsOSTruncate",
+		"Symlink":      "go2jsOSSymlink",
+		"Readlink":     "go2jsOSReadlink",
+		"Link":         "go2jsOSLink",
+		"Chtimes":      "go2jsOSChtimes",
 		"Hostname":     "go2jsOSHostname",
 		"Executable":   "go2jsOSExecutable",
 		"TempDir":      "go2jsOSTempDir",
@@ -1592,7 +1642,7 @@ func extendedStdlibFuncs() {
 		"Until":         "go2jsTimeUntil",
 		"Now":           "go2jsTimeNow",
 		"Sleep":         "go2jsTimeSleep",
-		"Unix":          "go2jsTimeUnix",
+		"Unix":          "go2jsTimeFromUnix",
 		"Parse":         "go2jsTimeParse",
 		"After":         "go2jsTimeAfter",
 		"NewTimer":      "go2jsTimeNewTimer",
@@ -1600,6 +1650,8 @@ func extendedStdlibFuncs() {
 		"AfterFunc":     "go2jsTimeAfterFunc",
 		"ParseDuration": "go2jsParseDuration",
 		"Tick":          "go2jsTimeTick",
+		"FixedZone":     "go2jsTimeFixedZone",
+		"LoadLocation":  "go2jsTimeLoadLocation",
 	})
 
 }
@@ -3166,7 +3218,12 @@ function go2jsTimeUntil(t) {
 }
 
 function go2jsTimeNow() {
-	return go2jsTimeValue(new Date());
+	const now = go2jsTimeValue(new Date());
+
+	now.__go2js_location = go2jsTimeHostZoneName();
+	now.__go2js_zone = now.__go2js_location === "UTC" ? null : now.__go2js_location;
+
+	return now;
 }
 
 // A sleep is a receive on a channel that comes due at the moment it names, so
@@ -3176,8 +3233,34 @@ function* go2jsTimeSleep(d) {
 	yield* go2jsChanRecv(go2jsTimeAfter(d));
 }
 
-function go2jsTimeUnix(value) {
-	return go2jsTimeValue(value).getTime() / 1000;
+// go2jsTimeFromUnix is the moment a count of seconds since the epoch names,
+// counted from the epoch rather than from a year, with the nanoseconds beside
+// it brought inside the second they belong to the way Go brings them, and kept
+// in the zone of the machine rather than in UTC, since that is the zone Go
+// counts from.
+function go2jsTimeFromUnix(sec, nsec) {
+	let seconds = Math.trunc(Number(sec));
+	let rest = Math.trunc(Number(nsec === undefined || nsec === null ? 0 : nsec));
+
+	if (rest < 0 || rest >= 1000000000) {
+		const whole = Math.trunc(rest / 1000000000);
+
+		seconds += whole;
+		rest -= whole * 1000000000;
+
+		if (rest < 0) {
+			rest += 1000000000;
+			seconds--;
+		}
+	}
+
+	const moment = go2jsTimeValue(new Date(seconds * 1000 + Math.floor(rest / 1000000)));
+
+	moment.__go2js_nsec = rest % 1000000;
+	moment.__go2js_location = go2jsTimeHostZoneName();
+	moment.__go2js_zone = moment.__go2js_location === "UTC" ? null : moment.__go2js_location;
+
+	return moment;
 }
 
 // go2jsTimeParse reads a moment out of text the way a layout says it is
@@ -3186,7 +3269,7 @@ function go2jsTimeUnix(value) {
 // piece asks for is refused rather than read as something else.
 function go2jsTimeParse(layout, value) {
 	const text = String(value);
-	const parts = { year: 0, month: 1, day: 1, hour: 0, minute: 0, second: 0, milli: 0 };
+	const parts = { year: 0, month: 1, day: 1, hour: 0, minute: 0, second: 0, milli: 0, nsec: 0 };
 
 	const refuse = function() {
 		return [null, go2jsTimeParseError(String(layout), text)];
@@ -3258,21 +3341,31 @@ function go2jsTimeParse(layout, value) {
 			const fraction = /^\.([0-9]+)/.exec(rest);
 
 			if (fraction !== null) {
+				const width = fraction[1].length;
+				const optional = fraction[1][0] === "9";
+
+				position += 1;
+
 				const found = /^[0-9]+/.exec(text.slice(position));
 
 				if (found === null) {
 					return refuse();
 				}
 
-				position += found[0].length;
-
-				const scaled = parseInt((found[0] + "000").slice(0, 3), 10);
-
-				parts.milli = Number.isNaN(scaled) ? 0 : scaled;
-
-				if (fraction[1][0] === "9") {
-					parts.milli = Math.floor(parts.milli / Math.pow(10, 3 - fraction[1].length));
+				// A piece of nines takes as many of the digits of a second as were
+				// written down and no more, while a piece of zeros asks for the
+				// number of digits it carries, so a text with fewer or more of them
+				// than it was asked for is refused rather than read as another second.
+				if (found[0].length > 9 || (!optional && found[0].length !== width)) {
+					return [null, go2jsTimeParseChunkError(layoutText, text, "." + fraction[1], "." + found[0])];
 				}
+
+				const read = found[0].slice(0, optional ? found[0].length : width);
+
+				position += read.length;
+
+				parts.nsec = parseInt((read + "000000000").slice(0, 9), 10);
+				parts.milli = Math.floor(parts.nsec / 1000000);
 
 				continue;
 			}
@@ -3529,9 +3622,20 @@ function go2jsTimeParse(layout, value) {
 
 	const parsed = go2jsTimeValue(date);
 
+	parsed.__go2js_nsec = parts.nsec % 1000000;
 	parsed.__go2js_location = "UTC";
+	parsed.__go2js_zone = null;
 
 	return [parsed, null];
+}
+
+// go2jsTimeParseChunkError is the refusal of a piece of text that is not written
+// the way the piece of the layout it was read against says it is written, and it
+// tells which piece of text and which piece of the layout refused each other.
+function go2jsTimeParseChunkError(layout, value, layoutChunk, valueChunk) {
+	return go2jsSentinelError("parsing time " + JSON.stringify(value) + " as " +
+		JSON.stringify(layout) + ": cannot parse " + JSON.stringify(valueChunk) +
+		" as " + JSON.stringify(layoutChunk))();
 }
 
 function go2jsTimeParseError(layout, value) {
