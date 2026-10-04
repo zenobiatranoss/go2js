@@ -46,7 +46,7 @@ func (e *emitter) emitNilSafeMethodCall(call *ast.CallExpr, sel *ast.SelectorExp
 	// Structs declared by the compiled program become classes. Types backed by
 	// the runtime shim, such as strings.Builder or flag.Value, have no class to
 	// reach through, so they keep the ordinary call.
-	if obj := named.Obj(); obj == nil || !e.localStructTypes[obj.Name()] {
+	if obj := named.Obj(); !e.isLocalStructType(obj) {
 		return false, nil
 	}
 
