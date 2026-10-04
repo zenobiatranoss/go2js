@@ -116,7 +116,7 @@ func (e *emitter) zeroValueAt(t types.Type, depth int) string {
 			}
 
 			if _, isStruct := named.Underlying().(*types.Struct); isStruct && obj != nil {
-				if e.localStructTypes[obj.Name()] {
+				if e.isLocalStructType(obj) {
 					return "new " + javaScriptIdentifier(obj.Name()) + "()"
 				}
 
@@ -154,7 +154,7 @@ func (e *emitter) structZeroLiteral(t types.Type, depth int) (string, bool) {
 	// A struct of this package has a class that zeroes itself already.
 	if named, isNamed := t.(*types.Named); isNamed {
 		if obj := named.Obj(); obj != nil && obj.Pkg() != nil {
-			if e.localStructTypes[obj.Name()] {
+			if e.isLocalStructType(obj) {
 				return "", false
 			}
 		}

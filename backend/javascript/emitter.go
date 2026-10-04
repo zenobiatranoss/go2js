@@ -578,6 +578,27 @@ func (e *emitter) typeReference(named *gotypesstd.Named) string {
 	return name
 }
 
+// isLocalStructType reports whether a struct type is one this package declares,
+// in which case a value of it is built from the class that carries its methods.
+// A type declared in another file of the same package is as much one of this
+// package as a type declared in the file being emitted, and a file only knows
+// its own declarations, so the package it belongs to is what settles it. A value
+// of such a type written out field by field instead would be an object with no
+// methods on it, which is what a call on it trips over.
+func (e *emitter) isLocalStructType(obj gotypesstd.Object) bool {
+	if obj == nil {
+		return false
+	}
+
+	if e.localStructTypes[obj.Name()] {
+		return true
+	}
+
+	pkg := obj.Pkg()
+
+	return pkg != nil && e.selfPackagePath != "" && pkg.Path() == e.selfPackagePath
+}
+
 func localStructTypeNames(file *ast.File) map[string]bool {
 	names := map[string]bool{}
 
