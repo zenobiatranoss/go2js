@@ -843,6 +843,7 @@ func runtimeSourceParts() []string {
 		syncShimRuntimeSource(),
 		cryptoHashRuntimeSource(),
 		tabwriterRuntimeSource(),
+		testingShimRuntimeSource(),
 		sortSliceShimRuntimeSource(),
 		execRuntimeSource(),
 		netHTTPRuntimeSource(),

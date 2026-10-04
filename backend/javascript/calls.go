@@ -177,6 +177,13 @@ func (e *emitter) callFormFor(fun ast.Expr) callForm {
 				return callYield
 			}
 
+			// A field of a signature is a function held in a value rather than a
+			// function this compiler wrote, so what it holds is only known where
+			// it was written and the runtime is what runs it.
+			if e.funcValue(selection.Obj()) {
+				return callDelegate
+			}
+
 			return callPlain
 		}
 
