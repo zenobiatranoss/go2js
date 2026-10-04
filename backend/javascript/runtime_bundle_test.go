@@ -38,6 +38,30 @@ function go2jsOther(value) {
 	}
 }
 
+// TestRuntimeBundleCarriesTheSchedulerForAnExportedCall is a function of the
+// program handed over to a module, which is run as a goroutine of the program
+// would be, so the scheduler it is run by has to be part of what the program
+// carries.
+func TestRuntimeBundleCarriesTheSchedulerForAnExportedCall(t *testing.T) {
+	source := runtimeBundle(
+		`const Add$go2js_export = (...go2jsArgs) => go2jsCallFromJavaScript(Add, null, go2jsArgs);`,
+		runtimeSourceParts()...,
+	)
+
+	for _, name := range []string{
+		"function go2jsCallFromJavaScript",
+		"function go2jsStart",
+		"function go2jsWaitForWork",
+		"function go2jsCall",
+		"function go2jsTask",
+		"go2jsLiveTasks",
+	} {
+		if !strings.Contains(source, name) {
+			t.Fatalf("an exported call is missing %s", name)
+		}
+	}
+}
+
 func TestRuntimeBundleIncludesDependenciesAndGlobals(t *testing.T) {
 	source := runtimeBundle(
 		`function main(){go2jsSliceCap(value);}`,

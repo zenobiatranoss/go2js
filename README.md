@@ -28,6 +28,58 @@ the options are:
 - `-runtime`: include the runtime the program is written against, on by default
 - `-strict`: write the output in strict mode, on by default
 
+## handing a program over to JavaScript
+
+a declaration is handed over to whatever runs the program when the comment
+`//go2js:export` is written above it, with a name of its own after it when it is
+to be reached by another name:
+
+```go
+// Total adds up whatever it is handed.
+//
+//go2js:export total
+func Total(values []int) int {
+	sum := 0
+
+	for _, value := range values {
+		sum += value
+	}
+
+	return sum
+}
+```
+
+what is handed over is written the way the module the program was compiled as
+hands things over: an ES module names what it exports, a CommonJS module puts
+each declaration on the name it is reached by, and a program written as an
+expression (`-module iife`) hands nothing over, since an expression has nowhere
+of its own to hand anything to.
+
+a function is handed over as something JavaScript can call, which is not what it
+is written as: a function of a Go program is a generator, since a Go function
+may wait on a goroutine of the program to answer it. The call is run as a
+goroutine of the program would be, so an exported function may wait on channels,
+start goroutines and take a lock, and what it comes to is what JavaScript is
+handed. A fault in the call is thrown at the caller rather than left to end the
+program, and the program keeps running afterwards.
+
+a few things about what a declaration has to be to be handed over:
+
+- only a declaration written at the top level of a file is handed over, and a
+  method is not one of them
+- a name JavaScript cannot be reached by, such as `class-method`, is no name at
+  all, so a comment naming one hands nothing over
+- a declaration whose name JavaScript has taken for itself, such as `null`, is
+  handed over under the name it was written under in JavaScript, such as
+  `null$go2js`
+- more than one value comes back as an array, since a JavaScript function has
+  one place to put what it returns
+
+a program compiled as a project (`go2js <directory>` beside a `go.mod`) hands
+over what the package it was asked for asked to hand over, and not what the
+packages below it asked for, since those are written as namespaces of the
+program.
+
 ## running tests
 
     go2js test [options] <file.go|directory>
@@ -129,6 +181,10 @@ written in JavaScript of the same name.
   not run, and neither is a fuzz target.
 - a benchmark that asked what each of them allocated is told it allocated nothing,
   since a JavaScript program does not hand out memory the way a Go program does.
+- a program that hands a function over to JavaScript runs the call on the thread
+  that called it, with the scheduler running whatever it waits on, so a function
+  called from JavaScript is not called from a goroutine of its own and a fault in
+  it leaves the goroutines of the program where they were.
 
 ## tests
 

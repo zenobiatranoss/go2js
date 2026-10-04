@@ -86,18 +86,32 @@ func moduleFooter(options ModuleOptions) string {
 	return ""
 }
 
-func moduleExport(name string, format ModuleFormat) string {
+// moduleExportAs is one declaration handed over under a name of its own, which is
+// the name it is declared under inside the module and the name it is reached
+// under outside it, which are two names when a declaration was written asking for
+// them to be.
+func moduleExportAs(name, alias string, format ModuleFormat) string {
 	if name == "" {
 		return ""
 	}
 
+	exported := alias
+
+	if exported == "" {
+		exported = name
+	}
+
 	switch format {
 	case ModuleCommonJS:
-		return fmt.Sprintf("module.exports.%s = %s;\n", name, name)
+		return fmt.Sprintf("module.exports.%s = %s;\n", exported, name)
 	case ModuleIIFE:
 		return ""
 	default:
-		return fmt.Sprintf("export { %s };\n", name)
+		if exported == name {
+			return fmt.Sprintf("export { %s };\n", name)
+		}
+
+		return fmt.Sprintf("export { %s as %s };\n", name, exported)
 	}
 }
 
@@ -130,11 +144,6 @@ func WrapModule(source string, options ModuleOptions) string {
 
 	b.WriteString(moduleFooter(options))
 	return b.String()
-}
-
-func Export(name string, options ModuleOptions) string {
-	options = options.Normalize()
-	return moduleExport(name, options.Format)
 }
 
 func Import(name, path string, options ModuleOptions) string {

@@ -122,7 +122,7 @@ func compileProjectWithOptions(dir string, options Options) (string, error) {
 		return "", err
 	}
 
-	mainCode, err := p.emitFiles(target)
+	mainCode, err := p.emitFiles(target, true)
 	if err != nil {
 		return "", err
 	}
@@ -146,7 +146,11 @@ func compileProjectWithOptions(dir string, options Options) (string, error) {
 		program = javascript.ProgramRuntime(program, p.options.Target) + program
 	}
 
-	return program, nil
+	// What the program hands over is handed over from the package that was asked
+	// for, which is the one the program is written around.
+	exports := ExportedDeclarations(target.pkg.Files, target.analysis.Types)
+
+	return wrapExports(program, p.options, exports), nil
 }
 
 func (p *project) load(path string) (*projectPackage, error) {
@@ -169,7 +173,10 @@ func (p *project) load(path string) (*projectPackage, error) {
 	p.active[path] = true
 	defer delete(p.active, path)
 
-	pkg, err := ParsePackageDir(dir)
+	// The comments of a file are read as well as its declarations, since what a
+	// declaration asks of the JavaScript it is written as is written in the
+	// comment above it.
+	pkg, err := ParsePackageDirWithOptions(dir, ParseOptions{ParseComments: true})
 	if err != nil {
 		return nil, err
 	}
@@ -307,7 +314,7 @@ func (p *project) emitNamespace(pkg *projectPackage) (string, error) {
 		out.WriteString("\n")
 	}
 
-	code, err := p.emitFiles(pkg)
+	code, err := p.emitFiles(pkg, false)
 	if err != nil {
 		return "", err
 	}
@@ -422,7 +429,12 @@ func moveMainFileLast(ordered []*ParsedFile) []*ParsedFile {
 	return ordered
 }
 
-func (p *project) emitFiles(pkg *projectPackage) (string, error) {
+// emitFiles writes the files of a package out. What the program hands over is
+// only handed over from the package the program is written around, so the
+// declarations of any other package are written as they stand: a declaration
+// asked to be handed over is only asked to be handed over by the program it is
+// part of, and inside another package it is nothing but a declaration.
+func (p *project) emitFiles(pkg *projectPackage, exposed bool) (string, error) {
 	var out strings.Builder
 
 	qualifiers := map[string]string{}
@@ -456,13 +468,19 @@ func (p *project) emitFiles(pkg *projectPackage) (string, error) {
 
 	ordered := moveMainFileLast(orderPackageFiles(pkg.pkg))
 
-	passes := []func(*ast.File, *gotypes.Result, *semantic.Context, bool, string, string, map[string]string) (string, bool, error){
+	passes := []func(*ast.File, *gotypes.Result, *semantic.Context, bool, string, string, map[string]string, ...javascript.Export) (string, bool, error){
 		javascript.EmitFileTypes,
 		javascript.EmitFileBody,
 	}
 
 	for _, emit := range passes {
 		for _, file := range ordered {
+			var handlers []javascript.Export
+
+			if exposed {
+				handlers = Handlers(fileExports(file.File, pkg.analysis.Types))
+			}
+
 			code, needsRuntime, err := emit(
 				file.File,
 				pkg.analysis.Types,
@@ -471,6 +489,7 @@ func (p *project) emitFiles(pkg *projectPackage) (string, error) {
 				p.options.Target,
 				pkg.path,
 				qualifiers,
+				handlers...,
 			)
 			if err != nil {
 				return "", err
