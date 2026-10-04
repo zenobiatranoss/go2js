@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/zenobiatranoss/go2js/backend/javascript"
+	"github.com/zenobiatranoss/go2js/types"
 )
 
 type Compiler struct {
@@ -103,12 +104,20 @@ func (c *Compiler) CompilePackage(pkg *Package) (string, error) {
 
 	var parts []string
 	needsRuntime := false
+	packagePath := ""
 
 	exports := ExportedDeclarations(pkg.Files, analysis.Types)
 
 	for _, parsed := range pkg.Files {
 		if parsed == nil || parsed.File == nil {
 			return "", fmt.Errorf("package contains invalid file")
+		}
+
+		// The path of the package is told to the emitter so that a type declared in
+		// another file of it is known to be one of this package, which a file
+		// only knows about its own declarations.
+		if packagePath == "" {
+			packagePath = packagePathOf(analysis.Types)
 		}
 
 		// The runtime is written once for the package rather than once for each
@@ -122,7 +131,7 @@ func (c *Compiler) CompilePackage(pkg *Package) (string, error) {
 			analysis.Semantic,
 			false,
 			c.Options.Target,
-			"",
+			packagePath,
 			nil,
 			Handlers(fileExportsOf(parsed, analysis.Types))...,
 		)
@@ -295,4 +304,22 @@ func packageSourceMapSources(pkg *Package) []javascript.SourceMapSource {
 	}
 
 	return sources
+}
+
+// packagePathOf is the path the go tool knows the package a file belongs to by,
+// which is what tells a declaration of this package apart from one of a package
+// beside it. A file compiled on its own carries the path of a whole program
+// rather than of a package, and there is nothing to tell apart there, so the
+// emitter is told nothing in that case.
+func packagePathOf(analysis *types.Result) string {
+	if analysis == nil || analysis.Package == nil {
+		return ""
+	}
+
+	path := analysis.Package.Path()
+	if path == "" || path == "command-line-arguments" {
+		return ""
+	}
+
+	return path
 }
