@@ -134,7 +134,10 @@ func (c *Compiler) CompileFileDetailed(path string) CompileResult {
 		return result
 	}
 
-	parsed, err := ParseFile(path)
+	// The comments of a file are read as well as its declarations, since what a
+	// declaration asks of the JavaScript it is written as is written in the
+	// comment above it.
+	parsed, err := ParseFileWithOptions(path, ParseOptions{ParseComments: true})
 	if err != nil {
 		result.Diagnostics.Add(DiagnosticFromError(err, "parse", path))
 		return result
@@ -153,6 +156,7 @@ func (c *Compiler) CompileFileDetailed(path string) CompileResult {
 	}
 
 	result.Code = code
+
 	return result
 }
 
@@ -173,16 +177,19 @@ func (c *Compiler) compileParsedFile(parsed *ParsedFile, analysis *Analysis) (st
 		return "", fmt.Errorf("missing analysis")
 	}
 
+	exports := ExportedDeclarations([]*ParsedFile{parsed}, analysis.Types)
+
 	output, err := javascript.EmitWithContextOptionsTarget(
 		parsed.File,
 		analysis.Types,
 		analysis.Semantic,
 		c.Options.Runtime,
 		c.Options.Target,
+		Handlers(exports)...,
 	)
 	if err != nil {
 		return "", err
 	}
 
-	return c.wrap(output), nil
+	return wrapExports(runDeferredInits(output), c.Options, exports), nil
 }

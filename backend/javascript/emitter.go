@@ -616,32 +616,32 @@ func EmitWithContextOptions(file *ast.File, analysis *gotypes.Result, context *s
 	return EmitWithContextOptionsTarget(file, analysis, context, includeRuntime, "es2022")
 }
 
-func EmitWithContextOptionsTarget(file *ast.File, analysis *gotypes.Result, context *semantic.Context, includeRuntime bool, target string) (string, error) {
-	return EmitWithContextOptionsTargetQualified(file, analysis, context, includeRuntime, target, "", nil)
+func EmitWithContextOptionsTarget(file *ast.File, analysis *gotypes.Result, context *semantic.Context, includeRuntime bool, target string, exports ...Export) (string, error) {
+	return EmitWithContextOptionsTargetQualified(file, analysis, context, includeRuntime, target, "", nil, exports...)
 }
 
-func EmitWithContextOptionsTargetQualified(file *ast.File, analysis *gotypes.Result, context *semantic.Context, includeRuntime bool, target string, selfPackagePath string, qualifiers map[string]string) (string, error) {
-	code, _, err := EmitFile(file, analysis, context, includeRuntime, target, selfPackagePath, qualifiers)
+func EmitWithContextOptionsTargetQualified(file *ast.File, analysis *gotypes.Result, context *semantic.Context, includeRuntime bool, target string, selfPackagePath string, qualifiers map[string]string, exports ...Export) (string, error) {
+	code, _, err := EmitFile(file, analysis, context, includeRuntime, target, selfPackagePath, qualifiers, exports...)
 
 	return code, err
 }
 
 // EmitFile emits one file and reports whether the emitted code depends on the
 // shared runtime bundle, so callers can emit that bundle exactly once.
-func EmitFile(file *ast.File, analysis *gotypes.Result, context *semantic.Context, includeRuntime bool, target string, selfPackagePath string, qualifiers map[string]string) (string, bool, error) {
-	return emitFilePass(file, analysis, context, includeRuntime, target, selfPackagePath, qualifiers, emitAll)
+func EmitFile(file *ast.File, analysis *gotypes.Result, context *semantic.Context, includeRuntime bool, target string, selfPackagePath string, qualifiers map[string]string, exports ...Export) (string, bool, error) {
+	return emitFilePass(file, analysis, context, includeRuntime, target, selfPackagePath, qualifiers, emitAll, exports)
 }
 
 // EmitFileTypes emits only the type declarations of one file, so a package can
 // declare every type before any function or method refers to it.
-func EmitFileTypes(file *ast.File, analysis *gotypes.Result, context *semantic.Context, includeRuntime bool, target string, selfPackagePath string, qualifiers map[string]string) (string, bool, error) {
-	return emitFilePass(file, analysis, context, includeRuntime, target, selfPackagePath, qualifiers, emitTypesOnly)
+func EmitFileTypes(file *ast.File, analysis *gotypes.Result, context *semantic.Context, includeRuntime bool, target string, selfPackagePath string, qualifiers map[string]string, exports ...Export) (string, bool, error) {
+	return emitFilePass(file, analysis, context, includeRuntime, target, selfPackagePath, qualifiers, emitTypesOnly, exports)
 }
 
 // EmitFileBody emits everything except type declarations, complementing
 // EmitFileTypes for packages that are emitted in two passes.
-func EmitFileBody(file *ast.File, analysis *gotypes.Result, context *semantic.Context, includeRuntime bool, target string, selfPackagePath string, qualifiers map[string]string) (string, bool, error) {
-	return emitFilePass(file, analysis, context, includeRuntime, target, selfPackagePath, qualifiers, emitNoTypes)
+func EmitFileBody(file *ast.File, analysis *gotypes.Result, context *semantic.Context, includeRuntime bool, target string, selfPackagePath string, qualifiers map[string]string, exports ...Export) (string, bool, error) {
+	return emitFilePass(file, analysis, context, includeRuntime, target, selfPackagePath, qualifiers, emitNoTypes, exports)
 }
 
 type emitPass int
@@ -652,7 +652,7 @@ const (
 	emitNoTypes
 )
 
-func emitFilePass(file *ast.File, analysis *gotypes.Result, context *semantic.Context, includeRuntime bool, target string, selfPackagePath string, qualifiers map[string]string, pass emitPass) (string, bool, error) {
+func emitFilePass(file *ast.File, analysis *gotypes.Result, context *semantic.Context, includeRuntime bool, target string, selfPackagePath string, qualifiers map[string]string, pass emitPass, exports []Export) (string, bool, error) {
 	if context == nil && analysis != nil {
 		context = semantic.NewResultContext(analysis, nil)
 	}
@@ -707,6 +707,19 @@ func emitFilePass(file *ast.File, analysis *gotypes.Result, context *semantic.Co
 				e.newline()
 				break
 			}
+		}
+	}
+
+	// What the program hands over is written at the end of it, once every
+	// declaration it hands over is in place, and inside the program rather than
+	// beside it: the module a program is a module of says what it exports inside
+	// itself, and the runtime bundle is cut from what the program holds, so a
+	// function handed over is handed over as a function JavaScript can call.
+	if pass != emitTypesOnly && len(exports) > 0 {
+		if declarations := ExportDeclarations(exports); declarations != "" {
+			e.write(strings.TrimSuffix(declarations, "\n"))
+			e.newline()
+			e.needsRuntime = true
 		}
 	}
 

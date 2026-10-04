@@ -38,7 +38,7 @@ func TestCommonJSModule(t *testing.T) {
 		t.Fatal("expected strict header")
 	}
 
-	exported := javascript.Export("value", options)
+	exported := javascript.ExportHandlers([]javascript.Export{{Name: "value"}}, options)
 
 	if exported != "module.exports.value = value;\n" {
 		t.Fatalf("unexpected commonjs export: %q", exported)
@@ -67,7 +67,7 @@ func TestIIFEModule(t *testing.T) {
 		t.Fatal("expected iife suffix")
 	}
 
-	if javascript.Export("value", options) != "" {
+	if javascript.ExportHandlers([]javascript.Export{{Name: "value"}}, options) != "" {
 		t.Fatal("iife must not emit module export")
 	}
 }
