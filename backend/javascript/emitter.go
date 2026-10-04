@@ -724,9 +724,19 @@ func emitFilePass(file *ast.File, analysis *gotypes.Result, context *semantic.Co
 		e.needsRuntime = true
 	}
 
+	// The registrations are written ahead of the program and name the classes the
+	// runtime answers standard library types with, so they are put where the
+	// bundle can see that they are wanted: what a program holds is what decides
+	// which parts of the runtime travel with it.
+	registrations := ""
+
+	if e.needsRuntime {
+		registrations = shimTypeRegistrations(body)
+	}
+
 	prefix := ""
 	if includeRuntime && e.needsRuntime {
-		prefix = ProgramRuntime(body, e.target)
+		prefix = ProgramRuntime(registrations+body, e.target)
 	}
 
 	// The reflect type descriptors are discovered while the body is emitted, so
@@ -734,6 +744,10 @@ func emitFilePass(file *ast.File, analysis *gotypes.Result, context *semantic.Co
 	// them.
 	if len(e.reflectTypeConsts) > 0 {
 		prefix += strings.Join(e.reflectTypeConsts, "\n") + "\n"
+	}
+
+	if registrations != "" {
+		prefix += registrations + "\n"
 	}
 
 	return prefix + body, e.needsRuntime, nil
@@ -750,6 +764,49 @@ func ProgramRuntime(requiredSource, target string) string {
 	}
 
 	return prefix
+}
+
+// shimTypeRegistrations tells the runtime the Go name of a class it answers a
+// standard library type with, so that a value of one of those types keeps the name
+// Go gives it even when nothing but the class it was built from is left: a type
+// assertion on a value that came out of a pool, an error off the host or anything
+// else the runtime handed back asks what type the value is of, and the class is
+// named after the JavaScript rather than after the type it stands for.
+//
+// Only the classes the program itself puts to use are named, since naming one
+// brings with it the parts of the runtime that know about types, and a program
+// that never holds a value of such a type has no reason to carry them.
+func shimTypeRegistrations(body string) string {
+	names := make([]string, 0, len(packageTypes))
+
+	for name := range packageTypes {
+		names = append(names, name)
+	}
+
+	sort.Strings(names)
+
+	var out strings.Builder
+
+	for _, name := range names {
+		constructor := packageTypes[name]
+
+		if constructor == "" || !strings.Contains(body, constructor) {
+			continue
+		}
+
+		// A class the bundle did not carry is left alone rather than registered
+		// as nothing, which is what happens when a program never mentions the
+		// type and the part of the runtime that answers for it was cut.
+		out.WriteString("if (typeof ")
+		out.WriteString(constructor)
+		out.WriteString(" === \"function\") { go2jsRegisterTypeName(")
+		out.WriteString(constructor)
+		out.WriteString(", ")
+		out.WriteString(strconv.Quote(name))
+		out.WriteString("); }\n")
+	}
+
+	return out.String()
 }
 
 // runtimeSourceParts are the sources the runtime is written in, which the
@@ -783,6 +840,9 @@ func runtimeSourceParts() []string {
 		htmlRuntimeSource(),
 		osFileRuntimeSource(),
 		runtimeShimRuntimeSource(),
+		syncShimRuntimeSource(),
+		cryptoHashRuntimeSource(),
+		tabwriterRuntimeSource(),
 		sortSliceShimRuntimeSource(),
 		execRuntimeSource(),
 		netHTTPRuntimeSource(),
@@ -2806,6 +2866,25 @@ func (e *emitter) emitConversion(call *ast.CallExpr) error {
 		e.write(")")
 
 		return nil
+	}
+
+	// A span of time is held as a span of time rather than as a bare whole number,
+	// so a whole number read out of one takes the count out of it rather than
+	// leaving the span itself, which would go on printing as the span it is and
+	// would still answer to the methods of a span.
+	if basic, plain := target.(*gotypesstd.Basic); plain && isDurationGoType(e.analyzedType(call.Args[0])) {
+		if info := basic.Info(); info&gotypesstd.IsInteger != 0 || info&gotypesstd.IsFloat != 0 {
+			e.needsRuntime = true
+			e.write("go2jsDurationNanosAsNumber(")
+
+			if err := e.emitExpr(call.Args[0]); err != nil {
+				return err
+			}
+
+			e.write(")")
+
+			return nil
+		}
 	}
 
 	// A whole number read as a span of time is a span of time, and the paths

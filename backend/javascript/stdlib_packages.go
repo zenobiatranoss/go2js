@@ -190,6 +190,7 @@ func extraStringsFuncs() {
 func moreStdlibFuncs() {
 	stdlibFuncMaps["context"] = contextFuncs
 	stdlibFuncMaps["sync/atomic"] = atomicFuncs
+	stdlibFuncMaps["sync"] = syncFuncs
 	stdlibFuncMaps["flag"] = flagFuncs
 
 	for name, value := range flagConstants {
