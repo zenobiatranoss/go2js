@@ -33,7 +33,10 @@ func (c *Compiler) CompileFile(path string) (string, error) {
 		return "", fmt.Errorf("empty source path")
 	}
 
-	parsed, err := ParseFile(path)
+	// The comments of a file are read as well as its declarations, since what a
+	// declaration asks of the JavaScript it is written as is written in the
+	// comment above it.
+	parsed, err := ParseFileWithOptions(path, ParseOptions{ParseComments: true})
 	if err != nil {
 		return "", err
 	}
@@ -43,12 +46,15 @@ func (c *Compiler) CompileFile(path string) (string, error) {
 		return "", err
 	}
 
+	exports := ExportedDeclarations([]*ParsedFile{parsed}, analysis.Types)
+
 	output, err := javascript.EmitWithContextOptionsTarget(
 		parsed.File,
 		analysis.Types,
 		analysis.Semantic,
 		c.Options.Runtime,
 		c.Options.Target,
+		Handlers(exports)...,
 	)
 	if err != nil {
 		return "", err
@@ -67,7 +73,7 @@ func (c *Compiler) CompileFile(path string) (string, error) {
 		}}
 	}
 
-	return c.wrapWithSources(runDeferredInits(output), sources), nil
+	return c.wrapExportsWithSources(runDeferredInits(output), sources, exports), nil
 }
 
 // runDeferredInits makes the assignments that were held back while a package
@@ -98,6 +104,8 @@ func (c *Compiler) CompilePackage(pkg *Package) (string, error) {
 	var parts []string
 	needsRuntime := false
 
+	exports := ExportedDeclarations(pkg.Files, analysis.Types)
+
 	for _, parsed := range pkg.Files {
 		if parsed == nil || parsed.File == nil {
 			return "", fmt.Errorf("package contains invalid file")
@@ -105,7 +113,9 @@ func (c *Compiler) CompilePackage(pkg *Package) (string, error) {
 
 		// The runtime is written once for the package rather than once for each
 		// file of it, so the files are emitted without it and it is put in front
-		// of the whole package if any of them asks for it.
+		// of the whole package if any of them asks for it. What the package hands
+		// over is handed over from the file each declaration was written in, which
+		// is where the declaration it hands over is.
 		code, needs, err := javascript.EmitFile(
 			parsed.File,
 			analysis.Types,
@@ -114,6 +124,7 @@ func (c *Compiler) CompilePackage(pkg *Package) (string, error) {
 			c.Options.Target,
 			"",
 			nil,
+			Handlers(fileExportsOf(parsed, analysis.Types))...,
 		)
 		if err != nil {
 			return "", err
@@ -137,7 +148,7 @@ func (c *Compiler) CompilePackage(pkg *Package) (string, error) {
 		sources = packageSourceMapSources(pkg)
 	}
 
-	return c.wrapWithSources(runDeferredInits(code), sources), nil
+	return c.wrapExportsWithSources(runDeferredInits(code), sources, exports), nil
 }
 
 func (c *Compiler) CompileDirectory(dir string) (string, error) {
@@ -150,15 +161,13 @@ func (c *Compiler) CompileDirectory(dir string) (string, error) {
 		return "", fmt.Errorf("empty source directory")
 	}
 
+	// A project is written out as the module it is written for, with what it was
+	// asked to hand over handed over, so it is not wrapped again here.
 	if _, _, err := findModuleRoot(dir); err == nil {
-		output, err := compileProjectWithOptions(dir, c.Options)
-		if err != nil {
-			return "", err
-		}
-		return c.wrap(output), nil
+		return compileProjectWithOptions(dir, c.Options)
 	}
 
-	pkg, err := ParsePackageDir(dir)
+	pkg, err := ParsePackageDirWithOptions(dir, ParseOptions{ParseComments: true})
 	if err != nil {
 		return "", err
 	}
@@ -212,35 +221,46 @@ func (c *Compiler) CompileProject(dir string) (string, error) {
 		return "", err
 	}
 
-	output, err := CompileProjectWithOptions(dir, c.Options)
-	if err != nil {
-		return "", err
-	}
-
-	return c.wrap(output), nil
+	// A project is written out as the module it is written for, with what it was
+	// asked to hand over handed over, so it is not wrapped again here.
+	return CompileProjectWithOptions(dir, c.Options)
 }
 
-func (c *Compiler) wrap(source string) string {
-	return c.wrapWithSources(source, nil)
-}
+// wrapExportsWithSources writes a program out as the module it is written for,
+// with what it exports handed over at the end of it, and with the source it was
+// written from beside it when a source map was asked for.
+//
+// The exports go inside the module rather than after it, since where a module
+// names what it exports is inside the module, and a program written as an
+// expression hands nothing over because an expression has nowhere to hand
+// anything to.
+func (c *Compiler) wrapExportsWithSources(source string, sources []javascript.SourceMapSource, exports []Export) string {
+	output := wrapExports(source, c.Options, exports)
 
-func (c *Compiler) wrapWithSources(source string, sources []javascript.SourceMapSource) string {
-	options := javascript.ModuleOptions{
-		Format: javascript.ModuleFormat(c.Options.Module),
-		Strict: c.Options.Strict,
-	}
-
-	output := javascript.WrapModule(source, options)
-
-	if c.Options.Strict && !strings.Contains(output, `"use strict";`) {
-		output = `"use strict";\n` + output
-	}
-
-	output = javascript.FormatJavaScript(output, c.Options.Minify)
 	if c.Options.SourceMap {
 		output = javascript.AppendInlineSourceMap(output, sources)
 	}
+
 	return output
+}
+
+// wrapExports writes a program out as the module it is written for, with what it
+// exports handed over at the end of it.
+func wrapExports(source string, options Options, exports []Export) string {
+	module := javascript.ModuleOptions{
+		Format: javascript.ModuleFormat(options.Module),
+		Strict: options.Strict,
+	}
+
+	source += ExportHandlers(exports, module.Format)
+
+	output := javascript.WrapModule(source, module)
+
+	if options.Strict && !strings.Contains(output, `"use strict";`) {
+		output = `"use strict";` + "\n" + output
+	}
+
+	return javascript.FormatJavaScript(output, options.Minify)
 }
 
 func packageSourceMapSources(pkg *Package) []javascript.SourceMapSource {

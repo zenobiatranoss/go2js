@@ -286,6 +286,39 @@ function go2jsCallNow(fn, self, args) {
 	return result;
 }
 
+// go2jsCallFromJavaScript calls a function of the program from outside it, which
+// is what a program that hands a function over to a module is asked for. It runs
+// as a goroutine of the program would, since such a function may wait on another
+// goroutine of the program to answer it, and the scheduler is what answers it.
+// What the call comes to is what the caller is handed, and a fault in it is
+// thrown at the caller the way a fault in the program is thrown.
+function go2jsCallFromJavaScript(fn, self, args) {
+	let result;
+
+	const task = go2jsStart((function* () {
+		result = yield* go2jsCall(fn, self, args);
+	})());
+
+	while (go2jsLiveTasks > 0) {
+		if (go2jsWaitForWork()) {
+			continue;
+		}
+
+		// Nothing is runnable and nothing is coming due. A call that has already
+		// come back has ended, as a program that has returned has, and the
+		// goroutines still waiting are left where they are; a call still going is a
+		// program with every goroutine asleep, which Go calls a deadlock.
+		if (task.finished) {
+			go2jsReady.length = 0;
+			break;
+		}
+
+		throw go2jsFatalError("all goroutines are asleep - deadlock!");
+	}
+
+	return result;
+}
+
 function go2jsRunNow(generator) {
 	// A thunk the compiler could not see the shape of may well turn out not to
 	// be a generator, and then there is nothing to run: the value it produced is
