@@ -336,6 +336,28 @@ func (e *emitter) emitAtomicCellArg(arg ast.Expr) error {
 	return nil
 }
 
+// contextKeyArgumentType is the type the key of a context.WithValue call is
+// declared with, which is the interface it is stored under and the one that says
+// a key of a named type is a key of that type rather than of a plain one.
+func (e *emitter) contextKeyArgumentType(call *ast.CallExpr, index int) gotypesstd.Type {
+	signature := e.callSignature(call)
+	if signature == nil {
+		return nil
+	}
+
+	params := signature.Params()
+	if params == nil || index >= params.Len() {
+		return nil
+	}
+
+	keyType := params.At(index).Type()
+	if !isInterfaceTarget(keyType) {
+		return nil
+	}
+
+	return keyType
+}
+
 func (e *emitter) emitAtomicCall(call *ast.CallExpr, selector *ast.SelectorExpr) (bool, error) {
 	if !e.isPackageSelector(selector) {
 		return false, nil
@@ -620,6 +642,20 @@ func (e *emitter) emitPackageCall(call *ast.CallExpr, selector *ast.SelectorExpr
 		for i, arg := range call.Args {
 			if i > 0 {
 				e.write(", ")
+			}
+			// The key a value is stored under is compared by the type it is of as
+			// well as by what it holds, so it is handed over the way a value read
+			// back out of a context is, in a box that names the type. Leaving it
+			// as the bare value would store it under no type at all and a key of
+			// a named type would never be found again.
+			if i == 1 && selector.Sel.Name == "WithValue" && e.analysis != nil {
+				if keyType := e.contextKeyArgumentType(call, i); keyType != nil {
+					if err := e.emitInterfaceValue(arg, keyType); err != nil {
+						return true, err
+					}
+
+					continue
+				}
 			}
 			if err := e.emitExpr(arg); err != nil {
 				return true, err
