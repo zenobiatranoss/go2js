@@ -932,12 +932,13 @@ function go2jsContextWrap(state) {
 			return [go2jsTimeValue(new Date(state.deadline)), true];
 		},
 		Value(key) {
+			const wanted = go2jsContextKey(key);
 			let current = state;
 
 			while (current !== null && current !== undefined) {
 				if (current.values !== null && current.values !== undefined &&
-					current.values.has(key)) {
-					return current.values.get(key);
+					current.values.has(wanted)) {
+					return current.values.get(wanted);
 				}
 
 				current = current.parent;
@@ -968,9 +969,90 @@ function go2jsContextWithValue(parent, key, value) {
 	const child = go2jsContextChildState(go2jsContextStateOf(parent));
 
 	child.values = new go2jsNativeMap(child.parent.values);
-	child.values.set(key, value);
+	child.values.set(go2jsContextKey(key), value);
 
 	return go2jsContextWrap(child);
+}
+
+// go2jsContextKey names a key the way Go compares one: by what it holds and by
+// the type it holds it as, so a key of a named type stays apart from a plain one
+// that holds the same text or the same number. JavaScript tells a box from
+// another box by which object it is, and two keys built alike are two boxes, so
+// the name is written down here rather than taken from the object.
+//
+// A key handed over as the value itself carries no type name of its own, since a
+// string or a number is a value that needs no box, and is named by what it is
+// alone: two such keys are equal when JavaScript says they are, which is what Go
+// says of a string or a number as well.
+function go2jsContextKey(key) {
+	let type = "";
+	let value = key;
+
+	if (key !== null && key !== undefined && key.__go2js_interface === true) {
+		type = typeof key.type === "string" ? key.type : "";
+		value = key.value;
+	}
+
+	if (value === null || value === undefined) {
+		return type + "|nil";
+	}
+
+	// A key holding a struct or an array is found by what it holds rather than
+	// by which object it happens to be, so the shape of it is the name.
+	if (go2jsContextKeyByValue(value)) {
+		const shape = go2jsMapKeySignature(value);
+		const held = shape !== null ? shape : typeof value + ":" + go2jsStringify(value);
+
+		return type + "|" + held;
+	}
+
+	// A key holding a pointer, a channel, a function, a slice or a map is found
+	// by which one it is, as Go finds two of those by their address rather than
+	// by what they hold, so each is given a name of its own to be found by.
+	return type + "|#" + go2jsContextKeyIdentity(value);
+}
+
+// go2jsContextKeyByValue reports whether Go compares a key of this kind by what
+// it holds rather than by which one it is. A number, a string, a boolean, a
+// struct and an array are values in Go and two of them built alike are one key,
+// and everything else is compared by its address.
+function go2jsContextKeyByValue(value) {
+	const kind = typeof value;
+
+	if (kind === "string" || kind === "number" || kind === "boolean" || kind === "bigint") {
+		return true;
+	}
+
+	if (kind !== "object") {
+		return false;
+	}
+
+	if (value.__go2js_pointer === true || value.__go2js_interface === true ||
+		value.__go2js_reflectValue === true || value.__go2js_reflectType === true ||
+		value.__go2js_typed === true || value instanceof go2jsNativeMap ||
+		value instanceof go2jsNativeSet || value instanceof go2jsNativeDate ||
+		go2jsSliceMeta.has(value)) {
+		return false;
+	}
+
+	return true;
+}
+
+// go2jsContextKeyIdentity hands every pointer, channel, function, slice and map
+// the one name it is found by, so two of them are the same key only when they
+// are the same one.
+const go2jsContextKeyNames = new WeakMap();
+let go2jsContextKeyNameCount = 0;
+
+function go2jsContextKeyIdentity(value) {
+	let name = go2jsContextKeyNames.get(value);
+
+	if (name === undefined) {
+		name = ++go2jsContextKeyNameCount;
+		go2jsContextKeyNames.set(value, name);
+	}
+
+	return name;
 }
 
 function go2jsContextWithCancel(parent) {
