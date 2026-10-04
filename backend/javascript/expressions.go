@@ -637,12 +637,11 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		}
 
 	case *ast.StarExpr:
-		e.needsRuntime = true
-
-		if e.isScalarReceiverIdent(x.X) {
+		if e.isScalarReceiverIdent(x.X) || e.isClassBackedPointer(e.typeOfExpression(x.X)) {
 			return e.emitExpr(x.X)
 		}
 
+		e.needsRuntime = true
 		e.write("go2jsDeref(")
 		if err := e.emitExpr(x.X); err != nil {
 			return err
@@ -807,6 +806,10 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			e.needsRuntime = true
 			return nil
 		case token.MUL:
+			if e.isClassBackedPointer(e.typeOfExpression(x.X)) {
+				return e.emitPointerOperand(x.X)
+			}
+
 			e.write("go2jsDeref(")
 			if err := e.emitPointerOperand(x.X); err != nil {
 				return err
@@ -1640,6 +1643,45 @@ func (e *emitter) packageTypeConstructor(named *gotypes.Named) string {
 	}
 
 	return packageTypeConstructorFor(named.Obj().Pkg().Name(), named.Obj().Name())
+}
+
+// typeOfExpression is the type the analysis gives an expression, or nothing at
+// all where it gives none, which is what a question about the expression cannot
+// be answered from.
+func (e *emitter) typeOfExpression(expr ast.Expr) gotypes.Type {
+	if e.analysis == nil || expr == nil {
+		return nil
+	}
+
+	info, ok := e.analysis.Types[expr]
+	if !ok || info.Type == nil {
+		return nil
+	}
+
+	return info.Type
+}
+
+// isClassBackedPointer reports whether a pointer is to a type of Go that the
+// program does not declare, which the runtime answers with a class of its own
+// where the class is the value rather than a holder standing around it. Such a
+// pointer is the value itself, so there is nothing behind it to take out from
+// under it, and a copy of the pointer is a copy of the value for the same reason.
+func (e *emitter) isClassBackedPointer(t gotypes.Type) bool {
+	if t == nil {
+		return false
+	}
+
+	pointer, ok := t.Underlying().(*gotypes.Pointer)
+	if !ok {
+		return false
+	}
+
+	named, ok := pointer.Elem().(*gotypes.Named)
+	if !ok {
+		return false
+	}
+
+	return e.packageTypeConstructor(named) != ""
 }
 
 // packageTypeConstructorFor writes the expression a value of a type the program
