@@ -7075,6 +7075,13 @@ function go2jsMapEntries(map) {
 }
 
 function go2jsCopy(value) {
+	// A value of a type of Go that stands for the value behind a pointer is one
+	// value rather than a record of fields, so copying it is the same value seen
+	// twice rather than a second one written out beside it.
+	if (value !== null && value !== undefined && value.__go2js_shared === true) {
+		return value;
+	}
+
 	// A slice is a name for storage somebody else owns, so a copy of one is the
 	// same name rather than a second run of elements. The test is the metadata a
 	// slice carries and not the shape of the value, because an array is the same
@@ -9403,6 +9410,27 @@ function go2jsFormatValue(verb, spec, value, raw) {
 	const kind = go2jsTypedKind(original);
 	const shape = go2jsTypedShape(original);
 	const tagName = tagged || boxedType;
+
+	// A value of a type that carries a whole number of its own, such as the Int of
+	// math/big, is written as the number it holds rather than as the holder that
+	// holds it, because such a type answers for itself and counts the number in
+	// the base the verb names. A verb written for a string is counted in ten like
+	// the rest, since a type that answers for itself writes the number whichever
+	// way it is asked about it, and a fault is named after the type rather than
+	// after the pointer it is reached through, which is how Go names it.
+	if (value !== null && value !== undefined && value.__go2js_whole_number === true &&
+		typeof value.value === "bigint") {
+		const answered = verb === "s" ? "d" : (verb === "O" ? "o" : verb);
+		// %T asks what the value is rather than what it says, and it is reached
+		// through the pointer it is held by, so the pointer is part of the name.
+		const named = verb === "T" || typeof tagName !== "string" || tagName === ""
+			? tagName
+			: tagName.replace(/^\*/, "");
+
+		return go2jsBigintFormat(value.value,
+			{verb: answered, flags: flags, precision: precision, width: parsed.width},
+			named, kind);
+	}
 
 	// A number too big for a double is held whole, and every verb over it reads
 	// the digits off that whole number rather than off a rounded one, so it is

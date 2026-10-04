@@ -775,6 +775,14 @@ function go2jsStructCopy(value) {
 		return value;
 	}
 
+	// A value of a type of Go that stands for the value behind a pointer is one
+	// value and not a record of fields to write out: Go shares what such a type
+	// holds when the type is copied and says the type is not to be copied at all,
+	// so a copy is the same value seen twice rather than a second one beside it.
+	if (value.__go2js_shared === true) {
+		return value;
+	}
+
 	// A date keeps its value inside itself, where a copy cannot reach it, so a
 	// copied date stops being one the moment the copy is made. It is already
 	// the value it stands for, so there is nothing here to copy.

@@ -870,6 +870,7 @@ func runtimeSourceParts() []string {
 		stackRuntimeSource(),
 		debugRuntimeSource(),
 		mathBitsRuntimeSource(),
+		mathBigRuntimeSource(),
 		httptestRuntimeSource(),
 		netRuntimeSource(),
 		templateRuntimeSource(),
