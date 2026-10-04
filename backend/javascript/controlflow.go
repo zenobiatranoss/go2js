@@ -47,6 +47,21 @@ func (e *emitter) emitBranchStmt(stmt *ast.BranchStmt) error {
 		return nil
 	}
 
+	// An unlabelled break in what the body of a case of a select does ends the
+	// select rather than a loop around it, which is what the block the body is
+	// written in is for: a break out of that block is a break out of nothing
+	// else, where a break written as it stands would end a loop the select is
+	// inside, or would be nothing at all where there is none.
+	if stmt.Tok == token.BREAK && stmt.Label == nil && e.selectBodyLabel != "" {
+		e.writeIndent()
+		e.write("break ")
+		e.write(e.selectBodyLabel)
+		e.write(";")
+		e.newline()
+
+		return nil
+	}
+
 	e.writeIndent()
 	e.write(stmt.Tok.String())
 

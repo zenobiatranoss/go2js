@@ -97,7 +97,11 @@ func (e *emitter) emitSelectStmt(stmt *ast.SelectStmt) error {
 		e.writeIndent()
 		e.write("const " + valueName + " = ")
 
-		if err := e.emitExpr(send.Value); err != nil {
+		// What a case sends is copied once, where Go evaluates it once for the
+		// whole select, and a copy of it rather than the value itself: what is
+		// sent is a value of its own and writing to what was sent afterwards is a
+		// write to the copy.
+		if err := e.emitChannelSendValue(channel, send.Value); err != nil {
 			return err
 		}
 
@@ -108,11 +112,11 @@ func (e *emitter) emitSelectStmt(stmt *ast.SelectStmt) error {
 	}
 
 	e.writeIndent()
-	e.write("let go2jsSelected = false;")
+	e.write("let go2jsPicked = -1;")
 	e.newline()
 
 	e.writeIndent()
-	e.write("while (!go2jsSelected) {")
+	e.write("while (true) {")
 	e.newline()
 	e.indent++
 
@@ -157,23 +161,15 @@ func (e *emitter) emitSelectStmt(stmt *ast.SelectStmt) error {
 				continue
 			}
 
-			e.pushScope()
-
-			for _, body := range clause.body {
-				if err := e.emitStmt(body); err != nil {
-					e.scopes = e.scopes[:len(e.scopes)-1]
-					return err
-				}
+			if err := e.emitSelectBody(clause.body); err != nil {
+				return err
 			}
-
-			e.scopes = e.scopes[:len(e.scopes)-1]
 		}
 
+		// The default case is what a select does when nothing it was written over
+		// is ready, so having run it there is nothing left to look for.
 		e.writeIndent()
-		e.write("go2jsSelected = true;")
-		e.newline()
-		e.writeIndent()
-		e.write("continue;")
+		e.write("break;")
 		e.newline()
 	} else {
 		// Nothing any of the cases was written over is ready, so the select
@@ -218,17 +214,33 @@ func (e *emitter) emitSelectStmt(stmt *ast.SelectStmt) error {
 	e.write("}")
 	e.newline()
 
+	// One of the cases is ready, so one of them is picked, as many times over as
+	// there are cases waiting: which one is picked is not written down in Go.
 	e.writeIndent()
-	e.write("const go2jsPick = go2jsReady[Math.floor(Math.random() * go2jsReady.length)];")
+	e.write("go2jsPicked = go2jsReady[Math.floor(Math.random() * go2jsReady.length)];")
 	e.newline()
 
+	// The case is known, so looking for one to run is over.
+	e.writeIndent()
+	e.write("break;")
+	e.newline()
+
+	e.indent--
+	e.writeIndent()
+	e.write("}")
+	e.newline()
+
+	// The case that was picked runs outside the loop above, since what a case
+	// does with what it was handed belongs to the select and not to the looking
+	// for a case to run: a continue in it goes on with the loop around the select
+	// and a break in it ends the select and neither of them goes back to looking.
 	for _, clause := range clauses {
 		if clause.comm == nil {
 			continue
 		}
 
 		e.writeIndent()
-		e.write(fmt.Sprintf("if (go2jsPick === %d) {", clause.index))
+		e.write(fmt.Sprintf("if (go2jsPicked === %d) {", clause.index))
 		e.newline()
 		e.indent++
 
@@ -239,11 +251,9 @@ func (e *emitter) emitSelectStmt(stmt *ast.SelectStmt) error {
 			return err
 		}
 
-		for _, body := range clause.body {
-			if err := e.emitStmt(body); err != nil {
-				e.scopes = e.scopes[:len(e.scopes)-1]
-				return err
-			}
+		if err := e.emitSelectBody(clause.body); err != nil {
+			e.scopes = e.scopes[:len(e.scopes)-1]
+			return err
 		}
 
 		e.scopes = e.scopes[:len(e.scopes)-1]
@@ -254,14 +264,51 @@ func (e *emitter) emitSelectStmt(stmt *ast.SelectStmt) error {
 		e.newline()
 	}
 
-	e.writeIndent()
-	e.write("go2jsSelected = true;")
-	e.newline()
-
 	e.indent--
 	e.writeIndent()
 	e.write("}")
 	e.newline()
+
+	return nil
+}
+
+// selectBodyBlock is what a case of a select runs in, which is a block of its own
+// rather than the loop the select looked for a case in: an unlabelled break in the
+// body of a case ends the select, and a block is the only thing in JavaScript that
+// a break can end without also ending a loop around it.
+//
+// The name of it carries a sign a Go label cannot, so nothing written in Go can be
+// named the same as it, and a number of its own, since two selects written one
+// inside the other are two blocks and JavaScript has one name for a label in a
+// function.
+func (e *emitter) selectBodyBlock() string {
+	label := fmt.Sprintf("go2jsSelBody$%d", e.selectBodyCount)
+	e.selectBodyCount++
+
+	return label
+}
+
+// emitSelectBody writes what the case of a select does with what it was handed.
+func (e *emitter) emitSelectBody(body []ast.Stmt) error {
+	label := e.selectBodyBlock()
+
+	e.writeIndent()
+	e.write(label + ": {")
+	e.newline()
+	e.indent++
+
+	saved := e.selectBodyLabel
+	e.selectBodyLabel = label
+
+	for _, stmt := range body {
+		if err := e.emitStmt(stmt); err != nil {
+			e.selectBodyLabel = saved
+			e.indent--
+			return err
+		}
+	}
+
+	e.selectBodyLabel = saved
 
 	e.indent--
 	e.writeIndent()

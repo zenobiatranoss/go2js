@@ -84,6 +84,98 @@ loop:
 `)
 }
 
+// A continue in the body of a case of a select goes on with the loop the select
+// is inside rather than with the looking for a case to run, and a break in it
+// ends the select and leaves the loop to ask again.
+func TestSelectBodyBranchesToTheLoopAroundIt(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+func main() {
+	values := make(chan int)
+
+	go func() {
+		for i := 0; i < 5; i++ {
+			values <- i
+		}
+
+		close(values)
+	}()
+
+	total := 0
+
+	for {
+		select {
+		case value, ok := <-values:
+			if !ok {
+				fmt.Println("closed", total)
+				return
+			}
+
+			if value == 1 {
+				fmt.Println("skipping", value)
+				continue
+			}
+
+			if value == 4 {
+				fmt.Println("stopping at", value)
+				break
+			}
+
+			fmt.Println("value", value)
+			total += value
+		}
+	}
+}
+`)
+}
+
+// A branch written in the body of a case of a select goes where it was written to
+// go, whether the case that was written in was a communication or the default,
+// and however many selects stand between the branch and the loop it names.
+func TestSelectBodyBranchesWithNamesOfTheirOwn(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+func main() {
+	left := make(chan int, 2)
+	right := make(chan int, 2)
+
+	left <- 1
+	left <- 2
+
+	for i := 1; i <= 2; i++ {
+		right <- i * 100
+	}
+
+	sum := 0
+	rounds := 0
+
+outer:
+	for rounds < 5 {
+		select {
+		case value := <-left:
+			sum += value
+		default:
+			select {
+			case value := <-right:
+				sum += value
+				continue outer
+			default:
+				break
+			}
+
+			rounds++
+		}
+	}
+
+	fmt.Println("sum", sum, "rounds", rounds)
+}
+`)
+}
+
 // A send to a channel of no room is a handover that nobody is standing there to
 // take, so it is not ready and the default case is what runs. A send to a
 // channel with room is ready until the room is used up, and then it is not.

@@ -161,13 +161,53 @@ func (e *emitter) emitChannelSend(stmt *ast.SendStmt) error {
 
 	e.write(", ")
 
-	if err := e.emitExpr(stmt.Value); err != nil {
+	if err := e.emitChannelSendValue(stmt.Chan, stmt.Value); err != nil {
 		return err
 	}
 
 	e.write(");")
 	e.newline()
 	return nil
+}
+
+// emitChannelSendValue writes what a send hands over, which is a copy of a
+// struct or of an array rather than the value itself: what a send puts on a
+// channel is a value of its own, and writing to what was sent afterwards is a
+// write to the copy, the way it is for an assignment.
+func (e *emitter) emitChannelSendValue(channel, value ast.Expr) error {
+	element := e.channelElementType(channel)
+
+	if element == nil {
+		return e.emitExpr(value)
+	}
+
+	switch element.Underlying().(type) {
+	case *gotypesstd.Struct, *gotypesstd.Array:
+	default:
+		return e.emitExpr(value)
+	}
+
+	return e.emitInterfaceValue(value, element)
+}
+
+// channelElementType is the type of what a channel hands over, which is what a
+// value sent on it becomes.
+func (e *emitter) channelElementType(channel ast.Expr) gotypesstd.Type {
+	if e.analysis == nil {
+		return nil
+	}
+
+	info, ok := e.analysis.Types[channel]
+	if !ok || info.Type == nil {
+		return nil
+	}
+
+	channelType, ok := info.Type.Underlying().(*gotypesstd.Chan)
+	if !ok {
+		return nil
+	}
+
+	return channelType.Elem()
 }
 
 func (e *emitter) emitChannelClose(call *ast.CallExpr) (bool, error) {
