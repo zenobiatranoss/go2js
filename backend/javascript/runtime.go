@@ -7964,6 +7964,17 @@ function go2jsFormat(value, typeName, kind, shape, plus, nested, raw) {
 		if (calendar !== null && typeof value === "number") {
 			return calendar(value);
 		}
+
+		// A number that is a type of its own is written as whatever that type
+		// says it is, so that a level of a package says the name of a level rather
+		// than the number behind one.
+		if (typeof value === "number" && typeof typeName === "string" && typeName !== "") {
+			const named = go2jsMethodTable[typeName + ".String"];
+
+			if (typeof named === "function") {
+				return go2jsFormat(go2jsCallNow(named, null, [value]));
+			}
+		}
 	}
 
 	// A number too big for a double is held as the whole number it is, and the
