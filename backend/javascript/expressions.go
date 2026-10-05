@@ -907,6 +907,10 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				return err
 			}
 
+			if handled, err := e.emitSlogPackageCall(x, selector); handled {
+				return err
+			}
+
 			if handled, err := e.emitPackageCall(x, selector); handled {
 				return err
 			}
@@ -916,6 +920,10 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			}
 
 			if handled, err := e.emitJSONMethodCall(x, selector); handled {
+				return err
+			}
+
+			if handled, err := e.emitSlogCall(x, selector); handled {
 				return err
 			}
 

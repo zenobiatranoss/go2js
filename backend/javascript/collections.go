@@ -790,6 +790,12 @@ function go2jsStructCopy(value) {
 		return value;
 	}
 
+	// A fault is not a record of fields to write out either, since what it is
+	// worth saying is the text it says and a copy of that keeps nothing.
+	if (value instanceof Error) {
+		return value;
+	}
+
 	const embedded = typeof value.__go2js_embedded === "undefined"
 		? null
 		: value.__go2js_embedded;
@@ -825,6 +831,13 @@ function go2jsStructFieldCopy(item) {
 	if (item.__go2js_pointer === true || item.__go2js_reflectValue === true ||
 		item.__go2js_reflectType === true || item.__go2js_typed === true ||
 		item.__go2js_interface === true || item instanceof go2jsNativeDate) {
+		return item;
+	}
+
+	// A fault is reached through the text it says rather than through fields it
+	// holds, and copying one field by field leaves it saying nothing at all, so
+	// the fault a field carries is the fault that was there.
+	if (item instanceof Error) {
 		return item;
 	}
 
