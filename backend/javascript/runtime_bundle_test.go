@@ -132,39 +132,11 @@ func TestRuntimeBundlePreservesSourceOrder(t *testing.T) {
 	}
 }
 
+// The bundle the emitter actually writes out is the one these tests are about,
+// so the list of parts is the emitter's rather than a second copy of it that
+// could fall behind.
 func runtimeBundleSources() []string {
-	return []string{
-		runtimeSource(),
-		collectionRuntimeSource(),
-		rangeRuntimeSource(),
-		genericRuntimeSource(),
-		concurrencyRuntimeSource(),
-		pathRuntimeSource(),
-		bufioRuntimeSource(),
-		randRuntimeSource(),
-		cmpRuntimeSource(),
-		errorsRuntimeSource(),
-		extendedRuntimeSource(),
-		extendedRuntimeSource2(),
-		bytesToStringRuntimeSource(),
-		osStdioRuntimeSource(),
-		runeRuntimeSource(),
-		moreRuntimeSource(),
-		funcTypeRuntimeSource(),
-		reflectRuntimeSource(),
-		debugRuntimeSource(),
-		mathBitsRuntimeSource(),
-		httptestRuntimeSource(),
-		netRuntimeSource(),
-		runtimeShimRuntimeSource(),
-		templateRuntimeSource(),
-		htmlRuntimeSource(),
-		osFileRuntimeSource(),
-		sortSliceShimRuntimeSource(),
-		execRuntimeSource(),
-		netHTTPRuntimeSource(),
-		osEnvironRuntimeSource(),
-	}
+	return runtimeSourceParts()
 }
 
 var runtimeFunctionPattern = regexp.MustCompile(`(?m)^function ([A-Za-z0-9_$]+)\(`)
