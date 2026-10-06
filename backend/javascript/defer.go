@@ -77,6 +77,23 @@ func (e *emitter) emitFuncBody(body *ast.BlockStmt) error {
 	e.pushScope()
 	e.indent++
 
+	// A body with a defer never goes through the block that declares the
+	// binding of a receiver, so the binding a deferred closure reaches for is
+	// declared here where the closure is written.
+	if e.receiverBinding != "" && body == e.functionBody {
+		e.writeIndent()
+
+		if e.receiverMutable {
+			e.write("let ")
+		} else {
+			e.write("const ")
+		}
+
+		e.write(e.receiverBinding)
+		e.write(" = this;")
+		e.newline()
+	}
+
 	e.writeIndent()
 	e.write("const go2jsDefers = [];")
 	e.newline()
@@ -271,7 +288,16 @@ func (e *emitter) emitDeferStmt(stmt *ast.DeferStmt) error {
 		deferredCall.Args[i] = ast.NewIdent(name)
 	}
 
-	if err := e.emitExpr(deferredCall); err != nil {
+	// A deferred call is a closure of its own, so the receiver a method hands
+	// it is held where that closure can reach it rather than as the this of a
+	// call that is not made on the method.
+	e.funcLitDepth++
+
+	err := e.emitExpr(deferredCall)
+
+	e.funcLitDepth--
+
+	if err != nil {
 		return err
 	}
 
