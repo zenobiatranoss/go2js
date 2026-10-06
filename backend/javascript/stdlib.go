@@ -327,6 +327,10 @@ var jsonFuncs = map[string]string{
 	"Marshal":       "go2jsJSONMarshal",
 	"MarshalIndent": "go2jsJSONMarshal",
 	"Unmarshal":     "go2jsJSONUnmarshal",
+	"Valid":         "go2jsJSONIsValid",
+	"Compact":       "go2jsJSONCompactToBuffer",
+	"Indent":        "go2jsJSONIndentToBuffer",
+	"HTMLEscape":    "go2jsJSONHTMLEscapeToBuffer",
 	"NewEncoder":    "go2jsJSONNewEncoder",
 	"NewDecoder":    "go2jsJSONNewDecoder",
 }
@@ -353,6 +357,12 @@ var urlTypes = map[string]string{
 // builds that value rather than a class the program never declares.
 func init() {
 	packageTypes["url.URL"] = urlTypes["URL"]
+
+	// The marks a logger of the log package is set up with are whole numbers,
+	// and the number a program names is the number Go gives it.
+	for name, value := range logFlagConstants {
+		packageConstants["log."+name] = value
+	}
 }
 
 var filepathFuncs = map[string]string{
