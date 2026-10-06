@@ -292,6 +292,7 @@ var sortFuncs = map[string]string{
 	"Reverse":           "go2jsSortReverseOf",
 	"SliceIsSorted":     "go2jsSortSliceIsSorted",
 	"Stable":            "go2jsSortSlice",
+	"Find":              "go2jsSortFind",
 }
 
 var unicodeFuncs = map[string]string{
@@ -392,6 +393,15 @@ var regexpFuncs = map[string]string{
 
 var ioFuncs = map[string]string{
 	"ReadAll": "go2jsIOReadAll",
+}
+
+// ioConstants are the whole numbers io names for the moment a seek starts from:
+// the beginning of the thing, the place a read or a write last reached, or its
+// end.
+var ioConstants = map[string]string{
+	"SeekStart":   "0",
+	"SeekCurrent": "1",
+	"SeekEnd":     "2",
 }
 
 var timeFuncs = map[string]string{
