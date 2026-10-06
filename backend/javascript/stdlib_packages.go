@@ -3,10 +3,14 @@ package javascript
 import "strconv"
 
 var contextFuncs = map[string]string{
-	"Canceled":         "go2jsContextCanceled",
-	"DeadlineExceeded": "go2jsContextDeadlineExceeded",
-	"WithTimeout":      "go2jsContextWithTimeout",
-	"WithDeadline":     "go2jsContextWithDeadline",
+	"Canceled":          "go2jsContextCanceled",
+	"DeadlineExceeded":  "go2jsContextDeadlineExceeded",
+	"WithTimeout":       "go2jsContextWithTimeout",
+	"WithDeadline":      "go2jsContextWithDeadline",
+	"WithCancelCause":   "go2jsContextWithCancelCause",
+	"WithDeadlineCause": "go2jsContextWithDeadlineCause",
+	"WithTimeoutCause":  "go2jsContextWithTimeoutCause",
+	"WithoutCancel":     "go2jsContextWithoutCancel",
 }
 
 var atomicFuncs = map[string]string{
@@ -211,6 +215,10 @@ func moreStdlibFuncs() {
 
 	for name, value := range httpStatusCodes {
 		packageConstants["http."+name] = strconv.Itoa(value)
+	}
+
+	for name, value := range ioConstants {
+		packageConstants["io."+name] = value
 	}
 
 	stdlibFuncMaps["crypto/sha256"] = sha256Funcs
@@ -884,6 +892,7 @@ function go2jsContextState(parent) {
 		parent: parent !== undefined && parent !== null ? parent : null,
 		done: false,
 		err: null,
+		cause: null,
 		values: new go2jsNativeMap(),
 		deadline: 0,
 		channel: null,
@@ -910,7 +919,7 @@ function go2jsContextChildState(parent) {
 	const state = go2jsContextState(parent);
 
 	if (parent.done) {
-		go2jsContextEnd(state, parent.err);
+		go2jsContextEnd(state, parent.err, parent.cause);
 	}
 
 	return state;
@@ -1071,7 +1080,45 @@ function go2jsCancelFunc(state) {
 	return cancel;
 }
 
+function go2jsContextWithCancelCause(parent) {
+	if (parent === null || parent === undefined) {
+		go2jsPanic("cannot create context from nil parent");
+	}
+
+	const child = go2jsContextChildState(go2jsContextStateOf(parent));
+
+	return [go2jsContextWrap(child), go2jsCancelCauseFunc(child)];
+}
+
+// go2jsCancelCauseFunc is the CancelCauseFunc a context made with
+// WithCancelCause is canceled by: the error it is given is the cause the
+// context ended for, and a cancel with no cause says the context was simply
+// canceled.
+function go2jsCancelCauseFunc(state) {
+	const cancel = (cause) => {
+		go2jsContextEnd(state, go2jsContextCanceled(), cause);
+	};
+
+	cancel.__go2js_context_cancel = true;
+
+	return cancel;
+}
+
+// go2jsContextWithDeadline is a deadline with nothing said about why it was
+// given, which is what WithDeadline means.
 function go2jsContextWithDeadline(parent, deadline) {
+	return go2jsContextWithDeadlineCause(parent, deadline, null);
+}
+
+// go2jsContextWithDeadlineCause makes a context that ends when the moment it
+// was told arrives, whatever comes first: the earlier of the deadline it was
+// given and the one it was made from stops the work under it. The error named
+// as the cause is what Cause answers if the deadline is what ended it.
+function go2jsContextWithDeadlineCause(parent, deadline, cause) {
+	if (parent === null || parent === undefined) {
+		go2jsPanic("cannot create context from nil parent");
+	}
+
 	const base = go2jsContextStateOf(parent);
 	const child = go2jsContextChildState(base);
 	const at = go2jsContextDeadlineAt(deadline);
@@ -1083,7 +1130,7 @@ function go2jsContextWithDeadline(parent, deadline) {
 		child.deadline = at;
 
 		if (base.deadline === 0 || at < base.deadline) {
-			go2jsContextArmDeadline(child);
+			go2jsContextArmDeadline(child, cause);
 		}
 	}
 
@@ -1091,7 +1138,7 @@ function go2jsContextWithDeadline(parent, deadline) {
 	// there is nothing to wait for: it is expired at once, before it is handed
 	// back.
 	if (child.deadline !== 0 && child.deadline <= Date.now()) {
-		go2jsContextEnd(child, go2jsContextDeadlineExceeded());
+		go2jsContextEnd(child, go2jsContextDeadlineExceeded(), cause);
 	}
 
 	return [go2jsContextWrap(child), go2jsCancelFunc(child)];
@@ -1116,30 +1163,42 @@ function go2jsContextWithTimeout(parent, timeout) {
 	return go2jsContextWithDeadline(parent, Date.now() + span / 1000000);
 }
 
+function go2jsContextWithTimeoutCause(parent, timeout, cause) {
+	const span = go2jsDurationNanosAsNumber(timeout);
+
+	return go2jsContextWithDeadlineCause(parent, Date.now() + span / 1000000, cause);
+}
+
 // go2jsContextArmDeadline puts the moment a context ends in the schedule, so
 // that reaching it ends the context whether anyone is waiting for it or not.
-function go2jsContextArmDeadline(state) {
+function go2jsContextArmDeadline(state, cause) {
 	const wait = go2jsDuration((state.deadline - Date.now()) * 1000000);
 	const channel = go2jsTimeAfter(wait);
 
 	state.timerChannel = channel;
 
 	channel.timerCallback = function* () {
-		go2jsContextEnd(state, go2jsContextDeadlineExceeded());
+		go2jsContextEnd(state, go2jsContextDeadlineExceeded(), cause);
 	};
 }
 
 // go2jsContextEnd is what a cancel and what a deadline reaching its moment both
-// do: the context keeps the error it ended with, its channel is closed so every
-// goroutine waiting on it goes again, the contexts made from it are ended with
-// the same error, and the functions handed to AfterFunc run.
-function go2jsContextEnd(state, err) {
+// do: the context keeps the error it ended with and the cause it ended for,
+// its channel is closed so every goroutine waiting on it goes again, the
+// contexts made from it are ended with the same error and cause, and the
+// functions handed to AfterFunc run.
+function go2jsContextEnd(state, err, cause) {
 	if (state.done) {
 		return;
 	}
 
+	if (cause === null || cause === undefined) {
+		cause = err;
+	}
+
 	state.done = true;
 	state.err = err;
+	state.cause = cause;
 
 	if (state.timerChannel !== null) {
 		go2jsTimeStopChannel(state.timerChannel);
@@ -1152,7 +1211,7 @@ function go2jsContextEnd(state, err) {
 	}
 
 	for (const child of state.children) {
-		go2jsContextEnd(child, err);
+		go2jsContextEnd(child, err, cause);
 	}
 
 	// The functions handed to AfterFunc are taken off the context as they are
@@ -1238,7 +1297,37 @@ function go2jsContextDeadlineExceeded() {
 }
 
 function go2jsContextCause(ctx) {
-	return go2jsContextStateOf(ctx).err;
+	return go2jsContextStateOf(ctx).cause;
+}
+
+// go2jsContextWithoutCancel is the context Go makes from another one that is
+// never ended on its own: it is not canceled when the one it was made from is,
+// answers no deadline, no channel and no error, but keeps the values of the
+// one it was made from to be looked up.
+function go2jsContextWithoutCancel(parent) {
+	if (parent === null || parent === undefined) {
+		go2jsPanic("cannot create context from nil parent");
+	}
+
+	const base = go2jsContextStateOf(parent);
+
+	const state = {
+		parent: base,
+		done: false,
+		err: null,
+		cause: null,
+		values: new go2jsNativeMap(),
+		deadline: 0,
+		channel: null,
+		children: [],
+		callbacks: [],
+		timerChannel: null
+	};
+
+	// It is not put on the list of the parent's children, so the end of the
+	// parent never reaches it, and it has no moment of its own, so nothing ends
+	// it.
+	return go2jsContextWrap(state);
 }
 
 function go2jsAtomicTyped(initial, numeric) {
