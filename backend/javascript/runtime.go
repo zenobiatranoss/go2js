@@ -3350,6 +3350,794 @@ function go2jsJSONWritten(value) {
     return JSON.stringify(value);
 }
 
+// go2jsJSONScanStep is the state machine encoding/json uses to validate JSON
+// text, so that the errors json.Valid, json.Compact and json.Indent report are
+// the errors Go reports. The machine follows the scanner Go ships: statuses
+// mirror the opcodes scanContinue through scanError, and a parseState stack
+// holds what an object key, an object value, or an array value is expected
+// next. A space is fed to the machine once the text is out, exactly the way
+// Go's scanner.eof does.
+const go2jsJSONScanContinue = 0;
+const go2jsJSONScanBeginLiteral = 1;
+const go2jsJSONScanBeginObject = 2;
+const go2jsJSONScanObjectKey = 3;
+const go2jsJSONScanObjectValue = 4;
+const go2jsJSONScanEndObject = 5;
+const go2jsJSONScanBeginArray = 6;
+const go2jsJSONScanArrayValue = 7;
+const go2jsJSONScanEndArray = 8;
+const go2jsJSONScanSkipSpace = 9;
+const go2jsJSONScanEnd = 10;
+const go2jsJSONScanError = 11;
+
+const go2jsJSONParseObjectKey = 0;
+const go2jsJSONParseObjectValue = 1;
+const go2jsJSONParseArrayValue = 2;
+
+function go2jsJSONScanNew() {
+    return { step: "beginValue", endTop: false, err: null, depth: 0, parse: [] };
+}
+
+function go2jsJSONScanSpace(character) {
+    return character === 0x20 || character === 0x09 || character === 0x0a || character === 0x0d;
+}
+
+function go2jsJSONQuoteChar(character) {
+    if (character === 0x27) {
+        return "'\\''";
+    }
+
+    if (character === 0x22) {
+        return "'\"'";
+    }
+
+    let body;
+
+    if (character === 0x5c) {
+        body = "\\\\";
+    } else if (character >= 0x20 && character <= 0x7e) {
+        body = String.fromCharCode(character);
+    } else if (character === 0x07) {
+        body = "\\a";
+    } else if (character === 0x08) {
+        body = "\\b";
+    } else if (character === 0x09) {
+        body = "\\t";
+    } else if (character === 0x0a) {
+        body = "\\n";
+    } else if (character === 0x0b) {
+        body = "\\v";
+    } else if (character === 0x0c) {
+        body = "\\f";
+    } else if (character === 0x0d) {
+        body = "\\r";
+    } else {
+        body = "\\x" + character.toString(16).padStart(2, "0");
+    }
+
+    return "'" + body + "'";
+}
+
+function go2jsJSONScanFail(scanner, character, context) {
+    scanner.err = "invalid character " + go2jsJSONQuoteChar(character) + " " + context;
+
+    return go2jsJSONScanError;
+}
+
+function go2jsJSONScanStep(scanner, character) {
+    switch (scanner.step) {
+        case "beginValue":
+            return go2jsJSONScanStateBeginValue(scanner, character);
+
+        case "beginValueOrEmpty":
+            return go2jsJSONScanStateBeginValueOrEmpty(scanner, character);
+
+        case "beginStringOrEmpty":
+            return go2jsJSONScanStateBeginStringOrEmpty(scanner, character);
+
+        case "beginString":
+            return go2jsJSONScanStateBeginString(scanner, character);
+
+        case "inString":
+            return go2jsJSONScanStateInString(scanner, character);
+
+        case "inStringEsc":
+            return go2jsJSONScanStateInStringEsc(scanner, character);
+
+        case "inStringEscU":
+        case "inStringEscU1":
+        case "inStringEscU12":
+        case "inStringEscU123":
+            return go2jsJSONScanStateInStringEscU(scanner, character);
+
+        case "neg":
+            return go2jsJSONScanStateNeg(scanner, character);
+
+        case "zero":
+            return go2jsJSONScanStateZero(scanner, character);
+
+        case "one":
+            return go2jsJSONScanStateOne(scanner, character);
+
+        case "dot":
+            return go2jsJSONScanStateDot(scanner, character);
+
+        case "dot0":
+            return go2jsJSONScanStateDot0(scanner, character);
+
+        case "e":
+            return go2jsJSONScanStateE(scanner, character);
+
+        case "esign":
+            return go2jsJSONScanStateESign(scanner, character);
+
+        case "e0":
+            return go2jsJSONScanStateE0(scanner, character);
+
+        case "t":
+            return go2jsJSONScanStateT(scanner, character);
+
+        case "tr":
+            return go2jsJSONScanStateTr(scanner, character);
+
+        case "tru":
+            return go2jsJSONScanStateTru(scanner, character);
+
+        case "f":
+            return go2jsJSONScanStateF(scanner, character);
+
+        case "fa":
+            return go2jsJSONScanStateFa(scanner, character);
+
+        case "fal":
+            return go2jsJSONScanStateFal(scanner, character);
+
+        case "fals":
+            return go2jsJSONScanStateFals(scanner, character);
+
+        case "n":
+            return go2jsJSONScanStateN(scanner, character);
+
+        case "nu":
+            return go2jsJSONScanStateNu(scanner, character);
+
+        case "nul":
+            return go2jsJSONScanStateNul(scanner, character);
+
+        case "endValue":
+            return go2jsJSONScanStateEndValue(scanner, character);
+
+        case "endTop":
+            return go2jsJSONScanStateEndTop(scanner, character);
+
+        default:
+            return go2jsJSONScanError;
+    }
+}
+
+function go2jsJSONScanStateBeginValue(scanner, character) {
+    if (go2jsJSONScanSpace(character)) {
+        return go2jsJSONScanSkipSpace;
+    }
+
+    if (character === 0x7b) {
+        scanner.step = "beginStringOrEmpty";
+        scanner.parse.push(go2jsJSONParseObjectKey);
+
+        return go2jsJSONScanBeginObject;
+    }
+
+    if (character === 0x5b) {
+        scanner.step = "beginValueOrEmpty";
+        scanner.parse.push(go2jsJSONParseArrayValue);
+
+        return go2jsJSONScanBeginArray;
+    }
+
+    if (character === 0x22) {
+        scanner.step = "inString";
+
+        return go2jsJSONScanBeginLiteral;
+    }
+
+    if (character === 0x2d) {
+        scanner.step = "neg";
+
+        return go2jsJSONScanBeginLiteral;
+    }
+
+    if (character === 0x30) {
+        scanner.step = "zero";
+
+        return go2jsJSONScanBeginLiteral;
+    }
+
+    if (character === 0x74) {
+        scanner.step = "t";
+
+        return go2jsJSONScanBeginLiteral;
+    }
+
+    if (character === 0x66) {
+        scanner.step = "f";
+
+        return go2jsJSONScanBeginLiteral;
+    }
+
+    if (character === 0x6e) {
+        scanner.step = "n";
+
+        return go2jsJSONScanBeginLiteral;
+    }
+
+    if (character >= 0x31 && character <= 0x39) {
+        scanner.step = "one";
+
+        return go2jsJSONScanBeginLiteral;
+    }
+
+    return go2jsJSONScanFail(scanner, character, "looking for beginning of value");
+}
+
+function go2jsJSONScanStateBeginValueOrEmpty(scanner, character) {
+    if (go2jsJSONScanSpace(character)) {
+        return go2jsJSONScanSkipSpace;
+    }
+
+    if (character === 0x5d) {
+        return go2jsJSONScanStateEndValue(scanner, character);
+    }
+
+    return go2jsJSONScanStateBeginValue(scanner, character);
+}
+
+function go2jsJSONScanStateBeginStringOrEmpty(scanner, character) {
+    if (go2jsJSONScanSpace(character)) {
+        return go2jsJSONScanSkipSpace;
+    }
+
+    if (character === 0x7d) {
+        scanner.parse[scanner.parse.length - 1] = go2jsJSONParseObjectValue;
+
+        return go2jsJSONScanStateEndValue(scanner, character);
+    }
+
+    return go2jsJSONScanStateBeginString(scanner, character);
+}
+
+function go2jsJSONScanStateBeginString(scanner, character) {
+    if (go2jsJSONScanSpace(character)) {
+        return go2jsJSONScanSkipSpace;
+    }
+
+    if (character === 0x22) {
+        scanner.step = "inString";
+
+        return go2jsJSONScanBeginLiteral;
+    }
+
+    return go2jsJSONScanFail(scanner, character, "looking for beginning of object key string");
+}
+
+function go2jsJSONScanStateInString(scanner, character) {
+    if (character === 0x22) {
+        scanner.step = "endValue";
+
+        return go2jsJSONScanContinue;
+    }
+
+    if (character === 0x5c) {
+        scanner.step = "inStringEsc";
+
+        return go2jsJSONScanContinue;
+    }
+
+    if (character < 0x20) {
+        return go2jsJSONScanFail(scanner, character, "in string literal");
+    }
+
+    return go2jsJSONScanContinue;
+}
+
+function go2jsJSONScanStateInStringEsc(scanner, character) {
+    if (character === 0x22 || character === 0x2f || character === 0x5c
+        || character === 0x62 || character === 0x66 || character === 0x6e
+        || character === 0x72 || character === 0x74) {
+        scanner.step = "inString";
+
+        return go2jsJSONScanContinue;
+    }
+
+    if (character === 0x75) {
+        scanner.step = "inStringEscU";
+
+        return go2jsJSONScanContinue;
+    }
+
+    return go2jsJSONScanFail(scanner, character, "in string escape code");
+}
+
+function go2jsJSONScanStateInStringEscU(scanner, character) {
+    const hex = character >= 0x30 && character <= 0x39
+        || character >= 0x61 && character <= 0x66
+        || character >= 0x41 && character <= 0x46;
+
+    if (hex) {
+        if (scanner.step === "inStringEscU") {
+            scanner.step = "inStringEscU1";
+        } else if (scanner.step === "inStringEscU1") {
+            scanner.step = "inStringEscU12";
+        } else if (scanner.step === "inStringEscU12") {
+            scanner.step = "inStringEscU123";
+        } else {
+            scanner.step = "inString";
+        }
+
+        return go2jsJSONScanContinue;
+    }
+
+    return go2jsJSONScanFail(scanner, character, "in \\u hexadecimal character escape");
+}
+
+function go2jsJSONScanStateNeg(scanner, character) {
+    if (character === 0x30) {
+        scanner.step = "zero";
+
+        return go2jsJSONScanContinue;
+    }
+
+    if (character >= 0x31 && character <= 0x39) {
+        scanner.step = "one";
+
+        return go2jsJSONScanContinue;
+    }
+
+    return go2jsJSONScanFail(scanner, character, "in numeric literal");
+}
+
+function go2jsJSONScanStateZero(scanner, character) {
+    if (character === 0x2e) {
+        scanner.step = "dot";
+
+        return go2jsJSONScanContinue;
+    }
+
+    if (character === 0x65 || character === 0x45) {
+        scanner.step = "e";
+
+        return go2jsJSONScanContinue;
+    }
+
+    return go2jsJSONScanStateEndValue(scanner, character);
+}
+
+function go2jsJSONScanStateOne(scanner, character) {
+    if (character >= 0x30 && character <= 0x39) {
+        return go2jsJSONScanContinue;
+    }
+
+    return go2jsJSONScanStateZero(scanner, character);
+}
+
+function go2jsJSONScanStateDot(scanner, character) {
+    if (character >= 0x30 && character <= 0x39) {
+        scanner.step = "dot0";
+
+        return go2jsJSONScanContinue;
+    }
+
+    return go2jsJSONScanFail(scanner, character, "after decimal point in numeric literal");
+}
+
+function go2jsJSONScanStateDot0(scanner, character) {
+    if (character >= 0x30 && character <= 0x39) {
+        return go2jsJSONScanContinue;
+    }
+
+    if (character === 0x65 || character === 0x45) {
+        scanner.step = "e";
+
+        return go2jsJSONScanContinue;
+    }
+
+    return go2jsJSONScanStateEndValue(scanner, character);
+}
+
+function go2jsJSONScanStateE(scanner, character) {
+    if (character === 0x2b || character === 0x2d) {
+        scanner.step = "esign";
+
+        return go2jsJSONScanContinue;
+    }
+
+    return go2jsJSONScanStateESign(scanner, character);
+}
+
+function go2jsJSONScanStateESign(scanner, character) {
+    if (character >= 0x30 && character <= 0x39) {
+        scanner.step = "e0";
+
+        return go2jsJSONScanContinue;
+    }
+
+    return go2jsJSONScanFail(scanner, character, "in exponent of numeric literal");
+}
+
+function go2jsJSONScanStateE0(scanner, character) {
+    if (character >= 0x30 && character <= 0x39) {
+        return go2jsJSONScanContinue;
+    }
+
+    return go2jsJSONScanStateEndValue(scanner, character);
+}
+
+function go2jsJSONScanStateT(scanner, character) {
+    if (character === 0x72) {
+        scanner.step = "tr";
+
+        return go2jsJSONScanContinue;
+    }
+
+    return go2jsJSONScanFail(scanner, character, "in literal true (expecting 'r')");
+}
+
+function go2jsJSONScanStateTr(scanner, character) {
+    if (character === 0x75) {
+        scanner.step = "tru";
+
+        return go2jsJSONScanContinue;
+    }
+
+    return go2jsJSONScanFail(scanner, character, "in literal true (expecting 'u')");
+}
+
+function go2jsJSONScanStateTru(scanner, character) {
+    if (character === 0x65) {
+        scanner.step = "endValue";
+
+        return go2jsJSONScanContinue;
+    }
+
+    return go2jsJSONScanFail(scanner, character, "in literal true (expecting 'e')");
+}
+
+function go2jsJSONScanStateF(scanner, character) {
+    if (character === 0x61) {
+        scanner.step = "fa";
+
+        return go2jsJSONScanContinue;
+    }
+
+    return go2jsJSONScanFail(scanner, character, "in literal false (expecting 'a')");
+}
+
+function go2jsJSONScanStateFa(scanner, character) {
+    if (character === 0x6c) {
+        scanner.step = "fal";
+
+        return go2jsJSONScanContinue;
+    }
+
+    return go2jsJSONScanFail(scanner, character, "in literal false (expecting 'l')");
+}
+
+function go2jsJSONScanStateFal(scanner, character) {
+    if (character === 0x73) {
+        scanner.step = "fals";
+
+        return go2jsJSONScanContinue;
+    }
+
+    return go2jsJSONScanFail(scanner, character, "in literal false (expecting 's')");
+}
+
+function go2jsJSONScanStateFals(scanner, character) {
+    if (character === 0x65) {
+        scanner.step = "endValue";
+
+        return go2jsJSONScanContinue;
+    }
+
+    return go2jsJSONScanFail(scanner, character, "in literal false (expecting 'e')");
+}
+
+function go2jsJSONScanStateN(scanner, character) {
+    if (character === 0x75) {
+        scanner.step = "nu";
+
+        return go2jsJSONScanContinue;
+    }
+
+    return go2jsJSONScanFail(scanner, character, "in literal null (expecting 'u')");
+}
+
+function go2jsJSONScanStateNu(scanner, character) {
+    if (character === 0x6c) {
+        scanner.step = "nul";
+
+        return go2jsJSONScanContinue;
+    }
+
+    return go2jsJSONScanFail(scanner, character, "in literal null (expecting 'l')");
+}
+
+function go2jsJSONScanStateNul(scanner, character) {
+    if (character === 0x6c) {
+        scanner.step = "endValue";
+
+        return go2jsJSONScanContinue;
+    }
+
+    return go2jsJSONScanFail(scanner, character, "in literal null (expecting 'l')");
+}
+
+function go2jsJSONScanStateEndTop(scanner, character) {
+    if (!go2jsJSONScanSpace(character)) {
+        return go2jsJSONScanFail(scanner, character, "after top-level value");
+    }
+
+    return go2jsJSONScanEnd;
+}
+function go2jsJSONScanStateEndValue(scanner, character) {
+    const n = scanner.parse.length;
+
+    if (n === 0) {
+        scanner.step = "endTop";
+        scanner.endTop = true;
+
+        return go2jsJSONScanStep(scanner, character);
+    }
+
+    if (go2jsJSONScanSpace(character)) {
+        scanner.step = "endValue";
+
+        return go2jsJSONScanSkipSpace;
+    }
+
+    const parsed = scanner.parse[n - 1];
+
+    if (parsed === go2jsJSONParseObjectKey) {
+        if (character === 0x3a) {
+            scanner.parse[n - 1] = go2jsJSONParseObjectValue;
+            scanner.step = "beginValue";
+
+            return go2jsJSONScanObjectKey;
+        }
+
+        return go2jsJSONScanFail(scanner, character, "after object key");
+    }
+
+    if (parsed === go2jsJSONParseObjectValue) {
+        if (character === 0x2c) {
+            scanner.parse[n - 1] = go2jsJSONParseObjectKey;
+            scanner.step = "beginString";
+
+            return go2jsJSONScanObjectValue;
+        }
+
+        if (character === 0x7d) {
+            scanner.parse.pop();
+            go2jsJSONScanPop(scanner);
+
+            return go2jsJSONScanEndObject;
+        }
+
+        return go2jsJSONScanFail(scanner, character, "after object key:value pair");
+    }
+
+    if (parsed === go2jsJSONParseArrayValue) {
+        if (character === 0x2c) {
+            scanner.step = "beginValue";
+
+            return go2jsJSONScanArrayValue;
+        }
+
+        if (character === 0x5d) {
+            scanner.parse.pop();
+            go2jsJSONScanPop(scanner);
+
+            return go2jsJSONScanEndArray;
+        }
+
+        return go2jsJSONScanFail(scanner, character, "after array element");
+    }
+
+    return go2jsJSONScanFail(scanner, 0, "");
+}
+
+function go2jsJSONScanPop(scanner) {
+    const n = scanner.parse.length;
+
+    if (n === 0) {
+        scanner.step = "endTop";
+        scanner.endTop = true;
+    } else {
+        scanner.step = "endValue";
+    }
+}
+
+function go2jsJSONScanEOF(scanner) {
+    if (scanner.err !== null) {
+        return go2jsJSONScanError;
+    }
+
+    if (scanner.endTop) {
+        return go2jsJSONScanEnd;
+    }
+
+    go2jsJSONScanStep(scanner, 0x20);
+
+    if (scanner.endTop) {
+        return go2jsJSONScanEnd;
+    }
+
+    if (scanner.err === null) {
+        scanner.err = "unexpected end of JSON input";
+    }
+
+    return go2jsJSONScanError;
+}
+
+// go2jsJSONScanErrorOf validates the text of a JSON value the way the Go
+// scanner does and returns the error Go would report, or nothing for a value
+// the scanner accepts. It is the whole check json.Valid, json.Compact and
+// json.Indent make before they act.
+function go2jsJSONScanErrorOf(text) {
+    const scanner = go2jsJSONScanNew();
+
+    for (let i = 0; i < text.length; i++) {
+        if (go2jsJSONScanStep(scanner, text.charCodeAt(i)) === go2jsJSONScanError) {
+            return scanner.err;
+        }
+    }
+
+    if (go2jsJSONScanEOF(scanner) === go2jsJSONScanError) {
+        return scanner.err;
+    }
+
+    return "";
+}
+
+// go2jsJSONValid reports whether the text is a value the Go scanner accepts.
+function go2jsJSONIsValid(data) {
+    return go2jsJSONScanErrorOf(go2jsJSONByteText(data)) === "";
+}
+
+// go2jsJSONIndentTo lays the text of a value out the way encoding/json's
+// appendIndent does, byte for byte, so that a space left at the end of the text
+// survives it and an empty object or an empty array is not broken across
+// lines. It returns the error Go would report for text the scanner rejects.
+function go2jsJSONIndentTo(text, prefix, indent) {
+    const scanner = go2jsJSONScanNew();
+    let out = "";
+    let needIndent = false;
+    let depth = 0;
+
+    for (let i = 0; i < text.length; i++) {
+        const character = text.charCodeAt(i);
+        const v = go2jsJSONScanStep(scanner, character);
+
+        if (v === go2jsJSONScanSkipSpace) {
+            continue;
+        }
+
+        if (v === go2jsJSONScanError) {
+            return [out, scanner.err];
+        }
+
+        if (needIndent && v !== go2jsJSONScanEndObject && v !== go2jsJSONScanEndArray) {
+            needIndent = false;
+            depth++;
+
+            out += "\n" + prefix + indent.repeat(depth);
+        }
+
+        if (v === go2jsJSONScanContinue) {
+            out += String.fromCharCode(character);
+
+            continue;
+        }
+
+        switch (character) {
+            case 0x7b: // {
+            case 0x5b: // [
+                needIndent = true;
+                out += String.fromCharCode(character);
+                break;
+
+            case 0x2c: // ,
+                out += String.fromCharCode(character);
+                out += "\n" + prefix + indent.repeat(depth);
+                break;
+
+            case 0x3a: // :
+                out += ": ";
+                break;
+
+            case 0x7d: // }
+            case 0x5d: // ]
+                if (needIndent) {
+                    needIndent = false;
+                } else {
+                    depth--;
+                    out += "\n" + prefix + indent.repeat(depth);
+                }
+
+                out += String.fromCharCode(character);
+                break;
+
+            default:
+                out += String.fromCharCode(character);
+        }
+    }
+
+    if (go2jsJSONScanEOF(scanner) === go2jsJSONScanError) {
+        return [out, scanner.err];
+    }
+
+    return [out, null];
+}
+
+// go2jsJSONCompactTo reports the compacted form of a value text Go would
+// report for it, or the error Go would report instead. The text is validated
+// the way encoding/json's appendCompact scans it before the room between
+// tokens is taken out, so that a text that is not a whole JSON value is never
+// written as a smaller one.
+function go2jsJSONCompactTo(text) {
+    const error = go2jsJSONScanErrorOf(String(text));
+
+    if (error !== "") {
+        return [null, error];
+    }
+
+    return [go2jsJSONCompact(text), null];
+}
+
+// go2jsJSONByteText is the text the bytes of a value stand for, read the way
+// json.Unmarshal reads the bytes it is handed.
+function go2jsJSONByteText(data) {
+    if (typeof data === "string") {
+        return data;
+    }
+
+    return new TextDecoder().decode(Uint8Array.from(data));
+}
+
+// go2jsJSONCompactToBuffer writes the compacted form of a value text to a
+// buffer, the way json.Compact does, and returns the error Go would report
+// for text that is not a whole value.
+function go2jsJSONCompactToBuffer(dst, src) {
+    const result = go2jsJSONCompactTo(go2jsJSONByteText(src));
+
+    if (result[1] !== null && result[1] !== undefined) {
+        return result[1];
+    }
+
+    return go2jsJSONWrite(dst, result[0]);
+}
+
+// go2jsJSONIndentToBuffer writes an indented form of a value text to a buffer,
+// the way json.Indent does, and returns the error Go would report for text
+// that is not a whole value. The text is laid out exactly as encoding/json
+// lays one out, byte for byte.
+function go2jsJSONIndentToBuffer(dst, src, prefix, indent) {
+    const result = go2jsJSONIndentTo(go2jsJSONByteText(src), String(prefix), String(indent));
+
+    if (result[1] !== null && result[1] !== undefined) {
+        return result[1];
+    }
+
+    return go2jsJSONWrite(dst, result[0]);
+}
+
+// go2jsJSONHTMLEscapeToBuffer writes a value text to a buffer with the five
+// characters that make JSON unsafe to embed in HTML escaped, the way
+// json.HTMLEscape does. The text is not validated, any more than Go
+// validates one.
+function go2jsJSONHTMLEscapeToBuffer(dst, src) {
+    return go2jsJSONWrite(dst, go2jsJSONEscapeHTML(go2jsJSONByteText(src)));
+}
+
 // go2jsJSONNumberLiteral reports whether the text is a number as JSON writes one,
 // which is what a number read into a json.Number is required to have been
 // written as.

@@ -69,13 +69,27 @@ var logFuncs = map[string]string{
 	"Fatalln":   "go2jsLogFatalln",
 	"Panic":     "go2jsLogPanic",
 	"Panicf":    "go2jsLogPanicf",
+	"Panicln":   "go2jsLogPanicln",
+	"Output":    "go2jsLogOutputMessage",
+	"SetOutput": "go2jsLogSetOutput",
 	"New":       "go2jsLogNew",
 	"SetFlags":  "go2jsLogSetFlags",
 	"SetPrefix": "go2jsLogSetPrefix",
 	"Flags":     "go2jsLogFlags",
 	"Prefix":    "go2jsLogPrefix",
-	"Writer":    "go2jsLogWriter",
+	"Writer":    "go2jsLogWriterValue",
 	"Default":   "go2jsLogDefault",
+}
+
+var logFlagConstants = map[string]string{
+	"Ldate":         "1",
+	"Ltime":         "2",
+	"Lmicroseconds": "4",
+	"Llongfile":     "8",
+	"Lshortfile":    "16",
+	"LUTC":          "32",
+	"Lmsgprefix":    "64",
+	"LstdFlags":     "3",
 }
 
 var utf16Funcs = map[string]string{
@@ -929,45 +943,90 @@ function go2jsLogSprintln(values) {
 }
 
 function go2jsLogOutput(text) {
-	process.stderr.write(text);
+	go2jsLogWriteTo(go2jsLogStandardWriter, text);
 }
 
 function go2jsLogDefault() {
 	return go2jsLogDefaultLogger;
 }
 
-function go2jsLogStandardWriter() {
+function go2jsLogSetOutput(writer) {
+	go2jsLogStandardWriter = go2jsUnwrap(writer) === undefined ? process.stderr : writer;
+
+	return null;
+}
+
+function go2jsLogWriterValue() {
+	return go2jsLogStandardWriter;
+}
+
+function go2jsLogStandardWriterDefault() {
 	return process.stderr;
 }
 
-function go2jsLogStamp() {
-	const now = new Date();
-	const pad = value => String(value).padStart(2, "0");
-	let stamp = "";
+function go2jsLogPad(value, width) {
+	const text = String(value);
 
-	if ((go2jsLogStandardFlags & 2) === 2) {
-		stamp += pad(now.getHours()) + ":" + pad(now.getMinutes()) + ":" + pad(now.getSeconds()) + " ";
+	return text.length >= width ? text : "0".repeat(width - text.length) + text;
+}
+
+function go2jsLogStamp(now, flag) {
+	let year, month, day, hour, minute, second;
+
+	if ((flag & 32) !== 0) {
+		year = now.getUTCFullYear();
+		month = now.getUTCMonth() + 1;
+		day = now.getUTCDate();
+		hour = now.getUTCHours();
+		minute = now.getUTCMinutes();
+		second = now.getUTCSeconds();
+	} else {
+		year = now.getFullYear();
+		month = now.getMonth() + 1;
+		day = now.getDate();
+		hour = now.getHours();
+		minute = now.getMinutes();
+		second = now.getSeconds();
 	}
 
-	if ((go2jsLogStandardFlags & 1) === 1) {
-		stamp = now.getFullYear() + "/" + pad(now.getMonth() + 1) + "/" + pad(now.getDate()) + " " + stamp;
+	let stamp = "";
+
+	if ((flag & 7) !== 0) {
+		if ((flag & 1) !== 0) {
+			stamp += go2jsLogPad(year, 4) + "/" + go2jsLogPad(month, 2) + "/" + go2jsLogPad(day, 2) + " ";
+		}
+
+		if ((flag & 6) !== 0) {
+			stamp += go2jsLogPad(hour, 2) + ":" + go2jsLogPad(minute, 2) + ":" + go2jsLogPad(second, 2);
+
+			if ((flag & 4) !== 0) {
+				stamp += "." + go2jsLogPad((flag & 32) !== 0 ? now.getUTCMilliseconds() : now.getMilliseconds(), 6);
+			}
+
+			stamp += " ";
+		}
 	}
 
 	return stamp;
 }
 
 function go2jsLogDecorate(text) {
-	return go2jsLogCurrentPrefix + go2jsLogStamp() + text;
+	const stamp = go2jsLogStamp(new Date(), go2jsLogStandardFlags);
+
+	return (go2jsLogStandardFlags & 64) !== 0 ? "" : go2jsLogCurrentPrefix
+		+ stamp
+		+ ((go2jsLogStandardFlags & 64) !== 0 ? go2jsLogCurrentPrefix : "")
+		+ text;
 }
 
 function go2jsLogWriteStandard(text) {
-	process.stderr.write(go2jsLogDecorate(text));
+	go2jsLogOutput(go2jsLogDecorate(text));
 }
 
 function go2jsLogBuildStandard() {
 	return {
 		Print(...values) {
-			go2jsLogWriteStandard(go2jsLogEnsureNewline(go2jsSprint(values)));
+			go2jsLogWriteStandard(go2jsLogEnsureNewline(go2jsSprint(...values)));
 		},
 		Printf(format, ...values) {
 			go2jsLogWriteStandard(go2jsLogEnsureNewline(go2jsSprintf(format, ...values)));
@@ -976,7 +1035,7 @@ function go2jsLogBuildStandard() {
 			go2jsLogWriteStandard(go2jsLogSprintln(values));
 		},
 		Fatal(...values) {
-			go2jsLogWriteStandard(go2jsLogEnsureNewline(go2jsSprint(values)));
+			go2jsLogWriteStandard(go2jsLogEnsureNewline(go2jsSprint(...values)));
 			process.exit(1);
 		},
 		Fatalf(format, ...values) {
@@ -988,13 +1047,29 @@ function go2jsLogBuildStandard() {
 			process.exit(1);
 		},
 		Panic(...values) {
-			go2jsPanic(go2jsSprint(values));
+			const text = go2jsSprint(...values);
+			go2jsLogWriteStandard(go2jsLogEnsureNewline(text));
+			go2jsPanic(text);
 		},
 		Panicf(format, ...values) {
-			go2jsPanic(go2jsSprintf(format, ...values));
+			const text = go2jsSprintf(format, ...values);
+			go2jsLogWriteStandard(go2jsLogEnsureNewline(text));
+			go2jsPanic(text);
+		},
+		Panicln(...values) {
+			const text = go2jsLogSprintln(values);
+			go2jsLogWriteStandard(text);
+			go2jsPanic(text);
+		},
+		Output(calldepth, text) {
+			go2jsLogWriteStandard(go2jsLogEnsureNewline(go2jsStringify(text)));
+			return null;
+		},
+		SetOutput(writer) {
+			go2jsLogSetOutput(writer);
 		},
 		Writer() {
-			return go2jsLogStandardWriter();
+			return go2jsLogStandardWriter;
 		},
 		SetPrefix(value) {
 			go2jsLogCurrentPrefix = go2jsRawText(value);
@@ -1021,7 +1096,11 @@ function go2jsLogSetPrefix(value) {
 
 
 function go2jsLogEnsureNewline(text) {
-	if (text === "" || text.endsWith("\n")) {
+	if (text === "") {
+		return "\n";
+	}
+
+	if (text.endsWith("\n")) {
 		return text;
 	}
 
@@ -1029,37 +1108,52 @@ function go2jsLogEnsureNewline(text) {
 }
 
 function go2jsLogPrint(...values) {
-	go2jsLogOutput(go2jsLogEnsureNewline(go2jsSprint(values)));
+	go2jsLogOutput(go2jsLogDecorate(go2jsLogEnsureNewline(go2jsSprint(...values))));
 }
 
 function go2jsLogPrintf(format, ...values) {
-	go2jsLogOutput(go2jsLogEnsureNewline(go2jsSprintf(format, ...values)));
+	go2jsLogOutput(go2jsLogDecorate(go2jsLogEnsureNewline(go2jsSprintf(format, ...values))));
 }
 
 function go2jsLogPrintln(...values) {
-	go2jsLogOutput(go2jsLogSprintln(values));
+	go2jsLogOutput(go2jsLogDecorate(go2jsLogSprintln(values)));
+}
+
+function go2jsLogOutputMessage(calldepth, text) {
+	go2jsLogOutput(go2jsLogDecorate(go2jsLogEnsureNewline(go2jsStringify(text))));
+	return null;
 }
 
 function go2jsLogPanic(...values) {
-	go2jsPanic(go2jsSprint(values));
+	const text = go2jsSprint(...values);
+	go2jsLogOutput(go2jsLogDecorate(go2jsLogEnsureNewline(text)));
+	go2jsPanic(text);
 }
 
 function go2jsLogPanicf(format, ...values) {
-	go2jsPanic(go2jsSprintf(format, ...values));
+	const text = go2jsSprintf(format, ...values);
+	go2jsLogOutput(go2jsLogDecorate(go2jsLogEnsureNewline(text)));
+	go2jsPanic(text);
+}
+
+function go2jsLogPanicln(...values) {
+	const text = go2jsLogSprintln(values);
+	go2jsLogOutput(go2jsLogDecorate(text));
+	go2jsPanic(text);
 }
 
 function go2jsLogFatal(...values) {
-	go2jsLogOutput(go2jsLogEnsureNewline(go2jsSprint(values)));
+	go2jsLogOutput(go2jsLogDecorate(go2jsLogEnsureNewline(go2jsSprint(...values))));
 	process.exit(1);
 }
 
 function go2jsLogFatalf(format, ...values) {
-	go2jsLogOutput(go2jsLogEnsureNewline(go2jsSprintf(format, ...values)));
+	go2jsLogOutput(go2jsLogDecorate(go2jsLogEnsureNewline(go2jsSprintf(format, ...values))));
 	process.exit(1);
 }
 
 function go2jsLogFatalln(...values) {
-	go2jsLogOutput(go2jsLogSprintln(values));
+	go2jsLogOutput(go2jsLogDecorate(go2jsLogSprintln(values)));
 	process.exit(1);
 }
 
@@ -1096,10 +1190,12 @@ function go2jsLogNew(writer, prefix, ...rest) {
 		prefix: text,
 		flags: rest.length > 0 ? Number(rest[0]) | 0 : go2jsLogStandardFlags,
 		write(chunk) {
-			go2jsLogWriteTo(this.writer, this.prefix + chunk);
+			const stamp = go2jsLogStamp(new Date(), this.flags);
+
+			go2jsLogWriteTo(this.writer, (this.flags & 64) !== 0 ? stamp + this.prefix + chunk : this.prefix + stamp + chunk);
 		},
 		Print(...values) {
-			this.write(go2jsLogEnsureNewline(go2jsSprint(values)));
+			this.write(go2jsLogEnsureNewline(go2jsSprint(...values)));
 		},
 		Printf(format, ...values) {
 			this.write(go2jsLogEnsureNewline(go2jsSprintf(format, ...values)));
@@ -1108,7 +1204,7 @@ function go2jsLogNew(writer, prefix, ...rest) {
 			this.write(go2jsLogSprintln(values));
 		},
 		Fatal(...values) {
-			this.write(go2jsLogEnsureNewline(go2jsSprint(values)));
+			this.write(go2jsLogEnsureNewline(go2jsSprint(...values)));
 			process.exit(1);
 		},
 		Fatalf(format, ...values) {
@@ -1120,10 +1216,26 @@ function go2jsLogNew(writer, prefix, ...rest) {
 			process.exit(1);
 		},
 		Panic(...values) {
-			go2jsPanic(go2jsSprint(values));
+			const message = go2jsSprint(...values);
+			this.write(go2jsLogEnsureNewline(message));
+			go2jsPanic(message);
 		},
 		Panicf(format, ...values) {
-			go2jsPanic(go2jsSprintf(format, ...values));
+			const message = go2jsSprintf(format, ...values);
+			this.write(go2jsLogEnsureNewline(message));
+			go2jsPanic(message);
+		},
+		Panicln(...values) {
+			const message = go2jsLogSprintln(values);
+			this.write(message);
+			go2jsPanic(message);
+		},
+		Output(calldepth, message) {
+			this.write(go2jsLogEnsureNewline(go2jsStringify(message)));
+			return null;
+		},
+		SetOutput(target) {
+			this.writer = target;
 		},
 		Writer() {
 			return this.writer;
@@ -1147,6 +1259,7 @@ function go2jsLogNew(writer, prefix, ...rest) {
 
 var go2jsLogStandardFlags = 3;
 var go2jsLogCurrentPrefix = "";
+var go2jsLogStandardWriter = go2jsLogStandardWriterDefault();
 var go2jsLogDefaultLogger = go2jsLogBuildStandard();
 
 function go2jsUTF16Encode(value) {

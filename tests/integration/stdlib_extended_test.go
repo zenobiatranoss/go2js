@@ -520,6 +520,48 @@ func main() {
 `)
 }
 
+func TestDeferredMethodOnReceiverField(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"sync"
+)
+
+type counter struct {
+	mu sync.Mutex
+	n  int
+}
+
+func (c *counter) incr() {
+	defer c.mu.Unlock()
+	c.mu.Lock()
+	c.n++
+}
+
+func (c *counter) bump(step int) {
+	defer func() { c.n += step }()
+}
+
+func (c *counter) name() string {
+	defer fmt.Println("leaving", c.n)
+	c.n++
+	return fmt.Sprintf("n=%d", c.n)
+}
+
+func main() {
+	c := &counter{}
+	c.incr()
+	c.incr()
+	fmt.Println(c.n)
+	c.bump(5)
+	fmt.Println(c.n)
+	fmt.Println(c.name())
+	fmt.Println(c.n)
+}
+`)
+}
+
 func TestAnonymousStructLiteralAndReservedNames(t *testing.T) {
 	runParityTest(t, `package main
 

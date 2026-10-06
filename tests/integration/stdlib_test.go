@@ -128,6 +128,49 @@ func main() {
 	}
 }
 
+func TestLogOutputAndSetter(t *testing.T) {
+	source := `package main
+
+import (
+	"bytes"
+	"fmt"
+	"log"
+)
+
+func main() {
+	var buf bytes.Buffer
+	log.SetFlags(0)
+	log.SetPrefix("")
+	log.SetOutput(&buf)
+	log.Print("plain")
+	log.Print(1, 2)
+	log.Println("line")
+	log.Printf("pct %d", 7)
+	log.Printf("")
+	log.Print()
+	log.Output(0, "outlined")
+	fmt.Printf("buf=%q\n", buf.String())
+
+	log.SetOutput(log.Writer())
+	log.SetPrefix("P: ")
+	log.Print("decorated")
+	fmt.Println("prefix", log.Prefix(), "flags", log.Flags())
+	fmt.Println(log.Writer() != nil)
+
+	var second bytes.Buffer
+	logger := log.New(&second, "L: ", 0)
+	logger.Print("one")
+	logger.Output(0, "two")
+	logger.Println("three")
+	fmt.Printf("second=%q\n", second.String())
+}
+`
+	got, want := runCompiledProgram(t, source)
+	if got != want {
+		t.Fatalf("log output mismatch: got %q want %q", got, want)
+	}
+}
+
 func TestErrorSentinelValues(t *testing.T) {
 	source := `package main
 

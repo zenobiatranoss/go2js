@@ -3299,7 +3299,7 @@ func (e *emitter) emitStructMethodBody(fn *ast.FuncDecl, receiverType string) er
 		if isReceiverAssigned(fn.Body, e.receiver) {
 			e.receiverBinding = "go2jsReceiver_" + javaScriptIdentifier(e.receiver)
 			e.receiverMutable = true
-		} else if bodyHasFuncLit(fn.Body) {
+		} else if bodyHasFuncLit(fn.Body) || hasDefer(fn.Body) {
 			e.receiverBinding = "go2jsReceiver_" + javaScriptIdentifier(e.receiver)
 		}
 	}
