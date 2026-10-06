@@ -322,6 +322,10 @@ var utf8Funcs = map[string]string{
 	"Valid":             "go2jsUTF8Valid",
 	"ValidRune":         "go2jsUTF8ValidRune",
 	"ValidString":       "go2jsUTF8ValidString",
+	"FullRune":          "go2jsUTF8FullRune",
+	"FullRuneInString":  "go2jsUTF8FullRuneInString",
+	"EncodeRune":        "go2jsUTF8EncodeRune",
+	"DecodeLastRune":    "go2jsUTF8DecodeLastRune",
 }
 
 var jsonFuncs = map[string]string{

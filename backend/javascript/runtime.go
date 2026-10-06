@@ -12667,9 +12667,36 @@ function go2jsUTF8RuneLen(value) {
 	return 4;
 }
 
+// go2jsUTF8RuneDecodeSize is how many bytes a rune is written as, which is what
+// a decode answers as its size, and how wide an error rune sits where a lone
+// surrogate or a number out of range is read.
+function go2jsUTF8RuneDecodeSize(code) {
+	if (code <= 0x7f) {
+		return 1;
+	}
+
+	if (code <= 0x7ff) {
+		return 2;
+	}
+
+	if (code <= 0xffff) {
+		if (code >= 0xd800 && code <= 0xdfff) {
+			return 1;
+		}
+
+		return 3;
+	}
+
+	if (code <= 0x10ffff) {
+		return 4;
+	}
+
+	return 1;
+}
+
 // A rune is read out of a string by its first character, which is what a string
-// of runes holds one rune at a time, and a byte or a byte slice is read out of
-// it by the width that leads the bytes there.
+// of runes holds one rune at a time, and the size is how many bytes a rune of
+// it is written as in UTF-8.
 function go2jsUTF8DecodeRuneInString(s) {
 	const text = String(s);
 
@@ -12679,7 +12706,7 @@ function go2jsUTF8DecodeRuneInString(s) {
 
 	const code = text.codePointAt(0);
 
-	return [code, text.length >= 2 && code > 0xffff ? 2 : 1];
+	return [code, go2jsUTF8RuneDecodeSize(code)];
 }
 
 function go2jsUTF8DecodeLastRuneInString(s) {
@@ -12693,15 +12720,17 @@ function go2jsUTF8DecodeLastRuneInString(s) {
 	// last character, and a character of two code units is the one before it
 	let at = text.length - 1;
 
-	if (at > 0 && text.charCodeAt(at) < 0xdc00 || (at > 0 && text.charCodeAt(at) >= 0xdc00 && text.charCodeAt(at) <= 0xdfff)) {
-		if (text.charCodeAt(at) >= 0xdc00 && text.charCodeAt(at) <= 0xdfff) {
+	if (at > 0) {
+		const unit = text.charCodeAt(at);
+
+		if (unit >= 0xdc00 && unit <= 0xdfff) {
 			at--;
 		}
 	}
 
 	const code = text.codePointAt(at);
 
-	return [code, code > 0xffff ? 2 : 1];
+	return [code, go2jsUTF8RuneDecodeSize(code)];
 }
 
 function go2jsUTF8DecodeRune(value) {
@@ -12726,6 +12755,58 @@ function go2jsUTF8AppendRune(bytes, value) {
 	const start = bytes === null || bytes === undefined ? [] : Array.from(bytes);
 
 	return Array.from(Buffer.concat([Buffer.from(start), Buffer.from(String.fromCodePoint(go2jsUnicodeCodePoint(value)), "utf8")]));
+}
+
+// go2jsUTF8EncodeRune writes a rune as the bytes it stands for into the start
+// of a byte slice and says how many bytes it took, the way unicode/utf8 does:
+// a rune out of range (a negative one, one past the last, or a surrogate) is
+// written as the error rune, and if the slice is too small to hold it, the
+// write reaches past it the way Go does.
+function go2jsUTF8EncodeRune(p, value) {
+	let r = go2jsUnicodeCodePoint(value);
+	let size = 1;
+
+	if (r < 0) {
+		r = 0x110000;
+	}
+
+	if (r <= 0x7f) {
+		size = 1;
+	} else if (r <= 0x7ff) {
+		size = 2;
+	} else if (r <= 0xffff && !(r >= 0xd800 && r <= 0xdfff)) {
+		size = 3;
+	} else if (r > 0xffff && r <= 0x10ffff) {
+		size = 4;
+	} else {
+		size = 3;
+	}
+
+	if (p === null || p === undefined || go2jsLen(p) < size) {
+		go2jsPanic("index out of range");
+	}
+
+	if (size === 1) {
+		p[0] = r;
+	} else if (size === 2) {
+		p[0] = 0xc0 | (r >> 6);
+		p[1] = 0x80 | (r & 0x3f);
+	} else if (size === 3 && r <= 0xffff && !(r >= 0xd800 && r <= 0xdfff)) {
+		p[0] = 0xe0 | (r >> 12);
+		p[1] = 0x80 | ((r >> 6) & 0x3f);
+		p[2] = 0x80 | (r & 0x3f);
+	} else if (size === 4) {
+		p[0] = 0xf0 | (r >> 18);
+		p[1] = 0x80 | ((r >> 12) & 0x3f);
+		p[2] = 0x80 | ((r >> 6) & 0x3f);
+		p[3] = 0x80 | (r & 0x3f);
+	} else {
+		p[0] = 0xef;
+		p[1] = 0xbf;
+		p[2] = 0xbd;
+	}
+
+	return size;
 }
 
 function go2jsUTF8RuneStart(value) {
