@@ -632,6 +632,14 @@ function go2jsStrconvAppendQuoteToASCII(target, value) {
 	return go2jsStrconvAppendBytes(target, go2jsStrconvQuoteGraphic(go2jsStringify(value), true, false));
 }
 
+function go2jsStrconvAppendQuoteRuneToASCII(target, value) {
+	return go2jsStrconvAppendBytes(target, go2jsStrconvQuoteRuneToASCII(value));
+}
+
+function go2jsStrconvAppendQuoteRuneToGraphic(target, value) {
+	return go2jsStrconvAppendBytes(target, go2jsStrconvQuoteRuneToGraphic(value));
+}
+
 // go2jsStrconvAppendBytes writes text onto the end of a byte slice. Appending to
 // a slice that is not there yet starts one, so the slice that is written to and
 // the slice that is handed back are the same slice either way.
@@ -645,6 +653,313 @@ function go2jsStrconvAppendBytes(target, text) {
 	}
 
 	return target;
+}
+
+// go2jsStrconvUnquoteChar reads the rune that leads a quoted string, the way
+// strconv.UnquoteChar does: a plain character is handed back as it is, a
+// backslash escape is told apart as the rune it stands for, and what is left
+// of the string after it is handed back along with whether the rune took more
+// than one byte to write.
+function go2jsStrconvUnquoteChar(s, quote) {
+	const text = String(s);
+
+	const bad = () => [0, false, "", go2jsSentinelError("invalid syntax")()];
+
+	if (text.length === 0) {
+		return bad();
+	}
+
+	const first = text.charCodeAt(0);
+
+	if (first === quote && (quote === 39 || quote === 34)) {
+		return bad();
+	}
+
+	if (first >= 0x80) {
+		const code = text.codePointAt(0);
+
+		return [code, true, text.slice(code > 0xffff ? 2 : 1), null];
+	}
+
+	if (first !== 92) {
+		return [first, false, text.slice(1), null];
+	}
+
+	if (text.length <= 1) {
+		return bad();
+	}
+
+	const esc = text.charCodeAt(1);
+	let rest = text.slice(2);
+	let value = 0;
+	let multibyte = false;
+
+	switch (esc) {
+	case 97: // a
+		value = 7;
+		break;
+	case 98: // b
+		value = 8;
+		break;
+	case 102: // f
+		value = 12;
+		break;
+	case 110: // n
+		value = 10;
+		break;
+	case 114: // r
+		value = 13;
+		break;
+	case 116: // t
+		value = 9;
+		break;
+	case 118: // v
+		value = 11;
+		break;
+	case 120: // x
+	case 117: // u
+	case 85: // U
+	{
+		const n = esc === 120 ? 2 : esc === 117 ? 4 : 8;
+		let v = 0;
+
+		if (rest.length < n) {
+			return bad();
+		}
+
+		for (let index = 0; index < n; index++) {
+			const code = rest.charCodeAt(index);
+
+			if (code >= 48 && code <= 57) {
+				v = (v << 4) | (code - 48);
+			} else if (code >= 97 && code <= 102) {
+				v = (v << 4) | (code - 97 + 10);
+			} else if (code >= 65 && code <= 70) {
+				v = (v << 4) | (code - 65 + 10);
+			} else {
+				return bad();
+			}
+		}
+
+		rest = rest.slice(n);
+
+		if (esc === 120) {
+			value = v;
+			break;
+		}
+
+		if (!go2jsUTF8ValidRune(v)) {
+			return bad();
+		}
+
+		value = v;
+		multibyte = true;
+		break;
+	}
+	case 48:
+	case 49:
+	case 50:
+	case 51:
+	case 52:
+	case 53:
+	case 54:
+	case 55:
+	{
+		let v = esc - 48;
+
+		if (rest.length < 2) {
+			return bad();
+		}
+
+		for (let index = 0; index < 2; index++) {
+			const x = rest.charCodeAt(index) - 48;
+
+			if (x < 0 || x > 7) {
+				return bad();
+			}
+
+			v = (v << 3) | x;
+		}
+
+		rest = rest.slice(2);
+
+		if (v > 255) {
+			return bad();
+		}
+
+		value = v;
+		break;
+	}
+	case 92: // backslash
+		value = 92;
+		break;
+	case 39: // single quote
+	case 34: // double quote
+	{
+		if (esc !== quote) {
+			return bad();
+		}
+
+		value = esc;
+		break;
+	}
+	default:
+		return bad();
+	}
+
+	return [value, multibyte, rest, null];
+}
+
+// go2jsStrconvParseComplex reads a complex number from text the way strconv
+// does, from a real part and an imaginary part that ends in i, with "(...)"
+// around the whole either way, answering the value and the error a number out
+// of range is answered with together.
+function go2jsStrconvParseComplex(s, bitSize) {
+	const size = bitSize === 64 ? 32 : 64;
+	const orig = String(s);
+	const text = (orig.length >= 2 && orig.charCodeAt(0) === 40 && orig.charCodeAt(orig.length - 1) === 41)
+		? orig.slice(1, -1)
+		: orig;
+
+	let pending = null;
+
+	let parsed = go2jsStrconvFloatPrefix(text, size);
+
+	if (parsed === null) {
+		return [go2jsComplex(0, 0), new Error("strconv.ParseComplex: parsing " + go2jsStrconvQuote(orig) + ": invalid syntax")];
+	}
+
+	let re = parsed[0];
+
+	if (parsed[2]) {
+		pending = new Error("strconv.ParseComplex: parsing " + go2jsStrconvQuote(orig) + ": value out of range");
+	}
+
+	let rest = text.slice(parsed[1]);
+
+	if (rest.length === 0) {
+		return [go2jsComplex(re, 0), pending];
+	}
+
+	// a + or - between the parts, or an i that says the whole is imaginary
+	switch (rest.charCodeAt(0)) {
+	case 43: // +
+		if (rest.length > 1 && rest.charCodeAt(1) !== 43) {
+			rest = rest.slice(1);
+		}
+		break;
+	case 45: // -
+		break;
+	case 105: // i
+		if (rest.length === 1) {
+			return [go2jsComplex(0, re), pending];
+		}
+
+		return [go2jsComplex(0, 0), new Error("strconv.ParseComplex: parsing " + go2jsStrconvQuote(orig) + ": invalid syntax")];
+	default:
+		return [go2jsComplex(0, 0), new Error("strconv.ParseComplex: parsing " + go2jsStrconvQuote(orig) + ": invalid syntax")];
+	}
+
+	parsed = go2jsStrconvFloatPrefix(rest, size);
+
+	if (parsed === null) {
+		return [go2jsComplex(0, 0), new Error("strconv.ParseComplex: parsing " + go2jsStrconvQuote(orig) + ": invalid syntax")];
+	}
+
+	const im = parsed[0];
+
+	if (parsed[2]) {
+		pending = new Error("strconv.ParseComplex: parsing " + go2jsStrconvQuote(orig) + ": value out of range");
+	}
+
+	rest = rest.slice(parsed[1]);
+
+	if (rest !== "i") {
+		return [go2jsComplex(0, 0), new Error("strconv.ParseComplex: parsing " + go2jsStrconvQuote(orig) + ": invalid syntax")];
+	}
+
+	return [go2jsComplex(re, im), pending];
+}
+
+// go2jsStrconvFloatPrefix reads the number that leads a text, the way the
+// parser behind strconv reads one: a sign, "inf", "infinity" or "nan" in any
+// letters, or decimal digits with an optional dot and an exponent that must
+// carry at least one digit. It answers the number, how far into the text it
+// reached, and whether it was too large for the size asked for.
+function go2jsStrconvFloatPrefix(text, size) {
+	let sign = 1;
+	let at = 0;
+
+	if (at < text.length && (text.charAt(at) === "+" || text.charAt(at) === "-")) {
+		sign = text.charAt(at) === "-" ? -1 : 1;
+		at++;
+	}
+
+	const upper = text.slice(at).toUpperCase();
+
+	if (upper.startsWith("INFINITY")) {
+		return [sign * Infinity, at + 8, false];
+	}
+
+	if (upper.startsWith("INF")) {
+		return [sign * Infinity, at + 3, false];
+	}
+
+	if (upper.startsWith("NAN")) {
+		// a NaN is three letters, and the sign that led them is not counted
+		return [NaN, 3, false];
+	}
+
+	let end = at;
+
+	while (end < text.length && text.charCodeAt(end) >= 48 && text.charCodeAt(end) <= 57) {
+		end++;
+	}
+
+	let sawDigit = end > at;
+
+	if (end < text.length && text.charCodeAt(end) === 46) {
+		end++;
+
+		while (end < text.length && text.charCodeAt(end) >= 48 && text.charCodeAt(end) <= 57) {
+			end++;
+			sawDigit = true;
+		}
+	}
+
+	if (!sawDigit) {
+		return null;
+	}
+
+	// an exponent mark must be followed by a sign and at least one digit, or
+	// the number ends before it
+	if (end < text.length && (text.charCodeAt(end) === 101 || text.charCodeAt(end) === 69)) {
+		let k = end + 1;
+
+		if (k < text.length && (text.charAt(k) === "+" || text.charAt(k) === "-")) {
+			k++;
+		}
+
+		const firstDigit = k;
+
+		while (k < text.length && text.charCodeAt(k) >= 48 && text.charCodeAt(k) <= 57) {
+			k++;
+		}
+
+		if (k > firstDigit) {
+			end = k;
+		}
+	}
+
+	const value = sign * Number(text.slice(at, end));
+
+	if (size === 32) {
+		const rounded = Math.fround(value);
+
+		return [rounded, end, !Number.isFinite(rounded)];
+	}
+
+	return [value, end, !Number.isFinite(value)];
 }
 
 const go2jsQuoteEscapes = {
@@ -665,7 +980,11 @@ function go2jsStrconvQuoteGraphic(text, asciiOnly, singleRune) {
 
 	for (const char of text) {
 		const code = char.codePointAt(0);
-		const escape = go2jsQuoteEscapes[code];
+		const escape = singleRune
+			? code === 39 || code === 92
+				? "\\" + char
+				: code === 34 ? undefined : go2jsQuoteEscapes[code]
+			: go2jsQuoteEscapes[code];
 
 		if (escape !== undefined) {
 			out += escape;
