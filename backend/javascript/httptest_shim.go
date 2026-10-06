@@ -182,7 +182,7 @@ const go2jsHTTPStatusTexts = {
 function go2jsHTTPStatusText(code) {
 	const text = go2jsHTTPStatusTexts[code];
 
-	return text === undefined ? "Status " + code : text;
+	return text === undefined ? "" : text;
 }
 
 // go2jsHttptestNewRequest builds a request for a handler to be given. The

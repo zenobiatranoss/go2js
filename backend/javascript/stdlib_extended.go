@@ -37,6 +37,10 @@ var slicesFuncs = map[string]string{
 	"Clear":            "go2jsSlicesClear",
 	"SortedFunc":       "go2jsSlicesSortedFunc",
 	"SortedStableFunc": "go2jsSlicesSortedStableFunc",
+	"Compare":          "go2jsSlicesCompare",
+	"CompareFunc":      "go2jsSlicesCompareFunc",
+	"IsSorted":         "go2jsSlicesIsSorted",
+	"IsSortedFunc":     "go2jsSlicesIsSortedFunc",
 	"After":            "go2jsSlicesAfter",
 	"Before":           "go2jsSlicesBefore",
 	"Replace":          "go2jsSlicesReplace",
@@ -53,6 +57,7 @@ var mapsFuncs = map[string]string{
 	"All":        "go2jsMapsAll",
 	"Collect":    "go2jsMapsCollect",
 	"Clear":      "go2jsMapsClear",
+	"Insert":     "go2jsMapsInsert",
 }
 
 var base64Funcs = map[string]string{
@@ -318,6 +323,87 @@ function go2jsSlicesEqualFunc(a, b, equals) {
 	return true;
 }
 
+// go2jsSlicesCompare is the ordering of two slices, read the way slices.Compare
+// reads one: the first pair that differ decides, and equal prefixes fall back
+// on the lengths. A nil slice is the empty slice, so Compare(go2jsSlice(), nil)
+// is the same 0 Go calls it.
+function go2jsSlicesCompare(a, b) {
+	const alen = a === null || a === undefined ? 0 : a.length;
+	const blen = b === null || b === undefined ? 0 : b.length;
+	const common = Math.min(alen, blen);
+
+	for (let index = 0; index < common; index++) {
+		const result = go2jsCompareValues(a[index], b[index]);
+
+		if (result !== 0) {
+			return result;
+		}
+	}
+
+	if (alen < blen) {
+		return -1;
+	}
+
+	if (alen > blen) {
+		return 1;
+	}
+
+	return 0;
+}
+
+// go2jsSlicesCompareFunc is the ordering of two slices given by the comparison
+// handed in for one, in the way slices.CompareFunc reads it.
+function go2jsSlicesCompareFunc(a, b, compare) {
+	const alen = a === null || a === undefined ? 0 : a.length;
+	const blen = b === null || b === undefined ? 0 : b.length;
+	const common = Math.min(alen, blen);
+
+	for (let index = 0; index < common; index++) {
+		const result = go2jsCallNow(compare, null, [a[index], b[index]]);
+
+		if (result !== 0) {
+			return result;
+		}
+	}
+
+	if (alen < blen) {
+		return -1;
+	}
+
+	if (alen > blen) {
+		return 1;
+	}
+
+	return 0;
+}
+
+// go2jsSlicesIsSorted reports whether the slice is ordered in the way
+// slices.IsSorted reads an order, which is the way a < b is read for the
+// values themselves.
+function go2jsSlicesIsSorted(a) {
+	for (let next = 1; next < a.length; next++) {
+		if (go2jsCompareValues(a[next], a[next - 1]) < 0) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+// go2jsSlicesIsSortedFunc reports whether the slice is ordered by the
+// comparison handed in, the way slices.IsSortedFunc reads one.
+function go2jsSlicesIsSortedFunc(a, compare) {
+	for (let next = 1; next < a.length; next++) {
+		if (go2jsCallNow(compare, null, [a[next], a[next - 1]]) < 0) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+// go2jsSlicesMax is the greatest value of a slice, the way slices.Max reads
+// one.
 function go2jsSlicesMax(a) {
 	if (a.length === 0) {
 		throw new Error("slices.Max: empty list");
@@ -705,6 +791,30 @@ function go2jsMapsKeys(m) {
 
 function go2jsMapsValues(m) {
 	return go2jsMapsKeys(m).map(key => go2jsMapGet(m, key, null));
+}
+
+// go2jsMapsInsert puts the pairs a sequence of keys and values walks past into
+// a map, replacing a pair that is already held, the way maps.Insert does.
+function go2jsMapsInsert(target, sequence) {
+	if (sequence === null || sequence === undefined) {
+		return target;
+	}
+
+	if (typeof sequence === "function") {
+		go2jsCallNow(sequence, null, [function (key, value) {
+			go2jsMapSet(target, key, value);
+
+			return true;
+		}]);
+	} else if (Array.isArray(sequence)) {
+		for (const entry of sequence) {
+			if (Array.isArray(entry)) {
+				go2jsMapSet(target, entry[0], entry[1]);
+			}
+		}
+	}
+
+	return target;
 }
 
 function go2jsMapsClone(m) {
@@ -2253,6 +2363,30 @@ function go2jsSortSearchInts(a, target) {
 
 function go2jsSortSearchFloat64s(a, target) {
 	return go2jsSlicesBinarySearch(a, target)[0];
+}
+
+// go2jsSortFind is the lowest position the comparison handed in answers with a
+// 0 or less at, and whether the value at the position answers with a 0, the
+// way sort.Find reads one. The comparison is the one Go asks for: it returns
+// less than 0 when the target comes before the entry, 0 when they are equal,
+// and more than 0 when the entry comes first. The search is binary, so the
+// position is found in the same turns the Go search takes.
+function go2jsSortFind(count, compare) {
+	const total = Number(count);
+	let low = 0;
+	let high = total;
+
+	while (low < high) {
+		const mid = Math.floor((low + high) / 2);
+
+		if (go2jsCallNow(compare, null, [mid]) > 0) {
+			low = mid + 1;
+		} else {
+			high = mid;
+		}
+	}
+
+	return [low, low < total && go2jsCallNow(compare, null, [low]) === 0];
 }
 
 
