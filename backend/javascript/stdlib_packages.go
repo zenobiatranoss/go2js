@@ -100,7 +100,8 @@ var md5Funcs = map[string]string{
 }
 
 var hmacFuncs = map[string]string{
-	"New": "go2jsHMACNew",
+	"New":   "go2jsHMACNew",
+	"Equal": "go2jsHMACEqual",
 }
 
 var csvFuncs = map[string]string{
@@ -2806,6 +2807,27 @@ function go2jsHMACNew(hashFn, key) {
 			return go2jsToArray(target).concat(go2jsHashBytes(hashFn, outerKey.concat(inner)));
 		}
 	}, "hash.Hash");
+}
+
+// go2jsHMACEqual says whether two messages digests carry the same bytes, looking
+// at every byte of the shorter one so that a comparison that comes up equal
+// cannot be told from one that does not by how long it took, unless the two
+// digests are of different lengths, which says the inputs were apart already.
+function go2jsHMACEqual(mac1, mac2) {
+	const left = go2jsToArray(mac1);
+	const right = go2jsToArray(mac2);
+
+	if (left.length !== right.length) {
+		return false;
+	}
+
+	let v = 0;
+
+	for (let index = 0; index < left.length; index++) {
+		v |= Number(left[index]) ^ Number(right[index]);
+	}
+
+	return v === 0;
 }
 
 function go2jsCSVParse(text) {

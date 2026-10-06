@@ -103,6 +103,8 @@ var utf16Funcs = map[string]string{
 	"IsSurrogate": "go2jsUTF16IsSurrogate",
 	"DecodeRune":  "go2jsUTF16DecodeRune",
 	"EncodeRune":  "go2jsUTF16EncodeRune",
+	"RuneLen":     "go2jsUTF16RuneLen",
+	"AppendRune":  "go2jsUTF16AppendRune",
 }
 
 var packageVarMethods = map[string]string{
@@ -1443,6 +1445,46 @@ function go2jsUTF16EncodeRune(value) {
 	const adjusted = code - 0x10000;
 
 	return [0xd800 + (adjusted >> 10), 0xdc00 + (adjusted & 0x3ff)];
+}
+
+function go2jsUTF16RuneLen(value) {
+	const r = go2jsUnicodeCodePoint(value);
+
+	if (r >= 0 && r < 0xd800) {
+		return 1;
+	}
+
+	if (r >= 0xe000 && r <= 0xffff) {
+		return 1;
+	}
+
+	if (r >= 0x10000 && r <= 0x10ffff) {
+		return 2;
+	}
+
+	return -1;
+}
+
+function go2jsUTF16AppendRune(units, value) {
+	const start = units === null || units === undefined ? [] : Array.from(units);
+	const r = go2jsUnicodeCodePoint(value);
+
+	if ((r >= 0 && r < 0xd800) || (r >= 0xe000 && r <= 0xffff)) {
+		start.push(r);
+		return start;
+	}
+
+	if (r >= 0x10000 && r <= 0x10ffff) {
+		const adjusted = r - 0x10000;
+
+		start.push(0xd800 + (adjusted >> 10));
+		start.push(0xdc00 + (adjusted & 0x3ff));
+		return start;
+	}
+
+	// a rune out of range or a surrogate is written as the replacement char
+	start.push(0xfffd);
+	return start;
 }
 `
 }
