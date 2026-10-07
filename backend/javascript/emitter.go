@@ -1549,7 +1549,12 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 					return err
 				}
 				e.write(", ")
-				if err := e.emitExpr(index.Index); err != nil {
+				keyType := e.mapKeyType(index.X)
+				if keyType != nil && isInterfaceTarget(keyType) {
+					if err := e.emitInterfaceValue(index.Index, keyType); err != nil {
+						return err
+					}
+				} else if err := e.emitExpr(index.Index); err != nil {
 					return err
 				}
 				e.write(", ")
