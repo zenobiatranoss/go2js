@@ -37,7 +37,7 @@ The work is one function at a time, each landing with its parity test.
 | `fmt` | the printing verbs are what most programs reach for | `%v %+v %#v`, `%q/%c/%g/%e/%f`, width and precision done; `Scan*` family, `Append*` remain |
 | `math` | pure functions, no I/O, ideal parity tests | **87%**: constants and core functions; special functions (`J0`, `Erf`, `FMA`, …) remain |
 | `math/big` | `Int`, `Float`, `Rat` — no JS equivalent exists | at the start (wrapper `Int` only) |
-| `time` | everyone formats dates | **83%**: layouts, months, durations, formatting + monotonic clock done; `Parse` dialect is the gap |
+| `time` | everyone formats dates | **83%**: layouts, months, durations, formatting + monotonic clock done; `Parse` now reads RFC3339, named and numeric zones, 12-hour markers, abbreviations and fractions — the `MST`-name dialect and `LoadLocation` zone databases are the gap left |
 | `net/http` | the flagship package | handler/routing/`ResponseRecorder` work; full request surface remains |
 | `strings`, `bytes` | daily drivers | high coverage; `Reader`/`Replacer`/`FieldsSeq` family remain |
 | `reflect` | type machinery is deep but self-contained | the identity of Types/Values is the hard part |
