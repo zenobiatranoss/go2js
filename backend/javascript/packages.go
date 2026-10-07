@@ -31,6 +31,7 @@ var packageConstants = map[string]string{
 	"os.Stdin":                "go2jsOSStdin()",
 	"os.Stdout":               "go2jsOSStdout()",
 	"os.Stderr":               "go2jsOSStderr()",
+	"os.DevNull":              `"/dev/null"`,
 	"time.Nanosecond":         "go2jsDuration(1)",
 	"time.Microsecond":        "go2jsDuration(1000)",
 	"time.Millisecond":        "go2jsDuration(1000000)",
@@ -66,6 +67,10 @@ var packageConstants = map[string]string{
 	"time.DateOnly":           strconv.Quote("2006-01-02"),
 	"time.TimeOnly":           strconv.Quote("15:04:05"),
 	"strconv.IntSize":         "64",
+
+	"strconv.ErrSyntax":     `go2jsSentinelError("invalid syntax")()`,
+	"strconv.ErrRange":      `go2jsSentinelError("value out of range")()`,
+	"errors.ErrUnsupported": `go2jsSentinelError("unsupported operation")()`,
 
 	"unicode.MaxASCII":        "127",
 	"unicode.MaxLatin1":       "255",
