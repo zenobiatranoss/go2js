@@ -196,6 +196,25 @@ func knownStdlibPackageNames() []string {
 	return names
 }
 
+// SupportedStdlibPackageFuncs reports the symbols the runtime answers for,
+// keyed by the name the registry knows them under (mostly import paths). This
+// is the inventory the documentation and the gap-report tool ask for, so it
+// lives here next to the maps it describes.
+func SupportedStdlibPackageFuncs() map[string][]string {
+	inventory := make(map[string][]string, len(supportedStdlibPackages))
+
+	for pkg, symbols := range supportedStdlibPackages {
+		list := make([]string, 0, len(symbols))
+		for name := range symbols {
+			list = append(list, name)
+		}
+		sort.Strings(list)
+		inventory[pkg] = list
+	}
+
+	return inventory
+}
+
 func isStdlibPkgAlias(name string) bool {
 	for _, aliases := range stdlibPkgAliases {
 		for _, alias := range aliases {
