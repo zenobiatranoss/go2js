@@ -1908,6 +1908,8 @@ func extendedStdlibFuncs() {
 		"Now":           "go2jsTimeNow",
 		"Sleep":         "go2jsTimeSleep",
 		"Unix":          "go2jsTimeFromUnix",
+		"UnixMilli":     "go2jsTimeFromUnixMilli",
+		"UnixMicro":     "go2jsTimeFromUnixMicro",
 		"Parse":         "go2jsTimeParse",
 		"After":         "go2jsTimeAfter",
 		"NewTimer":      "go2jsTimeNewTimer",
@@ -3609,6 +3611,19 @@ function go2jsTimeFromUnix(sec, nsec) {
 	moment.__go2js_zone = moment.__go2js_location === "UTC" ? null : moment.__go2js_location;
 
 	return moment;
+}
+
+// go2jsTimeFromUnixMilli reads a moment out of the number of milliseconds
+// since the epoch, and go2jsTimeFromUnixMicro out of the number of
+// microseconds, each the way Go names the pair of them.
+function go2jsTimeFromUnixMilli(milliseconds) {
+	const ms = Math.trunc(Number(milliseconds));
+	return go2jsTimeFromUnix(Math.floor(ms / 1000), (ms % 1000) * 1000000);
+}
+
+function go2jsTimeFromUnixMicro(microseconds) {
+	const us = Math.trunc(Number(microseconds));
+	return go2jsTimeFromUnix(Math.floor(us / 1000000), (us % 1000000) * 1000);
 }
 
 // go2jsTimeParse reads a moment out of text the way a layout says it is

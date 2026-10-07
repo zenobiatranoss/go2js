@@ -118,6 +118,12 @@ function go2jsBufioText(source) {
 		return source.__go2js_text;
 	}
 
+	// A byte reader keeps the numbers it reads as bytes, which spell the text a
+	// reader over it would read the same way they do for a string reader.
+	if (source !== null && source !== undefined && source.__go2js_bytes) {
+		return go2jsBytesToString(source.__go2js_bytes);
+	}
+
 	// A reader or a scanner reads from what it is given, which for a file is
 	// the text left in it. What it read is kept on the source, so that reading
 	// it twice reads it once.
@@ -171,45 +177,182 @@ function go2jsBufioSeparator(separator) {
 	return go2jsStringify(separator);
 }
 
+// go2jsBufioNewReaderSize reads through a buffer of at least the size wanted,
+// though the buffer here is only a way of reading, so a size is accepted and
+// the reader it makes is the same reader, the way Go's reader of a given size
+// reads the same things a reader of any other size does.
+function go2jsBufioNewReaderSize(source, size) {
+	return go2jsBufioNewReader(source);
+}
+
 function go2jsBufioNewReader(source) {
+	const bytes = go2jsStringToBytes(go2jsBufioText(source));
 	let position = 0;
-	const text = go2jsBufioText(source);
+	let unreadByteAllowed = false;
+	let unreadRuneAllowed = false;
+	let lastRuneSize = 0;
 
-	function takeUntil(separator, keepSeparator) {
-		const stop = text.indexOf(separator, position);
+	function fill(target) {
+		const slot = go2jsBytesReadSlot(target);
 
-		if (stop === -1) {
-			const rest = text.slice(position);
-			position = text.length;
-			return rest;
+		if (!slot) {
+			return [0, null];
 		}
 
-		const end = keepSeparator ? stop + separator.length : stop;
-		const chunk = text.slice(position, end);
-		position = end;
+		if (position >= bytes.length) {
+			return [0, go2jsIOEOF()];
+		}
 
-		return chunk;
+		const count = Math.min(slot.length, bytes.length - position);
+
+		for (let index = 0; index < count; index++) {
+			go2jsBytesStoreByte(target, index, bytes[position + index]);
+		}
+
+		position += count;
+		unreadByteAllowed = true;
+		unreadRuneAllowed = false;
+		return [count, null];
+	}
+
+	function findSeparator(separator) {
+		const needle = go2jsStringToBytes(go2jsBufioSeparator(separator));
+		let stop = -1;
+
+		if (needle.length === 0) {
+			stop = position;
+		} else {
+			walk: for (let at = position; at + needle.length <= bytes.length; at++) {
+				for (let index = 0; index < needle.length; index++) {
+					if (bytes[at + index] !== needle[index]) {
+						continue walk;
+					}
+				}
+
+				stop = at;
+				break;
+			}
+		}
+
+		return stop;
 	}
 
 	return {
-		ReadString: function (separator) {
-			const needle = go2jsBufioSeparator(separator);
-			const chunk = takeUntil(needle, true);
-			// A separator that never came means the text ran out, which is what a
-			// read that did not reach one reports.
-			const ended = needle === "" || !chunk.endsWith(needle);
+		Read: fill,
+		ReadByte() {
+			unreadByteAllowed = true;
+			unreadRuneAllowed = false;
 
-			return [chunk, ended ? go2jsEOFError() : null];
-		},
-		ReadLine: function () {
-			if (position >= text.length) {
-				return null;
+			if (position >= bytes.length) {
+				return [0, go2jsIOEOF()];
 			}
 
-			const line = takeUntil("\n", false);
-			return line.endsWith("\r") ? line.slice(0, -1) : line;
+			return [bytes[position++], null];
+		},
+		UnreadByte() {
+			if (!unreadByteAllowed || position <= 0) {
+				return go2jsErrorsNew("bufio: invalid use of UnreadByte");
+			}
+
+			position--;
+			unreadByteAllowed = false;
+			unreadRuneAllowed = false;
+			return null;
+		},
+		ReadRune() {
+			if (position >= bytes.length) {
+				unreadByteAllowed = false;
+				unreadRuneAllowed = false;
+				return [0, 0, go2jsIOEOF()];
+			}
+
+			const decoded = go2jsDecodeUTF8Rune(bytes, position);
+			const size = decoded[1];
+
+			position += size;
+			lastRuneSize = size;
+			unreadByteAllowed = true;
+			unreadRuneAllowed = true;
+			return [decoded[0], size, null];
+		},
+		UnreadRune() {
+			if (!unreadRuneAllowed || position <= 0) {
+				return go2jsErrorsNew("bufio: invalid use of UnreadRune");
+			}
+
+			position -= lastRuneSize;
+			unreadByteAllowed = false;
+			unreadRuneAllowed = false;
+			return null;
+		},
+		Buffered() {
+			return bytes.length - position;
+		},
+		Peek(count) {
+			count = Math.trunc(Number(count));
+
+			if (count < 0) {
+				return [null, go2jsErrorsNew("bufio: negative count")];
+			}
+
+			if (count > bytes.length - position) {
+				// Looking further than there is left reads the rest and comes to
+				// the end of the text, which is why the error is the one the end
+				// of the text reports rather than the one a full buffer does.
+				return [bytes.slice(position), go2jsIOEOF()];
+			}
+
+			return [bytes.slice(position, position + count), null];
+		},
+		ReadString(separator) {
+			const stop = findSeparator(separator, true);
+
+			if (stop === -1) {
+				const chunk = bytes.slice(position);
+				position = bytes.length;
+				unreadByteAllowed = true;
+				unreadRuneAllowed = false;
+				return [new TextDecoder().decode(Uint8Array.from(chunk)), go2jsIOEOF()];
+			}
+
+			const needle = go2jsStringToBytes(go2jsBufioSeparator(separator));
+			const end = stop + needle.length;
+			const chunk = bytes.slice(position, end);
+
+			position = end;
+			unreadByteAllowed = true;
+			unreadRuneAllowed = false;
+			return [new TextDecoder().decode(Uint8Array.from(chunk)), null];
+		},
+		ReadLine() {
+			if (position >= bytes.length) {
+				return [null, false, go2jsIOEOF()];
+			}
+
+			const stop = findSeparator("\n", false);
+			let end = stop;
+
+			if (stop === -1) {
+				end = bytes.length;
+			}
+
+			const chunk = bytes.slice(position, end);
+			const line = chunk[chunk.length - 1] === 13 ? chunk.slice(0, -1) : chunk;
+
+			position = end + (stop === -1 ? 0 : 1);
+			unreadByteAllowed = true;
+			unreadRuneAllowed = false;
+			return [line, false, null];
 		},
 	};
+}
+
+// go2jsBufioNewWriterSize writes through a buffer of at least the size wanted,
+// though the buffer here is only a way of writing, so a size is accepted and
+// the writer it makes is the same writer, the way Go's writer of a given size
+// writes the same things a writer of any other size does.
+function go2jsBufioNewWriterSize(destination, size) {
+	return go2jsBufioNewWriter(destination);
 }
 
 function go2jsBufioNewWriter(destination) {
