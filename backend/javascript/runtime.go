@@ -8420,36 +8420,49 @@ function go2jsWrapSigned64(value) {
 const go2jsUint64One = 1n << 64n;
 const go2jsSignBit64 = 1n << 63n;
 
-// go2jsWideBinary runs an operation over two whole numbers and gives back
-// whichever kind of number the answer is one of. A number that fits a double is
-// read back as one, so a program working in the range a double covers is not
-// slowed down or made to answer differently by a range it never reaches.
-function go2jsWideBinary(left, right, whole, typeName) {
+function go2jsWideAdd(left, right, typeName) {
+	return go2jsWideBinary(left, right, (a, b) => a + b, (a, b) => a + b, typeName);
+}
+
+// go2jsWideBinary keeps a whole number operation exact all the way out, which
+// the plain operator cannot be once the answer is past the digits a double
+// keeps. It is tried in doubles first, and only an answer that double cannot
+// hold is worked out as digits, so a program that never leaves the numbers a
+// double covers is not slowed down by the wider kind being there.
+function go2jsWideBinary(left, right, whole, big, typeName) {
 	left = go2jsDurationOperand(left);
 	right = go2jsDurationOperand(right);
 
-	if (!go2jsIsWide(left) && !go2jsIsWide(right)) {
-		return go2jsWideWrap(whole(left, right), typeName);
+	if (go2jsIsWide(left) || go2jsIsWide(right)) {
+		return go2jsWideWrap(big(go2jsWide(left), go2jsWide(right)), typeName);
 	}
 
-	return go2jsWideWrap(whole(go2jsWide(left), go2jsWide(right)), typeName);
-}
+	const result = whole(left, right);
 
-function go2jsWideAdd(left, right, typeName) {
-	return go2jsWideBinary(left, right, (a, b) => a + b, typeName);
+	if (Number.isSafeInteger(result)) {
+		return go2jsWideWrap(result, typeName);
+	}
+
+	return go2jsWideWrap(big(BigInt(Math.trunc(left)), BigInt(Math.trunc(right))), typeName);
 }
 
 function go2jsWideSub(left, right, typeName) {
-	return go2jsWideBinary(left, right, (a, b) => a - b, typeName);
+	return go2jsWideBinary(left, right, (a, b) => a - b, (a, b) => a - b, typeName);
 }
 
 function go2jsWideMul(left, right, typeName) {
-	return go2jsWideBinary(left, right, (a, b) => a * b, typeName);
+	return go2jsWideBinary(left, right, (a, b) => a * b, (a, b) => a * b, typeName);
 }
 
 function go2jsWideQuo(left, right, typeName) {
 	return go2jsWideBinary(left, right, (a, b) => {
 		if (b === 0) {
+			throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "integer divide by zero");
+		}
+
+		return Math.trunc(a / b);
+	}, (a, b) => {
+		if (b === 0n) {
 			throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "integer divide by zero");
 		}
 
@@ -8463,37 +8476,44 @@ function go2jsWideRem(left, right, typeName) {
 			throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "integer divide by zero");
 		}
 
+		return a - Math.trunc(a / b) * b;
+	}, (a, b) => {
+		if (b === 0n) {
+			throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "integer divide by zero");
+		}
+
 		return a % b;
 	}, typeName);
 }
 
-function go2jsWideAnd(left, right, typeName) {
-	return go2jsWideBinary(left, right, (a, b) => a & b, typeName);
-}
-
-function go2jsWideOr(left, right, typeName) {
-	return go2jsWideBinary(left, right, (a, b) => a | b, typeName);
-}
-
-function go2jsWideXor(left, right, typeName) {
-	return go2jsWideBinary(left, right, (a, b) => a ^ b, typeName);
-}
-
-function go2jsWideAndNot(left, right, typeName) {
+// go2jsWideBitwise runs a marks operation over two whole numbers as digits,
+// since a JavaScript operator on numbers touches only the low thirty two of
+// them, and every mark of a wider number lives above where it reaches.
+function go2jsWideBitwise(left, right, whole, typeName) {
 	left = go2jsDurationOperand(left);
 	right = go2jsDurationOperand(right);
 
-	// Turning a number inside out in JavaScript is a thirty-two bit thing, so
-	// marks above the thirty-second are cleared through whole numbers rather
-	// than through an operator that would lose every one of them.
-	if (go2jsIsWide(left) || go2jsIsWide(right) ||
-		go2jsFitsThirtyTwoBits(left) === false || go2jsFitsThirtyTwoBits(right) === false) {
-		return go2jsWideBinary(go2jsWide(left), go2jsWide(right), (a, b) => a & ~b, typeName);
-	}
+	return go2jsWideWrap(whole(go2jsWide(left), go2jsWide(right)), typeName);
+}
 
-	// The marks to clear are a subset of the marks held, so taking them off by
-	// what they are worth clears them without borrowing from the ones above.
-	return go2jsWideWrap(left - (left & right), typeName);
+function go2jsWideAnd(left, right, typeName) {
+	return go2jsWideBitwise(left, right, (a, b) => a & b, typeName);
+}
+
+function go2jsWideOr(left, right, typeName) {
+	return go2jsWideBitwise(left, right, (a, b) => a | b, typeName);
+}
+
+function go2jsWideXor(left, right, typeName) {
+	return go2jsWideBitwise(left, right, (a, b) => a ^ b, typeName);
+}
+
+function go2jsWideAndNot(left, right, typeName) {
+	return go2jsWideBitwise(left, right, (a, b) => a & ~b, typeName);
+}
+
+function go2jsImul(left, right) {
+	return Math.imul(go2jsDurationOperand(left), go2jsDurationOperand(right)) >>> 0;
 }
 
 // go2jsFitsThirtyTwoBits reports whether a whole number is one a thirty-two bit
@@ -8505,9 +8525,6 @@ function go2jsFitsThirtyTwoBits(value) {
 }
 
 // go2jsWideFloat turns a whole number into the nearest number a double holds,
-// which is the same number the conversion gives in Go, digits and all the way
-// out. A double carries about sixteen digits exactly, so past that the answer
-// is the nearest one to it rather than the whole number asked for.
 function go2jsWideFloat(value) {
 	value = go2jsDurationOperand(value);
 
@@ -8517,6 +8534,13 @@ function go2jsWideFloat(value) {
 	// to the whole number rather than the whole number itself, and that is what a
 	// program asking for a float64 is asking for.
 	return Number(value);
+}
+
+// go2jsWideFloat32 turns a whole number into the nearest number a float32
+// holds, which is the same number the conversion gives in Go, brought down to
+// the twenty four digits a float32 keeps.
+function go2jsWideFloat32(value) {
+	return Math.fround(Number(go2jsDurationOperand(value)));
 }
 
 
@@ -8633,8 +8657,10 @@ function go2jsShl(left, right, typeName) {
 
 	// a shift that lands outside the range a double holds exactly is worked out
 	// as digits, since a double is already carrying more of them than it can
-	// keep by the time a shift of so many bits has been asked for
-	if (count > 30 && (go2jsIsWide(left) || Math.abs(Math.trunc(Number(left))) > go2jsSafeInteger / 2 ** count)) {
+	// keep by the time a shift of so many bits has been asked for. A number
+	// held as digits to begin with is shifted as digits whatever the count is.
+	if (go2jsIsWide(left) ||
+		(count > 30 && Math.abs(Math.trunc(Number(left))) > go2jsSafeInteger / 2 ** count)) {
 		return go2jsShlWide(go2jsWide(left) << BigInt(count), typeName);
 	}
 
