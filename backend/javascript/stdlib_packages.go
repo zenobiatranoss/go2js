@@ -613,15 +613,15 @@ function go2jsNewOffsetWriter(writer, off) {
 }
 
 function go2jsStrconvQuoteToGraphic(value) {
-	return go2jsStrconvQuoteGraphic(go2jsStringify(value), false, false);
+	return go2jsStrconvQuoteWith(go2jsStringify(value), false, true);
 }
 
 function go2jsStrconvQuoteRuneToGraphic(value) {
-	return go2jsStrconvQuoteGraphic(String.fromCodePoint(Number(value)), false, true);
+	return go2jsStrconvQuoteRuneWith(value, false, true);
 }
 
 function go2jsStrconvQuoteRuneToASCII(value) {
-	return go2jsStrconvQuoteGraphic(String.fromCodePoint(Number(value)), true, true);
+	return go2jsStrconvQuoteRuneWith(value, true, false);
 }
 
 function go2jsStrconvAppendQuoteToGraphic(target, value) {
@@ -629,7 +629,7 @@ function go2jsStrconvAppendQuoteToGraphic(target, value) {
 }
 
 function go2jsStrconvAppendQuoteToASCII(target, value) {
-	return go2jsStrconvAppendBytes(target, go2jsStrconvQuoteGraphic(go2jsStringify(value), true, false));
+	return go2jsStrconvAppendBytes(target, go2jsStrconvQuoteToASCII(value));
 }
 
 function go2jsStrconvAppendQuoteRuneToASCII(target, value) {
@@ -642,14 +642,15 @@ function go2jsStrconvAppendQuoteRuneToGraphic(target, value) {
 
 // go2jsStrconvAppendBytes writes text onto the end of a byte slice. Appending to
 // a slice that is not there yet starts one, so the slice that is written to and
-// the slice that is handed back are the same slice either way.
+// the slice that is handed back are the same slice either way. The bytes are
+// the UTF-8 of the text, not the UTF-16 units the host keeps a string in.
 function go2jsStrconvAppendBytes(target, text) {
 	if (!Array.isArray(target)) {
 		target = [];
 	}
 
-	for (let index = 0; index < text.length; index++) {
-		target.push(text.charCodeAt(index));
+	for (const byte of go2jsStringToBytes(text)) {
+		target.push(byte);
 	}
 
 	return target;
@@ -960,65 +961,6 @@ function go2jsStrconvFloatPrefix(text, size) {
 	}
 
 	return [value, end, !Number.isFinite(value)];
-}
-
-const go2jsQuoteEscapes = {
-	7: "\\a",
-	8: "\\b",
-	9: "\\t",
-	10: "\\n",
-	11: "\\v",
-	12: "\\f",
-	13: "\\r",
-	34: "\\\"",
-	92: "\\\\"
-};
-
-function go2jsStrconvQuoteGraphic(text, asciiOnly, singleRune) {
-	const quote = String.fromCharCode(34);
-	let out = singleRune ? String.fromCharCode(39) : quote;
-
-	for (const char of text) {
-		const code = char.codePointAt(0);
-		const escape = singleRune
-			? code === 39 || code === 92
-				? "\\" + char
-				: code === 34 ? undefined : go2jsQuoteEscapes[code]
-			: go2jsQuoteEscapes[code];
-
-		if (escape !== undefined) {
-			out += escape;
-			continue;
-		}
-
-		if (code < 0x20 || code === 0x7f) {
-			out += "\\x" + code.toString(16).padStart(2, "0");
-			continue;
-		}
-
-		if (code > 0x7e) {
-			if (asciiOnly) {
-				out += code > 0xffff
-					? "\\U" + code.toString(16).toUpperCase().padStart(8, "0")
-					: "\\u" + code.toString(16).padStart(4, "0");
-				continue;
-			}
-
-			if (code < 0xa0 || (code >= 0x2000 && code <= 0x200f) || (code >= 0x2028 && code <= 0x202f)) {
-				out += "\\u" + code.toString(16).padStart(4, "0");
-				continue;
-			}
-
-			if (code === 0x2028 || code === 0x2029) {
-				out += "\\u" + code.toString(16).padStart(4, "0");
-				continue;
-			}
-		}
-
-		out += char;
-	}
-
-	return out + (singleRune ? String.fromCharCode(39) : quote);
 }
 
 const go2jsStrconvDigits = "0123456789abcdefghijklmnopqrstuvwxyz";
