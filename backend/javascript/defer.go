@@ -3,6 +3,7 @@ package javascript
 import (
 	"fmt"
 	"go/ast"
+	gotypesstd "go/types"
 	"strconv"
 )
 
@@ -196,7 +197,41 @@ func (e *emitter) emitFuncBody(body *ast.BlockStmt) error {
 	// A deferred call is run as the goroutine unwinds, so it is stepped here
 	// rather than called: a deferred function may wait like any other.
 	e.writeIndent()
+	e.write("try {")
+	e.newline()
+	e.indent++
+	e.writeIndent()
 	e.write("yield* go2jsDefers[i]();")
+	e.newline()
+	e.indent--
+	e.writeIndent()
+	e.write("} catch (go2jsDeferThrown) {")
+	e.newline()
+	e.indent++
+	// A panic raised in a deferred function takes the place of the panic it
+	// ran under, the way the newest Go panic does, and the defers still left
+	// to run go on running; that is what lets one that recovers take it back.
+	if namedReturn {
+		e.writeIndent()
+		e.write("if (go2jsDeferThrown !== go2jsReturnSignal) {")
+		e.newline()
+		e.indent++
+	}
+	e.writeIndent()
+	e.write("go2jsPanicValue = go2jsDeferThrown;")
+	e.newline()
+	e.writeIndent()
+	e.write("go2jsRecovered = false;")
+	e.newline()
+	if namedReturn {
+		e.indent--
+		e.writeIndent()
+		e.write("}")
+		e.newline()
+	}
+	e.indent--
+	e.writeIndent()
+	e.write("}")
 	e.newline()
 	e.indent--
 	e.writeIndent()
@@ -263,6 +298,28 @@ func (e *emitter) emitDeferStmt(stmt *ast.DeferStmt) error {
 	e.writeIndent()
 	e.write("((")
 
+	// The receiver of a method the defer runs is taken the moment the defer is
+	// met, the way Go takes it then: a value receiver has to keep the value it
+	// was given then rather than answer to whatever the receiver holds by the
+	// time the function gives back, and a pointer receiver keeps the pointer it
+	// was given. It is handed in as the first argument taken by the outer
+	// function, so it is read once here and left alone by every later change.
+	var receiverNode ast.Expr
+	copyReceiver := false
+
+	if selector, ok := ast.Unparen(stmt.Call.Fun).(*ast.SelectorExpr); ok {
+		if _, signature, kind, ok := e.selectorMethod(selector); ok && kind == gotypesstd.MethodVal {
+			receiverNode = selector.X
+			copyReceiver = e.methodValueCopiesReceiver(signature)
+
+			e.write("go2jsDeferRecv0")
+
+			if len(stmt.Call.Args) > 0 {
+				e.write(", ")
+			}
+		}
+	}
+
 	for i := range stmt.Call.Args {
 		if i > 0 {
 			e.write(", ")
@@ -293,15 +350,48 @@ func (e *emitter) emitDeferStmt(stmt *ast.DeferStmt) error {
 	// call that is not made on the method.
 	e.funcLitDepth++
 
-	err := e.emitExpr(deferredCall)
+	if receiverNode != nil {
+		savedOverride := e.exprOverride
+		e.exprOverride = make(map[ast.Expr]string, 1)
+		e.exprOverride[receiverNode] = "go2jsDeferRecv0"
+
+		err := e.emitExpr(deferredCall)
+
+		e.exprOverride = savedOverride
+
+		if err != nil {
+			return err
+		}
+	} else {
+		err := e.emitExpr(deferredCall)
+
+		if err != nil {
+			return err
+		}
+	}
 
 	e.funcLitDepth--
 
-	if err != nil {
-		return err
-	}
-
 	e.write(" }))(")
+
+	if receiverNode != nil {
+		if copyReceiver {
+			e.needsRuntime = true
+			e.write("go2jsCloneValue(")
+		}
+
+		if err := e.emitExpr(receiverNode); err != nil {
+			return err
+		}
+
+		if copyReceiver {
+			e.write(")")
+		}
+
+		if len(stmt.Call.Args) > 0 {
+			e.write(", ")
+		}
+	}
 
 	for i, arg := range stmt.Call.Args {
 		if i > 0 {

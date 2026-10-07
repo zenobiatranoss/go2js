@@ -3325,42 +3325,84 @@ function go2jsCSVWriteAll(target, records) {
 	return null;
 }
 
-function go2jsHeapSift(items, index) {
-	const less = go2jsHeapLess;
+function go2jsHeapMethodReceiver(target) {
+	let value = target;
+
+	for (let depth = 0; depth < 8; depth++) {
+		if (value !== null && value !== undefined && value.__go2js_interface === true) {
+			value = value.value;
+			continue;
+		}
+
+		break;
+	}
+
+	return value;
+}
+
+function go2jsHeapMethodName(target) {
+	let name = "";
+
+	if (target !== null && target !== undefined && target.__go2js_interface === true) {
+		name = String(target.type).replace(/^\*/, "");
+	} else {
+		name = go2jsGoTypeName(target);
+	}
+
+	const dot = name.lastIndexOf(".");
+
+	if (dot >= 0) {
+		name = name.slice(dot + 1);
+	}
+
+	return name;
+}
+
+function go2jsHeapDown(items, receiver, name, i0, n) {
+	let i = i0;
 
 	for (;;) {
-		const left = 2 * index + 1;
+		const left = 2 * i + 1;
+
+		if (left >= n || left < 0) {
+			break;
+		}
+
+		let j = left;
 		const right = left + 1;
-		let smallest = index;
 
-		if (left < items.length && go2jsCallNow(less, null, [items[left], items[smallest]])) {
-			smallest = left;
+		if (right < n && go2jsNamedMethodCall(receiver, name, "Less", right, left)) {
+			j = right;
 		}
 
-		if (right < items.length && go2jsCallNow(less, null, [items[right], items[smallest]])) {
-			smallest = right;
+		if (!go2jsNamedMethodCall(receiver, name, "Less", j, i)) {
+			return true;
 		}
 
-		if (smallest === index) {
-			return;
+		go2jsNamedMethodCall(receiver, name, "Swap", i, j);
+		i = j;
+	}
+
+	return true;
+}
+
+function go2jsHeapUp(items, receiver, name, j0) {
+	let j = j0;
+
+	for (;;) {
+		const i = Math.trunc((j - 1) / 2);
+
+		if (i === j || !go2jsNamedMethodCall(receiver, name, "Less", j, i)) {
+			break;
 		}
 
-		const swap = items[index];
-		items[index] = items[smallest];
-		items[smallest] = swap;
-		index = smallest;
+		go2jsNamedMethodCall(receiver, name, "Swap", i, j);
+		j = i;
 	}
 }
 
-function go2jsHeapLess(left, right) {
-	const leftLess = go2jsUnwrap(left);
-	const rightLess = go2jsUnwrap(right);
-
-	if (typeof leftLess.Less === "function") {
-		return leftLess.Less(rightLess);
-	}
-
-	return go2jsCompareValues(leftLess, rightLess) < 0;
+function go2jsHeapUnwrap(target) {
+	return [go2jsHeapMethodReceiver(target), go2jsHeapMethodName(target)];
 }
 
 function go2jsHeapItems(target) {
@@ -3395,51 +3437,38 @@ function go2jsHeapItems(target) {
 	return [];
 }
 
-function go2jsHeapSiftUp(items, index) {
-	while (index > 0) {
-		const parent = Math.floor((index - 1) / 2);
-
-		if (!go2jsHeapLess(items[index], items[parent])) {
-			break;
-		}
-
-		const swap = items[index];
-		items[index] = items[parent];
-		items[parent] = swap;
-		index = parent;
-	}
-}
-
 function go2jsHeapInit(target) {
 	const items = go2jsHeapItems(target);
+	const [receiver, name] = go2jsHeapUnwrap(target);
 
-	for (let index = Math.floor(items.length / 2) - 1; index >= 0; index--) {
-		go2jsHeapSift(items, index);
+	for (let i = Math.floor(items.length / 2) - 1; i >= 0; i--) {
+		go2jsHeapDown(items, receiver, name, i, items.length);
 	}
 }
 
 function go2jsHeapPush(target, value) {
+	const [receiver, name] = go2jsHeapUnwrap(target);
+	go2jsNamedMethodCall(receiver, name, "Push", value);
+
+	// The appended value is read back after the push rather than before it,
+	// because the push that appends it may have replaced the slice the heap
+	// came in as with a longer one.
 	const items = go2jsHeapItems(target);
-	items.push(value);
-	go2jsHeapSiftUp(items, items.length - 1);
+	go2jsHeapUp(items, receiver, name, items.length - 1);
 }
 
 function go2jsHeapPop(target) {
 	const items = go2jsHeapItems(target);
+	const [receiver, name] = go2jsHeapUnwrap(target);
+	const n = items.length - 1;
 
-	if (items.length === 0) {
+	if (n < 0) {
 		return null;
 	}
 
-	const top = items[0];
-	const last = items.pop();
-
-	if (items.length > 0) {
-		items[0] = last;
-		go2jsHeapSift(items, 0);
-	}
-
-	return top;
+	go2jsNamedMethodCall(receiver, name, "Swap", 0, n);
+	go2jsHeapDown(items, receiver, name, 0, n);
+	return go2jsNamedMethodCall(receiver, name, "Pop");
 }
 
 function go2jsHeapPeek(target) {
@@ -3449,23 +3478,29 @@ function go2jsHeapPeek(target) {
 
 function go2jsHeapRemove(target, index) {
 	const items = go2jsHeapItems(target);
-	const removed = items[index];
-	items[index] = items[items.length - 1];
-	items.pop();
-	go2jsHeapSift(items, index);
-	return removed;
+	const [receiver, name] = go2jsHeapUnwrap(target);
+	const n = items.length - 1;
+
+	if (n !== index) {
+		go2jsNamedMethodCall(receiver, name, "Swap", index, n);
+
+		if (!go2jsHeapDown(items, receiver, name, index, n)) {
+			go2jsHeapUp(items, receiver, name, index);
+		}
+	}
+
+	return go2jsNamedMethodCall(receiver, name, "Pop");
 }
 
 function go2jsHeapFix(target, index) {
 	const items = go2jsHeapItems(target);
+	const [receiver, name] = go2jsHeapUnwrap(target);
 
-	if (index > 0 && go2jsHeapLess(items[index], items[Math.floor((index - 1) / 2)])) {
-		go2jsHeapSiftUp(items, index);
-		return;
+	if (!go2jsHeapDown(items, receiver, name, index, items.length)) {
+		go2jsHeapUp(items, receiver, name, index);
 	}
-
-	go2jsHeapSift(items, index);
 }
+
 
 function go2jsListNode(list, value) {
 	const node = {Value: value, next: null, prev: null, list: list};
