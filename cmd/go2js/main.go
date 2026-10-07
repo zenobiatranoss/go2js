@@ -64,8 +64,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	if fs.NArg() != 1 {
-		return fmt.Errorf("usage: go2js [options] <file.go|directory>")
+	if len(args) > 0 && args[0] == "serve" {
+		return startServe(args[1:], stdout)
 	}
 
 	options := compiler.DefaultOptions().
