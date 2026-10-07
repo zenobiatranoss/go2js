@@ -523,6 +523,10 @@ function go2jsChanTrySend(channel, value) {
 }
 
 function go2jsChannelClose(channel) {
+	if (channel === null || channel === undefined) {
+		throw new Error("close of nil channel");
+	}
+
 	if (channel.closed) {
 		throw new Error("close of closed channel");
 	}

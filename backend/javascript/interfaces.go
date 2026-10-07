@@ -744,6 +744,8 @@ func (e *emitter) emitTypeAssert(x *ast.TypeAssertExpr) error {
 
 	e.write(`, "`)
 	e.write(e.typeAssertName(x.Type))
+	e.write(`", "`)
+	e.write(normalizeGoTypeName(e.analyzedType(x.X)))
 	e.write(`")`)
 
 	return nil

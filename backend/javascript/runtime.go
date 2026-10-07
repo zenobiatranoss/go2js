@@ -7500,7 +7500,7 @@ function go2jsSatisfiesInterface(value, name) {
 	return true;
 }
 
-function go2jsAssert(value, typeName) {
+function go2jsAssert(value, typeName, interfaceName) {
 	if (value !== null && value !== undefined &&
 		value.__go2js_interface === true) {
 		if (go2jsSameTypeName(value.type, typeName)) {
@@ -7511,8 +7511,11 @@ function go2jsAssert(value, typeName) {
 			return value;
 		}
 
+		// A broken assertion says what the value is and what it was asked to
+		// be, the same way Go writes it out, with the interface it was read
+		// from in front.
 		throw new TypeError(
-			"interface conversion: " + value.type + " is not " + typeName
+			"interface conversion: " + interfaceName + " is " + value.type + ", not " + typeName
 		);
 	}
 
@@ -7526,7 +7529,9 @@ function go2jsAssert(value, typeName) {
 		return value;
 	}
 
-	throw new TypeError("interface conversion failed");
+	throw new TypeError(
+		"interface conversion: " + interfaceName + " is " + actual + ", not " + typeName
+	);
 }
 
 function go2jsAssertOK(value, typeName) {
