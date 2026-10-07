@@ -392,6 +392,7 @@ function go2jsNewByteReader(data, kind) {
 
     return {
         __go2js_text: kind === "slice" ? null : go2jsBytesToString(bytes),
+        __go2js_bytes: bytes,
         Read(target) {
             prevRune = -1;
             const slot = go2jsBytesReadSlot(target);
