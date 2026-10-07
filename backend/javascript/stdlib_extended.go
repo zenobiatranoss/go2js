@@ -2183,34 +2183,15 @@ function go2jsStringsNewReplacer(...args) {
 }
 
 function go2jsStrconvAppendQuote(target, value) {
-	// Appending to a slice that is not there yet starts one, the way appending
-	// to a nil slice in Go hands back a slice of its own.
-	const bytes = Array.isArray(target) ? target : [];
-
-	for (const ch of go2jsStrconvQuote(value)) {
-		bytes.push(ch.charCodeAt(0));
-	}
-
-	return bytes;
+	return go2jsStrconvAppendBytes(target, go2jsStrconvQuote(value));
 }
 
 function go2jsStrconvQuoteRune(value) {
-	const out = ["'"];
-
-	go2jsStrconvAppendEscapedRune(out, Number(value), "'", false);
-	out.push("'");
-
-	return out.join("");
+	return go2jsStrconvQuoteRuneWith(value, false, false);
 }
 
 function go2jsStrconvAppendQuoteRune(target, value) {
-	const bytes = Array.isArray(target) ? target : [];
-
-	for (const ch of go2jsStrconvQuoteRune(value)) {
-		bytes.push(ch.charCodeAt(0));
-	}
-
-	return bytes;
+	return go2jsStrconvAppendBytes(target, go2jsStrconvQuoteRune(value));
 }
 
 // go2jsStrconvRuneText turns a rune into the one character it stands for, so a
@@ -3512,6 +3493,11 @@ function go2jsTimeNow() {
 	now.__go2js_location = go2jsTimeHostZoneName();
 	now.__go2js_zone = now.__go2js_location === "UTC" ? null : now.__go2js_location;
 
+	// A moment made by reading the clock of the machine carries how far the
+	// clock has run since the process was born, so that printing it tells the
+	// distance into the process the way Go tells it.
+	now.__go2js_mono = Math.max(0, Date.now() * 1000000 - go2jsTimeMonoOrigin);
+
 	return now;
 }
 
@@ -4173,6 +4159,16 @@ function go2jsRegexpASCIIClasses(source) {
 function go2jsRegexpPattern(pattern) {
 	let source = go2jsStringify(pattern);
 	let flags = "";
+
+	// RE2 gives an error to the Perl tricks that JavaScript would quietly take:
+	// a reference to a numbered group, or a look that goes ahead or behind.
+	const refused = source.match(/\\[0-9]|\(\?P=|\(\?[=!<>|(]/);
+
+	if (refused) {
+		const offending = refused[0];
+
+		throw new Error(offending.startsWith("\\") ? "invalid escape sequence: " + offending : "invalid or unsupported Perl syntax: " + offending);
+	}
 
 	// Leading and embedded flag groups such as (?i) become regexp flags.
 	source = source.replace(/\(\?([imsU]+)\)/g, (all, group) => {
