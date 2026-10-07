@@ -533,10 +533,12 @@ var bytesConstants = map[string]string{
 }
 
 var bufioFuncs = map[string]string{
-	"NewReader":  "go2jsBufioNewReader",
-	"NewScanner": "go2jsBufioNewScanner",
-	"NewWriter":  "go2jsBufioNewWriter",
-	"ScanLines":  "go2jsBufioScanLines",
+	"NewReader":     "go2jsBufioNewReader",
+	"NewReaderSize": "go2jsBufioNewReaderSize",
+	"NewScanner":    "go2jsBufioNewScanner",
+	"NewWriter":     "go2jsBufioNewWriter",
+	"NewWriterSize": "go2jsBufioNewWriterSize",
+	"ScanLines":     "go2jsBufioScanLines",
 }
 
 // bufioConstants are the buffer sizes bufio names. A Scanner refuses a token
