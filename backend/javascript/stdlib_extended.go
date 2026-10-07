@@ -4538,8 +4538,13 @@ function go2jsStringSlice(value, low, high) {
 	const start = low === undefined ? 0 : Math.trunc(low);
 	const end = high === undefined ? bytes.length : Math.trunc(high);
 
-	if (start < 0 || end < start || end > bytes.length) {
-		throw new RangeError("slice bounds out of range");
+	if (start < 0 || start > end) {
+		throw new RangeError(go2jsRuntimeErrorPrefix + "slice bounds out of range " +
+			(start < 0 ? "[" + start + ":]" : "[" + start + ":" + end + "]"));
+	}
+
+	if (end > bytes.length) {
+		throw new RangeError(go2jsRuntimeErrorPrefix + "slice bounds out of range [:" + end + "] with length " + bytes.length);
 	}
 
 	return go2jsBytesToString(bytes.slice(start, end));
