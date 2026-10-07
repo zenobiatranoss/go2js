@@ -155,7 +155,15 @@ func (e *emitter) emitNarrowIntAssign(target ast.Expr, operator string, rhs ast.
 		return true
 	}
 
+	// a thirty-two bit multiply can answer past what a double keeps, so the
+	// low thirty-two bits of it are worked out by a multiply held exactly
+	imul := operator == "*" && isInt32MulType(e.analyzedType(target))
+
 	e.write(" = go2jsIntWrap(")
+
+	if imul {
+		e.write("go2jsImul(")
+	}
 
 	if err := e.emitTargetExpr(target); err != nil {
 		return true
@@ -165,16 +173,22 @@ func (e *emitter) emitNarrowIntAssign(target ast.Expr, operator string, rhs ast.
 	// the marks left over once what is to be cleared has been turned inside out.
 	if operator == "&^" {
 		e.write(" & ~")
-	} else {
+	} else if !imul {
 		e.write(" ")
 		e.write(operator)
 		e.write(" ")
+	} else {
+		e.write(", ")
 	}
 
 	if rhs == nil {
 		e.write("1")
 	} else if err := e.emitBinaryOperand(rhs, token.ADD, true); err != nil {
 		return true
+	}
+
+	if imul {
+		e.write(")")
 	}
 
 	e.write(", ")
@@ -3106,10 +3120,15 @@ func (e *emitter) emitConversion(call *ast.CallExpr) error {
 
 	// A named type and the type it is built on are the same shape, so a
 	// conversion between them, and between slices, maps and arrays that agree,
-	// is the value it was given.
+	// is the value it was given. A thirty two bit number gets no such courtesy:
+	// the constant it is made from still carries the width of a double, so it
+	// has to be rounded to the width it is going into, and rounding a value
+	// that already has that width is harmless.
 	if source := e.analyzedType(call.Args[0]); source != nil {
 		if gotypesstd.Identical(source.Underlying(), target.Underlying()) {
-			return e.emitExpr(call.Args[0])
+			if basic, ok := target.Underlying().(*gotypesstd.Basic); !ok || basic.Kind() != gotypesstd.Float32 {
+				return e.emitExpr(call.Args[0])
+			}
 		}
 	}
 
@@ -3153,7 +3172,7 @@ func (e *emitter) emitConversion(call *ast.CallExpr) error {
 	}
 
 	name := conversionName(target)
-	if name == "go2jsComplexConvert" {
+	if name == "go2jsComplexConvert" || name == "go2jsFloat32" {
 		e.needsRuntime = true
 	}
 

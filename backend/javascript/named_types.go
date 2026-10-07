@@ -122,7 +122,7 @@ func (e *emitter) emitNamedConversion(call *ast.CallExpr, named *gotypesstd.Name
 			return fmt.Errorf("unsupported conversion to %s", alias.Name())
 		}
 
-		if name == "go2jsComplexConvert" {
+		if name == "go2jsComplexConvert" || name == "go2jsFloat32" {
 			e.needsRuntime = true
 		}
 
@@ -219,8 +219,10 @@ func wideConversionName(basic *gotypesstd.Basic) string {
 	}
 
 	switch basic.Kind() {
-	case gotypesstd.Float32, gotypesstd.Float64, gotypesstd.UntypedFloat:
+	case gotypesstd.Float64, gotypesstd.UntypedFloat:
 		return "go2jsWideFloat"
+	case gotypesstd.Float32:
+		return "go2jsWideFloat32"
 
 	case gotypesstd.Int, gotypesstd.Int64, gotypesstd.UntypedInt, gotypesstd.UntypedRune:
 		return "go2jsWideToSigned"

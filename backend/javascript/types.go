@@ -133,7 +133,9 @@ func conversionName(t types.Type) string {
 		"uint", "uint8", "uint16", "uint32", "uint64", "uintptr",
 		"byte", "rune":
 		return "Math.trunc"
-	case "float32", "float64":
+	case "float32":
+		return "go2jsFloat32"
+	case "float64":
 		return "Number"
 	case "complex64", "complex128":
 		return "go2jsComplexConvert"
