@@ -94,6 +94,25 @@ func (e *emitter) emitInterfaceValue(expr ast.Expr, target gotypes.Type) error {
 		return e.emitExpr(expr)
 	}
 
+	// A value going into a float32 place is rounded down to the digits a
+	// float32 keeps. Rounding a number that is already float32 is the same
+	// number, so every value crossing a float32 store is rounded here without
+	// a source having to be told apart from the shape it was written as. A
+	// literal constant names itself float32 as much as an arithmetic result
+	// does, but only one of them has been rounded.
+	if target != nil && isFloat32Type(target) {
+		e.needsRuntime = true
+		e.write("go2jsFloat32(")
+
+		if err := e.emitExpr(expr); err != nil {
+			return err
+		}
+
+		e.write(")")
+
+		return nil
+	}
+
 	// An interface carries the type of what it holds, so a nil slice or a nil
 	// map is given a name of its own on the way in and prints as the empty
 	// literal rather than as <nil>. A type that is already boxed below keeps its

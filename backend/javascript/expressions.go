@@ -128,6 +128,14 @@ func (e *emitter) foldedFloatConstant(expr ast.Expr) (string, bool) {
 		return "", false
 	}
 
+	// A conversion is a rounding the program asks for by name, and rounding
+	// one over again is a different number than the one the program asked
+	// for, so a conversion is never folded here. Folding it would drop the
+	// width the number was brought to on its way in.
+	if call, ok := expr.(*ast.CallExpr); ok && e.isTypeConversion(call) {
+		return "", false
+	}
+
 	// A float32 constant is written from the digits a float32 keeps, and the
 	// conversion that does that is one the program asks for by name, so folding
 	// it here would drop the name the printing goes by.
@@ -332,6 +340,26 @@ func narrowIntTypeName(t gotypes.Type) (string, bool) {
 		return basic.Name(), true
 	default:
 		return "", false
+	}
+}
+
+// isInt32MulType reports whether a whole number type is thirty-two bits wide,
+// which is the one width a multiply on can answer past what a double keeps.
+func isInt32MulType(t gotypes.Type) bool {
+	if t == nil {
+		return false
+	}
+
+	basic, ok := t.Underlying().(*gotypes.Basic)
+	if !ok {
+		return false
+	}
+
+	switch basic.Kind() {
+	case gotypes.Int32, gotypes.Uint32:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -583,6 +611,12 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			e.write("(")
 		}
 
+		// two thirty-two bit numbers can multiply past everything a double keeps,
+		// so the low thirty-two bits of the answer are worked out by a multiply
+		// JavaScript holds exactly rather than by one it greys over
+		int32Mul := x.Op == token.MUL && !wide && e.isIntegerExpr(x.X) &&
+			e.isIntegerExpr(x.Y) && isInt32MulType(e.analyzedType(x))
+
 		if x.Op == token.AND_NOT && !wide {
 			e.write("(")
 			if err := e.emitExpr(x.X); err != nil {
@@ -594,11 +628,16 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			}
 			e.write(")")
 		} else {
+			if int32Mul {
+				e.needsRuntime = true
+				e.write("go2jsImul(")
+			}
+
 			if err := e.emitBinaryOperand(x.X, x.Op, false); err != nil {
 				return err
 			}
 
-			if wide {
+			if wide || int32Mul {
 				// the work is done by the function rather than by an operator, so
 				// the two numbers are handed over as its arguments
 				e.write(", ")
@@ -610,6 +649,10 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 
 			if err := e.emitBinaryOperand(x.Y, x.Op, true); err != nil {
 				return err
+			}
+
+			if int32Mul {
+				e.write(")")
 			}
 		}
 
@@ -715,6 +758,28 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				e.write(")")
 				return nil
 			}
+		}
+
+		// A whole number wider than a double can keep is held as digits, and
+		// turning it inside out is a digit thing, so the answer is given back
+		// inside the width it is held in. A plus sign in front of it changes
+		// nothing in Go but makes JavaScript try to read the digits it keeps as
+		// a plain number, which is a fault where the digits are wider than one.
+		if (x.Op == token.SUB || x.Op == token.ADD) && isWideIntType(e.analyzedType(x)) {
+			if x.Op == token.ADD {
+				return e.emitExpr(x.X)
+			}
+
+			basic := e.analyzedType(x).Underlying().(*gotypes.Basic)
+			e.needsRuntime = true
+			e.write("go2jsWideWrap(-")
+			if err := e.emitExpr(x.X); err != nil {
+				return err
+			}
+			e.write(", ")
+			e.write(strconv.Quote(basic.Name()))
+			e.write(")")
+			return nil
 		}
 
 		switch x.Op {
