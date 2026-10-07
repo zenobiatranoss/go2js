@@ -11,17 +11,17 @@ import (
 // JavaScript program: a value of every type here is already a JavaScript value,
 // and what the package reports is what the Go compiler worked out about types,
 // which is a constant the compiler can answer before anything is written out.
+// The three layout questions are answered as constants here. The rest of the
+// package (Pointer and Uintptr conversions, Add, String, Slice and their Data
+// hearts) reads or writes the bytes that back a value, and no bytes back a
+// JavaScript value, so they are refused loudly rather than pretended at.
 var unsafeFuncs = map[string]string{
-	"Sizeof":     "",
-	"Alignof":    "",
-	"Offsetof":   "",
-	"Add":        "",
-	"Pointer":    "",
-	"Slice":      "",
-	"SliceData":  "",
-	"String":     "",
-	"StringData": "",
-	"Uintptr":    "",
+	"Sizeof":   "",
+	"Alignof":  "",
+	"Offsetof": "",
+	"Add":      "",
+	"Pointer":  "",
+	"Uintptr":  "",
 }
 
 // unsafeSizes is the layout a Go program of the architecture this runtime writes
