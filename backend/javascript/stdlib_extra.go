@@ -302,54 +302,62 @@ function go2jsBufioScanLines() {
 
 func randRuntimeSource() string {
 	return `
-const go2jsRandState = { seed: 0x2545f491 };
+// The package functions of math/rand read from one generator, the same shape a
+// source made out of a number is, so a program that seeds the package draws the
+// same run of numbers it would draw from the Go runtime. The generator starts
+// from a number no one can guess at rather than from a fixed one, the way Go
+// 1.20 onwards starts it, unless the program calls Seed to fix it.
+let go2jsRandDefaultSource = null;
 
-function go2jsRandSeed(value) {
-	go2jsRandState.seed = (value >>> 0) || 0x2545f491;
+function go2jsRandDefault() {
+	if (go2jsRandDefaultSource === null) {
+		go2jsRandDefaultSource = go2jsRandNewSource((Date.now() + (Math.random() * 0x7fffffff)) >>> 0);
+	}
+
+	return go2jsRandDefaultSource;
 }
 
-function go2jsRandNext() {
-	go2jsRandState.seed = (Math.imul(go2jsRandState.seed, 1103515245) + 12345) >>> 0;
-	return go2jsRandState.seed;
+function go2jsRandSeed(value) {
+	go2jsRandDefaultSource = go2jsRandNewSource(value);
 }
 
 function go2jsRandInt63() {
-	return go2jsRandNext();
-}
-
-function go2jsRandInt63n(limit) {
-	if (limit <= 0) {
-		go2jsPanic("invalid argument to Int63n");
-	}
-
-	return go2jsRandNext() % limit;
+	return go2jsRandInt63Of(go2jsRandDefault());
 }
 
 function go2jsRandIntn(limit) {
-	if (limit <= 0) {
-		go2jsPanic("invalid argument to Intn");
-	}
-
-	return go2jsRandInt63n(limit);
+	return go2jsRandSourceIntnOf(go2jsRandDefault(), limit);
 }
 
 function go2jsRandInt() {
-	return go2jsRandNext() % 0x7fffffff;
+	return go2jsRandInt63Of(go2jsRandDefault());
 }
 
 function go2jsRandFloat64() {
-	return go2jsRandNext() / 4294967296;
+	return go2jsRandFloat64Of(go2jsRandDefault());
 }
 
-function go2jsRandShuffle(values) {
-	for (let i = values.length - 1; i > 0; i--) {
-		const j = go2jsRandIntn(i + 1);
-		const swap = values[i];
-		values[i] = values[j];
-		values[j] = swap;
+function go2jsRandShuffle(n, swap) {
+	n = Math.trunc(Number(n));
+
+	if (n < 0) {
+		go2jsPanic("invalid argument to Shuffle");
 	}
 
-	return values;
+	// A shuffle too big for the fast draw is drawn with the wider source, and
+	// every shuffle below that with the same fast draw Go uses, so the set ends
+	// up in the order the Go runtime would put it in.
+	let index = n - 1;
+
+	for (; index > 2147483646; index--) {
+		const j = Number(go2jsRandSourceInt63n(go2jsRandDefault(), index + 1));
+		go2jsCallNow(swap, null, [index, j]);
+	}
+
+	for (; index > 0; index--) {
+		const j = go2jsRandFastInt31n(go2jsRandDefault(), index + 1);
+		go2jsCallNow(swap, null, [index, j]);
+	}
 }
 
 `

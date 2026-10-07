@@ -2156,25 +2156,98 @@ function go2jsStringsContainsRune(value, r) {
 }
 
 function go2jsStringsNewReplacer(...args) {
-	const pairs = [];
+	if (args.length % 2 === 1) {
+		go2jsPanic("strings.NewReplacer: odd argument count");
+	}
+
+	// A replacement is looked for at each place in the text, and the first
+	// pair in the argument order whose pattern fits there is the one that
+	// stands, the way Go's trie picks the pair with the highest priority. The
+	// empty pattern fits every place, and after it has stood an empty
+	// replacement only one byte of the text is walked on, so a place never
+	// gets two of them. The text is walked byte by byte, the way Go walks it,
+	// so an empty pattern stands between the bytes of a rune as much as
+	// between the runes.
+	const olds = [];
+	const news = [];
 
 	for (let index = 0; index + 1 < args.length; index += 2) {
-		pairs.push([go2jsStringify(args[index]), go2jsStringify(args[index + 1])]);
+		olds.push(go2jsStringToBytes(go2jsStringify(args[index])));
+		news.push(go2jsStringToBytes(go2jsStringify(args[index + 1])));
+	}
+
+	function patternFits(pattern, bytes, at) {
+		for (let index = 0; index < pattern.length; index++) {
+			if (bytes[at + index] !== pattern[index]) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	function replacedBytes(text) {
+		const bytes = go2jsStringToBytes(go2jsStringify(text));
+		const out = [];
+		let position = 0;
+		let last = 0;
+		let prevEmpty = false;
+
+		while (position <= bytes.length) {
+			let match = -1;
+			let keylen = 0;
+
+			for (let index = 0; index < olds.length; index++) {
+				const pattern = olds[index];
+
+				if (prevEmpty && pattern.length === 0) {
+					continue;
+				}
+
+				if (pattern.length === 0 || patternFits(pattern, bytes, position)) {
+					match = index;
+					keylen = pattern.length;
+					break;
+				}
+			}
+
+			if (match >= 0) {
+				for (let index = last; index < position; index++) {
+					out.push(bytes[index]);
+				}
+
+				for (const piece of news[match]) {
+					out.push(piece);
+				}
+
+				prevEmpty = keylen === 0;
+				position += keylen;
+				last = position;
+				continue;
+			}
+
+			prevEmpty = false;
+			position++;
+		}
+
+		if (last !== bytes.length) {
+			for (let index = last; index < bytes.length; index++) {
+				out.push(bytes[index]);
+			}
+		}
+
+		return out;
 	}
 
 	return {
 		Replace(text) {
-			let out = go2jsStringify(text);
-
-			for (const [from, to] of pairs) {
-				if (from === "") {
-					continue;
-				}
-
-				out = out.split(from).join(to);
-			}
-
-			return out;
+			return new TextDecoder().decode(Uint8Array.from(replacedBytes(text)));
+		},
+		WriteString(writer, text) {
+			const result = go2jsCallMethod(writer, "Write", replacedBytes(text));
+			const wrote = Array.isArray(result) ? result[0] : Number(result);
+			const failure = Array.isArray(result) ? result[1] : null;
+			return [wrote, failure];
 		},
 		ReplaceAll(text) {
 			return this.Replace(text);
@@ -2959,7 +3032,7 @@ function go2jsBytesNewBufferString(text) {
 }
 
 function go2jsBytesNewReader(data) {
-	return go2jsStringsNewReader(go2jsRawText(data));
+	return go2jsNewByteReader(go2jsToArray(data), "slice");
 }
 
 function go2jsBytesRunes(a) {
@@ -3476,7 +3549,7 @@ function go2jsRandPerm(n) {
 }
 
 function go2jsRandUint32() {
-	return go2jsRandNext();
+	return go2jsRandSourceUint32(go2jsRandDefault());
 }
 
 function go2jsTimeSince(t) {
