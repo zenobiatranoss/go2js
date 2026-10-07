@@ -342,7 +342,7 @@ function go2jsRandNew(source) {
 			go2jsRandSeedSource(this.source, seed);
 		},
 		Read(buffer) {
-			return go2jsRandRead(this.source, buffer);
+			return go2jsRandRead(this, buffer);
 		}
 	};
 }
@@ -450,10 +450,12 @@ function go2jsRandShuffleOf(source, n, swap) {
 	}
 }
 
-// go2jsRandRead fills a buffer with numbers, which is what Read does, and gives
-// back how many of them it filled and whether the last one left the end of the
-// buffer short.
-function go2jsRandRead(source, buffer) {
+// go2jsRandRead fills a buffer with bytes, which is what Read does, and gives
+// back the number of bytes it wrote and no error, as Go always does. Seven
+// bytes come from each number the generator gives, and the bytes left over at
+// the end of a read are the first byte of the next read, the way Go holds them
+// so no part of a number is ever wasted or made up.
+function go2jsRandRead(boxed, buffer) {
 	const view = buffer !== null && buffer !== undefined && buffer.__go2js_reflectValue === true
 		? go2jsReflectRead(buffer)
 		: buffer;
@@ -462,19 +464,24 @@ function go2jsRandRead(source, buffer) {
 		go2jsPanic("rand: invalid argument to Read");
 	}
 
-	// Eight bytes are taken from each number the source gives, one after the
-	// other starting from its lowest, and a number is only asked for again once
-	// all eight of its bytes have been used up.
-	for (let index = 0; index < view.length; index += 8) {
-		let value = go2jsRandUint64(source);
+	let value = boxed.readVal === undefined ? 0n : boxed.readVal;
+	let place = boxed.readPos === undefined ? 0 : boxed.readPos;
 
-		for (let byte = 0; byte < 8 && index + byte < view.length; byte++) {
-			view[index + byte] = Number(value & 0xffn);
-			value >>= 8n;
+	for (let at = 0; at < view.length; at++) {
+		if (place === 0) {
+			value = go2jsRandInt63Of(go2jsRandSourceOf(boxed.source));
+			place = 7;
 		}
+
+		view[at] = Number(value & 0xffn);
+		value >>= 8n;
+		place--;
 	}
 
-	return [view, view.length, view.length % 8 === 0];
+	boxed.readVal = value;
+	boxed.readPos = place;
+
+	return [view.length, null];
 }
 `
 }
