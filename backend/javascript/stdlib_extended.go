@@ -3544,26 +3544,58 @@ function go2jsTimeFromUnix(sec, nsec) {
 // piece asks for is refused rather than read as something else.
 function go2jsTimeParse(layout, value) {
 	const text = String(value);
-	const parts = { year: 0, month: 1, day: 1, hour: 0, minute: 0, second: 0, milli: 0, nsec: 0 };
+	const parts = { year: 0, month: 1, day: 1, hour: 0, minute: 0, second: 0, milli: 0, nsec: 0, offset: null, pm: null };
 
 	const refuse = function() {
 		return [null, go2jsTimeParseError(String(layout), text)];
 	};
 
-	const digits = function(width) {
+	const digits = function(min, max) {
 		const found = /^[0-9]+/.exec(text.slice(position));
 
 		if (found === null) {
 			return null;
 		}
 
-		if (found[0].length < width) {
+		if (found[0].length < min) {
 			return null;
 		}
 
-		position += width;
+		// A piece without a leading zero takes as many of the digits before it
+		// as it holds, up to two, while one that asks for a width takes exactly
+		// that many, so a month or a day is not read as only its first digit.
+		const read = found[0].length < max ? found[0].length : max;
 
-		return parseInt(found[0].slice(0, width), 10);
+		position += read;
+
+		return parseInt(found[0].slice(0, read), 10);
+	};
+
+	// A fraction of a second that is written where the layout does not ask for
+	// one is still the fraction of the second that was just read, the way Go
+	// reads it, so a text carries what it was written with rather than what the
+	// layout happened to ask for.
+	const readFraction = function() {
+		if (text[position] !== ".") {
+			return false;
+		}
+
+		position += 1;
+
+		const found = /^[0-9]+/.exec(text.slice(position));
+
+		if (found === null) {
+			return false;
+		}
+
+		const read = found[0].length > 9 ? found[0].slice(0, 9) : found[0];
+
+		position += read.length;
+
+		parts.nsec = parseInt((read + "000000000").slice(0, 9), 10);
+		parts.milli = Math.floor(parts.nsec / 1000000);
+
+		return true;
 	};
 
 	const literal = function(wanted) {
@@ -3593,14 +3625,15 @@ function go2jsTimeParse(layout, value) {
 	};
 
 	let position = 0;
+	let layoutAt = 0;
 	const layoutText = String(layout);
 
-	while (position < layoutText.length) {
-		const rest = layoutText.slice(position);
+	while (layoutAt < layoutText.length) {
+		const rest = layoutText.slice(layoutAt);
 
 		// The pieces are read longest first, the same order a layout is written
 		// out in, so that a name is not read as a shorter name it begins with.
-		const pieces = ["January", "Monday", "2006", "_2", "01", "15", "03", "04", "05", "02",
+		const pieces = ["January", "Jan", "Monday", "Mon", "2006", "_2", "01", "15", "03", "04", "05", "02",
 			"PM", "pm", "MST", "Z07:00", "Z0700", "-07:00", "-0700", "06", "1", "2", "3", "4", "5"];
 
 		let piece = null;
@@ -3639,6 +3672,8 @@ function go2jsTimeParse(layout, value) {
 
 				position += read.length;
 
+				layoutAt += 1 + fraction[1].length;
+
 				parts.nsec = parseInt((read + "000000000").slice(0, 9), 10);
 				parts.milli = Math.floor(parts.nsec / 1000000);
 
@@ -3652,6 +3687,7 @@ function go2jsTimeParse(layout, value) {
 			if (ch === "Z") {
 				if (text[position] === "Z") {
 					position += 1;
+					layoutAt += 1;
 					continue;
 				}
 
@@ -3662,6 +3698,7 @@ function go2jsTimeParse(layout, value) {
 				}
 
 				position += zone[0].length;
+				layoutAt += 1;
 
 				continue;
 			}
@@ -3670,6 +3707,8 @@ function go2jsTimeParse(layout, value) {
 				return refuse();
 			}
 
+			layoutAt += 1;
+
 			continue;
 		}
 
@@ -3677,7 +3716,8 @@ function go2jsTimeParse(layout, value) {
 		// goes and so has already moved past itself, while one that is written
 		// out as it is has its own length to move past.
 		switch (piece) {
-		case "January": {
+		case "January":
+		case "Jan": {
 			const month = named(go2jsTimeMonths);
 
 			if (month < 0) {
@@ -3688,13 +3728,14 @@ function go2jsTimeParse(layout, value) {
 			break;
 		}
 		case "Monday":
+		case "Mon":
 			if (named(go2jsTimeDays) < 0) {
 				return refuse();
 			}
 
 			break;
 		case "2006": {
-			const year = digits(4);
+			const year = digits(4, 4);
 
 			if (year === null) {
 				return refuse();
@@ -3704,7 +3745,7 @@ function go2jsTimeParse(layout, value) {
 			break;
 		}
 		case "06": {
-			const year = digits(2);
+			const year = digits(2, 2);
 
 			if (year === null) {
 				return refuse();
@@ -3714,7 +3755,7 @@ function go2jsTimeParse(layout, value) {
 			break;
 		}
 		case "01": {
-			const month = digits(2);
+			const month = digits(2, 2);
 
 			if (month === null) {
 				return refuse();
@@ -3724,7 +3765,7 @@ function go2jsTimeParse(layout, value) {
 			break;
 		}
 		case "02": {
-			const day = digits(2);
+			const day = digits(2, 2);
 
 			if (day === null) {
 				return refuse();
@@ -3740,7 +3781,7 @@ function go2jsTimeParse(layout, value) {
 
 			position += 1;
 
-			const day = digits(2);
+			const day = digits(1, 2);
 
 			if (day === null) {
 				return refuse();
@@ -3750,7 +3791,7 @@ function go2jsTimeParse(layout, value) {
 			break;
 		}
 		case "15": {
-			const hour = digits(2);
+			const hour = digits(2, 2);
 
 			if (hour === null) {
 				return refuse();
@@ -3760,7 +3801,7 @@ function go2jsTimeParse(layout, value) {
 			break;
 		}
 		case "03": {
-			const hour = digits(2);
+			const hour = digits(2, 2);
 
 			if (hour === null) {
 				return refuse();
@@ -3770,7 +3811,7 @@ function go2jsTimeParse(layout, value) {
 			break;
 		}
 		case "04": {
-			const minute = digits(2);
+			const minute = digits(2, 2);
 
 			if (minute === null) {
 				return refuse();
@@ -3780,7 +3821,7 @@ function go2jsTimeParse(layout, value) {
 			break;
 		}
 		case "05": {
-			const second = digits(2);
+			const second = digits(2, 2);
 
 			if (second === null) {
 				return refuse();
@@ -3790,7 +3831,7 @@ function go2jsTimeParse(layout, value) {
 			break;
 		}
 		case "1": {
-			const month = digits(1);
+			const month = digits(1, 2);
 
 			if (month === null) {
 				return refuse();
@@ -3800,7 +3841,7 @@ function go2jsTimeParse(layout, value) {
 			break;
 		}
 		case "2": {
-			const day = digits(1);
+			const day = digits(1, 2);
 
 			if (day === null) {
 				return refuse();
@@ -3810,7 +3851,7 @@ function go2jsTimeParse(layout, value) {
 			break;
 		}
 		case "3": {
-			const hour = digits(1);
+			const hour = digits(1, 2);
 
 			if (hour === null) {
 				return refuse();
@@ -3820,7 +3861,7 @@ function go2jsTimeParse(layout, value) {
 			break;
 		}
 		case "4": {
-			const minute = digits(1);
+			const minute = digits(1, 2);
 
 			if (minute === null) {
 				return refuse();
@@ -3830,7 +3871,7 @@ function go2jsTimeParse(layout, value) {
 			break;
 		}
 		case "5": {
-			const second = digits(1);
+			const second = digits(1, 2);
 
 			if (second === null) {
 				return refuse();
@@ -3858,6 +3899,13 @@ function go2jsTimeParse(layout, value) {
 			}
 
 			position += 2;
+
+			parts.pm = text[position - 2] === "P";
+
+			if (parts.pm && parts.hour > 12) {
+				return refuse();
+			}
+
 			break;
 		}
 		case "Z07:00":
@@ -3865,24 +3913,57 @@ function go2jsTimeParse(layout, value) {
 		case "-07:00":
 		case "-0700": {
 			const wanted = piece[0] === "Z" ? "Z" : /^[+-]/;
-			const zone = wanted === "Z"
+			let zone = wanted === "Z"
 				? (/^Z/.test(text.slice(position)) ? "Z" : (/^[+-][0-9]{2}:?[0-9]{2}/.exec(text.slice(position)) || [null])[0])
 				: (/^[+-][0-9]{2}:?[0-9]{2}/.exec(text.slice(position)) || [null])[0];
+
+			// A fraction of a second may stand between the seconds and the zone,
+			// which is where a layout that never asked for one lets it stand.
+			if (zone === null && text[position] === ".") {
+				if (!readFraction()) {
+					return refuse();
+				}
+
+				zone = wanted === "Z"
+					? (/^Z/.test(text.slice(position)) ? "Z" : (/^[+-][0-9]{2}:?[0-9]{2}/.exec(text.slice(position)) || [null])[0])
+					: (/^[+-][0-9]{2}:?[0-9]{2}/.exec(text.slice(position)) || [null])[0];
+			}
 
 			if (zone === null) {
 				return refuse();
 			}
 
+			// "Z" stands for just itself in the text while the whole piece stands
+			// in the layout, so the layout pointer moves the whole piece at the
+			// bottom of the loop and the text pointer moves the letter it was.
 			position += String(zone).length;
+
+			parts.offset = zone === "Z" ? null : go2jsParseZoneSeconds(zone);
 			break;
 		}
 		default:
 			break;
 		}
+
+		layoutAt += piece.length;
 	}
 
 	if (position !== text.length) {
-		return refuse();
+		// A text may still hold a fraction of a second the layout never asked
+		// for, which Go reads it for, so it is taken here rather than refused.
+		if (!(text[position] === "." && readFraction() && position === text.length)) {
+			return refuse();
+		}
+	}
+
+	if (parts.pm !== null) {
+		if (parts.pm && parts.hour < 12) {
+			parts.hour += 12;
+		}
+
+		if (!parts.pm && parts.hour === 12) {
+			parts.hour = 0;
+		}
 	}
 
 	if (parts.month < 1 || parts.month > 12 || parts.day < 1 || parts.day > 31 ||
@@ -3890,18 +3971,43 @@ function go2jsTimeParse(layout, value) {
 		return refuse();
 	}
 
-	const date = new Date(0);
+	let date = new Date(0);
 
 	date.setUTCFullYear(parts.year, parts.month - 1, parts.day);
 	date.setUTCHours(parts.hour, parts.minute, parts.second, parts.milli);
+
+	// A zone named in the text shifts the instant so that the clock the moment
+	// carries reads in that zone as the clock the text carried it in.
+	if (parts.offset !== null && parts.offset !== 0) {
+		date = new Date(date.getTime() - parts.offset * 1000);
+	}
 
 	const parsed = go2jsTimeValue(date);
 
 	parsed.__go2js_nsec = parts.nsec % 1000000;
 	parsed.__go2js_location = "UTC";
-	parsed.__go2js_zone = null;
+	parsed.__go2js_zone = parts.offset;
 
 	return [parsed, null];
+}
+
+// go2jsParseZoneSeconds is the number of seconds a written zone is east of UTC,
+// which the zone captured from a text keeps, so that the moment is read in the
+// zone the text named it in rather than only telling it apart from its clock.
+function go2jsParseZoneSeconds(zone) {
+	if (zone === "Z") {
+		return 0;
+	}
+
+	const match = /^([+-])([0-9]{2}):?([0-9]{2})$/.exec(zone);
+
+	if (match === null) {
+		return 0;
+	}
+
+	const sign = match[1] === "-" ? -1 : 1;
+
+	return sign * (parseInt(match[2], 10) * 3600 + parseInt(match[3], 10) * 60);
 }
 
 // go2jsTimeParseChunkError is the refusal of a piece of text that is not written

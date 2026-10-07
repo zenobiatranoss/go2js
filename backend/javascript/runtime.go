@@ -1151,16 +1151,19 @@ function go2jsTimeFormatZone(date, location) {
     const number = go2jsTimeFormatZoneNumber(seconds);
     const zulu = seconds === 0 ? "Z" : number;
 
+    // A zone named by the offset a text carried answers by that offset, while a
+    // zone fixed at an offset with a name of its own keeps the name it was
+    // given, since both carry their offset as a number.
+    if (typeof zone === "number") {
+        return {name: name === "" || name === "UTC" ? go2jsTimeFormatZoneCompact(seconds) : name, zulu: zulu, number: number};
+    }
+
     if (name === "UTC") {
         return {name: "UTC", zulu: zulu, number: number};
     }
 
     if (name === "Local") {
         return {name: go2jsTimeLocalZoneName(date), zulu: zulu, number: number};
-    }
-
-    if (typeof zone === "number") {
-        return {name: name === "" ? number : name, zulu: zulu, number: number};
     }
 
     const known = go2jsTimeZoneAbbreviation(name, date);
