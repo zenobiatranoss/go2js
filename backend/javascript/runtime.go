@@ -6955,12 +6955,32 @@ function go2jsEqual(a, b) {
 		// One side is a value that was stored in an interface and the other is
 		// not. Go compares the value the interface holds against the value on
 		// the other side, so the wrapper is peeled off and the two values are
-		// compared, which leaves a value of a different type unequal.
+		// compared, which leaves a value of a different type unequal. A bare
+		// number or string or boolean has no type of its own on the way in, so
+		// the only box it can be equal to is one that names the plain type a
+		// JavaScript value of that kind already is: an int64 is never an int,
+		// no matter how they line up as numbers.
 		const wrapped = ai ? a : b;
 		const plain = ai ? b : a;
 
 		if (wrapped.value === wrapped) {
 			return false;
+		}
+
+		if (typeof plain !== "object" || plain === null) {
+			if (typeof plain === "number") {
+				if (Number.isInteger(plain)) {
+					if (wrapped.type !== "int") {
+						return false;
+					}
+				} else if (wrapped.type !== "float64") {
+					return false;
+				}
+			} else if (typeof plain === "string" && wrapped.type !== "string") {
+				return false;
+			} else if (typeof plain === "boolean" && wrapped.type !== "bool") {
+				return false;
+			}
 		}
 
 		return go2jsEqual(wrapped.value, plain);
