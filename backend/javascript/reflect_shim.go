@@ -14,7 +14,7 @@ var reflectFuncs = map[string]string{
 	"TypeOf":           "go2jsReflectTypeOf",
 	"ValueOf":          "go2jsReflectValueOf",
 	"Zero":             "go2jsReflectZero",
-	"DeepEqual":        "go2jsEqual",
+	"DeepEqual":        "go2jsDeepEqual",
 	"New":              "go2jsReflectNew",
 	"PtrTo":            "go2jsReflectPtrTo",
 	"MakeSlice":        "go2jsReflectMakeSlice",

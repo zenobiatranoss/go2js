@@ -192,6 +192,25 @@ func (e *emitter) isMapExpr(expr ast.Expr) bool {
 	return ok
 }
 
+// mapKeyType reports the Go type a map names for its keys, which is the type a
+// key has to be read as before the map can hold it.
+func (e *emitter) mapKeyType(expr ast.Expr) types.Type {
+	if e.analysis == nil {
+		return nil
+	}
+
+	value, ok := e.analysis.Types[expr]
+	if !ok || value.Type == nil {
+		return nil
+	}
+
+	if mapType, ok := value.Type.Underlying().(*types.Map); ok {
+		return mapType.Key()
+	}
+
+	return nil
+}
+
 func (e *emitter) isTypeConversion(call *ast.CallExpr) bool {
 	if e.analysis == nil || call == nil || len(call.Args) != 1 {
 		return false

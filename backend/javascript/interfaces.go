@@ -132,7 +132,7 @@ func (e *emitter) emitInterfaceValue(expr ast.Expr, target gotypes.Type) error {
 					e.write(strconv.Quote(name))
 					e.write(", ")
 					e.write(strconv.Quote(shape))
-					e.write(")")
+					e.write(`, true)`)
 
 					return nil
 				}
@@ -277,6 +277,29 @@ func (e *emitter) emitInterfaceValue(expr ast.Expr, target gotypes.Type) error {
 			e.write(goTypeName(e.analysis.Types[expr].Type))
 			e.write(`")`)
 			return nil
+		}
+
+		// A slice or a map or a function cannot compare itself or hash itself,
+		// so it is given a box that says so, and the equal and the map key
+		// stop to ask it. A declared type of one of them keeps its own name in
+		// front, which would slip past the names an assertion is asked by, so
+		// only unnamed ones are set apart here.
+		if info, ok := e.analysis.Types[expr]; ok && info.Type != nil && !gotypes.Comparable(info.Type) {
+			if _, isNamed := info.Type.(*gotypes.Named); !isNamed {
+				e.needsRuntime = true
+				e.write("go2jsInterface(")
+
+				if err := e.emitExpr(expr); err != nil {
+					return err
+				}
+
+				e.write(`, "`)
+				e.write(goTypeName(info.Type))
+				e.write(`", "`)
+				e.write(goTypeName(info.Type))
+				e.write(`", true)`)
+				return nil
+			}
 		}
 
 	}
