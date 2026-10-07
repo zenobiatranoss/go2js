@@ -4,4 +4,11 @@
 !.idea/go2js.iml
 !.idea/modules.xml
 !.idea/vcs.xml
+
+# build artifacts
+/bin/
+/dist/
+/go2js
+/go2js.exe
 out.js
+*.out
