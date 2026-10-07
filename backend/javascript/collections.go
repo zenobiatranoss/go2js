@@ -300,6 +300,19 @@ func (e *emitter) emitSliceExpression(x *ast.SliceExpr) error {
 		e.write("undefined")
 	}
 
+	// An array keeps as many places as it holds, so the bounds are spoken of in
+	// lengths, while a slice is asked about by the room it was given.
+	e.write(", ")
+	if info, ok := e.analysis.Types[x.X]; ok {
+		if _, isArray := info.Type.Underlying().(*gotypes.Array); isArray {
+			e.write("true")
+		} else {
+			e.write("false")
+		}
+	} else {
+		e.write("false")
+	}
+
 	e.write(")")
 	return nil
 }
@@ -609,8 +622,14 @@ function go2jsSliceMake(length, capacity, zeroFactory) {
 	length = Math.trunc(length);
 	capacity = Math.trunc(capacity);
 
-	if (length < 0 || capacity < 0 || length > capacity) {
-		throw new RangeError("invalid slice length or capacity");
+	// A slice can only be made with a length that is not negative and a
+	// capacity that can hold it, and Go says which of the two went wrong.
+	if (length < 0) {
+		throw new RangeError(go2jsRuntimeErrorPrefix + "makeslice: len out of range");
+	}
+
+	if (capacity < 0 || length > capacity) {
+		throw new RangeError(go2jsRuntimeErrorPrefix + "makeslice: cap out of range");
 	}
 
 	const data = Array.from(
@@ -681,7 +700,7 @@ function go2jsSliceAppend(value, ...items) {
 	return go2jsSliceView(data, 0, required, capacity);
 }
 
-function go2jsSliceRange(value, low, high, max) {
+function go2jsSliceRange(value, low, high, max, isArray) {
 	if (value === null || value === undefined) {
 		if ((low === undefined || low === 0) &&
 			(high === undefined || high === 0) &&
@@ -701,8 +720,37 @@ function go2jsSliceRange(value, low, high, max) {
 	const end = high === undefined ? state.length : Math.trunc(high);
 	const limit = max === undefined ? state.capacity : Math.trunc(max);
 
-	if (start < 0 || end < start || end > limit || limit > state.capacity) {
-		throw new RangeError("slice bounds out of range");
+	// The bounds fail in the order Go asks about them, so a slice that crosses
+	// itself shows its own two indexes before the room it runs past, and the
+	// message ends with the length when the values lie in an array or the
+	// capacity when they lie in a slice.
+	const prefix = go2jsRuntimeErrorPrefix + "slice bounds out of range ";
+	const room = isArray ? state.length : state.capacity;
+	const width = isArray ? "length" : "capacity";
+
+	if (start < 0 || start > end) {
+		if (max !== undefined) {
+			throw new RangeError(prefix +
+				(start < 0 ? "[" + start + "::]" : "[" + start + ":" + end + ":]"));
+		}
+
+		throw new RangeError(prefix +
+			(start < 0 ? "[" + start + ":]" : "[" + start + ":" + end + "]"));
+	}
+
+	if (max !== undefined) {
+		if (end < 0 || end > limit) {
+			throw new RangeError(prefix +
+				(end < 0 ? "[:" + end + ":]" : "[:" + end + ":" + limit + "]"));
+		}
+
+		if (limit > room) {
+			throw new RangeError(prefix +
+				"[::" + limit + "] with " + width + " " + room);
+		}
+	} else if (end < 0 || end > limit) {
+		throw new RangeError(prefix +
+			(end < 0 ? "[:" + end + "]" : "[:" + end + "] with " + width + " " + room));
 	}
 
 	return go2jsSliceView(
