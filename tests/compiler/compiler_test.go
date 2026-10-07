@@ -385,10 +385,12 @@ func main() {
 	}
 
 	// a whole number read out of a double is read through the runtime, so that
-	// a number too wide for a double keeps every digit on the way back
+	// a number too wide for a double keeps every digit on the way back; a rune
+	// written as a string is written by the runtime too, so that a value that
+	// names no code point at all names the replacement character
 	for _, want := range []string{
 		"go2jsWideToSigned(input)",
-		"String.fromCodePoint(65)",
+		"go2jsRuneString(65)",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("generated JavaScript missing %q:\n%s", want, output)

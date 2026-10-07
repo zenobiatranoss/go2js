@@ -3157,9 +3157,12 @@ func (e *emitter) emitConversion(call *ast.CallExpr) error {
 		e.needsRuntime = true
 	}
 
-	// string(rune) encodes a code point, while string(any) stringifies.
+	// string(rune) encodes a code point, while string(any) stringifies. A value
+	// that names no code point names the replacement character, which is what
+	// the runtime writes for it.
 	if name == "String" && isIntegerType(e.analyzedType(call.Args[0])) {
-		name = "String.fromCodePoint"
+		name = "go2jsRuneString"
+		e.needsRuntime = true
 	}
 
 	name = e.safeConversionName(name)

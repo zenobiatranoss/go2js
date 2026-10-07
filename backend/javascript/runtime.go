@@ -744,9 +744,14 @@ function go2jsTimeNanos(value) {
 }
 
 // go2jsTimeNanosCarry is the finer part of a moment put on a new one, which is
-// what moving a moment about carries with it.
+// what moving a moment about carries with it, and so is the reading of the
+// monotonic clock a moment was made against.
 function go2jsTimeNanosCarry(value, next) {
     next.__go2js_nsec = value.__go2js_nsec === undefined ? 0 : value.__go2js_nsec;
+
+    if (value.__go2js_mono !== undefined) {
+        next.__go2js_mono = value.__go2js_mono;
+    }
 
     return next;
 }
@@ -791,6 +796,12 @@ function go2jsTimeZero() {
 
     return zero;
 }
+
+// go2jsTimeMonoOrigin is the moment the process was born on the clock it is
+// measured by, from which the reading a moment is made against is counted, so
+// that a monotonic reading is a count from the birth of the process the way Go
+// counts one.
+const go2jsTimeMonoOrigin = Date.now() * 1000000;
 
 function go2jsTimeValue(date) {
     // A moment that already carries the methods of a time is left as it is,
@@ -911,7 +922,7 @@ function go2jsTimeValue(date) {
             return go2jsTimeFormat(this.value, String(layout), this);
         },
         String: function() {
-            return this.value.toISOString();
+            return go2jsTimeString(this);
         },
         Add: function(duration) {
             const nanos = go2jsDurationNanos(duration);
@@ -933,6 +944,14 @@ function go2jsTimeValue(date) {
             const next = go2jsTimeValue(new Date(millis));
 
             next.__go2js_nsec = fine;
+
+            // A moment moved by a duration keeps the reading of the monotonic
+            // clock it carried, moved by the same duration, which is what Go
+            // keeps of a moment it moves.
+            if (this.__go2js_mono !== undefined) {
+                next.__go2js_mono = this.__go2js_mono + nanos;
+            }
+
             next.__go2js_location = this.__go2js_location;
             next.__go2js_zone = this.__go2js_zone;
 
@@ -954,6 +973,10 @@ function go2jsTimeValue(date) {
 
             next.__go2js_nsec = rounded.nsec;
 
+            if (this.__go2js_mono !== undefined) {
+                next.__go2js_mono = this.__go2js_mono;
+            }
+
             next.__go2js_location = this.__go2js_location;
             next.__go2js_zone = this.__go2js_zone;
 
@@ -964,6 +987,10 @@ function go2jsTimeValue(date) {
             const next = go2jsTimeValue(new Date(rounded.millis));
 
             next.__go2js_nsec = rounded.nsec;
+
+            if (this.__go2js_mono !== undefined) {
+                next.__go2js_mono = this.__go2js_mono;
+            }
 
             next.__go2js_location = this.__go2js_location;
             next.__go2js_zone = this.__go2js_zone;
@@ -1066,6 +1093,45 @@ const go2jsTimeMonths = [
 const go2jsTimeDays = [
     "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
 ];
+
+// go2jsTimeString is a moment written the way Go writes it when it is printed,
+// which is the layout "2006-01-02 15:04:05.999999999 -0700 MST" followed, for a
+// moment that carries a reading of the monotonic clock, by how far into that
+// clock the moment was made, as " m=+ddd.fffffffff".
+function go2jsTimeString(t) {
+    let text = go2jsTimeFormat(t.value, "2006-01-02 15:04:05.999999999 -0700 MST", t);
+
+    if (t.__go2js_mono === undefined) {
+        return text;
+    }
+
+    let mono = t.__go2js_mono;
+    let sign = "+";
+
+    if (mono < 0) {
+        sign = "-";
+        mono = -mono;
+    }
+
+    const seconds = Math.trunc(mono / 1000000000);
+    const nanos = mono % 1000000000;
+    const minutes = Math.trunc(seconds / 1000000000);
+
+    let suffix = " m=" + sign;
+    let width = 0;
+
+    // The reading is written in up to three groups of nine digits, of which the
+    // first is left out when it is what holds the whole of the count, the way Go
+    // leaves it out for a process that began in living memory.
+    if (minutes !== 0) {
+        suffix += String(minutes);
+        width = 9;
+    }
+
+    suffix += String(seconds).padStart(width, "0") + "." + String(nanos).padStart(9, "0");
+
+    return text + suffix;
+}
 
 // go2jsTimeFormat writes a time the way a layout asks for it. A layout is read
 // one piece at a time and what a piece stands for is written out as it is, so
@@ -5303,8 +5369,10 @@ go2jsStringsBuilder.prototype.Write = function(value) {
 };
 
 go2jsStringsBuilder.prototype.WriteRune = function(value) {
-    this.parts.push(String.fromCodePoint(Number(value)));
-    return [go2jsStringByteLength(String.fromCodePoint(Number(value))), null];
+    const text = go2jsRuneString(value);
+
+    this.parts.push(text);
+    return [go2jsStringByteLength(text), null];
 };
 
 go2jsStringsBuilder.prototype.WriteByte = function(value) {
@@ -5383,8 +5451,10 @@ go2jsBytesBuffer.prototype.WriteByte = function(value) {
 };
 
 go2jsBytesBuffer.prototype.WriteRune = function(value) {
-    this.WriteString(String.fromCodePoint(value));
-    return [go2jsStringByteLength(String.fromCodePoint(value)), null];
+    const text = go2jsRuneString(value);
+
+    this.WriteString(text);
+    return [go2jsStringByteLength(text), null];
 };
 
 go2jsBytesBuffer.prototype.Len = function() {
@@ -6067,8 +6137,21 @@ function go2jsToBool(value) {
 	return Boolean(value);
 }
 
+// go2jsRuneString is the code point a value names, written as the character it
+// is, and what a value that names no code point names instead: the mark of a
+// run that is not a rune, which is what Go puts in its place.
+function go2jsRuneString(value) {
+	const codePoint = Number(value);
+
+	if (codePoint < 0 || codePoint > 0x10ffff || (codePoint >= 0xd800 && codePoint <= 0xdfff)) {
+		return "\uFFFD";
+	}
+
+	return String.fromCodePoint(codePoint);
+}
+
 function go2jsToRune(value) {
-	return String.fromCodePoint(value);
+	return go2jsRuneString(value);
 }
 
 // go2jsMethodOn calls a pointer receiver method. Go lets the method body see a
@@ -10423,18 +10506,18 @@ function go2jsFormatValue(verb, spec, value, raw) {
 			// %F is %f spelled in upper case; it has no exponent form to fold, so
 			// the two share everything but the letter.
 			const num = Number(value);
-			const special = go2jsSpecialFloatText(num);
+			const special = go2jsSpecialFloat(num, parsed);
 
 			if (special !== "") {
 				return go2jsPad(special, parsed, false);
 			}
 
-			return numberText(num, go2jsFormatFixed(Math.abs(num), precision === null ? 6 : precision));
+			return numberText(num, go2jsFormatFixed(Math.abs(num), precision === null ? 6 : precision, flags.includes("#")));
 		}
 		case "e":
 		case "E": {
 			const num = Number(value);
-			const special = go2jsSpecialFloatText(num);
+			const special = go2jsSpecialFloat(num, parsed);
 
 			if (special !== "") {
 				return go2jsPad(special, parsed, false);
@@ -10450,7 +10533,9 @@ function go2jsFormatValue(verb, spec, value, raw) {
 			return exponent === -1 ? upper : upper.slice(0, exponent) + "E" + upper.slice(exponent + 1);
 		}
 		case "g":
-			return go2jsFormatG(Number(value), precision, parsed);
+			return go2jsFormatG(Number(value), precision, parsed, false);
+		case "G":
+			return go2jsFormatG(Number(value), precision, parsed, true);
 		case "s": {
 			let text;
 
@@ -10611,7 +10696,7 @@ function go2jsFormatValue(verb, spec, value, raw) {
 		case "t":
 			return go2jsPad(value ? "true" : "false", parsed, false);
 		case "c":
-			return go2jsPad(String.fromCharCode(value), parsed, false);
+			return go2jsPad(go2jsRuneString(value), parsed, false);
 		case "U": {
 			let digits = Math.trunc(Number(value)).toString(16).toUpperCase();
 
@@ -10881,42 +10966,61 @@ function go2jsSpecialFloatText(num) {
 	return Number.isNaN(num) ? "NaN" : num === Infinity ? "+Inf" : num === -Infinity ? "-Inf" : "";
 }
 
+// go2jsSpecialFloat writes a value that is not finite the way fmt writes it for
+// the flags asked: a NaN takes a sign when one is asked and a space otherwise,
+// an infinity becomes a space flanked sign only when a space is asked and no
+// sign is, else keeping the sign it carries.
+function go2jsSpecialFloat(num, parsed) {
+	const special = go2jsSpecialFloatText(num);
+	const plus = parsed.flags.includes("+");
+	const space = parsed.flags.includes(" ");
+
+	if (Number.isNaN(num)) {
+		return plus ? "+NaN" : space ? " NaN" : "NaN";
+	}
+
+	if (space && !plus && special[0] === "+") {
+		return " " + special.slice(1);
+	}
+
+	return special;
+}
+
 // go2jsFormatFixed writes a number in positional notation with a fixed number of
 // fraction digits. Above 1e21 toFixed falls back to an exponent, so the value is
 // written out from the shortest form that reads back as the same float, which is
 // what Go prints before it pads the fraction.
-function go2jsFormatFixed(abs, precision) {
-	if (abs < 1e21) {
-		return abs.toFixed(precision);
+function go2jsFormatFixed(abs, precision, sharp) {
+	if (abs === 0) {
+		let body = "0";
+
+		if (precision > 0) {
+			body += "." + "0".repeat(precision);
+		}
+
+		return sharp === true && precision === 0 ? body + "." : body;
 	}
 
-	const { rawExponent, mantissa } = go2jsFloatBits(abs);
-	const significand = rawExponent === 0 ? mantissa : mantissa | (1n << 52n);
-	const scale = (rawExponent === 0 ? 1 : rawExponent) - 1023 - 52;
-	const shift = scale < 0 ? BigInt(-scale) : 0n;
-	const units = 10n ** BigInt(precision);
+	// The fraction is cut at the precision with the exact digits the value
+	// holds, rounding a tie to an even neighbor the way strconv's decimal does,
+	// then written as fmtF writes it.
+	const exact = go2jsExactDigits(abs);
+	let digits = exact.digits;
+	let dp = exact.dp;
+	const roundAt = dp + precision;
 
-	// The value is the significand scaled by a power of two, so a value with a
-	// negative scale has digits left over after the point.
-	let whole = shift === 0n ? significand << BigInt(scale) : significand >> shift;
-	let below = shift === 0n ? 0n : (significand & ((1n << shift) - 1n)) * units;
-	const guard = shift === 0n ? 0n : 1n << shift;
-	let rounded = below >> shift;
+	if (roundAt >= 0 && roundAt < digits.length) {
+		const result = go2jsRoundDigits(digits, roundAt);
+		digits = result.digits;
 
-	// The digits that do not fit are rounded off, half away from zero, and a
-	// round that carries past the point moves the whole number up.
-	if (shift > 0n && below - (rounded << shift) >= guard / 2n) {
-		rounded += 1n;
+		if (result.carry) {
+			dp += 1;
+		}
 	}
 
-	if (rounded >= units) {
-		rounded -= units;
-		whole += 1n;
-	}
+	let body = go2jsFormatGsfFixed(digits, digits.length, dp, precision);
 
-	return precision === 0
-		? whole.toString()
-		: whole.toString() + "." + rounded.toString().padStart(precision, "0");
+	return sharp === true && precision === 0 && !body.includes(".") ? body + "." : body;
 }
 
 // magnitude returns the value without its sign, which is what a fraction and an
@@ -11207,11 +11311,44 @@ function go2jsFormatE(value, precision, parsed) {
 		return go2jsPad(String(value), parsed, false);
 	}
 
-	const [mantissa, exponent] = Math.abs(value).toExponential(precision).split("e");
-	const exp = parseInt(exponent, 10);
-	const expSign = exp < 0 ? "-" : "+";
-	const expDigits = String(Math.abs(exp)).padStart(2, "0");
-	const body = mantissa + "e" + expSign + expDigits;
+	const abs = magnitude(value);
+	let body;
+
+	if (abs === 0) {
+		body = "0";
+
+		if (precision > 0) {
+			body += "." + "0".repeat(precision);
+		}
+
+		body += "e+00";
+	} else {
+		// The mantissa is rounded to the precision plus the one digit it leads
+		// with, again to an even neighbor on a tie, and then written as fmtE
+		// writes it with the exponent the point sits at.
+		const exact = go2jsExactDigits(abs);
+		let digits = exact.digits;
+		let dp = exact.dp;
+		const roundAt = precision + 1;
+
+		if (roundAt < digits.length) {
+			const result = go2jsRoundDigits(digits, roundAt);
+			digits = result.digits;
+
+			if (result.carry) {
+				dp += 1;
+			}
+		}
+
+		body = go2jsFormatTimeExponent(digits, digits.length, dp, precision, false);
+	}
+
+	// The sharp flag keeps the point even where a precision of zero leaves
+	// nothing after it, so 1.e+00 and 1. are written with the point that holds.
+	if (parsed.flags.includes("#") && precision === 0) {
+		body = body.replace("e", ".e");
+	}
+
 	const prefix = value < 0 || Object.is(value, -0) ? "-" : parsed.flags.includes("+") ? "+" : parsed.flags.includes(" ") ? " " : "";
 
 	return go2jsPadNumber(prefix + body, prefix, body, parsed);
@@ -11253,50 +11390,304 @@ function go2jsDecimalParts(value) {
 	return { digits, dp };
 }
 
-// go2jsFormatG renders %g, using the shortest representation when no precision
-// is given and switching to the exponent form outside Go's -4..eprec window.
-function go2jsFormatG(value, precision, parsed) {
-	if (value === 0) {
-		return go2jsPadNumber("0", "", "0", parsed);
-	}
+// go2jsExactDigits writes the digits a finite float holds exactly, with the
+// place of its point. A float is a whole number times a power of two, and a
+// power of two is a whole number of fives over a power of ten, so the exact
+// digits are the product gathered that way, with the point cut at the same
+// distance the power of ten lays it.
+function go2jsExactDigits(num) {
+    const {rawExponent, mantissa} = go2jsFloatBits(num);
 
-	const parts = go2jsDecimalParts(value);
+    const k = rawExponent === 0 ? -1074 : rawExponent - 1075;
+    const significant = rawExponent === 0 ? mantissa : (1n << 52n) | mantissa;
 
-	if (parts === null) {
-		return go2jsPad(String(value), parsed, false);
-	}
+    let digits;
+    let dp;
 
-	const exp = parts.dp - 1;
-	// Go uses the exponent form when exp < -4 or exp >= eprec, and picks
-	// eprec = 6 whenever the shortest representation was requested.
-	const eprec = precision === null ? 6 : precision;
+    if (k >= 0) {
+        digits = (significant << BigInt(k)).toString();
+        dp = digits.length;
+    } else {
+        const m = -k;
+        const product = significant * 5n ** BigInt(m);
+        const text = product.toString();
 
-	if (exp < -4 || exp >= eprec) {
-		const mantissaDigits = precision === null ? parts.digits.length - 1 : precision - 1;
+        digits = text;
+        dp = text.length - m;
+    }
 
-		return go2jsFormatE(value, Math.max(mantissaDigits, 0), parsed);
-	}
+    // The point never moves when trailing zeros are set aside: they lie at the
+    // end of the number, not in front of any digit that the point counts.
+    while (digits.length > 1 && digits.endsWith("0")) {
+        digits = digits.slice(0, -1);
+    }
 
-	const body = go2jsFixedFromParts(parts, precision === null ? parts.digits.length : precision);
-	const prefix = value < 0 ? "-" : parsed.flags.includes("+") ? "+" : parsed.flags.includes(" ") ? " " : "";
-
-	return go2jsPadNumber(prefix + body, prefix, body, parsed);
+    return {digits, dp};
 }
 
-// go2jsFixedFromParts renders a decimal point at parts.dp using exactly
-// significant digits.
-function go2jsFixedFromParts(parts, significant) {
-	const digits = parts.digits.padEnd(significant, "0");
+// go2jsFormatG renders %g, using the shortest representation when no precision
+// is given and switching to the exponent form outside Go's -4..eprec window.
+// Rendered as %G it spells the exponent with an E rather than an e, which is the
+// only letter the two forms disagree about.
+function go2jsFormatG(value, precision, parsed, upper) {
+    // The sharp flag keeps the zeros of the fraction and forces a point even
+    // where a number has none of its own, and the count of digits it keeps is
+    // the precision the sharp flag asks for.
+    const sharp = parsed.flags.includes("#");
+    const sharpDigits = precision === null ? 6 : precision;
 
-	if (parts.dp <= 0) {
-		return "0." + "0".repeat(-parts.dp) + digits;
-	}
+    // A whole zero is written as a single zero in the fixed form, which the
+    // path for a number with digits would not reach on its own.
+    if (value === 0) {
+        const body = sharp ? go2jsRetainSharp("0", sharpDigits) : "0";
 
-	if (parts.dp >= significant) {
-		return digits + "0".repeat(parts.dp - significant);
-	}
+        return go2jsFormatGsfSign(body, value, parsed);
+    }
 
-	return digits.slice(0, parts.dp) + "." + digits.slice(parts.dp);
+    // A precision asked as zero is the precision of one, which Go reads the
+    // same way, while the sharp flag keeps the zeros the letter itself asked.
+    const significant = precision === null ? null : Math.max(precision, 1);
+
+    // A negative precision means the shortest form that reads back as the same
+    // number, for which the count of digits is the count the number holds.
+    const shortest = significant === null;
+
+    let digits;
+    let dp;
+
+    if (shortest) {
+        const parts = go2jsDecimalParts(value);
+
+        if (parts === null) {
+            return go2jsPad(go2jsSpecialFloat(value, parsed), parsed, false);
+        }
+
+        digits = parts.digits;
+        dp = parts.dp;
+    } else {
+        // A precision rounds the number itself, which is not the shortest text
+        // that names it but the exact sum it holds in binary, so the exact
+        // digits are read off its bits before they are rounded.
+        if (!Number.isFinite(value)) {
+            return go2jsPad(go2jsSpecialFloat(value, parsed), parsed, false);
+        }
+
+        const exact = go2jsExactDigits(Math.abs(value));
+
+        digits = exact.digits;
+        dp = exact.dp;
+    }
+
+    let nd = digits.length;
+
+    if (!shortest && nd > significant) {
+        // The digits are rounded to the requested count of significant figures,
+        // the way a run of nines rounds up and over into a single leading one
+        // that moves the point with it, as Go moves it.
+        const carried = go2jsRoundDigits(digits, significant);
+        digits = carried.digits;
+        dp = dp + (carried.carry ? 1 : 0);
+        nd = digits.length;
+    }
+
+    let prec = shortest ? nd : significant;
+    let eprec = prec;
+
+    // A precision finer than a number can hold asks for only what the number
+    // holds, as does a precision coarser than one: both give the door of the
+    // shortest form, which is the number's own length.
+    if (eprec > nd && nd >= dp) {
+        eprec = nd;
+    }
+
+    if (shortest) {
+        eprec = 6;
+    }
+
+    const exp = dp - 1;
+
+    // Go writes a number as an exponent when its position in the number line is
+    // far from the point, and the number itself for everything between.
+    let body;
+
+    if (exp < -4 || exp >= eprec) {
+        if (prec > nd) {
+            prec = nd;
+        }
+
+        body = go2jsFormatTimeExponent(digits, nd, dp, prec - 1, upper);
+    } else {
+        if (prec > dp) {
+            prec = nd;
+        }
+
+        body = go2jsFormatGsfFixed(digits, nd, dp, Math.max(prec - dp, 0));
+    }
+
+    if (sharp) {
+        body = go2jsRetainSharp(body, sharpDigits);
+    }
+
+    return go2jsFormatGsfSign(body, value, parsed);
+}
+
+// go2jsRetainSharp is the mark of the sharp flag on a number: a point where the
+// number has none and zeros kept up to the precision's count of significant
+// digits, which is the way fmt keeps them when it is asked to.
+function go2jsRetainSharp(text, digits) {
+    let remaining = digits;
+    let sawNonzero = false;
+    let hasDecimalPoint = false;
+    let out = "";
+    let tail = "";
+
+    for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+
+        if (c === ".") {
+            hasDecimalPoint = true;
+            out += c;
+        } else if (c === "e" || c === "E") {
+            tail = text.slice(i);
+            break;
+        } else {
+            out += c;
+
+            if (c !== "0") {
+                sawNonzero = true;
+            }
+
+            if (sawNonzero) {
+                remaining--;
+            }
+        }
+    }
+
+    if (!hasDecimalPoint) {
+        if (out === "0") {
+            remaining--;
+        }
+
+        out += ".";
+    }
+
+    while (remaining > 0) {
+        out += "0";
+        remaining--;
+    }
+
+    return out + tail;
+}
+
+// go2jsFormatGsfSign puts the sign a number asks for in front of the text of it,
+// and pads the two of them to the width asked for.
+function go2jsFormatGsfSign(body, value, parsed) {
+    const prefix = value < 0 || Object.is(value, -0) ? "-" : parsed.flags.includes("+") ? "+" : parsed.flags.includes(" ") ? " " : "";
+
+    return go2jsPadNumber(prefix + body, prefix, body, parsed);
+}
+
+// go2jsRoundDigits rounds a decimal digit string down to n significant digits.
+// The digit cut off decides the direction, with an exact half rounding to an
+// even neighbor, and a run of nines rounds up to a single leading one that the
+// caller's point moves with.
+function go2jsRoundDigits(string, n) {
+    const cut = string[n];
+
+    if (cut === "5" && n + 1 === string.length) {
+        const before = string.charCodeAt(n - 1) - 48;
+
+        if (before % 2 === 1) {
+            return go2jsRoundDigitsUp(string, n);
+        }
+
+        let digits = string.slice(0, n);
+
+        while (digits.length > 0 && digits.endsWith("0")) {
+            digits = digits.slice(0, -1);
+        }
+
+        return {digits: digits.length === 0 ? "0" : digits, carry: false};
+    }
+
+    if (cut >= "5") {
+        return go2jsRoundDigitsUp(string, n);
+    }
+
+    let digits = string.slice(0, n);
+
+    while (digits.length > 0 && digits.endsWith("0")) {
+        digits = digits.slice(0, -1);
+    }
+
+    return {digits: digits.length === 0 ? "0" : digits, carry: false};
+}
+
+function go2jsRoundDigitsUp(string, n) {
+    let digits = string.slice(0, n);
+
+    for (let i = n - 1; i >= 0; i--) {
+        if (digits.charCodeAt(i) < 57) {
+            digits = digits.slice(0, i) + String.fromCharCode(digits.charCodeAt(i) + 1) + digits.slice(i + 1);
+            return {digits: digits.slice(0, i + 1), carry: false};
+        }
+    }
+
+    return {digits: "1", carry: true};
+}
+
+// go2jsFormatTimeExponent writes a rounded decimal as Go's fmtE writes it: the
+// first digit, a point and the digits that follow it up to the precision, and
+// the distance of the point from the one place, its exponent, as a count of
+// powers of ten with a sign.
+function go2jsFormatTimeExponent(digits, nd, dp, prec, upper) {
+    let body = digits[0];
+
+    if (prec > 0) {
+        body += ".";
+
+        for (let i = 1; i <= prec; i++) {
+            body += i < nd ? digits[i] : "0";
+        }
+    }
+
+    const magnitude = dp - 1;
+    const positive = magnitude >= 0;
+    const text = String(Math.abs(magnitude)).padStart(2, "0");
+    const letter = upper ? "E" : "e";
+
+    return body + letter + (positive ? "+" : "-") + text;
+}
+
+// go2jsFormatGsfFixed writes a rounded decimal as Go's fmtF writes it: the whole
+// part read up to the point, and the fraction down to the precision, with zeros
+// where no digit is held.
+function go2jsFormatGsfFixed(digits, nd, dp, prec) {
+    let body = "";
+
+    if (dp > 0) {
+        const whole = Math.min(nd, dp);
+
+        body += digits.slice(0, whole);
+
+        for (let i = whole; i < dp; i++) {
+            body += "0";
+        }
+    } else {
+        body += "0";
+    }
+
+    if (prec > 0) {
+        body += ".";
+
+        for (let i = 0; i < prec; i++) {
+            const at = dp + i;
+
+            body += at >= 0 && at < nd ? digits[at] : "0";
+        }
+    }
+
+    return body;
 }
 
 function go2jsStringsContains(s, substr) {
@@ -11854,7 +12245,49 @@ function go2jsStrconvRuneIsPrint(code) {
 	return /^[\p{L}\p{M}\p{N}\p{P}\p{S}]$/u.test(char);
 }
 
-function go2jsStrconvAppendEscapedRune(out, code, quote, asciiOnly) {
+// go2jsStrconvRuneIsGraphic reports whether a code point is among the spaces a
+// Go program would print as it is even though it is not a printing character,
+// which is what separates the graphic runes from the printable ones.
+function go2jsStrconvRuneIsGraphic(code) {
+	if (code > 0xffff) {
+		return false;
+	}
+
+	switch (code) {
+	case 0x00a0:
+	case 0x1680:
+	case 0x2000:
+	case 0x2001:
+	case 0x2002:
+	case 0x2003:
+	case 0x2004:
+	case 0x2005:
+	case 0x2006:
+	case 0x2007:
+	case 0x2008:
+	case 0x2009:
+	case 0x200a:
+	case 0x202f:
+	case 0x205f:
+	case 0x3000:
+		return true;
+	default:
+		return false;
+	}
+}
+
+// go2jsValidRune reports whether a number names a code point that a rune can
+// stand for: a value within the rune space that is not a surrogate, which is
+// what Go would replace with the replacement character.
+function go2jsValidRune(code) {
+	return Number.isInteger(code) && code >= 0 && code <= 0x10ffff && (code < 0xd800 || code > 0xdfff);
+}
+
+function go2jsStrconvAppendEscapedRune(out, code, quote, asciiOnly, graphicOnly) {
+	if (!go2jsValidRune(code)) {
+		code = 0xfffd;
+	}
+
 	const char = String.fromCodePoint(code);
 
 	if (char === quote || char === "\\") {
@@ -11867,7 +12300,7 @@ function go2jsStrconvAppendEscapedRune(out, code, quote, asciiOnly) {
 			out.push(char);
 			return;
 		}
-	} else if (go2jsStrconvRuneIsPrint(code)) {
+	} else if (go2jsStrconvRuneIsPrint(code) || (graphicOnly && go2jsStrconvRuneIsGraphic(code))) {
 		out.push(char);
 		return;
 	}
@@ -11896,27 +12329,20 @@ function go2jsStrconvAppendEscapedRune(out, code, quote, asciiOnly) {
 		return;
 	}
 
-	let prefix;
-	let width;
-
 	if (code < 0x20 || code === 0x7f) {
-		prefix = "\\x";
-		width = 2;
-	} else if (!Number.isInteger(code) || code < 0 || code > 0x10ffff) {
-		prefix = "\\u";
-		width = 4;
-		code = 0xfffd;
-	} else if (code < 0x10000) {
-		prefix = "\\u";
-		width = 4;
-	} else {
-		prefix = "\\U";
-		width = 8;
+		out.push("\\x");
+		out.push(go2jsStrconvHexDigit(code >> 4));
+		out.push(go2jsStrconvHexDigit(code & 0xf));
+		return;
 	}
 
-	out.push(prefix);
+	if (code < 0x10000) {
+		out.push("\\u");
+	} else {
+		out.push("\\U");
+	}
 
-	for (let shift = (width - 1) * 4; shift >= 0; shift -= 4) {
+	for (let shift = code < 0x10000 ? 12 : 28; shift >= 0; shift -= 4) {
 		out.push(go2jsStrconvHexDigit((code >> shift) & 0xf));
 	}
 }
@@ -11976,7 +12402,7 @@ function go2jsQuoteBytes(value) {
 			continue;
 		}
 
-		go2jsStrconvAppendEscapedRune(out, rune, '"', false);
+		go2jsStrconvAppendEscapedRune(out, rune, '"', false, false);
 		i += width;
 	}
 
@@ -12011,11 +12437,11 @@ function go2jsUtf8Width(bytes, at) {
 	return width;
 }
 
-function go2jsStrconvQuoteWith(value, asciiOnly) {
+function go2jsStrconvQuoteWith(value, asciiOnly, graphicOnly) {
 	const out = ['"'];
 
 	for (const char of String(value)) {
-		go2jsStrconvAppendEscapedRune(out, char.codePointAt(0), '"', asciiOnly);
+		go2jsStrconvAppendEscapedRune(out, char.codePointAt(0), '"', asciiOnly, graphicOnly);
 	}
 
 	out.push('"');
@@ -12024,11 +12450,20 @@ function go2jsStrconvQuoteWith(value, asciiOnly) {
 }
 
 function go2jsStrconvQuote(s) {
-	return go2jsStrconvQuoteWith(s, false);
+	return go2jsStrconvQuoteWith(s, false, false);
 }
 
 function go2jsStrconvQuoteToASCII(s) {
-	return go2jsStrconvQuoteWith(s, true);
+	return go2jsStrconvQuoteWith(s, true, false);
+}
+
+function go2jsStrconvQuoteRuneWith(value, asciiOnly, graphicOnly) {
+	const out = ["'"];
+
+	go2jsStrconvAppendEscapedRune(out, Number(value), "'", asciiOnly, graphicOnly);
+	out.push("'");
+
+	return out.join("");
 }
 
 function go2jsStrconvUnquote(s) {
