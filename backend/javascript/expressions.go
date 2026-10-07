@@ -114,6 +114,22 @@ func isFloat32Type(t gotypes.Type) bool {
 	return basic.Kind() == gotypes.Float32
 }
 
+// isFloat64Type reports whether a type is the float64 basic type. Numbers this
+// wide are the ones JavaScript already keeps, so nothing is rounded on the way
+// in as it is for a float32.
+func isFloat64Type(t gotypes.Type) bool {
+	if t == nil {
+		return false
+	}
+
+	basic, ok := t.Underlying().(*gotypes.Basic)
+	if !ok {
+		return false
+	}
+
+	return basic.Kind() == gotypes.Float64
+}
+
 // foldedFloatConstant gives back the worked out answer for an expression whose
 // every part is a constant, written as it stands. The working out behind it was
 // exact, and the working out a JavaScript engine would do over the same numbers
