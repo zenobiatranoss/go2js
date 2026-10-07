@@ -6826,7 +6826,7 @@ function go2jsPointerTargets(pointer) {
 	return value !== null && value !== undefined && typeof value === "object";
 }
 
-function go2jsInterface(value, typeName, displayName) {
+function go2jsInterface(value, typeName, displayName, uncomparable) {
 	// An interface names no type of its own, so the type of the value it holds
 	// is the one that has to be written down. Reading the name of the interface
 	// back off the wrapper would claim that every value stored in one has the
@@ -6849,6 +6849,13 @@ function go2jsInterface(value, typeName, displayName) {
 		type: typeName,
 		value: value
 	};
+
+	if (uncomparable === true) {
+		// A slice or a map or a function is never allowed to compare itself or
+		// to hash itself, so the wrapper says it cannot so the equal and the
+		// map key catch hold of it before a value is put side by side.
+		wrapper.__go2js_uncomparable = true;
+	}
 
 	if (typeof displayName === "string" && displayName !== "" && displayName !== typeName) {
 		wrapper.__go2js_type_name = displayName;
@@ -6912,7 +6919,7 @@ function go2jsSameReflectType(left, right) {
 		go2jsSameReflectType(left.key, right.key);
 }
 
-function go2jsEqual(a, b) {
+function go2jsEqual(a, b, deep) {
 	// A pointer that is nil and is held in an interface is a value of its own
 	// rather than nothing, so the interface holding it is not nil even though
 	// the pointer is, and it is the interface that is being compared here.
@@ -6928,6 +6935,14 @@ function go2jsEqual(a, b) {
 	}
 
 	if (a === b) {
+		// A slice or a map or a function is never a pair of sides that can be
+		// called equal, so even the same value on both sides is a panic in Go.
+		// reflect.DeepEqual does not compare by the == of Go, so it is allowed
+		// to look at one of them as deep as it goes.
+		if (deep !== true && a !== null && typeof a === "object" && a.__go2js_uncomparable === true && a.__go2js_interface === true) {
+			throw new Error(go2jsRuntimeErrorPrefix + "comparing uncomparable type " + (a.type || ""));
+		}
+
 		return true;
 	}
 
@@ -6946,10 +6961,18 @@ function go2jsEqual(a, b) {
 			return false;
 		}
 
+		// The two hold the same shape, so a value that cannot be compared would
+		// have to be, which is a panic in Go. The wrapper holds that up before
+		// a slice is asked to weigh itself element by element, unless the
+		// compare is the deep one of reflect.DeepEqual, which is allowed to.
+		if (deep !== true && (a.__go2js_uncomparable === true || b.__go2js_uncomparable === true)) {
+			throw new Error(go2jsRuntimeErrorPrefix + "comparing uncomparable type " + (a.type || ""));
+		}
+
 		// An array that is its own interface wrapper keeps its elements
 		// directly, so unwrapping would only arrive back at the same object.
 		if (a.value !== a && b.value !== b) {
-			return go2jsEqual(a.value, b.value);
+			return go2jsEqual(a.value, b.value, deep);
 		}
 	} else if (ai || bi) {
 		// One side is a value that was stored in an interface and the other is
@@ -6983,7 +7006,7 @@ function go2jsEqual(a, b) {
 			}
 		}
 
-		return go2jsEqual(wrapped.value, plain);
+		return go2jsEqual(wrapped.value, plain, deep);
 	}
 
 	if (Array.isArray(a) || Array.isArray(b)) {
@@ -6992,7 +7015,7 @@ function go2jsEqual(a, b) {
 		}
 
 		for (let index = 0; index < a.length; index++) {
-			if (!go2jsEqual(a[index], b[index])) {
+			if (!go2jsEqual(a[index], b[index], deep)) {
 				return false;
 			}
 		}
@@ -7005,6 +7028,25 @@ function go2jsEqual(a, b) {
 	// rather than a set of fields to be read one by one.
 	if (go2jsIsErrorValue(a) && go2jsIsErrorValue(b)) {
 		return false;
+	}
+
+	// A map is a whole in itself rather than a set of properties that happen
+	// to be on it, so it compares by walking the entries one by one: same
+	// number of them, and each value in one is equal to the value the same key
+	// holds in the other.
+	if (a instanceof go2jsNativeMap || b instanceof go2jsNativeMap) {
+		if (!(a instanceof go2jsNativeMap) || !(b instanceof go2jsNativeMap) || a.size !== b.size) {
+			return false;
+		}
+
+		for (const entry of a) {
+			const key = entry[0];
+			if (!b.has(key) || !go2jsEqual(entry[1], b.get(key), deep)) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	if (typeof a === "object" || typeof b === "object") {
@@ -7031,7 +7073,7 @@ function go2jsEqual(a, b) {
 				continue;
 			}
 
-			if (!go2jsEqual(a[key], b[key])) {
+			if (!go2jsEqual(a[key], b[key], deep)) {
 				return false;
 			}
 		}
@@ -7054,6 +7096,13 @@ function go2jsIsErrorValue(value) {
 	}
 
 	return typeof value.Error === "function" && typeof value.message === "string";
+}
+
+// go2jsDeepEqual compares the way reflect.DeepEqual does, which is the deep
+// way: a slice, a map, or a function is not refused the way the == of Go
+// refuses it, but is unwound until nothing but plain values are left.
+function go2jsDeepEqual(left, right) {
+	return go2jsEqual(left, right, true);
 }
 
 function go2jsInterfaceValue(value) {
@@ -8058,6 +8107,13 @@ function go2jsMapKeyPart(value) {
 // is found by what it holds. A key that is not a struct or an array is left
 // alone, since a string or a number is already found by what it is.
 function go2jsMapKey(key) {
+	// A slice or a map or a function has no way of being hashed, so a key of
+	// one of them is a panic the same way it is in Go, before its contents
+	// are mistaken for something that could be told apart.
+	if (key !== null && typeof key === "object" && key.__go2js_uncomparable === true) {
+		throw new Error(go2jsRuntimeErrorPrefix + "hash of unhashable type " + (key.type || ""));
+	}
+
 	const signature = go2jsMapKeySignature(key);
 
 	if (signature === null) {
@@ -9813,7 +9869,7 @@ function go2jsNilValue(typeName, shape) {
 // an interface, and keeps the name for a slice or a map that is really there so
 // that %T can report it. A bare array or Map cannot recover its element type on
 // its own, so a non-nil value is boxed the same way an interface{} value is.
-function go2jsNilInterface(value, typeName, shape) {
+function go2jsNilInterface(value, typeName, shape, uncomparable) {
 	if (value === null || value === undefined) {
 		return go2jsNilValue(typeName, shape);
 	}
@@ -9832,7 +9888,7 @@ function go2jsNilInterface(value, typeName, shape) {
 		return value;
 	}
 
-	return go2jsInterface(value, typeName, typeName);
+	return go2jsInterface(value, typeName, typeName, uncomparable);
 }
 
 function go2jsIsNil(value) {
