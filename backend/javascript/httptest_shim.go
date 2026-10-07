@@ -29,9 +29,11 @@ function go2jsHttptestRecorderBody() {
 
 	return {
 		Write: function(bytes) {
-			parts.push(go2jsStringify(bytes));
+			const text = Buffer.isBuffer(bytes) ? bytes.toString("utf8") : go2jsBytesToString(bytes);
 
-			return [Array.isArray(bytes) ? bytes.length : go2jsStringify(bytes).length, null];
+			parts.push(text);
+
+			return [Array.isArray(bytes) ? bytes.length : text.length, null];
 		},
 		WriteString: function(text) {
 			parts.push(String(text));
@@ -58,15 +60,20 @@ function go2jsHttptestRecorderBody() {
 function go2jsHttptestNewRecorder() {
 	const recorder = {
 		Code: 200,
-		HeaderMap: go2jsHTTPHeader(),
+		__go2js_header: go2jsHTTPHeader(),
 		Body: go2jsHttptestRecorderBody(),
 		wroteHeader: false
 	};
 
 	// The header a handler writes to is the one the recorder reports, and a
 	// header read before anything was written is still there to be written to.
+	// HeaderMap is the same store net/http keeps for a recorder, and the
+	// internal header the mux writes to is it, so a handler's header work
+	// shows up wherever it is asked for.
+	recorder.HeaderMap = recorder.__go2js_header;
+
 	recorder.Header = function() {
-		return recorder.HeaderMap;
+		return recorder.__go2js_header;
 	};
 
 	recorder.WriteHeader = function(code) {
@@ -80,6 +87,16 @@ function go2jsHttptestNewRecorder() {
 
 	recorder.Write = function(bytes) {
 		// Writing without a header sends the 200 that was there to begin with.
+		recorder.WriteHeader(200);
+
+		return recorder.Body.Write(bytes);
+	};
+
+	// The mux writes to a handler through __go2js_write, so a recorder handed
+	// to a handler has to answer that way too, or the answer would be written
+	// to a writer the recorder could never report. It forwards the same way
+	// Write does.
+	recorder.__go2js_write = function(bytes) {
 		recorder.WriteHeader(200);
 
 		return recorder.Body.Write(bytes);

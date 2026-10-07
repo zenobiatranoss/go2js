@@ -318,6 +318,14 @@ and `crypto/sha256` are written against JavaScript libraries of the same name.
 This list grows regularly. If a function you need isn't wired up yet, see
 [Contributing](#contributing) — adding one is a well-trodden path.
 
+The exact surface — every package and every name the runtime answers for — is
+generated, not promised: see [docs/stdlib-support.md](docs/stdlib-support.md),
+and ask the tool itself for it with
+
+```sh
+go run ./tools/stdlib-gaps [-package the/package]
+```
+
 ## The compiler as a library
 
 You don't have to use the CLI. The compiler is a normal Go package:
@@ -355,7 +363,9 @@ and runtime inclusion.
 ## Honest limitations
 
 Nobody ships a perfect transpiler, and this one is honest about where it cuts
-corners. Read these before you promise a deadline around it:
+corners. Read these before you promise a deadline around it. The full,
+kept-current list lives in [docs/limitations.md](docs/limitations.md); the
+short version:
 
 - **A range over a function is walked to its end before its first value is
   used.** A yield in the middle of a function can't be resumed where it stopped,
@@ -400,10 +410,17 @@ cmd/go2js/          the command line tool
 compiler/           the compiler as a library: options, parsing, checking, emitting
 backend/javascript/ the runtime: the JavaScript that generated programs run against
                     (runtime.go, stdlib_packages.go, and friends hold that JS)
-examples/           programs compiled as plenty of JavaScript (kitchen_sink, basic)
+examples/           programs compiled as plenty of JavaScript
+                    (hello_world, async_channels, http_shapes, basics, realworld,
+                    kitchen_sink — each with its compiled main.js)
 tests/              compiler tests, runtime tests, and the integration parity tests
 runtime/            runtime support types used by the generated code
 types/              compiler-internal type machinery
+tools/              dev tools (stdlib-gaps: the standard library gap report)
+scripts/            the build/check/smoke/release scripts (no dependencies)
+docs/               how it works, the limitations, the release process,
+                    troubleshooting, the roadmap, and the stdlib support table
+.github/            CI, release automation, and the issue/PR templates
 ```
 
 Both runtime files are technically Go files — the generated JavaScript lives

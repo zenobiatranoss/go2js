@@ -18,7 +18,10 @@ go build ./cmd/go2js
 go test ./...
 ```
 
-You only need Go 1.24+ and Node.js. No other dependencies.
+You only need Go 1.24+ and Node.js. No other dependencies. The scripts wrap
+the same steps if you'd rather not type them: `scripts/check.sh` runs the whole
+gate (gofmt, vet, build, tests) and `scripts/smoke.sh` compiles and compares
+every example under `go run` and under `node`.
 
 ## What the test suite does
 
@@ -47,7 +50,12 @@ both outputs and the generated JavaScript in the failure message.
 - `backend/javascript` — the *runtime*. The generated JavaScript lives inside
   these Go files as Go string literals: `runtime.go` (~13k lines of JS) and
   `stdlib_packages.go` (~3.6k lines of JS) are the two big ones.
-- `examples` — sample programs compiled to JS.
+- `examples` — sample programs compiled to JS, each directory its own
+  `main.go` plus the compiled `main.js` that `scripts/refresh-examples.sh`
+  regenerates.
+- `tools` — small Go commands, `tools/stdlib-gaps` being the gap report that
+  `docs/stdlib-support.md` is generated from.
+- `scripts` — the no-dependency shell scripts for build/check/smoke/release.
 - `runtime`, `types` — machinery the compiler and generated code share.
 
 ## Conventions
@@ -104,6 +112,14 @@ Say you want to wire up `strconv.AppendQuoteRuneToGraphic`.
 
 6. **Watch it fail, then make it pass.** See what Go prints that JS doesn't yet,
    fix the helper, repeat until identical. That loop is the whole job.
+
+Before you open the pull request, run the gate and regenerate the stdlib
+inventory, which the gap report keeps honest:
+
+```sh
+scripts/check.sh
+go run ./tools/stdlib-gaps -write docs/stdlib-support.md
+```
 
 Trust the parity test. You cannot be "pretty sure it works" and have it pass —
 and if it passes, it *does* work.
