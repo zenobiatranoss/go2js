@@ -247,6 +247,22 @@ func (e *emitter) emitInterfaceValue(expr ast.Expr, target gotypes.Type) error {
 	}
 
 	if isInterfaceTarget(target) && e.analysis != nil {
+		// A float64 that is written as a conversion is pressed into a box of
+		// its own, because a number that starts out as a whole number would
+		// otherwise be no different from one that was asked for as a float64,
+		// and an interface is meant to keep the two apart.
+		if call, ok := expr.(*ast.CallExpr); ok && e.isExplicitFloat64Conversion(call) {
+			e.needsRuntime = true
+			e.write("go2jsInterface(")
+
+			if err := e.emitExpr(expr); err != nil {
+				return err
+			}
+
+			e.write(`, "float64", "float64")`)
+			return nil
+		}
+
 		if name, ok := interfaceDynamicTypeName(e.analysis.Types[expr].Type); ok {
 			e.needsRuntime = true
 			e.write("go2jsInterface(")
@@ -298,6 +314,26 @@ func isTypedNilPointer(expr ast.Expr, t gotypes.Type) bool {
 	ident, ok := call.Args[0].(*ast.Ident)
 
 	return ok && ident.Name == "nil"
+}
+
+// isExplicitFloat64Conversion reports whether an expression is a conversion of
+// a value to the float64 type, written out as one. A float64 that falls out of
+// arithmetic already reads back as a number, but a conversion has to be set
+// apart from the whole numbers it may happen to equal, because an interface
+// keeps track of the type it holds.
+func (e *emitter) isExplicitFloat64Conversion(call *ast.CallExpr) bool {
+	if !e.isTypeConversion(call) || len(call.Args) != 1 {
+		return false
+	}
+
+	ident, ok := call.Fun.(*ast.Ident)
+	if !ok || ident.Name != "float64" {
+		return false
+	}
+
+	info, ok := e.analysis.Types[call]
+
+	return ok && info.Type != nil && isFloat64Type(info.Type)
 }
 
 // interfaceDynamicTypeName reports the name a value of type t has to be known by
