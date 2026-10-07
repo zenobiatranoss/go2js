@@ -247,12 +247,24 @@ func SupportedStdlibSymbols() map[string][]string {
 
 	collect(packageConstants)
 	collect(packageTypes)
+	collect(reportOnlyTypes)
 
 	for pkg := range symbols {
 		sort.Strings(symbols[pkg])
 	}
 
 	return symbols
+}
+
+// reportOnlyTypes are the named types the runtime answers for with a value of
+// its own but that are not built by a registered constructor, such as
+// strings.Reader, which is handed back by the NewReader function that makes it.
+// They are counted as covered in the support report even though a zero value of
+// them has no constructor of its own to be built from.
+var reportOnlyTypes = map[string]string{
+	"strings.Reader":   "",
+	"strings.Replacer": "",
+	"bytes.Reader":     "",
 }
 
 func isStdlibPkgAlias(name string) bool {

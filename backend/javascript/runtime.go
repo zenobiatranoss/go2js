@@ -313,27 +313,231 @@ function go2jsOSStat(path) {
     }
 }
 
-function go2jsStringsNewReader(value) {
+// go2jsDecodeUTF8Rune turns the bytes starting at a place into the rune they
+// say and the number of bytes it took, the way unicode/utf8 does: a rune that
+// is not there or is not well formed is the replacement character of size one.
+function go2jsDecodeUTF8Rune(bytes, index) {
+    const head = bytes[index] & 0xff;
+
+    if (head < 0x80) {
+        return [head, 1];
+    }
+
+    let count;
+    let code;
+
+    if (head < 0xc0) {
+        return [0xfffd, 1];
+    } else if (head < 0xe0) {
+        count = 2;
+        code = head & 0x1f;
+
+        if (code < 2) {
+            return [0xfffd, 1];
+        }
+    } else if (head < 0xf0) {
+        count = 3;
+        code = head & 0x0f;
+    } else if (head < 0xf8) {
+        count = 4;
+        code = head & 0x07;
+
+        if (code > 4) {
+            return [0xfffd, 1];
+        }
+    } else {
+        return [0xfffd, 1];
+    }
+
+    if (index + count > bytes.length) {
+        return [0xfffd, 1];
+    }
+
+    for (let at = 1; at < count; at++) {
+        const piece = bytes[index + at] & 0xff;
+
+        if ((piece & 0xc0) !== 0x80) {
+            return [0xfffd, 1];
+        }
+
+        code = (code << 6) | (piece & 0x3f);
+    }
+
+    if ((count === 2 && code < 0x80) ||
+        (count === 3 && code < 0x800) ||
+        (count === 4 && code < 0x10000) ||
+        (code >= 0xd800 && code <= 0xdfff) ||
+        code > 0x10ffff) {
+        return [0xfffd, 1];
+    }
+
+    return [code, count];
+}
+
+// go2jsNewByteReader reads its bytes from the front and keeps the value whole,
+// the way strings.Reader and bytes.Reader both do; the word it uses in an
+// error tells which one it stands for. The bytes are the UTF-8 of the text for
+// a string reader and the bytes of the slice for a byte reader, so Read hands
+// back the same numbers the Go runtime would.
+function go2jsNewByteReader(data, kind) {
+    let bytes = go2jsToArray(data);
+    let total = bytes.length;
     let position = 0;
-    const text = String(value);
+    let prevRune = -1;
+    const word = kind === "slice" ? "slice" : "string";
+
+    function err(text) {
+        return go2jsErrorsNew((kind === "slice" ? "bytes.Reader." : "strings.Reader.") + text);
+    }
 
     return {
-        __go2js_text: text,
-        Read: function(buffer) {
-            if (position >= text.length) {
+        __go2js_text: kind === "slice" ? null : go2jsBytesToString(bytes),
+        Read(target) {
+            prevRune = -1;
+            const slot = go2jsBytesReadSlot(target);
+
+            if (position >= total || !slot) {
                 return [0, go2jsIOEOF()];
             }
 
-            const count = Math.min(buffer.length, text.length - position);
+            const count = Math.min(slot.length, total - position);
 
-            for (let i = 0; i < count; i++) {
-                buffer[i] = text.charCodeAt(position + i);
+            for (let index = 0; index < count; index++) {
+                go2jsBytesStoreByte(target, index, bytes[position + index]);
             }
 
             position += count;
             return [count, null];
+        },
+        ReadAt(target, off) {
+            prevRune = -1;
+            off = Math.trunc(Number(off));
+
+            if (off < 0) {
+                return [0, err("ReadAt: negative offset")];
+            }
+
+            if (off >= total) {
+                return [0, go2jsIOEOF()];
+            }
+
+            const slot = go2jsBytesReadSlot(target);
+
+            if (!slot) {
+                return [0, go2jsIOEOF()];
+            }
+
+            const count = Math.min(slot.length, total - off);
+
+            for (let index = 0; index < count; index++) {
+                go2jsBytesStoreByte(target, index, bytes[off + index]);
+            }
+
+            if (count < slot.length) {
+                return [count, go2jsIOEOF()];
+            }
+
+            return [count, null];
+        },
+        ReadByte() {
+            prevRune = -1;
+
+            if (position >= total) {
+                return [0, go2jsIOEOF()];
+            }
+
+            return [bytes[position++], null];
+        },
+        UnreadByte() {
+            prevRune = -1;
+
+            if (position <= 0) {
+                return err("UnreadByte: at beginning of " + word);
+            }
+
+            position--;
+            return null;
+        },
+        ReadRune() {
+            if (position >= total) {
+                prevRune = -1;
+                return [0, 0, go2jsIOEOF()];
+            }
+
+            const decoded = go2jsDecodeUTF8Rune(bytes, position);
+            const size = decoded[1];
+
+            position += size;
+            prevRune = position - size;
+            return [decoded[0], size, null];
+        },
+        UnreadRune() {
+            if (position <= 0) {
+                return err("UnreadRune: at beginning of " + word);
+            }
+
+            if (prevRune < 0) {
+                return err("UnreadRune: previous operation was not ReadRune");
+            }
+
+            position = prevRune;
+            prevRune = -1;
+            return null;
+        },
+        Seek(offset, whence) {
+            offset = Math.trunc(Number(offset));
+            const base = whence === 0 ? 0 : whence === 1 ? position : whence === 2 ? total : null;
+
+            if (base === null) {
+                return [0, err("Seek: invalid whence")];
+            }
+
+            const next = base + offset;
+
+            if (next < 0) {
+                return [0, err("Seek: negative position")];
+            }
+
+            position = next;
+            prevRune = -1;
+            return [next, null];
+        },
+        Size() {
+            return total;
+        },
+        Len() {
+            return Math.max(0, total - position);
+        },
+        Reset(next) {
+            bytes = go2jsToArray(next);
+            total = bytes.length;
+            position = 0;
+            prevRune = -1;
+        },
+        WriteTo(writer) {
+            prevRune = -1;
+
+            if (position >= total) {
+                return [0, null];
+            }
+
+            const result = go2jsCallMethod(writer, "Write", bytes.slice(position));
+            const wrote = Array.isArray(result) ? result[0] : Number(result);
+            const failure = Array.isArray(result) ? result[1] : null;
+
+            if (wrote > 0) {
+                position += wrote;
+            }
+
+            return [wrote, failure];
         }
     };
+}
+
+// go2jsStringsNewReader reads text the way strings.NewReader does, by the UTF-8
+// bytes of the string, and answers the whole reader's ways to step through it.
+function go2jsStringsNewReader(value) {
+    return go2jsNewByteReader(go2jsStringToBytes(go2jsStringify(value)), "string");
 }
 
 // go2jsUnwrap returns the concrete value behind an interface wrapper so
