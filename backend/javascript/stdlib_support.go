@@ -215,6 +215,46 @@ func SupportedStdlibPackageFuncs() map[string][]string {
 	return inventory
 }
 
+// SupportedStdlibSymbols reports every name the runtime answers for, which is
+// the functions of the registry together with the constants and the types it
+// writes real code for, grouped by the name the registry knows each package
+// under. This is the count that really says how much of a package a program
+// can reach.
+func SupportedStdlibSymbols() map[string][]string {
+	symbols := SupportedStdlibPackageFuncs()
+
+	collect := func(store map[string]string) {
+		for key := range store {
+			dot := strings.LastIndex(key, ".")
+			if dot <= 0 || dot == len(key)-1 {
+				continue
+			}
+
+			pkg, name := key[:dot], key[dot+1:]
+			list := symbols[pkg]
+			found := false
+			for _, existing := range list {
+				if existing == name {
+					found = true
+					break
+				}
+			}
+			if !found {
+				symbols[pkg] = append(list, name)
+			}
+		}
+	}
+
+	collect(packageConstants)
+	collect(packageTypes)
+
+	for pkg := range symbols {
+		sort.Strings(symbols[pkg])
+	}
+
+	return symbols
+}
+
 func isStdlibPkgAlias(name string) bool {
 	for _, aliases := range stdlibPkgAliases {
 		for _, alias := range aliases {

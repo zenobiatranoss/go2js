@@ -63,7 +63,7 @@ func main() {
 	}
 	flag.Parse()
 
-	inventory := javascript.SupportedStdlibPackageFuncs()
+	inventory := javascript.SupportedStdlibSymbols()
 
 	names := append([]string(nil), targets...)
 	if len(names) == 0 {
