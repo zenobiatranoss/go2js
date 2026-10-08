@@ -9494,15 +9494,15 @@ function go2jsSpreadArgs(slice) {
 	return {__go2js_spread: true, slice: slice};
 }
 
-// go2jsSpreadValues unwraps the interface elements of a spread operand, which
-// the emitter boxes so their dynamic type survives.
+// go2jsSpreadValues returns the elements of a spread operand as they travel
+// into the operand list, keeping the box each interface element was dressed
+// in, because the box is where the type the verbs need to know is kept.
 function go2jsSpreadValues(slice) {
 	if (!Array.isArray(slice)) {
 		return [slice];
 	}
 
-	return slice.map((element) => (element !== null && typeof element === "object" &&
-		element.__go2js_interface === true ? element.value : element));
+	return slice;
 }
 
 // go2jsSprintf writes a format and its operands, which is what Printf and
@@ -10009,12 +10009,27 @@ function go2jsTypedKind(value) {
 }
 
 // go2jsFormatHexBytes writes bytes as two hex digits each. The space flag puts
-// a space between them, the way Go writes "% x" over a string or a byte slice.
-function go2jsFormatHexBytes(value, upper, space) {
+// a space between them, the way Go writes "% x" over a string or a byte slice,
+// and the sharp flag gives every byte its own 0x when a space is there too but
+// the whole run a single 0x otherwise, which is how "% #x" and "%#x" read.
+function go2jsFormatHexBytes(value, upper, space, alt) {
 	const parts = [];
 
 	for (const item of go2jsToArray(value)) {
 		parts.push((Number(item) & 255).toString(16).padStart(2, "0"));
+	}
+
+	if (alt === true) {
+		const prefix = upper ? "0X" : "0x";
+
+		// A sharpened hex reads as one run of digits with a single 0x in front,
+		// until the space flag asks for a gap between every byte, when each byte
+		// takes its own 0x so the runs they make stay whole.
+		const text = space
+			? parts.map((part) => prefix + part).join(" ")
+			: prefix + parts.join("");
+
+		return upper ? text.toUpperCase() : text;
 	}
 
 	const text = parts.join(space ? " " : "");
@@ -10203,7 +10218,12 @@ function go2jsGoSyntax(value, typeName) {
 			typeName = value.type;
 		}
 
-		return go2jsGoSyntax(held, typeName);
+		// A slice passed through an interface wears the box on the list itself,
+		// so stepping down to what it holds lands on the very same list again.
+		// The list stands for itself, so it is written rather than unwrapped.
+		if (held !== value) {
+			return go2jsGoSyntax(held, typeName);
+		}
 	}
 
 	if (value === null || value === undefined) {
@@ -10751,19 +10771,10 @@ function go2jsFormatValue(verb, spec, value, raw) {
 	const isBytes = go2jsIsByteCompound(accepted);
 	// The sharp flag with %v asks for the value as Go writes it, which is the
 	// whole of it with its type in front rather than the elements one by one.
-	const compound = verb === "T" || verb === "p" || (verb === "v" && flags.includes("#")) ||
-		(isBytes && go2jsVerbInSet(verb, "qsxX"))
-		? null
-		: go2jsCompoundElements(value, accepted);
+	const compound = go2jsFormatCompound(value, accepted, verb, flags, parsed.width, precision, isBytes);
 
 	if (compound !== null) {
-		const inner = "%" + flags + (precision === null ? "" : "." + precision) + verb;
-		// An element keeps the element type of the compound, so a verb that is
-		// refused reports uint8 rather than the int a bare number would infer.
-		const element = go2jsCompoundElementType(accepted);
-		const parts = compound.map((item) => go2jsFormatValue(verb, inner, element === null ? item : go2jsTyped(item, element)));
-
-		return go2jsPad("[" + parts.join(" ") + "]", parsed, false);
+		return compound;
 	}
 
 	// A complex operand formats each of its parts with the verb and joins them
@@ -10790,29 +10801,34 @@ function go2jsFormatValue(verb, spec, value, raw) {
 			return integerBody(intValue, 8, "0o");
 		case "x":
 			if (accepted !== undefined && go2jsIsFloatTypeName(accepted)) {
-				return numberText(intValue, go2jsFormatHexFloat(Number(value), precision, false), "", true);
+				return numberText(intValue, go2jsFormatHexFloat(Number(value), precision, false, flags.includes("#")), "", true);
 			}
 
-			if ((Array.isArray(value) || value instanceof Uint8Array) && !Number.isInteger(Number(value))) {
-				return go2jsFormatHexBytes(value, false, flags.includes(" "));
+			// A byte compound reads as a string of hex digits, and it is the
+			// one compound whose hex verbs are answered whole rather than
+			// element by element. A single byte is an array like any other, so
+			// the reading is the shape of the value rather than a number of
+			// it.
+			if (Array.isArray(value) || value instanceof Uint8Array) {
+				return go2jsPad(go2jsFormatHexBytes(value, false, flags.includes(" "), flags.includes("#")), parsed, false);
 			}
 
 			if (typeof value === "string" || typeof value === "boolean") {
-				return go2jsFormatHexBytes(go2jsStringToBytes(value), false, flags.includes(" "));
+				return go2jsPad(go2jsFormatHexBytes(go2jsStringToBytes(value), false, flags.includes(" "), flags.includes("#")), parsed, false);
 			}
 
 			return integerBody(intValue, 16, flags.includes("#") ? "0x" : "", false);
 		case "X":
 			if (accepted !== undefined && go2jsIsFloatTypeName(accepted)) {
-				return numberText(intValue, go2jsFormatHexFloat(Number(value), precision, true), "", true);
+				return numberText(intValue, go2jsFormatHexFloat(Number(value), precision, true, flags.includes("#")), "", true);
 			}
 
-			if ((Array.isArray(value) || value instanceof Uint8Array) && !Number.isInteger(Number(value))) {
-				return go2jsFormatHexBytes(value, true, flags.includes(" "));
+			if (Array.isArray(value) || value instanceof Uint8Array) {
+				return go2jsPad(go2jsFormatHexBytes(value, true, flags.includes(" "), flags.includes("#")), parsed, false);
 			}
 
 			if (typeof value === "string" || typeof value === "boolean") {
-				return go2jsFormatHexBytes(go2jsStringToBytes(value), true, flags.includes(" "));
+				return go2jsPad(go2jsFormatHexBytes(go2jsStringToBytes(value), true, flags.includes(" "), flags.includes("#")), parsed, false);
 			}
 
 			return integerBody(intValue, 16, flags.includes("#") ? "0X" : "", true);
@@ -10876,8 +10892,8 @@ function go2jsFormatValue(verb, spec, value, raw) {
 			let sign = "";
 
 			if (flags.includes("#")) {
-				text = go2jsGoSyntax(value, boxedType);
-			} else if (flags.includes("+") && !go2jsHasFormatMethod(operand)) {
+				text = go2jsGoSyntax(value, operand && typeof operand.__go2js_type_name === "string" && operand.__go2js_type_name !== "" ? operand.__go2js_type_name : boxedType);
+			} else if (flags.includes("+") && !go2jsHasFormatMethod(value)) {
 				text = go2jsFormatFields(value);
 			} else {
 				text = go2jsFormat(operand, tagged || boxedType, kind, shape, false, false, raw);
@@ -11257,6 +11273,135 @@ function go2jsCompoundElements(value, accepted) {
 	return null;
 }
 
+// go2jsCompoundRecord reports whether a value stands for a struct that a verb
+// can walk field by field: a plain record of Go fields, and not a slice, a map,
+// a date, an error, a complex pair, a pointer, or a moment of the clock whose
+// methods stand among its fields and would be read as fields of their own.
+function go2jsCompoundRecord(value, accepted) {
+	if (value === null || value === undefined || typeof value !== "object" ||
+		Array.isArray(value) || value instanceof go2jsNativeMap ||
+		value instanceof Error || value instanceof go2jsNativeDate ||
+		value.__go2js_pointer === true || go2jsIsComplexOperand(value, accepted)) {
+		return false;
+	}
+
+	// A struct has no method standing in its field list, so a record that
+	// holds a function among its own properties is a wrapper of another kind.
+	for (const item of Object.values(value)) {
+		if (typeof item === "function") {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+// go2jsFormatCompound walks a compound operand the way Go walks it for a verb
+// that is read by its parts: a slice or an array by its elements, a struct by
+// its fields, a map by its pairings. The verb with the flags, the width and the
+// precision it was written with is applied to every part on its own, so a width
+// pads each element rather than the whole, and the brackets are drawn around
+// what came out, left without a width of their own. Without an operand to walk
+// it says so by returning null, and so do the verbs that are answered by the
+// shape of the whole value instead of its parts: %T and %p, %q, the sharpened
+// and the signed %v, and the quoted and the hex verbs over bytes, which Go
+// reads as one string.
+function go2jsFormatCompound(value, accepted, verb, flags, width, precision, isBytes) {
+	if (verb === "T" || verb === "p" || verb === "q" ||
+		(verb === "v" && (flags.includes("#") || flags.includes("+"))) ||
+		(isBytes && go2jsVerbInSet(verb, "qsxX"))) {
+		return null;
+	}
+
+	// A verb that simply reads the value with no width and no precision is
+	// already answered well for a struct or a map, so those two keep their own
+	// paths until a width or a precision gives every part something to read.
+	if (verb === "v" && width === 0 && precision === null &&
+		(value instanceof go2jsNativeMap || go2jsCompoundRecord(value, accepted))) {
+		return null;
+	}
+
+	const inner = "%" + flags + (width > 0 ? String(width) : "") +
+		(precision === null ? "" : "." + precision) + verb;
+	const parts = [];
+
+	// A pointer to a record is walked through the record it aims at, with the
+	// ampersand fmt writes in front, so %d on a *struct reads &{1 2} rather
+	// than reporting the refusal a pointer could not answer on its own. A
+	// walk that declines the record leaves the pointer to be read whole, so
+	// nothing here is written beside the ampersand for it.
+	if (value !== null && typeof value === "object" && value.__go2js_pointer === true) {
+		const target = value[go2jsPointerGet]();
+
+		if (go2jsCompoundRecord(target, accepted)) {
+			const walked = go2jsFormatCompound(target, String(accepted).replace(/^\*/, ""), verb, flags, width, precision, isBytes);
+
+			if (walked !== null) {
+				return "&" + walked;
+			}
+		}
+
+		return null;
+	}
+
+	// A slice or an array is walked for its elements, each one keeping the
+	// element type the compound declared so a verb that is refused reports
+	// uint8 rather than the int a bare number would infer.
+	const elements = go2jsCompoundElements(value, accepted);
+
+	if (elements !== null) {
+		const element = go2jsCompoundElementType(accepted);
+
+		for (const item of elements) {
+			parts.push(go2jsFormatValue(verb, inner, element === null ? item : go2jsTyped(item, element)));
+		}
+
+		return "[" + parts.join(" ") + "]";
+	}
+
+	// A map walks its pairings with the keys in order. A key and a value take
+	// the verb on their own, so a width or a precision reads on each part and
+	// a verb a part refuses says so at that part.
+	if (value instanceof go2jsNativeMap) {
+		const entries = Array.from(value.entries());
+		entries.sort((a, b) => go2jsCompareValues(a[0], b[0]));
+
+		for (const entry of entries) {
+			parts.push(go2jsFormatValue(verb, inner, entry[0]) + ":" + go2jsFormatValue(verb, inner, entry[1]));
+		}
+
+		return "map[" + parts.join(" ") + "]";
+	}
+
+	// A struct walks its fields in declaration order. A field that can write
+	// itself out is asked for it under the verbs that would read a string, and
+	// the width and the precision it was written with are applied to the
+	// answer, since fmt pads the result of a String method to the verb. Any
+	// other field is read by the verb itself, and a verb the field refuses
+	// reports the refusal rather than falling back to the shape of the value.
+	if (go2jsCompoundRecord(value, accepted) && go2jsStructHasNoStringMethod(value)) {
+		const ctor = value.constructor;
+		const fields = ctor && typeof ctor.name === "string" ? go2jsStructFormats[ctor.name] : null;
+
+		for (const key of Object.keys(value)) {
+			if (fields && typeof fields[key] === "string" && go2jsVerbInSet(verb, "vsxXq")) {
+				const formatter = go2jsMethodTable[fields[key]];
+
+				if (typeof formatter === "function") {
+					parts.push(go2jsPad(go2jsCallNow(formatter, null, [value[key]]), { width, flags, precision, verb }, false));
+					continue;
+				}
+			}
+
+			parts.push(go2jsFormatValue(verb, inner, value[key]));
+		}
+
+		return "{" + parts.join(" ") + "}";
+	}
+
+	return null;
+}
+
 // go2jsFloatBits splits a double into the parts the hex and binary verbs need.
 // The words are read big endian so the sign, the exponent and the top of the
 // mantissa all sit in the first word, which keeps the bit layout obvious.
@@ -11364,14 +11509,18 @@ function go2jsHexFraction(below, top) {
 // go2jsFormatHexFloat writes a float the way C99 and Go write it for %x and %X:
 // a leading 1, a dot, the fraction digits and the exponent in binary with a p
 // marker. Without a precision the fraction is the value's own bits, so it is
-// exact; with one it is that many digits, rounded.
-function go2jsFormatHexFloat(num, precision, upper) {
+// exact; with one it is that many digits, rounded. The sharp flag that carries
+// no precision draws the dot of a %#X even when the fraction has no digits, and
+// pads the fraction of a %#x with zeros until it is four digits long, which is
+// how the two sharpened verbs read in Go.
+function go2jsFormatHexFloat(num, precision, upper, sharp) {
 	const special = go2jsSpecialFloatText(num);
 
 	if (special !== "") {
 		return special;
 	}
 
+	const sharpened = sharp === true && precision === null;
 	const sign = num < 0 || Object.is(num, -0) ? "-" : "";
 	const value = magnitude(num);
 	const { rawExponent, mantissa } = go2jsFloatBits(value);
@@ -11412,7 +11561,15 @@ function go2jsFormatHexFloat(num, precision, upper) {
 		}
 	}
 
-	const body = sign + "0x1" + (text === "" ? "" : "." + text) + "p" + (exponent < 0 ? "-" : "+") +
+	let fraction = text;
+
+	if (sharpened && upper === false) {
+		fraction = fraction.padEnd(Math.max(fraction.length, 4), "0");
+	}
+
+	const dot = fraction === "" && !(sharpened && upper) ? "" : ".";
+
+	const body = sign + "0x1" + dot + fraction + "p" + (exponent < 0 ? "-" : "+") +
 		(Math.abs(exponent) < 10 ? "0" : "") + Math.abs(exponent);
 
 	return upper ? body.toUpperCase() : body;

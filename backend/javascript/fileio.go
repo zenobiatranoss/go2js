@@ -171,8 +171,24 @@ func (e *emitter) emitFileCall(call *ast.CallExpr, selector *ast.SelectorExpr) (
 			return true, err
 		}
 
-		for _, arg := range call.Args[2:] {
+		for i, arg := range call.Args[2:] {
 			e.write(", ")
+
+			// A trailing ... splices the slice into the operand list rather than
+			// nesting it as one operand of its own, so the runtime can line its
+			// elements up with the verbs that follow.
+			if i == len(call.Args)-3 && call.Ellipsis.IsValid() {
+				e.needsRuntime = true
+				e.write("go2jsSpreadArgs(")
+
+				if err := e.emitFormatArgument(arg); err != nil {
+					return true, err
+				}
+
+				e.write(")")
+				continue
+			}
+
 			if err := e.emitFormatArgument(arg); err != nil {
 				return true, err
 			}

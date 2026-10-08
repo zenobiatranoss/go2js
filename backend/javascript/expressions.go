@@ -1793,7 +1793,11 @@ func packageTypeConstructorFor(pkg, name string) string {
 }
 
 func (e *emitter) emitAnonymousStructLiteral(x *ast.CompositeLit, structType *gotypes.Struct) (bool, error) {
-	e.write("{")
+	// fmt asks an anonymous struct for its type with %T and %#v, and the
+	// runtime answers with the name the value carries, so the name of the
+	// declared shape is attached to the value as it is built. It is not a
+	// field, so it does not join the walk of the value that %v makes.
+	e.write("(() => { const __v = {")
 
 	for i, elt := range x.Elts {
 		if i > 0 {
@@ -1828,7 +1832,9 @@ func (e *emitter) emitAnonymousStructLiteral(x *ast.CompositeLit, structType *go
 		}
 	}
 
-	e.write("}")
+	e.write("}; Object.defineProperty(__v, \"__go2js_type_name\", {value: ")
+	e.write(strconv.Quote(goStructTypeName(structType)))
+	e.write("}); return __v; })()")
 
 	return true, nil
 }
