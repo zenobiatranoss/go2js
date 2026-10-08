@@ -12,3 +12,5 @@
 /go2js.exe
 out.js
 *.out
+/bench/out/
+/bench/profiles/
