@@ -850,6 +850,18 @@ function go2jsStructCopy(value) {
 
 	const copy = Object.create(Object.getPrototypeOf(value));
 
+	// The name a struct carries is not a field of it but what the struct is, so
+	// it is kept rather than dropped: a copy that lost it would be written out
+	// as nothing in particular, where %T and %#v have to say what it is.
+	if (typeof value.__go2js_type_name === "string" && value.__go2js_type_name !== "") {
+		Object.defineProperty(copy, "__go2js_type_name", {
+			value: value.__go2js_type_name,
+			writable: true,
+			configurable: true,
+			enumerable: false
+		});
+	}
+
 	for (const key of Object.keys(value)) {
 		copy[key] = go2jsStructFieldCopy(value[key]);
 	}
