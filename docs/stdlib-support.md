@@ -14,8 +14,8 @@ of the package is a compile-time error yet.
 | base64 (`encoding/base64`) | 2       | 11    | 18   % | CorruptInputError, Encoding, NewEncoding, NoPadding, RawStdEncoding, RawURLEncoding, StdEncoding, StdPadding, URLEncoding |
 | big          | 0       | 0     | 0    % | none |
 | binary (`encoding/binary`) | 6       | 22    | 27   % | Append, AppendByteOrder, AppendUvarint, AppendVarint, ByteOrder, Decode, Encode, MaxVarintLen16, MaxVarintLen32, MaxVarintLen64, NativeEndian, Read, … |
-| bufio        | 9       | 25    | 36   % | ErrAdvanceTooFar, ErrBadReadCount, ErrFinalToken, ErrNegativeAdvance, ErrTooLong, NewReadWriter, NewReaderSize, NewWriterSize, ReadWriter, Reader, ScanBytes, ScanRunes, … |
-| bytes        | 43      | 64    | 67   % | FieldsFunc, FieldsFuncSeq, FieldsSeq, IndexFunc, IndexRune, LastIndexByte, LastIndexFunc, Lines, Reader, SplitAfterN, SplitAfterSeq, SplitSeq, … |
+| bufio        | 11      | 25    | 44   % | ErrAdvanceTooFar, ErrBadReadCount, ErrFinalToken, ErrNegativeAdvance, ErrTooLong, NewReadWriter, ReadWriter, Reader, ScanBytes, ScanRunes, ScanWords, Scanner, … |
+| bytes        | 44      | 64    | 68   % | FieldsFunc, FieldsFuncSeq, FieldsSeq, IndexFunc, IndexRune, LastIndexByte, LastIndexFunc, Lines, SplitAfterN, SplitAfterSeq, SplitSeq, ToLowerSpecial, … |
 | cmp          | 3       | 4     | 75   % | Ordered |
 | container/heap | 5       | 6     | 83   % | Interface |
 | container/list | 1       | 3     | 33   % | Element, List |
@@ -68,18 +68,18 @@ of the package is a compile-time error yet.
 | slog         | 0       | 0     | 0    % | none |
 | sort         | 18      | 22    | 81   % | Float64Slice, IntSlice, Interface, StringSlice |
 | strconv      | 37      | 38    | 97   % | NumError |
-| strings      | 50      | 60    | 83   % | FieldsFuncSeq, FieldsSeq, Lines, Reader, Replacer, SplitAfterSeq, SplitSeq, ToLowerSpecial, ToTitleSpecial, ToUpperSpecial |
+| strings      | 52      | 60    | 86   % | FieldsFuncSeq, FieldsSeq, Lines, SplitAfterSeq, SplitSeq, ToLowerSpecial, ToTitleSpecial, ToUpperSpecial |
 | sync         | 8       | 12    | 66   % | Locker, OnceFunc, OnceValue, OnceValues |
 | tabwriter    | 0       | 0     | 0    % | none |
 | template     | 0       | 0     | 0    % | none |
 | testing      | 16      | 27    | 59   % | AllocsPerRun, Benchmark, Cover, CoverBlock, CoverMode, PB, RegisterCover, RunBenchmarks, RunExamples, RunTests, Testing |
 | text/tabwriter | 9       | 9     | 100  % | none |
 | text/template | 4       | 16    | 25   % | ExecError, HTMLEscape, HTMLEscapeString, HTMLEscaper, IsTrue, JSEscape, JSEscapeString, JSEscaper, ParseFS, ParseFiles, ParseGlob, URLQueryEscaper |
-| time         | 61      | 73    | 83   % | Duration, LoadLocationFromTZData, Location, Month, ParseError, ParseInLocation, Ticker, Time, Timer, UnixMicro, UnixMilli, Weekday |
+| time         | 63      | 73    | 86   % | Duration, LoadLocationFromTZData, Location, Month, ParseError, ParseInLocation, Ticker, Time, Timer, Weekday |
 | unicode      | 20      | 291   | 6    % | ASCII_Hex_Digit, Adlam, Ahom, Anatolian_Hieroglyphs, Arabic, Armenian, Avestan, AzeriCase, Balinese, Bamum, Bassa_Vah, Batak, … |
 | unicode/utf16 | 7       | 7     | 100  % | none |
 | unsafe       | 5       | 9     | 55   % | Slice, SliceData, String, StringData |
 | url (`net/url`) | 11      | 16    | 68   % | Error, EscapeError, InvalidHostError, Userinfo, Values |
 | utf8 (`unicode/utf8`) | 19      | 19    | 100  % | none |
 
-**Total: 1053 of 2086 package-level exported names (50%) covered across 71 packages.**
+**Total: 1060 of 2086 package-level exported names (50%) covered across 71 packages.**
