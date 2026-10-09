@@ -211,6 +211,19 @@ func (e *emitter) mapKeyType(expr ast.Expr) types.Type {
 	return nil
 }
 
+// emitMapKey writes a map key the way the map's key type is written, so a value
+// going into an interface key is boxed the same on a lookup as on a store and
+// the lookup reaches the entry the store made.
+func (e *emitter) emitMapKey(mapExpr, key ast.Expr) error {
+	keyType := e.mapKeyType(mapExpr)
+
+	if keyType != nil && isInterfaceTarget(keyType) {
+		return e.emitInterfaceValue(key, keyType)
+	}
+
+	return e.emitExpr(key)
+}
+
 func (e *emitter) isTypeConversion(call *ast.CallExpr) bool {
 	if e.analysis == nil || call == nil || len(call.Args) != 1 {
 		return false
