@@ -3454,6 +3454,16 @@ function go2jsJSONUnmarshal(data, target, fields, destination, stringFields, fie
 
     try {
         const text = typeof data === "string" ? data : new TextDecoder().decode(Uint8Array.from(data));
+
+        // The text is checked the way Go checks it before any of it is read, so
+        // a text that is not a value fails with the character Go names and the
+        // room it was found in rather than with whatever the host parser says.
+        const scanError = go2jsJSONScanErrorOf(text);
+
+        if (scanError !== "") {
+            return go2jsJSONError(scanError);
+        }
+
         const value = JSON.parse(text);
 
         if (target === null || target === undefined) {
@@ -4839,7 +4849,24 @@ function go2jsJSONZeroValue(descriptor) {
 // destination stands.
 function go2jsJSONStore(value, target, descriptor, text, path) {
     if (descriptor === null || descriptor === undefined || descriptor.kind === undefined) {
-        return go2jsJSONCoerceAny(value);
+        return go2jsJSONCoerceAny(value, text, path);
+    }
+
+    // a string where a slice of bytes is read is the base64 of those bytes
+    // rather than a value of another kind, so it is read as bytes and not
+    // refused for being a string
+    if (descriptor.kind === "slice" && descriptor.elem !== null && descriptor.elem !== undefined &&
+        descriptor.elem.kind === "byte" && typeof value === "string") {
+        return go2jsJSONBase64Bytes(value);
+    }
+
+    // a value of another kind than the destination holds is refused, and the
+    // read goes on so that what did fit is still there beside the failure
+    if (descriptor.kind !== "ptr" && descriptor.kind !== "any" && !go2jsJSONFitsKind(value, descriptor.kind)) {
+        go2jsJSONSaveError(go2jsJSONError("json: cannot unmarshal " + go2jsJSONValueKind(value) +
+            " into Go value of type " + go2jsJSONGoTypeName(descriptor)));
+
+        return go2jsJSONZeroValue(descriptor);
     }
 
     switch (descriptor.kind) {
@@ -4939,7 +4966,7 @@ function go2jsJSONStore(value, target, descriptor, text, path) {
         return go2jsJSONStoreMap(value, target, descriptor.elem, text, path);
 
     default:
-        return go2jsJSONCoerce(value, descriptor.kind);
+        return go2jsJSONCoerce(value, descriptor.kind, text, path);
     }
 }
 
@@ -5095,8 +5122,16 @@ function go2jsJSONNewDecoder(reader) {
         buffer: "",
         position: 0,
         eof: false,
+        useNumber: false,
         stack: []
     };
+}
+
+// go2jsJSONDecoderUseNumber asks a decoder to keep the text of every number it
+// reads rather than the number the text stands for, since a number no double
+// holds the digits of is kept by holding on to how it was written.
+function go2jsJSONDecoderUseNumber(decoder) {
+    decoder.useNumber = true;
 }
 
 // go2jsJSONDecoderFill reads whatever more the reader has to offer. A reader
@@ -5221,7 +5256,16 @@ function go2jsJSONDecoderDecode(decoder, target, fields, destination, stringFiel
 
     decoder.position += text.length;
 
-    return go2jsJSONUnmarshal(text, target, fields, destination, stringFields, fieldTypes);
+    // A decoder that was asked for the text of numbers has it while the read
+    // runs, and one that was not leaves the flag as it found it.
+    const previous = go2jsJSONNumberAsText;
+    go2jsJSONNumberAsText = decoder.useNumber === true;
+
+    try {
+        return go2jsJSONUnmarshal(text, target, fields, destination, stringFields, fieldTypes);
+    } finally {
+        go2jsJSONNumberAsText = previous;
+    }
 }
 
 // go2jsJSONDecoderMore reports whether another value is left to read, which is
@@ -5322,6 +5366,10 @@ function go2jsJSONError(message) {
 // for whatever the program does with the fields that did fit.
 let go2jsJSONFirstError = null;
 
+// A read a decoder asked for the text of numbers keeps every number as the text
+// it was written with rather than as the double that text stands for.
+let go2jsJSONNumberAsText = false;
+
 function go2jsJSONSaveError(err) {
     if (go2jsJSONFirstError === null) {
         go2jsJSONFirstError = err;
@@ -5371,6 +5419,7 @@ function go2jsJSONFitsKind(value, kind) {
     case "bool":
         return typeof value === "boolean";
     case "slice":
+    case "array":
         return Array.isArray(value);
     case "map":
         return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -5407,6 +5456,64 @@ function go2jsJSONTypeName(kind) {
     default:
         return "value";
     }
+}
+
+// go2jsJSONGoTypeName is the type a destination was declared with, named the way
+// Go names it, which is what a read that did not fit says the value was refused
+// into. A pointer is named by what it points at, since that is what the value
+// was refused into.
+function go2jsJSONGoTypeName(descriptor) {
+    if (descriptor === null || descriptor === undefined) {
+        return "value";
+    }
+
+    if (descriptor.kind === "ptr") {
+        return go2jsJSONGoTypeName(descriptor.elem);
+    }
+
+    if (typeof descriptor.go === "string" && descriptor.go !== "") {
+        return descriptor.go;
+    }
+
+    return go2jsJSONTypeName(descriptor.kind);
+}
+
+// go2jsJSONFieldPath names a field the way Go names one in a read that did not
+// fit: the struct type it was declared in and the name JSON knows it by.
+function go2jsJSONFieldPath(target, fields, name, key) {
+    let label = "";
+
+    if (target !== null && target !== undefined) {
+        const found = go2jsGoTypeNameRaw(target);
+
+        if (typeof found === "string" && found !== "") {
+            const dot = found.lastIndexOf(".");
+            label = dot >= 0 ? found.slice(dot + 1) : found;
+        }
+    }
+
+    let jsonName = key;
+
+    if (fields !== null && fields !== undefined && fields[name] !== undefined) {
+        jsonName = fields[name];
+    }
+
+    return label === "" ? jsonName : label + "." + jsonName;
+}
+
+// go2jsJSONBase64Bytes is the bytes a JSON string stands for, since a string
+// where a slice of bytes is read is the base64 of those bytes. A string that is
+// not base64 is refused with the same words Go refuses it with.
+function go2jsJSONBase64Bytes(value) {
+    const decoded = go2jsBase64DecodeString(go2jsBase64StdEncoding(), value);
+
+    if (decoded[1] !== null && decoded[1] !== undefined) {
+        go2jsJSONSaveError(go2jsJSONError(decoded[1].message));
+
+        return [];
+    }
+
+    return decoded[0];
 }
 
 function go2jsJSONCoerceString(value) {
@@ -5454,33 +5561,44 @@ function go2jsJSONAnyList(list) {
 // go2jsJSONCoerceAny is a value of the text read as a value nothing is known
 // about: a number is a float64, an object is a map of them, and an array is a
 // list of whatever its own elements are.
-function go2jsJSONCoerceAny(value) {
+function go2jsJSONCoerceAny(value, text, path) {
     if (value === null || value === undefined) {
         return null;
     }
 
     if (Array.isArray(value)) {
-        return go2jsJSONAnyList(value.map(go2jsJSONCoerceAny));
+        return go2jsJSONAnyList(value.map((item, index) => go2jsJSONCoerceAny(item, text, go2jsJSONPath(path, String(index)))));
     }
 
     if (typeof value === "object") {
         const map = go2jsJSONAnyMap(go2jsMakeMap());
 
         for (const key of Object.keys(value)) {
-            go2jsMapSet(map, key, go2jsJSONCoerceAny(value[key]));
+            go2jsMapSet(map, key, go2jsJSONCoerceAny(value[key], text, go2jsJSONPath(path, key)));
         }
 
         return map;
     }
 
     if (typeof value === "number") {
+        // A number a decoder asked to keep as text is kept as the text it was
+        // written with, which is the only way a number no double holds the
+        // digits of keeps them.
+        if (go2jsJSONNumberAsText && text !== null && text !== undefined) {
+            const written = go2jsJSONRawText(text, path);
+
+            if (written !== null && written !== undefined && go2jsJSONNumberLiteral(written)) {
+                return go2jsInterface(written, "json.Number", "json.Number", false);
+            }
+        }
+
         return go2jsJSONAnyNumber(value);
     }
 
     return value;
 }
 
-function go2jsJSONCoerce(value, kind) {
+function go2jsJSONCoerce(value, kind, text, path) {
     if (kind === "string") {
         return go2jsJSONCoerceString(value);
     }
@@ -5499,7 +5617,7 @@ function go2jsJSONCoerce(value, kind) {
         return Boolean(value);
     }
 
-    return go2jsJSONCoerceAny(value);
+    return go2jsJSONCoerceAny(value, text, path);
 }
 
 function go2jsJSONTargetMap(target) {
@@ -5586,13 +5704,25 @@ function go2jsJSONDecode(value, target, fields, stringFields, fieldTypes, text, 
         const item = value[key];
 
         // a field a tag marked ",string" holds the text of the value, so the
-        // text is read back into the value it stands for
-        if (stringFields && stringFields.indexOf(name) >= 0 && typeof item === "string") {
+        // text is read back into the value it stands for, and a value written
+        // without that text around it is refused the way Go refuses it
+        if (stringFields && stringFields.indexOf(name) >= 0) {
+            const marked = fieldTypes !== null && fieldTypes !== undefined && fieldTypes[name] !== undefined ? fieldTypes[name] : null;
+
+            if (typeof item !== "string") {
+                if (item !== null && item !== undefined) {
+                    go2jsJSONSaveError(go2jsJSONError("json: invalid use of ,string struct tag, trying to unmarshal unquoted value into " + go2jsJSONGoTypeName(marked)));
+                }
+
+                continue;
+            }
+
             try {
                 target[name] = JSON.parse(item);
             } catch (err) {
-                target[name] = item;
+                go2jsJSONSaveError(go2jsJSONError("json: invalid use of ,string struct tag, trying to unmarshal " + JSON.stringify(item) + " into " + go2jsJSONGoTypeName(marked)));
             }
+
             continue;
         }
 
@@ -5612,10 +5742,16 @@ function go2jsJSONDecode(value, target, fields, stringFields, fieldTypes, text, 
         if (fieldTypes !== null && fieldTypes !== undefined && fieldTypes[name] !== undefined) {
             const declared = fieldTypes[name];
 
-            if (declared !== null && declared !== undefined && declared.kind !== undefined &&
+            // a string read into a slice of bytes is the base64 of those bytes,
+            // so it is not refused for being a string
+            const byteText = declared !== null && declared !== undefined && declared.kind === "slice" &&
+                declared.elem !== null && declared.elem !== undefined && declared.elem.kind === "byte" &&
+                typeof item === "string";
+
+            if (!byteText && declared !== null && declared !== undefined && declared.kind !== undefined &&
                 !go2jsJSONFitsKind(item, go2jsJSONElemKind(declared))) {
                 go2jsJSONSaveError(go2jsJSONError("json: cannot unmarshal " + go2jsJSONValueKind(item) +
-                    " into Go struct field " + name + " of type " + go2jsJSONTypeName(go2jsJSONElemKind(declared))));
+                    " into Go struct field " + go2jsJSONFieldPath(target, fields, name, key) + " of type " + go2jsJSONGoTypeName(declared)));
                 continue;
             }
 
@@ -5626,7 +5762,7 @@ function go2jsJSONDecode(value, target, fields, stringFields, fieldTypes, text, 
         // A field the program declared no type for holds a value nothing is
         // known about, which is read as such rather than as the plain value the
         // text happened to be written with.
-        target[name] = go2jsJSONCoerceAny(item);
+        target[name] = go2jsJSONCoerceAny(item, text, go2jsJSONPath(path, key));
     }
 }
 
