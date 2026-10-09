@@ -8279,7 +8279,21 @@ function go2jsMapKeySignature(value) {
 		return null;
 	}
 
-	if (value.__go2js_pointer === true || value.__go2js_interface === true ||
+	// A value held in an interface is found by the type it holds and the value
+	// it holds, which is how Go weighs one interface against another. A pointer
+	// held in an interface is still told apart by which pointer it is, since two
+	// pointers to equal values are two pointers.
+	if (value.__go2js_interface === true) {
+		const held = value.value === value ? value : value.value;
+
+		if (held !== null && typeof held === "object" && held.__go2js_pointer === true) {
+			return null;
+		}
+
+		return "iface:" + String(value.type) + ":" + go2jsMapKeyPart(held);
+	}
+
+	if (value.__go2js_pointer === true ||
 		value.__go2js_reflectValue === true || value.__go2js_reflectType === true) {
 		return null;
 	}

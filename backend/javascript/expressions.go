@@ -1125,6 +1125,25 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				e.write("()")
 				return nil
 			}
+
+			// A delete names the key of a map, so the key is written the way the
+			// map's key type is written, the same as a lookup and a store.
+			if name == "go2jsMapDelete" && len(x.Args) == 2 {
+				e.write("(")
+
+				if err := e.emitExpr(x.Args[0]); err != nil {
+					return err
+				}
+
+				e.write(", ")
+
+				if err := e.emitMapKey(x.Args[0], x.Args[1]); err != nil {
+					return err
+				}
+
+				e.write(")")
+				return nil
+			}
 		} else {
 			if callForm == callYield {
 				e.write("(yield* ")
@@ -1324,7 +1343,7 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				return err
 			}
 			e.write(", ")
-			if err := e.emitExpr(x.Index); err != nil {
+			if err := e.emitMapKey(x.X, x.Index); err != nil {
 				return err
 			}
 			e.write(", ")
