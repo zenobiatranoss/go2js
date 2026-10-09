@@ -385,6 +385,7 @@ var jsonStreamMethods = map[string]bool{
 	"encoding/json.Encoder.SetIndent":        true,
 	"encoding/json.Encoder.SetEscapeHTML":    true,
 	"encoding/json.Decoder.Decode":           true,
+	"encoding/json.Decoder.UseNumber":        true,
 	"encoding/json.Decoder.More":             true,
 	"encoding/json.Decoder.Buffered":         true,
 	"encoding/json.Decoder.Token":            true,
@@ -530,6 +531,16 @@ func (e *emitter) emitJSONMethodCall(call *ast.CallExpr, selector *ast.SelectorE
 		e.write(")")
 		return true, nil
 
+	case "encoding/json.Decoder.UseNumber":
+		e.write("go2jsJSONDecoderUseNumber(")
+
+		if err := e.emitExpr(selector.X); err != nil {
+			return true, err
+		}
+
+		e.write(")")
+		return true, nil
+
 	case "encoding/json.Decoder.More", "encoding/json.Decoder.Buffered":
 		helper := "go2jsJSONDecoderMore"
 		if strings.HasSuffix(key, ".Buffered") {
@@ -613,19 +624,26 @@ func jsonDestinationTypeSeen(t gotypes.Type, seen map[gotypes.Type]bool) string 
 		return "null"
 	}
 
+	// A destination is named as Go names it as well, so a value read that does
+	// not fit says the type it was refused into the way Go says it.
+	goName := strconv.Quote(gotypes.TypeString(t, nil))
+
 	switch value := t.(type) {
 	case *gotypes.Pointer:
 		return `{"kind":"ptr","elem":` + jsonDestinationTypeSeen(value.Elem(), seen) + `}`
 	case *gotypes.Slice:
 		if jsonByteElem(value.Elem()) {
-			return `{"kind":"slice","elem":{"kind":"byte"}}`
+			// a slice of bytes is named the way reflect names it rather than
+			// the way it is written, since that is the name a read that did not
+			// fit is refused with
+			return `{"kind":"slice","elem":{"kind":"byte"},"go":"[]uint8"}`
 		}
 
-		return `{"kind":"slice","elem":` + jsonDestinationTypeSeen(value.Elem(), seen) + `}`
+		return `{"kind":"slice","elem":` + jsonDestinationTypeSeen(value.Elem(), seen) + `,"go":` + goName + `}`
 	case *gotypes.Array:
-		return `{"kind":"array","len":` + strconv.FormatInt(value.Len(), 10) + `,"elem":` + jsonDestinationTypeSeen(value.Elem(), seen) + `}`
+		return `{"kind":"array","len":` + strconv.FormatInt(value.Len(), 10) + `,"elem":` + jsonDestinationTypeSeen(value.Elem(), seen) + `,"go":` + goName + `}`
 	case *gotypes.Map:
-		return `{"kind":"map","elem":` + jsonDestinationTypeSeen(value.Elem(), seen) + `}`
+		return `{"kind":"map","elem":` + jsonDestinationTypeSeen(value.Elem(), seen) + `,"go":` + goName + `}`
 	}
 
 	// A named type is described by what it stands for, under the name the
@@ -662,14 +680,14 @@ func jsonDestinationTypeSeen(t gotypes.Type, seen map[gotypes.Type]bool) string 
 	switch value := underlying.(type) {
 	case *gotypes.Basic:
 		if value.Info()&gotypes.IsString == gotypes.IsString {
-			return `{"kind":"string"}`
+			return `{"kind":"string","go":` + goName + `}`
 		}
 
 		if value.Info()&gotypes.IsBoolean == gotypes.IsBoolean {
-			return `{"kind":"bool"}`
+			return `{"kind":"bool","go":` + goName + `}`
 		}
 
-		return `{"kind":"number"}`
+		return `{"kind":"number","go":` + goName + `}`
 
 	case *gotypes.Interface:
 		return `{"kind":"any"}`
@@ -690,7 +708,7 @@ func jsonDestinationTypeSeen(t gotypes.Type, seen map[gotypes.Type]bool) string 
 			return `{"kind":"any"}`
 		}
 
-		return `{"kind":"struct","name":` + strconv.Quote(name) + `,"fields":` + mapping + `,"string":` + stringFields + `,"types":` + fieldTypes + `}`
+		return `{"kind":"struct","name":` + strconv.Quote(name) + `,"go":` + goName + `,"fields":` + mapping + `,"string":` + stringFields + `,"types":` + fieldTypes + `}`
 	}
 
 	// A named type over a slice, a map or a pointer is described by that, and
