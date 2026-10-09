@@ -341,6 +341,8 @@ func (e *emitter) emitJSONCall(call *ast.CallExpr, selector *ast.SelectorExpr) (
 			e.write(`"", ""`)
 		}
 
+		e.write(", ")
+		e.write(e.emitJSONDestination(e.analyzedType(call.Args[0])))
 		e.write(")")
 		return true, nil
 
@@ -453,6 +455,8 @@ func (e *emitter) emitJSONMethodCall(call *ast.CallExpr, selector *ast.SelectorE
 		e.write(e.emitJSONStringFields(e.analyzedType(call.Args[0])))
 		e.write(", ")
 		e.write(e.emitJSONTextFields(e.analyzedType(call.Args[0])))
+		e.write(", ")
+		e.write(e.emitJSONDestination(e.analyzedType(call.Args[0])))
 		e.write(")")
 		return true, nil
 
@@ -591,6 +595,14 @@ func jsonDestinationType(t gotypes.Type) string {
 	return jsonDestinationTypeSeen(t, map[gotypes.Type]bool{})
 }
 
+// jsonByteElem reports whether a type stands for a byte, which is what JSON
+// writes as base64 when it is the element of a slice or an array.
+func jsonByteElem(t gotypes.Type) bool {
+	basic, ok := t.Underlying().(*gotypes.Basic)
+
+	return ok && basic.Kind() == gotypes.Uint8
+}
+
 // jsonDestinationTypeSeen is jsonDestinationType for a type that is reached
 // from itself. A struct that holds itself, directly or through a chain of
 // structs that hold themselves, is described by its name alone: the value it
@@ -605,6 +617,10 @@ func jsonDestinationTypeSeen(t gotypes.Type, seen map[gotypes.Type]bool) string 
 	case *gotypes.Pointer:
 		return `{"kind":"ptr","elem":` + jsonDestinationTypeSeen(value.Elem(), seen) + `}`
 	case *gotypes.Slice:
+		if jsonByteElem(value.Elem()) {
+			return `{"kind":"slice","elem":{"kind":"byte"}}`
+		}
+
 		return `{"kind":"slice","elem":` + jsonDestinationTypeSeen(value.Elem(), seen) + `}`
 	case *gotypes.Array:
 		return `{"kind":"array","len":` + strconv.FormatInt(value.Len(), 10) + `,"elem":` + jsonDestinationTypeSeen(value.Elem(), seen) + `}`

@@ -2855,11 +2855,14 @@ function go2jsURLValuesEncode(values) {
 }
 
 
-function go2jsJSONMarshal(value, fields, omitEmpty, stringFields, textFields, prefix, indent) {
+function go2jsJSONMarshal(value, fields, omitEmpty, stringFields, textFields, prefix, indent, types) {
     try {
-        const encoded = go2jsJSONEncode(value, fields, omitEmpty, stringFields, textFields, prefix, indent);
+        const encoded = go2jsJSONEncode(value, fields, omitEmpty, stringFields, textFields, prefix, indent, types);
 
-        return [go2jsJSONText(encoded, prefix, indent, true), null];
+        // the text a marshal writes is the bytes of a []byte, so it is kept as
+        // bytes rather than as the text itself, since a byte slice and a string
+        // are read differently even when they hold the same characters
+        return [go2jsStringToBytes(go2jsJSONText(encoded, prefix, indent, true)), null];
     } catch (err) {
         return [null, err];
     }
@@ -2984,20 +2987,79 @@ function go2jsJSONText(encoded, prefix, indent, escapeHTML) {
     return text;
 }
 
-function go2jsJSONEncode(value, fields, omitEmpty, stringFields, textFields, prefix, indent) {
+function go2jsJSONEncode(value, fields, omitEmpty, stringFields, textFields, prefix, indent, types) {
+    // A nil slice or a nil map travels as a value of its own that still says
+    // which it is, and JSON writes every nil as nothing at all.
+    if (value !== null && value !== undefined && typeof value === "object" && value.__go2js_nil === true) {
+        return null;
+    }
+
+    // A pointer is written as the value it points at, and a nil pointer is
+    // written as nothing, which is what the value behind it being nothing
+    // comes down to.
+    while (value !== null && value !== undefined && typeof value === "object" && value.__go2js_pointer === true) {
+        value = go2jsDeref(value);
+
+        if (types !== null && types !== undefined && types.kind === "ptr") {
+            types = types.elem;
+        }
+    }
+
     if (value === null || value === undefined) {
         return null;
     }
 
+    // A number JSON cannot write is refused rather than written as nothing,
+    // since a NaN and an infinity have no text a JSON number is written with.
+    if (typeof value === "number") {
+        if (Number.isNaN(value)) {
+            throw new Error("json: unsupported value: NaN");
+        }
+
+        if (value === Infinity) {
+            throw new Error("json: unsupported value: +Inf");
+        }
+
+        if (value === -Infinity) {
+            throw new Error("json: unsupported value: -Inf");
+        }
+
+        return value;
+    }
+
+    // A slice of bytes is written as the base64 of its bytes rather than as
+    // the list of numbers it holds, which is what a []byte is for JSON.
+    if (types !== null && types !== undefined && types.elem !== null && types.elem !== undefined && types.elem.kind === "byte" &&
+        (Array.isArray(value) || value instanceof Uint8Array)) {
+        return go2jsBase64EncodeToString(go2jsBase64StdEncoding(), value);
+    }
+
     if (Array.isArray(value)) {
-        return value.map(item => go2jsJSONEncode(item, null, null, null, null, prefix, indent));
+        const elem = types !== null && types !== undefined && types.elem !== undefined ? types.elem : null;
+
+        return value.map(item => go2jsJSONEncode(item, null, null, null, null, prefix, indent, elem));
     }
 
     if (value instanceof go2jsNativeMap) {
-        const out = {};
+        const elem = types !== null && types !== undefined && types.elem !== undefined ? types.elem : null;
+
+        // A map's keys are written in the order of their names rather than in
+        // the order they were put in, so a map and its text stand in one
+        // order however the map was built.
+        const entries = [];
+
         for (const [key, item] of value.entries()) {
-            out[go2jsStringify(key)] = go2jsJSONEncode(item, null, null, null, null, prefix, indent);
+            entries.push([go2jsStringify(key), item]);
         }
+
+        entries.sort((left, right) => left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : 0);
+
+        const out = {};
+
+        for (const [key, item] of entries) {
+            out[key] = go2jsJSONEncode(item, null, null, null, null, prefix, indent, elem);
+        }
+
         return out;
     }
 
@@ -3018,6 +3080,11 @@ function go2jsJSONEncode(value, fields, omitEmpty, stringFields, textFields, pre
             textFields = own.textFields;
         }
     }
+
+    // what each field holds was written beside the value when it was written
+    // by a program, so a field holding bytes or a pointer of its own is known
+    // here rather than found out by looking the value over
+    const held = types !== null && types !== undefined && types.types !== undefined ? types.types : null;
 
     if (fields) {
         const out = {};
@@ -3049,7 +3116,9 @@ function go2jsJSONEncode(value, fields, omitEmpty, stringFields, textFields, pre
                 continue;
             }
 
-            out[name] = go2jsJSONEncode(item, null, null, null, null);
+            const fieldTypes = held !== null && held[field] !== undefined ? held[field] : null;
+
+            out[name] = go2jsJSONEncode(item, null, null, null, null, prefix, indent, fieldTypes);
         }
 
         return out;
@@ -3058,7 +3127,9 @@ function go2jsJSONEncode(value, fields, omitEmpty, stringFields, textFields, pre
     const out = {};
 
     for (const key of Object.keys(value)) {
-        out[key] = go2jsJSONEncode(value[key], null, null, null, null, prefix, indent);
+        const fieldTypes = held !== null && held[key] !== undefined ? held[key] : null;
+
+        out[key] = go2jsJSONEncode(value[key], null, null, null, null, prefix, indent, fieldTypes);
     }
 
     return out;
@@ -4968,9 +5039,9 @@ function go2jsJSONNewEncoder(writer) {
     };
 }
 
-function go2jsJSONEncoderEncode(encoder, value, fields, omitEmpty, stringFields, textFields) {
+function go2jsJSONEncoderEncode(encoder, value, fields, omitEmpty, stringFields, textFields, types) {
     try {
-        const encoded = go2jsJSONEncode(value, fields, omitEmpty, stringFields, textFields, encoder.prefix, encoder.indent);
+        const encoded = go2jsJSONEncode(value, fields, omitEmpty, stringFields, textFields, encoder.prefix, encoder.indent, types);
         const text = go2jsJSONText(encoded, encoder.prefix, encoder.indent, encoder.escapeHTML);
 
         return go2jsJSONWrite(encoder.writer, text + "\n");
