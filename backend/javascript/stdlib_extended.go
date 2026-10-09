@@ -4165,18 +4165,49 @@ function go2jsTimeStopChannel(channel) {
 	return true;
 }
 
+// go2jsTimeResetChannel sets a timer to come due a duration from now and says
+// whether it had been waiting to come due before, which is what a Reset reports.
+// A ticker keeps ticking on the new period rather than the one it was made with,
+// so a reset that names a period has it taken as the period now.
+function go2jsTimeResetChannel(channel, d, period) {
+	const active = channel.timerDeadline !== undefined;
+
+	go2jsTimers.delete(channel);
+
+	if (period === true) {
+		channel.timerPeriod = go2jsDurationNanos(d);
+	}
+
+	const due = go2jsTimeAdd(go2jsTimeNow(), d);
+
+	channel.timerDeadline = go2jsTimeDateOf(due).getTime();
+	channel.timerDue = due;
+	go2jsTimers.set(channel, due);
+
+	return active;
+}
+
 // go2jsTimeNewTimer waits for a duration and then sends the moment on a
 // channel, the way time.NewTimer does. The timer holds that channel so a Stop
 // can take it back out of the schedule before it fires.
 function go2jsTimeNewTimer(d) {
 	const channel = go2jsTimeAfter(d);
+	const timer = {C: channel, timerChannel: channel};
 
 	// A Stop says whether it was the one that kept the timer from firing, so a
 	// timer that has already fired, or that was stopped before, reports that it
 	// stopped nothing.
-	return {C: channel, timerChannel: channel, Stop: function() {
+	timer.Stop = function() {
 		return go2jsTimeStopChannel(channel);
-	}};
+	};
+
+	// A Reset says whether the timer had been waiting, and puts it back in the
+	// schedule a duration from now whether it had or not.
+	timer.Reset = function(duration) {
+		return go2jsTimeResetChannel(channel, duration, false);
+	};
+
+	return timer;
 }
 
 // go2jsTimeNewTicker sends the moment on a channel over and over, every
@@ -4185,14 +4216,23 @@ function go2jsTimeNewTimer(d) {
 // a consumer that missed a tick sees the next one rather than falling behind.
 function go2jsTimeNewTicker(d) {
 	const channel = go2jsChannel(1);
+	const ticker = {C: channel, timerChannel: channel};
 
 	channel.timerPeriod = go2jsDurationNanos(d);
 	go2jsTimerArm(channel);
 
-	return {C: channel, timerChannel: channel, Stop: function() {
+	ticker.Stop = function() {
 		channel.timerPeriod = null;
 		go2jsTimeStopChannel(channel);
-	}};
+	};
+
+	// A ticker's Reset changes the period going on, which is the period the
+	// next tick is armed under, rather than waiting on the old period once more.
+	ticker.Reset = function(duration) {
+		go2jsTimeResetChannel(channel, duration, true);
+	};
+
+	return ticker;
 }
 
 // go2jsTimeAfterFunc runs a function once, a duration from now, and hands back a
@@ -4213,10 +4253,25 @@ function go2jsTimeAfterFunc(d, fn) {
 	// rather than from a timer of its own, which keeps one clock for the whole
 	// program. The timer starts it as a goroutine of its own, which is what
 	// Go writes it to mean.
-	channel.timerCallback = function* () {
+	const call = function* () {
 		timer.ran = true;
 		yield* go2jsCall(fn, null, []);
 	};
+
+	// A Reset says whether the function had still been due to run, and puts it
+	// back in the schedule a duration from now whether it had or not. Whether it
+	// had already run or not, the function runs again when the new moment comes.
+	timer.Reset = function(duration) {
+		const active = channel.timerDeadline !== undefined;
+
+		timer.ran = false;
+		channel.timerCallback = call;
+		go2jsTimeResetChannel(channel, duration, false);
+
+		return active;
+	};
+
+	channel.timerCallback = call;
 
 	return timer;
 }
