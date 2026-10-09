@@ -953,9 +953,7 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			e.needsRuntime = true
 			e.write("go2jsNew(")
 			e.write(e.collectionZeroValue(t))
-			e.write(`,"`)
-			e.write(concreteTypeName(t))
-			e.write(`")`)
+			e.write("," + strconv.Quote(concreteTypeName(t)) + ")")
 			return nil
 		}
 
@@ -2354,9 +2352,7 @@ func (e *emitter) emitErrorsAs(call *ast.CallExpr) error {
 		}
 	}
 
-	e.write(`"`)
-	e.write(concreteTypeName(target))
-	e.write(`")`)
+	e.write(strconv.Quote(concreteTypeName(target)) + ")")
 
 	return nil
 }
