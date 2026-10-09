@@ -234,15 +234,15 @@ func (e *emitter) emitInterfaceValue(expr ast.Expr, target gotypes.Type) error {
 		}
 
 	interfaceName:
-		e.write(`, "`)
+		name := ""
+		display := ""
+
 		if info, ok := e.analysis.Types[expr]; ok && info.Type != nil {
-			e.write(concreteTypeName(info.Type))
+			name = concreteTypeName(info.Type)
+			display = goTypeName(info.Type)
 		}
-		e.write(`", "`)
-		if info, ok := e.analysis.Types[expr]; ok && info.Type != nil {
-			e.write(goTypeName(info.Type))
-		}
-		e.write(`")`)
+
+		e.write(", " + strconv.Quote(name) + ", " + strconv.Quote(display) + ")")
 		return nil
 	}
 
@@ -271,11 +271,7 @@ func (e *emitter) emitInterfaceValue(expr ast.Expr, target gotypes.Type) error {
 				return err
 			}
 
-			e.write(`, "`)
-			e.write(name)
-			e.write(`", "`)
-			e.write(goTypeName(e.analysis.Types[expr].Type))
-			e.write(`")`)
+			e.write(", " + strconv.Quote(name) + ", " + strconv.Quote(goTypeName(e.analysis.Types[expr].Type)) + ")")
 			return nil
 		}
 
@@ -293,11 +289,8 @@ func (e *emitter) emitInterfaceValue(expr ast.Expr, target gotypes.Type) error {
 					return err
 				}
 
-				e.write(`, "`)
-				e.write(goTypeName(info.Type))
-				e.write(`", "`)
-				e.write(goTypeName(info.Type))
-				e.write(`", true)`)
+				name := goTypeName(info.Type)
+				e.write(", " + strconv.Quote(name) + ", " + strconv.Quote(name) + ", true)")
 				return nil
 			}
 		}
