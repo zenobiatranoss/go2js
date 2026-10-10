@@ -1769,8 +1769,15 @@ function go2jsFilepathSplit(value) {
 	return [path.slice(0, index + 1), path.slice(index + 1)];
 }
 
+// The separator the runtime names paths with is the one it draws them with, so a
+// path already written with that separator has nothing to change, and the two
+// ways of writing one are the same way.
 function go2jsFilepathToSlash(value) {
-	return String(value).split("\\").join("/");
+	return String(value);
+}
+
+function go2jsFilepathFromSlash(value) {
+	return String(value);
 }
 
 // A pattern names the files it matches with the marks of a shell, and each of
@@ -12834,6 +12841,64 @@ function go2jsStrconvItoa(value, base) {
 	return Math.trunc(value).toString(base);
 }
 
+// go2jsStrconvBase reads the base a number is written in and the digits of it,
+// with the sign already taken off. A base of nothing asks Go to read it from
+// how the digits are written: a leading 0x, 0o or 0b names sixteen, eight or
+// two, a bare leading zero names eight, and anything else names ten.
+function go2jsStrconvBase(text, base) {
+	let resolved = base === undefined || base === null ? 0 : base;
+	let digits = text;
+	const inferred = resolved === 0;
+
+	if (inferred) {
+		if (/^0[xX]/.test(digits)) {
+			resolved = 16;
+			digits = digits.slice(2);
+		} else if (/^0[oO]/.test(digits)) {
+			resolved = 8;
+			digits = digits.slice(2);
+		} else if (/^0[bB]/.test(digits)) {
+			resolved = 2;
+			digits = digits.slice(2);
+		} else if (digits.length > 1 && digits[0] === "0") {
+			resolved = 8;
+		} else {
+			resolved = 10;
+		}
+
+		// Go lets a number written with no base of its own group its digits with
+		// underscores.
+		digits = digits.replace(/_/g, "");
+	}
+
+	return [resolved, digits];
+}
+
+// go2jsStrconvDigits holds what a base means a digit of a number is, and answers
+// the whole number those digits spell in that base.
+function go2jsStrconvNumber(base, digits) {
+	if (base === 10) {
+		return Number(digits);
+	}
+
+	return parseInt(digits, base);
+}
+
+// go2jsStrconvBig holds the whole number a run of digits spells, however wide the
+// number it spells is, since Go answers a sixty-four bit count with all of it.
+function go2jsStrconvBig(base, digits) {
+	switch (base) {
+	case 16:
+		return BigInt("0x" + digits);
+	case 8:
+		return BigInt("0o" + digits);
+	case 2:
+		return BigInt("0b" + digits);
+	default:
+		return BigInt(digits);
+	}
+}
+
 // go2jsStrconvParseInteger reads a whole number in the way Go's strconv does:
 // nothing but the digits of the number and an optional sign may be there, and
 // JavaScript's own parsing is far more forgiving, so the text is checked first.
@@ -12854,30 +12919,20 @@ function go2jsStrconvParseInteger(text, base) {
 		return null;
 	}
 
-	base = base === undefined || base === 0 ? 10 : base;
+	const [resolved, digits] = go2jsStrconvBase(text, base);
 
 	// A base that is not one of the ones Go accepts names no number at all.
-	if (![2, 8, 10, 16].includes(base)) {
+	if (![2, 8, 10, 16].includes(resolved)) {
 		return null;
 	}
 
-	const digits = base === 16 ? /^[0-9a-fA-F]+$/ : base === 10 ? /^[0-9]+$/ : base === 8 ? /^[0-7]+$/ : /^[01]+$/;
+	const pattern = resolved === 16 ? /^[0-9a-fA-F]+$/ : resolved === 10 ? /^[0-9]+$/ : resolved === 8 ? /^[0-7]+$/ : /^[01]+$/;
 
-	if (!digits.test(text)) {
+	if (!pattern.test(digits)) {
 		return null;
 	}
 
-	if (sign === "+" && /^0/.test(text)) {
-		return null;
-	}
-
-	let value;
-
-	if (base === 10) {
-		value = Number(text);
-	} else {
-		value = parseInt(text, base);
-	}
+	const value = go2jsStrconvNumber(resolved, digits);
 
 	if (typeof value !== "number" || !Number.isFinite(value)) {
 		return null;
@@ -12920,50 +12975,44 @@ function go2jsStrconvAtoi(s) {
 function go2jsStrconvParseInt(s, base, bitSize) {
 	const text = go2jsStringify(s).trim();
 
-	base = base === undefined || base === 0 ? 10 : base;
+	let body = text;
+	const sign = /^[+-]/.test(body) ? body[0] : "";
 
-	const parsed = go2jsStrconvParseInteger(text, base);
+	if (sign) {
+		body = body.slice(1);
+	}
 
-	if (parsed === null) {
+	const [resolved, digits] = go2jsStrconvBase(body, base);
+	const pattern = resolved === 16 ? /^[0-9a-fA-F]+$/ : resolved === 10 ? /^[0-9]+$/ : resolved === 8 ? /^[0-7]+$/ : /^[01]+$/;
+
+	if (![2, 8, 10, 16].includes(resolved) || !pattern.test(digits)) {
 		return [0, new Error('strconv.ParseInt: parsing "' + text + '": invalid syntax')];
 	}
 
-	// A signed count at the full sixty four bits keeps the digits it was given,
-	// because a double cannot hold them and rounding them would answer with a
-	// number Go never wrote.
 	if (bitSize === 64 || bitSize === 0 || bitSize === undefined) {
-		const digits = text.replace(/^[+-]/, "");
+		const magnitude = go2jsStrconvBig(resolved, digits);
+		const limit = sign === "-" ? 9223372036854775808n : 9223372036854775807n;
 
-		if (base === 10 && /^[0-9]+$/.test(digits)) {
-			const exact = BigInt(digits);
-
-			if (text.startsWith("-")) {
-				if (exact <= 9223372036854775808n) {
-					return [-exact, null];
-				}
-
-				return [0, new Error('strconv.ParseInt: parsing "' + text + '": value out of range')];
-			}
-
-			if (exact <= 9223372036854775807n) {
-				return [exact, null];
-			}
-
+		if (magnitude > limit) {
 			return [0, new Error('strconv.ParseInt: parsing "' + text + '": value out of range')];
 		}
 
-		if (base === 16 && /^[0-9a-fA-F]+$/.test(digits)) {
-			const exact = BigInt("0x" + digits);
-
-			return text.startsWith("-") ? [-exact, null] : [exact, null];
-		}
+		return [sign === "-" ? -magnitude : magnitude, null];
 	}
 
-	if (!go2jsStrconvFitsWidth(parsed, bitSize)) {
-		return [0, new Error('strconv.ParseInt: parsing "' + text + '": value out of range')];
+	const value = sign === "-" ? -go2jsStrconvNumber(resolved, digits) : go2jsStrconvNumber(resolved, digits);
+	const minimum = -Math.pow(2, bitSize - 1);
+	const maximum = Math.pow(2, bitSize - 1) - 1;
+
+	if (value < minimum) {
+		return [minimum, new Error('strconv.ParseInt: parsing "' + text + '": value out of range')];
 	}
 
-	return [parsed, null];
+	if (value > maximum) {
+		return [maximum, new Error('strconv.ParseInt: parsing "' + text + '": value out of range')];
+	}
+
+	return [value, null];
 }
 
 function go2jsStrconvParseUint(s, base, bitSize) {
@@ -12973,26 +13022,28 @@ function go2jsStrconvParseUint(s, base, bitSize) {
 		return [0, new Error('strconv.ParseUint: parsing "' + text + '": invalid syntax')];
 	}
 
-	// A count wider than a double can hold exactly is a count JavaScript keeps as
-	// a whole number of its own kind, which is where the digits are kept.
-	const digits = go2jsStrconvParseInteger(text, base);
+	const [resolved, digits] = go2jsStrconvBase(text, base);
+	const pattern = resolved === 16 ? /^[0-9a-fA-F]+$/ : resolved === 10 ? /^[0-9]+$/ : resolved === 8 ? /^[0-7]+$/ : /^[01]+$/;
 
-	if (digits === null) {
+	if (![2, 8, 10, 16].includes(resolved) || !pattern.test(digits)) {
 		return [0, new Error('strconv.ParseUint: parsing "' + text + '": invalid syntax')];
 	}
 
 	if (bitSize === 64 || bitSize === 0 || bitSize === undefined) {
-		const exact = BigInt(text);
+		const magnitude = go2jsStrconvBig(resolved, digits);
 
-		if (exact >= 0n && exact <= 18446744073709551615n) {
-			return [exact, null];
+		if (magnitude <= 18446744073709551615n) {
+			return [magnitude, null];
 		}
+
+		return [0, new Error('strconv.ParseUint: parsing "' + text + '": value out of range')];
 	}
 
-	const value = digits;
+	const value = go2jsStrconvNumber(resolved, digits);
+	const maximum = Math.pow(2, bitSize) - 1;
 
-	if (value < 0 || !go2jsStrconvFitsWidth(value, bitSize)) {
-		return [0, new Error('strconv.ParseUint: parsing "' + text + '": value out of range')];
+	if (value < 0 || value > maximum) {
+		return [Math.max(0, Math.min(value, maximum)), new Error('strconv.ParseUint: parsing "' + text + '": value out of range')];
 	}
 
 	return [value, null];
