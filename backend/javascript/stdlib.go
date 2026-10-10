@@ -385,6 +385,7 @@ var filepathFuncs = map[string]string{
 	"Rel":        "go2jsFilepathRel",
 	"Split":      "go2jsFilepathSplit",
 	"ToSlash":    "go2jsFilepathToSlash",
+	"FromSlash":  "go2jsFilepathFromSlash",
 	"Match":      "go2jsFilepathMatch",
 	"VolumeName": "go2jsFilepathVolumeName",
 	"Glob":       "go2jsFilepathGlob",
