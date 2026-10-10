@@ -70,6 +70,50 @@ func main() {
 `)
 }
 
+// A request target is the path a request asks for, with its query, and an
+// escape that says something the plain writing would not say is kept as it was
+// written rather than flattened into the character it stands for.
+func TestURLRequestTargetAndKeptEscapes(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"net/url"
+)
+
+func main() {
+	inputs := []string{
+		"https://example.com/path?q=1#frag",
+		"https://example.com",
+		"https://example.com?",
+		"mailto:user@example.com",
+		"//example.com/foo",
+		"/just/a/path?k=v",
+		"https://example.com/a%2Fb?x=%20#a b",
+		"https://example.com/caf%C3%A9",
+	}
+
+	for _, in := range inputs {
+		u, err := url.Parse(in)
+		if err != nil {
+			fmt.Println(in, "ERR", err)
+			continue
+		}
+
+		fmt.Println(u.RequestURI(), "|", u.EscapedPath(), "|", u.EscapedFragment(), "|", u.Path, "|", u.RawPath)
+	}
+
+	// A fragment written by name stays by name, and one written plainly is
+	// escaped where it has to be.
+	kept, _ := url.Parse("https://example.com/#a%20b")
+	fmt.Println(kept.EscapedFragment(), kept.Fragment, kept.RawFragment)
+
+	plain, _ := url.Parse("https://example.com/#a b")
+	fmt.Println(plain.EscapedFragment(), plain.Fragment, plain.RawFragment)
+}
+`)
+}
+
 // The characters an HTML entity stands for are read by the name, and the five
 // characters an HTML text cannot carry are written by name in their place.
 func TestHTMLEscapesAreReadAndWritten(t *testing.T) {
