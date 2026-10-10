@@ -340,13 +340,13 @@ function go2jsRunNow(generator) {
 	}
 }
 
-function* go2jsChanRecvPair(channel) {
+function* go2jsChanRecvPair(channel, zero) {
 	// A receive from a channel that was never made waits for ever, the same
 	// way it does in Go, and no send can ever answer it.
 	if (go2jsChannelIsNil(channel)) {
 		yield go2jsNeverReady();
 
-		return [go2jsChannelZero, false];
+		return [zero, false];
 	}
 
 	while (true) {
@@ -373,7 +373,7 @@ function* go2jsChanRecvPair(channel) {
 		}
 
 		if (channel.closed) {
-			return [go2jsChannelZero, false];
+			return [zero, false];
 		}
 
 		// A goroutine already waiting to send on this channel has the value
@@ -396,13 +396,13 @@ function* go2jsChanRecvPair(channel) {
 	}
 }
 
-function* go2jsChanRecv(channel) {
-	const pair = yield* go2jsChanRecvPair(channel);
+function* go2jsChanRecv(channel, zero) {
+	const pair = yield* go2jsChanRecvPair(channel, zero);
 
 	return pair[0];
 }
 
-function go2jsChanTryRecv(channel) {
+function go2jsChanTryRecv(channel, zero) {
 	if (go2jsChannelIsNil(channel)) {
 		return null;
 	}
@@ -415,7 +415,7 @@ function go2jsChanTryRecv(channel) {
 	}
 
 	if (channel.closed) {
-		return [go2jsChannelZero, false];
+		return [zero, false];
 	}
 
 	return null;
@@ -537,10 +537,6 @@ function go2jsChannelClose(channel) {
 	// receive reads the zero value, a send finds the channel closed under it,
 	// and a select chooses whichever of its cases the close made ready.
 	go2jsWake(channel);
-}
-
-function go2jsChannelZero() {
-	return undefined;
 }
 
 // go2jsSelectWait waits for one of the channels a select was written over to
