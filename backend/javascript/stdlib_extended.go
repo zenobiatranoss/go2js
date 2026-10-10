@@ -112,8 +112,8 @@ var packageVarMethods = map[string]string{
 	"base64.Encoding.DecodeString":   "go2jsBase64DecodeString",
 	"base64.Encoding.EncodedLen":     "go2jsBase64EncodedLen",
 	"base64.Encoding.DecodedLen":     "go2jsBase64DecodedLen",
-	"base64.Encoding.Encode":         "go2jsBase64EncoderWrite",
-	"base64.Encoding.Decode":         "go2jsBase64DecoderRead",
+	"base64.Encoding.Encode":         "go2jsBase64EncodeInto",
+	"base64.Encoding.Decode":         "go2jsBase64DecodeInto",
 	"base64.Encoding.Strict":         "go2jsBase64Strict",
 	"base64.NewEncoder.Encode":       "go2jsBase64EncoderWrite",
 	"base64.NewDecoder.Decode":       "go2jsBase64DecoderRead",
@@ -911,11 +911,17 @@ function go2jsBase64NewEncoding(alphabet, padding) {
 		DecodeString(value) {
 			return go2jsBase64DecodeString(this, value);
 		},
+		Encode(dst, src) {
+			return go2jsBase64EncodeInto(this, dst, src);
+		},
+		Decode(dst, src) {
+			return go2jsBase64DecodeInto(this, dst, src);
+		},
 		EncodedLen(n) {
 			return go2jsBase64EncodedLen(this, n);
 		},
 		DecodedLen(n) {
-			return go2jsBase64DecodedLen(n);
+			return go2jsBase64DecodedLen(this, n);
 		},
 		Strict() {
 			return go2jsBase64NewEncoding(this.alphabet, this.padding);
@@ -992,24 +998,38 @@ function go2jsBase64DecodeString(encoding, value) {
 	return [out, null];
 }
 
+// go2jsBase64EncodedLen is the number of characters the text takes. An encoding
+// that pads answers in fours, one that does not answers in sixths.
 function go2jsBase64EncodedLen(encoding, n) {
 	if (n === undefined) {
 		n = encoding;
+		encoding = undefined;
 	}
 
 	const value = Number(n);
 
-	return Math.ceil(value / 3) * 4;
+	if (encoding && (encoding.padding === "" || encoding.padding === undefined || encoding.padding === null)) {
+		return Math.floor((value * 8 + 5) / 6);
+	}
+
+	return Math.floor((value + 2) / 3) * 4;
 }
 
+// go2jsBase64DecodedLen is the number of bytes the text stands for, which is
+// counted in fours for an encoding that pads and in sixths for one that does not.
 function go2jsBase64DecodedLen(encoding, n) {
 	if (n === undefined) {
 		n = encoding;
+		encoding = undefined;
 	}
 
 	const value = Number(n);
 
-	return Math.floor(value * 3 / 4);
+	if (encoding && (encoding.padding === "" || encoding.padding === undefined || encoding.padding === null)) {
+		return Math.floor(value * 6 / 8);
+	}
+
+	return Math.floor(value / 4) * 3;
 }
 
 function go2jsBase64NewEncoder() {
@@ -1020,12 +1040,39 @@ function go2jsBase64NewDecoder() {
 	return go2jsBase64StdEncoding();
 }
 
-function go2jsBase64EncoderWrite(encoding, value) {
-	return go2jsBase64EncodeToString(encoding, value);
+// go2jsBase64EncodeInto is base64.Encoding.Encode: what was encoded is written
+// into the slice it was handed and the number of bytes written is answered.
+function go2jsBase64EncodeInto(encoding, dst, src) {
+	const encoded = go2jsStringToBytes(go2jsBase64EncodeToString(encoding, src));
+	const count = dst !== null && dst !== undefined && dst.length !== undefined && dst.length < encoded.length ? dst.length : encoded.length;
+
+	for (let index = 0; index < count; index++) {
+		dst[index] = encoded[index];
+	}
+
+	return count;
 }
 
-function go2jsBase64DecoderRead(encoding, value) {
-	return go2jsBase64DecodeString(encoding, value)[0];
+// go2jsBase64DecodeInto is base64.Encoding.Decode: what was decoded is written
+// into the slice it was handed, and the number of bytes written and the fault,
+// if the text was not base64, are answered together.
+function go2jsBase64DecodeInto(encoding, dst, src) {
+	const text = Array.isArray(src) || (src !== null && src !== undefined && src.length !== undefined) ? go2jsBytesToString(src) : src;
+	const result = go2jsBase64DecodeString(encoding, text);
+	const decoded = result[0];
+	const err = result[1];
+
+	if (err !== null && err !== undefined) {
+		return [0, err];
+	}
+
+	const count = dst !== null && dst !== undefined && dst.length !== undefined && dst.length < decoded.length ? dst.length : decoded.length;
+
+	for (let index = 0; index < count; index++) {
+		dst[index] = decoded[index];
+	}
+
+	return [count, null];
 }
 
 function go2jsLogFlags() {
@@ -3580,7 +3627,7 @@ function go2jsTimeNow() {
 // it is written as one: the goroutine sleeping waits there like any other, and
 // the scheduler decides when the moment has arrived.
 function* go2jsTimeSleep(d) {
-	yield* go2jsChanRecv(go2jsTimeAfter(d));
+	yield* go2jsChanRecv(go2jsTimeAfter(d), null);
 }
 
 // go2jsTimeFromUnix is the moment a count of seconds since the epoch names,
