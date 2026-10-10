@@ -14,6 +14,7 @@ of the package is a compile-time error yet.
 | base64 (`encoding/base64`) | 2       | 11    | 18   % | CorruptInputError, Encoding, NewEncoding, NoPadding, RawStdEncoding, RawURLEncoding, StdEncoding, StdPadding, URLEncoding |
 | big          | 0       | 0     | 0    % | none |
 | binary (`encoding/binary`) | 6       | 22    | 27   % | Append, AppendByteOrder, AppendUvarint, AppendVarint, ByteOrder, Decode, Encode, MaxVarintLen16, MaxVarintLen32, MaxVarintLen64, NativeEndian, Read, … |
+| bits         | 0       | 0     | 0    % | none |
 | bufio        | 14      | 25    | 56   % | ErrAdvanceTooFar, ErrBadReadCount, ErrFinalToken, ErrNegativeAdvance, ErrTooLong, NewReadWriter, ReadWriter, Reader, Scanner, SplitFunc, Writer |
 | bytes        | 61      | 64    | 95   % | ToLowerSpecial, ToTitleSpecial, ToUpperSpecial |
 | cmp          | 3       | 4     | 75   % | Ordered |
@@ -51,9 +52,9 @@ of the package is a compile-time error yet.
 | log          | 26      | 27    | 96   % | Logger |
 | log/slog     | 57      | 72    | 79   % | Attr, DiscardHandler, Handler, HandlerOptions, JSONHandler, Kind, Level, LevelVar, Leveler, LogValuer, Logger, Record, … |
 | maps         | 10      | 10    | 100  % | none |
-| math         | 85      | 97    | 87   % | Erf, Erfc, Erfcinv, Erfinv, FMA, J0, J1, Jn, Lgamma, Y0, Y1, Yn |
+| math         | 90      | 97    | 92   % | J0, J1, Jn, Lgamma, Y0, Y1, Yn |
 | math/big     | 1       | 25    | 4    % | Above, Accuracy, AwayFromZero, Below, ErrNaN, Exact, Float, Int, Jacobi, MaxBase, MaxExp, MaxPrec, … |
-| math/bits    | 45      | 50    | 90   % | ReverseBytes, ReverseBytes16, ReverseBytes32, ReverseBytes64, UintSize |
+| math/bits    | 50      | 50    | 100  % | none |
 | math/rand    | 12      | 23    | 52   % | ExpFloat64, Int31, Int31n, Int63n, NewZipf, NormFloat64, Rand, Read, Source, Source64, Zipf |
 | net          | 11      | 102   | 10   % | Addr, AddrError, Buffers, Conn, DNSConfigError, DNSError, DefaultResolver, Dial, DialIP, DialTCP, DialTimeout, DialUDP, … |
 | net/http/httptest | 4       | 9     | 44   % | DefaultRemoteAddr, NewServer, NewTLSServer, NewUnstartedServer, Server |
@@ -82,4 +83,4 @@ of the package is a compile-time error yet.
 | url (`net/url`) | 11      | 16    | 68   % | Error, EscapeError, InvalidHostError, Userinfo, Values |
 | utf8 (`unicode/utf8`) | 19      | 19    | 100  % | none |
 
-**Total: 1098 of 2086 package-level exported names (52%) covered across 71 packages.**
+**Total: 1108 of 2086 package-level exported names (53%) covered across 72 packages.**

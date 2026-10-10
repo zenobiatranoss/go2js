@@ -82,6 +82,9 @@ var packageConstants = map[string]string{
 	"utf8.UTFMax":    "4",
 	"utf8.MaxRune":   "1114111",
 
+	"math/bits.UintSize": "64",
+	"bits.UintSize":      "64",
+
 	"time.January":   "1",
 	"time.February":  "2",
 	"time.March":     "3",
