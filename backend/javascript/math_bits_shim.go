@@ -42,10 +42,20 @@ var bitsFuncs = map[string]string{
 	"Rotate32":        "go2jsBitsRotate32",
 	"Rotate64":        "go2jsBitsRotate64",
 	"Add":             "go2jsBitsAdd",
+	"Add32":           "go2jsBitsAdd32",
+	"Add64":           "go2jsBitsAdd64",
 	"Sub":             "go2jsBitsSub",
+	"Sub32":           "go2jsBitsSub32",
+	"Sub64":           "go2jsBitsSub64",
 	"Mul":             "go2jsBitsMul",
+	"Mul32":           "go2jsBitsMul32",
+	"Mul64":           "go2jsBitsMul64",
 	"Div":             "go2jsBitsDiv",
+	"Div32":           "go2jsBitsDiv32",
+	"Div64":           "go2jsBitsDiv64",
 	"Rem":             "go2jsBitsRem",
+	"Rem32":           "go2jsBitsRem32",
+	"Rem64":           "go2jsBitsRem64",
 	"Uint":            "go2jsBitsUint",
 }
 
@@ -350,43 +360,84 @@ function go2jsBitsRotateSigned(value, count, width) {
 	return go2jsBitsNarrow(go2jsBitsMask(right, width));
 }
 
-// go2jsBitsAdd adds two counts and the carry into them, and hands back the sum
-// and whether it carried out past the width it was asked about.
-function go2jsBitsAdd(x, y, carry) {
-	const total = go2jsBitsWide64(x) + go2jsBitsWide64(y) + go2jsBitsWide64(carry);
+// go2jsBitsAddN adds two counts and the carry into them at the width it was
+// asked about, and hands back the sum and whether it carried out past that width.
+function go2jsBitsAddN(x, y, carry, width) {
+	const total = go2jsBitsWide(x) + go2jsBitsWide(y) + go2jsBitsWide(carry);
 
 	// A sum that does not fit the width it was asked about is one that carried
 	// out of it, which is what the second answer reports. A sum that fits is one
 	// inside the width it was asked about, which is where Go looks for a carry.
-	const width = 64;
 	const limit = 1n << BigInt(width);
 	const carried = total < 0n || total >= limit;
 
 	return [go2jsBitsNarrow(go2jsBitsMask(total, width)), carried ? 1 : 0];
 }
 
-function go2jsBitsSub(x, y, borrow) {
+function go2jsBitsAdd(x, y, carry) {
+	return go2jsBitsAddN(x, y, carry, 64);
+}
+
+function go2jsBitsAdd32(x, y, carry) {
+	return go2jsBitsAddN(x, y, carry, 32);
+}
+
+function go2jsBitsAdd64(x, y, carry) {
+	return go2jsBitsAddN(x, y, carry, 64);
+}
+
+// go2jsBitsSubN takes one count and the borrow into it away from another at the
+// width it was asked about, and hands back the difference and whether the first
+// was the smaller of the two.
+function go2jsBitsSubN(x, y, borrow, width) {
 	const left = go2jsBitsWide(x);
 	const right = go2jsBitsWide(y) + go2jsBitsWide(borrow);
 	const total = left - right;
 
-	return [go2jsBitsNarrow(total), left < right ? 1 : 0];
+	return [go2jsBitsNarrow(go2jsBitsMask(total, width)), left < right ? 1 : 0];
 }
 
-// go2jsBitsMul multiplies two counts and hands back the high half of the
-// product and the low half of it, in that order.
-function go2jsBitsMul(x, y) {
+function go2jsBitsSub(x, y, borrow) {
+	return go2jsBitsSubN(x, y, borrow, 64);
+}
+
+function go2jsBitsSub32(x, y, borrow) {
+	return go2jsBitsSubN(x, y, borrow, 32);
+}
+
+function go2jsBitsSub64(x, y, borrow) {
+	return go2jsBitsSubN(x, y, borrow, 64);
+}
+
+// go2jsBitsMulN multiplies two counts at the width it was asked about and hands
+// back the high half of the product and the low half of it, in that order.
+function go2jsBitsMulN(x, y, width) {
 	const product = go2jsBitsWide(x) * go2jsBitsWide(y);
 
 	return [
-		go2jsBitsNarrow(go2jsBitsMask(product >> 64n, 64)),
-		go2jsBitsNarrow(go2jsBitsMask(product, 64)),
+		go2jsBitsNarrow(go2jsBitsMask(product >> BigInt(width), width)),
+		go2jsBitsNarrow(go2jsBitsMask(product, width)),
 	];
 }
 
-// go2jsBitsDiv divides one count by another, and the remainder of the division
-// is worked out from the two together rather than asked for on its own.
-function go2jsBitsDiv(hi, lo, y) {
+function go2jsBitsMul(x, y) {
+	return go2jsBitsMulN(x, y, 64);
+}
+
+function go2jsBitsMul32(x, y) {
+	return go2jsBitsMulN(x, y, 32);
+}
+
+function go2jsBitsMul64(x, y) {
+	return go2jsBitsMulN(x, y, 64);
+}
+
+// go2jsBitsDivN divides one count by another at the width it was asked about,
+// and the remainder of the division is worked out from the two together rather
+// than asked for on its own. A divisor of zero stops the program, and so does a
+// high half at least as large as the divisor, which is a quotient too wide for
+// the width.
+function go2jsBitsDivN(hi, lo, y, width) {
 	const divisor = go2jsBitsWide(y);
 
 	if (divisor === 0n) {
@@ -394,29 +445,56 @@ function go2jsBitsDiv(hi, lo, y) {
 	}
 
 	const high = go2jsBitsWide(hi);
-	const low = go2jsBitsWide(lo);
+
+	if (high >= divisor) {
+		throw go2jsStdlibError("integer overflow");
+	}
 
 	// The count being divided is the high half above the low one, so the
 	// division goes over both of them at once.
-	const numerator = (high << 64n) | low;
+	const numerator = (high << BigInt(width)) | go2jsBitsWide(lo);
 	const quotient = numerator / divisor;
 	const remainder = numerator % divisor;
 
-	return [go2jsBitsNarrow(go2jsBitsMask(quotient, 64)), go2jsBitsNarrow(remainder)];
+	return [go2jsBitsNarrow(go2jsBitsMask(quotient, width)), go2jsBitsNarrow(remainder)];
 }
 
-// go2jsBitsRem is the remainder of a division, worked out from the same three
+function go2jsBitsDiv(hi, lo, y) {
+	return go2jsBitsDivN(hi, lo, y, 64);
+}
+
+function go2jsBitsDiv32(hi, lo, y) {
+	return go2jsBitsDivN(hi, lo, y, 32);
+}
+
+function go2jsBitsDiv64(hi, lo, y) {
+	return go2jsBitsDivN(hi, lo, y, 64);
+}
+
+// go2jsBitsRemN is the remainder of a division, worked out from the same three
 // numbers the division itself is worked out from.
-function go2jsBitsRem(hi, lo, y) {
+function go2jsBitsRemN(hi, lo, y, width) {
 	const divisor = go2jsBitsWide(y);
 
 	if (divisor === 0n) {
 		throw go2jsStdlibError("integer divide by zero");
 	}
 
-	const numerator = (go2jsBitsWide(hi) << 64n) | go2jsBitsWide(lo);
+	const numerator = (go2jsBitsWide(hi) << BigInt(width)) | go2jsBitsWide(lo);
 
 	return go2jsBitsNarrow(numerator % divisor);
+}
+
+function go2jsBitsRem(hi, lo, y) {
+	return go2jsBitsRemN(hi, lo, y, 64);
+}
+
+function go2jsBitsRem32(hi, lo, y) {
+	return go2jsBitsRemN(hi, lo, y, 32);
+}
+
+function go2jsBitsRem64(hi, lo, y) {
+	return go2jsBitsRemN(hi, lo, y, 64);
 }
 
 // go2jsBitsUint reads a signed count of sixty four bits as an unsigned one, and
