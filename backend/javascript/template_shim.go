@@ -46,7 +46,7 @@ function go2jsTemplate(name) {
   t.Parse = function(text){ return [t, go2jsTemplateParse(t,text)]; };
   t.Execute = function(w,d){ return go2jsTemplateExecute(t,w,d); };
   t.ExecuteTemplate = function(n,w,d){ return go2jsTemplateExecuteTemplate(t,n,w,d); };
-  t.Funcs = function(f){ if (f!==null&&f!==undefined){ for (var k of Object.keys(f)) t.funcs[k]=f[k]; } return t; };
+  t.Funcs = function(f){ if (f!==null&&f!==undefined){ var unwrap=function(x){ return typeof go2jsInterfaceValue==="function"?go2jsInterfaceValue(x):x; }; if (f instanceof go2jsNativeMap){ f.forEach(function(v,k){ t.funcs[String(k)]=unwrap(v); }); } else { for (var k of Object.keys(f)) t.funcs[k]=unwrap(f[k]); } } return t; };
   return t;
 }
 function go2jsTemplateNew(name){ return go2jsTemplate(name); }
@@ -554,6 +554,7 @@ function go2jsTemplateResolve(token, args, dot, root, funcs, vars, ctx) {
   if (b !== undefined) return go2jsTemplateCallBuiltin(b, args, ctx);
   if (funcs && funcs[word] !== undefined) {
     var fn = funcs[word];
+    if (typeof go2jsInterfaceValue === "function") fn = go2jsInterfaceValue(fn);
     return typeof fn === "function" ? go2jsTemplateCall(fn,args) : fn;
   }
   if (args.length === 0) return "";
@@ -635,12 +636,13 @@ function go2jsTemplateField(word, base, args, dot, ctx, token){
     var isMap = (v instanceof go2jsNativeMap);
     if (isMap) {
       v = go2jsMapGet(v, p, null);
+      if (typeof go2jsInterfaceValue === "function") v = go2jsInterfaceValue(v);
       continue;
     }
     if (v.hasOwnProperty && v.hasOwnProperty(p)) {
       var d = v[p];
       if (typeof d === "function") v = d.bind(v);
-      else v = d;
+      else v = typeof go2jsInterfaceValue === "function" ? go2jsInterfaceValue(d) : d;
       continue;
     }
     throw go2jsTemplateExecFail("can't evaluate field "+p+" in type "+go2jsGoTypeName(v), "field", fieldBase+((token&&token.o!==undefined)?token.o:0), word);
@@ -750,6 +752,7 @@ function go2jsTemplateResolveForPipe(token, args, dot, root, funcs, vars, ctx) {
   }
   if (funcs && funcs[word] !== undefined) {
     var fn = funcs[word];
+    if (typeof go2jsInterfaceValue === "function") fn = go2jsInterfaceValue(fn);
     if (typeof fn !== "function") return fn;
     return function(v){ var all = args.slice(); all.push(v); return go2jsCallNow(fn,null,all); };
   }
