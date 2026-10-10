@@ -86,7 +86,9 @@ var flagConstants = map[string]string{
 
 var sha256Funcs = map[string]string{
 	"Sum256": "go2jsSHA256Sum256",
+	"Sum224": "go2jsSHA224Sum224",
 	"New":    "go2jsSHA256New",
+	"New224": "go2jsSHA224New",
 }
 
 var sha1Funcs = map[string]string{
@@ -326,10 +328,6 @@ function go2jsMathFrexp(value) {
 	}
 
 	return [mantissa, exponent];
-}
-
-function go2jsMathLdexp(fraction, exponent) {
-	return Number(fraction) * Math.pow(2, Number(exponent));
 }
 
 function go2jsMathIlogb(value) {
@@ -2723,6 +2721,70 @@ function go2jsSHA256Digest(data, state, absorbed) {
 
 function go2jsSHA256Sum256(data) {
 	return go2jsSHA256Digest(go2jsToArray(data));
+}
+
+// SHA-224 is SHA-256 with a different starting state and a digest of twenty
+// eight bytes rather than thirty two, so the compression is shared and only the
+// state and the truncation differ.
+function go2jsSHA224Init() {
+	return [0xc1059ed8, 0x367cd507, 0x3070dd17, 0xf70e5939, 0xffc00b31, 0x68581511, 0x64f98fa7, 0xbefa4fa4];
+}
+
+function go2jsSHA224Digest(data, state, absorbed) {
+	const current = state === undefined ? go2jsSHA224Init() : state.slice();
+	const padded = go2jsSHA256Pad(Array.from(data, item => Number(item) & 255), absorbed);
+
+	for (let offset = 0; offset < padded.length; offset += 64) {
+		go2jsSHA256Block(current, padded.slice(offset, offset + 64));
+	}
+
+	const out = [];
+
+	for (let index = 0; index < 7; index++) {
+		const word = current[index];
+		out.push((word >>> 24) & 255, (word >>> 16) & 255, (word >>> 8) & 255, word & 255);
+	}
+
+	return out;
+}
+
+function go2jsSHA224Sum224(data) {
+	return go2jsSHA224Digest(go2jsToArray(data));
+}
+
+function go2jsSHA224New() {
+	const state = go2jsSHA224Init();
+	state.buffer = [];
+	state.hashed = go2jsSHA224Init();
+	state.length = 0;
+
+	return go2jsInterface({
+		Size() {
+			return 28;
+		},
+		BlockSize() {
+			return 64;
+		},
+		Reset() {
+			const fresh = go2jsSHA224Init();
+			for (let index = 0; index < 8; index++) {
+				state[index] = fresh[index];
+			}
+
+			state.buffer = [];
+			state.hashed = go2jsSHA224Init();
+			state.length = 0;
+		},
+		Write(data) {
+			const bytes = Array.from(go2jsToArray(data), item => Number(item) & 255);
+			go2jsSHA256Buffered(state, bytes);
+			return bytes.length;
+		},
+		Sum(target) {
+			return go2jsToArray(target).concat(
+				go2jsSHA224Digest(state.buffer || [], state.hashed || go2jsSHA224Init(), state.length || 0));
+		}
+	}, "hash.Hash");
 }
 
 

@@ -1808,8 +1808,8 @@ function go2jsFilepathFromSlash(value) {
 // the characters it lists. The pattern is written as a pattern of the same
 // shape rather than matched a mark at a time, because the marks are only ever
 // matched together.
-function go2jsFilepathMatch(pattern, name) {
-	const compiled = go2jsFilepathPatternSource(pattern);
+function go2jsFilepathMatch(pattern, name, badPattern) {
+	const compiled = go2jsFilepathPatternSource(pattern, badPattern);
 
 	if (compiled[1] !== null) {
 		return compiled;
@@ -1818,11 +1818,22 @@ function go2jsFilepathMatch(pattern, name) {
 	return [new RegExp(compiled[0]).test(go2jsStringify(name)), null];
 }
 
+// path and filepath each name their own malformed-pattern sentinel, and both
+// are the same error string, so each is memoized under its own name to keep
+// them the distinct values Go keeps them as.
+function go2jsPathBadPattern() {
+	return go2jsSentinelError("syntax error in pattern", "*errors.errorString", "path.ErrBadPattern")();
+}
+
+function go2jsFilepathBadPattern() {
+	return go2jsSentinelError("syntax error in pattern", "*errors.errorString", "filepath.ErrBadPattern")();
+}
+
 // go2jsPathMatch names files with the pattern language of a shell, which is the
 // same language whether the names are read as paths of the machine or as paths
 // of the slash, since the slash is the separator the runtime names them with.
 function go2jsPathMatch(pattern, name) {
-	return go2jsFilepathMatch(pattern, name);
+	return go2jsFilepathMatch(pattern, name, go2jsPathBadPattern);
 }
 
 // go2jsFilepathSplitList cuts a list of paths apart on the mark that separates
@@ -1840,7 +1851,8 @@ function go2jsFilepathSplitList(value) {
 
 // go2jsFilepathPatternSource writes a pattern as one of the same shape, which is
 // what a name is asked against, and reports a pattern that cannot be written.
-function go2jsFilepathPatternSource(pattern) {
+function go2jsFilepathPatternSource(pattern, badPattern) {
+	const bad = badPattern === undefined || badPattern === null ? go2jsFilepathBadPattern : badPattern;
 	let source = "^";
 
 	for (let index = 0; index < pattern.length; index++) {
@@ -1858,7 +1870,7 @@ function go2jsFilepathPatternSource(pattern) {
 
 		if (char === "\\") {
 			if (index + 1 >= pattern.length) {
-				return [false, go2jsErrorsNew("syntax error in pattern")];
+				return [false, bad()];
 			}
 
 			source += go2jsFilepathQuote(pattern[index + 1]);
@@ -1890,7 +1902,7 @@ function go2jsFilepathPatternSource(pattern) {
 				const lo = go2jsFilepathClassChar(pattern, cursor);
 
 				if (lo === null) {
-					return [false, go2jsErrorsNew("syntax error in pattern")];
+					return [false, bad()];
 				}
 
 				cursor += Number(lo[0].slice(1));
@@ -1900,7 +1912,7 @@ function go2jsFilepathPatternSource(pattern) {
 					const hi = go2jsFilepathClassChar(pattern, cursor + 1);
 
 					if (hi === null) {
-						return [false, go2jsErrorsNew("syntax error in pattern")];
+						return [false, bad()];
 					}
 
 					cursor += 1 + Number(hi[0].slice(1));
@@ -13636,6 +13648,13 @@ function go2jsSortMethod(target, typeName, method) {
 		return undefined;
 	}
 
+	// An interface holds the value it was given next to the name of that
+	// value's type, and the methods belong to the name rather than to the box,
+	// so the box is opened before the method is looked for.
+	if (target.__go2js_interface === true) {
+		return go2jsSortMethod(target.value, target.type, method);
+	}
+
 	if (target.__go2js_pointer === true) {
 		const inner = target[go2jsPointerGet]();
 
@@ -13723,9 +13742,21 @@ function go2jsSortInterface(data, typeName) {
 
 function go2jsSortIsSortedInterface(data, typeName) {
 	const less = go2jsSortMethod(data, typeName, "Less");
-	const items = go2jsToArray(data);
+	const length = go2jsSortMethod(data, typeName, "Len");
+	let items = null;
+	let count;
 
-	for (let index = 1; index < items.length; index++) {
+	// A value that answers for its own length says how many items it holds,
+	// which is what a reversed or wrapped interface needs; a plain slice says
+	// it by being one.
+	if (typeof length === "function") {
+		count = Number(go2jsCallNow(length, null, []));
+	} else {
+		items = go2jsToArray(data);
+		count = items.length;
+	}
+
+	for (let index = 1; index < count; index++) {
 		const outOfOrder = typeof less === "function"
 			? go2jsCallNow(less, null, [index, index - 1])
 			: items[index] < items[index - 1];
@@ -13737,6 +13768,41 @@ function go2jsSortIsSortedInterface(data, typeName) {
 
 	return true;
 }
+
+// The kinds sort names are a slice underneath, so a value of one is a plain
+// array with nowhere of its own to keep its methods. The methods are reached
+// through the table by the name of the type, which is how an interface that
+// holds one calls them, and how reflect sees them.
+function go2jsSortSliceLess(values, i, j, stringly, floatly) {
+	const left = values[i];
+	const right = values[j];
+
+	if (stringly) {
+		return String(left) < String(right);
+	}
+
+	if (floatly) {
+		return left < right || (Number.isNaN(Number(left)) && !Number.isNaN(Number(right)));
+	}
+
+	return Number(left) < Number(right);
+}
+
+function go2jsSortSliceSwap(values, i, j) {
+	const held = values[i];
+	values[i] = values[j];
+	values[j] = held;
+}
+
+go2jsRegisterMethod("IntSlice.Len", function(values) { return go2jsLen(values); });
+go2jsRegisterMethod("IntSlice.Less", function(values, i, j) { return go2jsSortSliceLess(values, i, j, false, false); });
+go2jsRegisterMethod("IntSlice.Swap", go2jsSortSliceSwap);
+go2jsRegisterMethod("StringSlice.Len", function(values) { return go2jsLen(values); });
+go2jsRegisterMethod("StringSlice.Less", function(values, i, j) { return go2jsSortSliceLess(values, i, j, true, false); });
+go2jsRegisterMethod("StringSlice.Swap", go2jsSortSliceSwap);
+go2jsRegisterMethod("Float64Slice.Len", function(values) { return go2jsLen(values); });
+go2jsRegisterMethod("Float64Slice.Less", function(values, i, j) { return go2jsSortSliceLess(values, i, j, false, true); });
+go2jsRegisterMethod("Float64Slice.Swap", go2jsSortSliceSwap);
 
 function go2jsSortSearch(count, found) {
 	const total = Number(count);
