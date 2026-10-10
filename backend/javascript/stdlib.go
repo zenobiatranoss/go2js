@@ -263,7 +263,7 @@ var mathFuncs = map[string]string{
 	"Atanh":   "Math.atanh",
 	"Sinh":    "Math.sinh",
 	"Signbit": "go2jsMathSignbit",
-	"Exp":     "Math.exp",
+	"Exp":     "go2jsMathExp",
 	"Log1p":   "Math.log1p",
 	"Inf":     "go2jsMathInf",
 	"NaN":     "go2jsMathNaN",

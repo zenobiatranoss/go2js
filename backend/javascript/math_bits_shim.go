@@ -31,6 +31,10 @@ var bitsFuncs = map[string]string{
 	"Reverse16":       "go2jsBitsReverse16",
 	"Reverse32":       "go2jsBitsReverse32",
 	"Reverse64":       "go2jsBitsReverse64",
+	"ReverseBytes":    "go2jsBitsReverseBytes",
+	"ReverseBytes16":  "go2jsBitsReverseBytes16",
+	"ReverseBytes32":  "go2jsBitsReverseBytes32",
+	"ReverseBytes64":  "go2jsBitsReverseBytes64",
 	"RotateLeft":      "go2jsBitsRotateLeft",
 	"RotateLeft8":     "go2jsBitsRotateLeft8",
 	"RotateLeft16":    "go2jsBitsRotateLeft16",
@@ -134,6 +138,10 @@ function go2jsBitsOnesCount64(value) {
 }
 
 function go2jsBitsLeadingZeros(value, width) {
+	if (width === undefined) {
+		width = 64;
+	}
+
 	const masked = go2jsBitsMask(value, width);
 
 	if (masked === 0n) {
@@ -170,6 +178,10 @@ function go2jsBitsLeadingZeros64(value) {
 }
 
 function go2jsBitsTrailingZeros(value, width) {
+	if (width === undefined) {
+		width = 64;
+	}
+
 	const masked = go2jsBitsMask(value, width);
 
 	if (masked === 0n) {
@@ -241,6 +253,10 @@ function go2jsBitsLen64(value) {
 
 // go2jsBitsReverse reads the bits of a count from the low end to the high one.
 function go2jsBitsReverse(value, width) {
+	if (width === undefined) {
+		width = 64;
+	}
+
 	const masked = go2jsBitsMask(value, width);
 	let out = 0n;
 
@@ -267,9 +283,43 @@ function go2jsBitsReverse64(value) {
 	return go2jsBitsReverse(value, 64);
 }
 
+// go2jsBitsReverseBytes writes the bytes of a count in the other order, which is
+// what reading it on a machine of the other byte order would give.
+function go2jsBitsReverseBytesN(value, width) {
+	const masked = go2jsBitsMask(value, width);
+	const count = width / 8;
+	let out = 0n;
+
+	for (let byte = 0; byte < count; byte++) {
+		out = (out << 8n) | ((masked >> BigInt(byte * 8)) & 0xffn);
+	}
+
+	return go2jsBitsNarrow(out);
+}
+
+function go2jsBitsReverseBytes16(value) {
+	return go2jsBitsReverseBytesN(value, 16);
+}
+
+function go2jsBitsReverseBytes32(value) {
+	return go2jsBitsReverseBytesN(value, 32);
+}
+
+function go2jsBitsReverseBytes64(value) {
+	return go2jsBitsReverseBytesN(value, 64);
+}
+
+function go2jsBitsReverseBytes(value) {
+	return go2jsBitsReverseBytesN(value, 64);
+}
+
 // go2jsBitsRotateLeft turns the bits of a count around by a number of places,
 // which is the same as turning the other way by the places that are left over.
 function go2jsBitsRotateLeft(value, count, width) {
+	if (width === undefined) {
+		width = 64;
+	}
+
 	const shift = go2jsBitsSigned(count, width);
 	const masked = go2jsBitsMask(value, width);
 	const places = ((shift % BigInt(width)) + BigInt(width)) % BigInt(width);
