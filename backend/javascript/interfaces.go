@@ -275,24 +275,22 @@ func (e *emitter) emitInterfaceValue(expr ast.Expr, target gotypes.Type) error {
 			return nil
 		}
 
-		// A slice or a map or a function cannot compare itself or hash itself,
-		// so it is given a box that says so, and the equal and the map key
-		// stop to ask it. A declared type of one of them keeps its own name in
-		// front, which would slip past the names an assertion is asked by, so
-		// only unnamed ones are set apart here.
+		// A value that holds something uncomparable cannot compare itself or
+		// hash itself, so it is given a box that says so, and the equal and the
+		// map key stop to ask it. A declared type that holds one keeps its own
+		// name in front so an assertion still knows it, and the box says all the
+		// same that it cannot be weighed.
 		if info, ok := e.analysis.Types[expr]; ok && info.Type != nil && !gotypes.Comparable(info.Type) {
-			if _, isNamed := info.Type.(*gotypes.Named); !isNamed {
-				e.needsRuntime = true
-				e.write("go2jsInterface(")
+			e.needsRuntime = true
+			e.write("go2jsInterface(")
 
-				if err := e.emitExpr(expr); err != nil {
-					return err
-				}
-
-				name := goTypeName(info.Type)
-				e.write(", " + strconv.Quote(name) + ", " + strconv.Quote(name) + ", true)")
-				return nil
+			if err := e.emitExpr(expr); err != nil {
+				return err
 			}
+
+			name := goTypeName(info.Type)
+			e.write(", " + strconv.Quote(name) + ", " + strconv.Quote(name) + ", true)")
+			return nil
 		}
 
 	}
@@ -379,8 +377,11 @@ func interfaceDynamicTypeName(t gotypes.Type) (string, bool) {
 		return "", false
 	}
 
+	// A float64 is not among the types JavaScript has one of, because a whole
+	// number and a float64 that equals it are the same JavaScript number. It is
+	// given a name of its own so an interface can tell `3 + 0.0` from `3`.
 	switch basic.Kind() {
-	case gotypes.Bool, gotypes.String, gotypes.Int, gotypes.Float64, gotypes.UnsafePointer:
+	case gotypes.Bool, gotypes.String, gotypes.Int, gotypes.UnsafePointer:
 		return "", false
 	}
 
