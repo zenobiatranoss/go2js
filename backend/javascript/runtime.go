@@ -580,7 +580,7 @@ function go2jsIOReadAll(reader) {
         }
     }
 
-    return [String.fromCharCode(...chunks), null];
+    return [chunks, null];
 }
 
 function go2jsTimeDate(year, month, day, hour, minute, second, nanosecond, location) {
@@ -6162,8 +6162,7 @@ go2jsBytesBuffer.prototype.ReadFrom = function(source) {
 		return [0, result[1]];
 	}
 
-	const text = String(result[0]);
-	const bytes = go2jsStringToBytes(text);
+	const bytes = result[0] === null || result[0] === undefined ? [] : go2jsToArray(result[0]);
 
 	this.data = this.data.concat(bytes);
 
