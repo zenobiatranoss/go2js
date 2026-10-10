@@ -698,6 +698,9 @@ func (e *emitter) emitPackageCall(call *ast.CallExpr, selector *ast.SelectorExpr
 	case "atomic":
 		return e.emitAtomicCall(call, selector)
 	case "binary":
+		if handled, err := e.emitBinaryWriteCall(call, selector); handled {
+			return handled, err
+		}
 		if handled, err := e.emitBinaryCall(call, selector); handled {
 			return handled, err
 		}
