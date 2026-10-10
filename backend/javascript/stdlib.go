@@ -387,6 +387,7 @@ var filepathFuncs = map[string]string{
 	"ToSlash":    "go2jsFilepathToSlash",
 	"FromSlash":  "go2jsFilepathFromSlash",
 	"Match":      "go2jsFilepathMatch",
+	"SplitList":  "go2jsFilepathSplitList",
 	"VolumeName": "go2jsFilepathVolumeName",
 	"Glob":       "go2jsFilepathGlob",
 	"Walk":       "go2jsFilepathWalk",
@@ -568,6 +569,7 @@ var pathFuncs = map[string]string{
 	"Join":  "go2jsPathJoin",
 	"Split": "go2jsPathSplit",
 	"IsAbs": "go2jsPathIsAbs",
+	"Match": "go2jsPathMatch",
 }
 
 var randFuncs = map[string]string{

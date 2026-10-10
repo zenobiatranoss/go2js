@@ -1818,6 +1818,26 @@ function go2jsFilepathMatch(pattern, name) {
 	return [new RegExp(compiled[0]).test(go2jsStringify(name)), null];
 }
 
+// go2jsPathMatch names files with the pattern language of a shell, which is the
+// same language whether the names are read as paths of the machine or as paths
+// of the slash, since the slash is the separator the runtime names them with.
+function go2jsPathMatch(pattern, name) {
+	return go2jsFilepathMatch(pattern, name);
+}
+
+// go2jsFilepathSplitList cuts a list of paths apart on the mark that separates
+// them, which is a colon on the systems this runtime stands for, and reads the
+// empty text as the empty list rather than as one empty name.
+function go2jsFilepathSplitList(value) {
+	const text = go2jsStringify(value);
+
+	if (text === "") {
+		return go2jsZeroArray(0, () => "");
+	}
+
+	return String(value).split(":");
+}
+
 // go2jsFilepathPatternSource writes a pattern as one of the same shape, which is
 // what a name is asked against, and reports a pattern that cannot be written.
 function go2jsFilepathPatternSource(pattern) {
