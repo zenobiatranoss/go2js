@@ -8219,6 +8219,94 @@ function go2jsBinaryLittleEndian() {
     return "le";
 }
 
+// go2jsBinarySizes is the count of bytes a value of each kind is written in,
+// which is the width its type names rather than the width the number it holds
+// suggests.
+const go2jsBinarySizes = {
+	bool: 1,
+	int8: 1, uint8: 1,
+	int16: 2, uint16: 2,
+	int32: 4, uint32: 4, float32: 4,
+	int64: 8, uint64: 8, float64: 8, int: 8, uint: 8, uintptr: 8
+};
+
+// go2jsBinaryWrite writes a value in the bytes its type names, which is what Go
+// writes: a scalar is written once, and a run of them is written one after the
+// other. The count of bytes each is written in is read from its type, since the
+// number alone does not say whether it was a uint32 or a uint64.
+function go2jsBinaryWrite(writer, order, data, kind) {
+	let bytes = [];
+
+	if (kind.length > 2 && kind.slice(0, 2) === "[]") {
+		const element = kind.slice(2);
+
+		for (const value of go2jsToArray(data)) {
+			bytes = bytes.concat(go2jsBinaryScalar(order, value, element));
+		}
+	} else {
+		bytes = go2jsBinaryScalar(order, data, kind);
+	}
+
+	const written = go2jsCallMethod(writer, "Write", bytes);
+
+	return Array.isArray(written) && written.length > 1 ? written[1] : null;
+}
+
+// go2jsBinaryScalar is one value written in the bytes of the type named, in the
+// order asked for.
+function go2jsBinaryScalar(order, value, kind) {
+	if (kind === "bool") {
+		return [go2jsUnwrap(value) === true ? 1 : 0];
+	}
+
+	if (kind.slice(0, 5) === "float") {
+		return go2jsBinaryFloat(order, Number(go2jsUnwrap(value)), kind === "float32" ? 4 : 8);
+	}
+
+	return go2jsBinaryInteger(order, go2jsUnwrap(value), go2jsBinarySizes[kind] === undefined ? 8 : go2jsBinarySizes[kind]);
+}
+
+// go2jsBinaryInteger is a whole number written in the bytes of a width, in the
+// two's complement bits of that width, so a negative number is the bits it names
+// rather than a sign, and most significant byte first.
+function go2jsBinaryInteger(order, value, width) {
+	const number = typeof value === "bigint" ? value : BigInt(Math.trunc(Number(value)));
+	const modulus = 1n << BigInt(width * 8);
+	let wrapped = ((number % modulus) + modulus) % modulus;
+	const bytes = new Array(width);
+
+	for (let index = width - 1; index >= 0; index--) {
+		bytes[index] = Number(wrapped & 0xffn);
+		wrapped >>= 8n;
+	}
+
+	if (order === "le") {
+		bytes.reverse();
+	}
+
+	return bytes;
+}
+
+// go2jsBinaryFloat is a number written in the bits IEEE 754 gives its width, in
+// the order asked for, which is how Go writes a floating point number.
+function go2jsBinaryFloat(order, value, width) {
+	const view = new DataView(new ArrayBuffer(width));
+
+	if (width === 4) {
+		view.setFloat32(0, Number(value), order === "le");
+	} else {
+		view.setFloat64(0, Number(value), order === "le");
+	}
+
+	const bytes = new Array(width);
+
+	for (let index = 0; index < width; index++) {
+		bytes[index] = view.getUint8(index);
+	}
+
+	return bytes;
+}
+
 function go2jsBinaryPutUint(order, width, target, value) {
     let number = Number(value);
 
@@ -8226,10 +8314,12 @@ function go2jsBinaryPutUint(order, width, target, value) {
         number = 0;
     }
 
-    number = Math.trunc(number) % Math.pow(2, width);
+    const modulus = Math.pow(256, width);
+
+    number = Math.trunc(number) % modulus;
 
     if (number < 0) {
-        number += Math.pow(2, width);
+        number += modulus;
     }
 
     const bytes = new Array(width);
@@ -8291,7 +8381,7 @@ function go2jsBinaryVarint(buffer) {
         return [0, 0];
     }
 
-    return value % 2 === 0 ? [-(value / 2), read] : [(value + 1) / 2, read];
+    return value % 2 === 0 ? [value / 2, read] : [-(value + 1) / 2, read];
 }
 
 function go2jsBinaryPutUvarint(buffer, value) {
@@ -8314,10 +8404,13 @@ function go2jsBinaryPutUvarint(buffer, value) {
     return 0;
 }
 
+// go2jsBinaryPutVarint writes a whole number in the zigzag form Go writes one
+// in, which puts the small negative numbers next to the small positive ones: a
+// negative number is written as twice the number before it with the low bit set.
 function go2jsBinaryPutVarint(buffer, value) {
     const number = Math.trunc(Number(value));
 
-    return go2jsBinaryPutUvarint(buffer, number < 0 ? -2 * number : 2 * number);
+    return go2jsBinaryPutUvarint(buffer, number < 0 ? -2 * number - 1 : 2 * number);
 }
 
 function go2jsMapTypeName(typeName) {
