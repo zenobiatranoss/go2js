@@ -1421,44 +1421,67 @@ var go2jsLogCurrentPrefix = "";
 var go2jsLogStandardWriter = go2jsLogStandardWriterDefault();
 var go2jsLogDefaultLogger = go2jsLogBuildStandard();
 
+// go2jsUTF16Encode is the code units a run of runes is written in, and a rune
+// that is not one names the replacement rune rather than a pair of its own.
 function go2jsUTF16Encode(value) {
 	const units = [];
 
 	for (const code of go2jsCodePoints(value)) {
-		if (code < 0x10000) {
+		if (code >= 0 && code < 0xd800) {
 			units.push(code);
 			continue;
 		}
 
-		const adjusted = code - 0x10000;
+		if (code >= 0xe000 && code < 0x10000) {
+			units.push(code);
+			continue;
+		}
 
-		units.push(0xd800 + (adjusted >> 10));
-		units.push(0xdc00 + (adjusted & 0x3ff));
+		if (code >= 0x10000 && code <= 0x10ffff) {
+			const adjusted = code - 0x10000;
+
+			units.push(0xd800 + (adjusted >> 10));
+			units.push(0xdc00 + (adjusted & 0x3ff));
+			continue;
+		}
+
+		units.push(0xfffd);
 	}
 
 	return units;
 }
 
+// go2jsUTF16Decode is the runes a run of UTF-16 code units names, which is what
+// Go answers with rather than a string: a high unit names a rune only with the
+// low unit that follows it, and a unit that names none is the replacement rune.
 function go2jsUTF16Decode(units) {
-	let out = "";
+	const runes = [];
 
 	for (let index = 0; index < units.length; index++) {
 		const unit = Number(units[index]);
 
-		if (unit >= 0xd800 && unit <= 0xdbff && index + 1 < units.length) {
-			const low = Number(units[index + 1]);
-
-			if (low >= 0xdc00 && low <= 0xdfff) {
-				out += String.fromCharCode(unit, low);
-				index++;
-				continue;
-			}
+		if (unit < 0xd800 || unit >= 0xe000) {
+			runes.push(unit);
+			continue;
 		}
 
-		out += String.fromCharCode(unit);
+		if (unit >= 0xdc00) {
+			runes.push(0xfffd);
+			continue;
+		}
+
+		const low = index + 1 < units.length ? Number(units[index + 1]) : 0;
+
+		if (low >= 0xdc00 && low < 0xe000) {
+			runes.push(0x10000 + ((unit - 0xd800) << 10) + (low - 0xdc00));
+			index++;
+			continue;
+		}
+
+		runes.push(0xfffd);
 	}
 
-	return out;
+	return runes;
 }
 
 function go2jsUTF16IsSurrogate(value) {
