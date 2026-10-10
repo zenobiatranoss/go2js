@@ -42,6 +42,38 @@ func main() {
 `)
 }
 
+// A division that runs past the end of a narrow type is given the number that
+// fits, the way every other operation on a narrow type is.
+func TestNarrowIntegerDivisionWrapsLikeGo(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+func main() {
+	var smallest int8 = -128
+	fmt.Println(smallest/-1, smallest%-1)
+
+	var big int16 = -32768
+	fmt.Println(big/-1, big%-1)
+
+	var i32 int32 = -2147483648
+	fmt.Println(i32/-1, i32%-1)
+
+	byHand := int8(-128)
+	byHand /= -1
+	fmt.Println(byHand)
+
+	throughPointer := int8(-128)
+	pointer := &throughPointer
+	*pointer /= -1
+	fmt.Println(throughPointer)
+
+	ordinary := int8(100)
+	fmt.Println(ordinary/3, ordinary%3, ordinary/2)
+}
+`)
+}
+
 func TestNarrowIntegerShiftWrapsLikeGo(t *testing.T) {
 	runParityTest(t, `package main
 

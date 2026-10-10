@@ -144,6 +144,38 @@ func main() {
 `)
 }
 
+// A step below the smallest number an unsigned type holds comes back around to
+// the largest one, and an unsigned count never takes a negative value.
+func TestUnsignedUnderflowWrapsLikeGo(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+func main() {
+	var counted uint = 0
+	counted--
+	fmt.Println(counted)
+
+	var wide uint64 = 0
+	wide -= 1
+	fmt.Println(wide)
+
+	var narrow uint8 = 0
+	narrow--
+	fmt.Println(narrow)
+
+	named := uint64(3)
+	named *= 0
+	named -= 2
+	fmt.Println(named)
+
+	// an unsigned count stays unsigned through an operation
+	half := uint64(1)<<63 - 1
+	fmt.Println(half*2, half*2+2)
+}
+`)
+}
+
 // Two numbers are put in order the way Go puts them in order, whichever kinds
 // of number they are.
 func TestWideIntegerComparisons(t *testing.T) {
