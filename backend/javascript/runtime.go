@@ -8724,6 +8724,18 @@ function go2jsNarrow(value) {
 	return value;
 }
 
+// go2jsWideBits is the width a whole number of each narrow type is held in. A
+// type not named here is held in the sixty four bits every other whole number
+// type uses.
+const go2jsWideBits = { "uint8": 8, byte: 8, "int8": 8, "uint16": 16, "int16": 16, "uint32": 32, "int32": 32, rune: 32 };
+
+// go2jsWideUnsigned names the whole number types that never go below zero, since
+// an answer below zero is given back as the largest number the width holds
+// rather than as the negative number it was worked out as.
+const go2jsWideUnsigned = {
+	uint64: true, uint: true, uintptr: true, "uint8": true, byte: true, "uint16": true, "uint32": true
+};
+
 // go2jsWideWrap keeps a whole number inside the sixty four bits a signed or an
 // unsigned number of that width is held in, which is what a Go variable of that
 // type does without being asked. An answer too wide for its type is not a fault
@@ -8733,21 +8745,27 @@ function go2jsWideWrap(value, typeName) {
 	if (typeof value !== "bigint") {
 		const number = Math.trunc(Number(value));
 
-		// a double past the point where it holds every digit is worked out as
-		// digits before it is given a width, since the digits it is carrying are
-		// not the ones it was handed
-		if (Number.isInteger(number) && (number > go2jsSafeInteger || number < -go2jsSafeInteger)) {
-			return go2jsWideWrap(BigInt(number), typeName);
+		if (Number.isInteger(number)) {
+			// a double past the point where it holds every digit is worked out
+			// as digits before it is given a width, since the digits it is
+			// carrying are not the ones it was handed
+			if (number > go2jsSafeInteger || number < -go2jsSafeInteger) {
+				return go2jsWideWrap(BigInt(number), typeName);
+			}
+
+			// a number below zero that belongs to a type which never goes below
+			// zero is the largest that type holds, which is wider than a double
+			// can keep, so it is worked out as digits as well
+			if (number < 0 && go2jsWideUnsigned[typeName] === true) {
+				return go2jsWideWrap(BigInt(number), typeName);
+			}
 		}
 
 		return number;
 	}
 
-	// the width the type is held in, and whether it goes below zero at all
-	const bits = { "uint8": 8, byte: 8, "int8": 8, "uint16": 16, "int16": 16, "uint32": 32, "int32": 32, rune: 32 };
-	const unsigned = typeName === "uint64" || typeName === "uint" || typeName === "uintptr" ||
-		typeName === "uint8" || typeName === "byte" || typeName === "uint16" || typeName === "uint32";
-	const width = bits[typeName] === undefined ? 64 : bits[typeName];
+	const unsigned = go2jsWideUnsigned[typeName] === true;
+	const width = go2jsWideBits[typeName] === undefined ? 64 : go2jsWideBits[typeName];
 
 	if (width === 64) {
 		return go2jsNarrow(unsigned ? (value & go2jsUint64Mask) : go2jsWrapSigned64(value));

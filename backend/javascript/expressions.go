@@ -549,6 +549,15 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		if (x.Op == token.QUO || x.Op == token.REM) && e.isIntegerExpr(x.X) && e.isIntegerExpr(x.Y) {
 			e.needsRuntime = true
 
+			// The runtime gives back a bare number, and a narrow type is given
+			// the number that fits rather than a number that does not, so the
+			// answer is read back through the width of the type it is for.
+			wrapName, wraps := narrowIntTypeName(e.analyzedType(x))
+
+			if wraps {
+				e.write("go2jsIntWrap(")
+			}
+
 			// a span of time divided by a number is a span of time, and the
 			// runtime gives back a bare number, so it is given its shape back
 			if e.isDurationType(x) {
@@ -574,6 +583,12 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			e.write(")")
 
 			if e.isDurationType(x) {
+				e.write(")")
+			}
+
+			if wraps {
+				e.write(", ")
+				e.write(strconv.Quote(wrapName))
 				e.write(")")
 			}
 
