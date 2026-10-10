@@ -1809,6 +1809,11 @@ func extendedStdlibFuncs() {
 
 	extend(mathFuncs, map[string]string{
 		"Cbrt":       "go2jsMathCbrt",
+		"Erf":        "go2jsMathErf",
+		"Erfc":       "go2jsMathErfc",
+		"Erfinv":     "go2jsMathErfinv",
+		"Erfcinv":    "go2jsMathErfcinv",
+		"FMA":        "go2jsMathFMA",
 		"Mod":        "go2jsMathMod",
 		"Remainder":  "go2jsMathRemainder",
 		"Hypot":      "go2jsMathHypot",
@@ -2390,6 +2395,494 @@ function go2jsStrconvIsGraphic(value) {
 
 function go2jsMathCbrt(value) {
 	return Math.cbrt(Number(value));
+}
+
+// go2jsMathLdexp scales a number by a power of two, which is exact until the
+// answer falls outside the range a number can hold and is then rounded to what
+// that range allows.
+function go2jsMathLdexp(frac, exp) {
+	let value = Number(frac);
+	let k = Number(exp);
+
+	if (value === 0 || !isFinite(value)) {
+		return value;
+	}
+
+	if (Math.abs(value) < 2.2250738585072014e-308) {
+		value *= 4503599627370496;
+		k -= 52;
+	}
+
+	const bits = go2jsMathFloat64bits(value);
+	k += Number((bits >> 52n) & 0x7ffn) - 1023;
+
+	if (k < -1075) {
+		return value < 0 ? -0 : 0;
+	}
+	if (k > 1023) {
+		return value < 0 ? -Infinity : Infinity;
+	}
+
+	let scale = 1;
+
+	if (k < -1022) {
+		k += 53;
+		scale = 1 / (1 << 53);
+	}
+
+	let out = bits & ~(0x7ffn << 52n);
+	out |= BigInt(k + 1023) << 52n;
+
+	return scale * go2jsMathFloat64frombits(out);
+}
+
+function go2jsMathExpMulti(hi, lo, k) {
+	const r = hi - lo;
+	const t = r * r;
+	const c = r - t * (1.66666666666666657415e-01 + t * (-2.77777777770155933842e-03 + t * (6.61375632143793436117e-05 + t * (-1.65339022054652515390e-06 + t * 4.13813679705723846039e-08))));
+	const y = 1 - ((lo - (r * c) / (2 - c)) - hi);
+
+	return go2jsMathLdexp(y, k);
+}
+
+// go2jsMathExp raises e to a number the way go does, over the same series go
+// sums and with the same splitting of the number, so the answer matches go's to
+// the last bit rather than only to the nearest one.
+function go2jsMathExp(x) {
+	const value = Number(x);
+
+	if (Number.isNaN(value) || value === Infinity) {
+		return value;
+	}
+	if (value === -Infinity) {
+		return 0;
+	}
+	if (value > 7.09782712893383973096e+02) {
+		return Infinity;
+	}
+	if (value < -7.45133219101941108420e+02) {
+		return 0;
+	}
+	if (-3.725290298461914e-09 < value && value < 3.725290298461914e-09) {
+		return 1 + value;
+	}
+
+	let k = 0;
+
+	if (value < 0) {
+		k = Math.trunc(1.44269504088896338700e+00 * value - 0.5);
+	} else if (value > 0) {
+		k = Math.trunc(1.44269504088896338700e+00 * value + 0.5);
+	}
+
+	const hi = value - k * 6.93147180369123816490e-01;
+	const lo = k * 1.90821492927058770002e-10;
+
+	return go2jsMathExpMulti(hi, lo, k);
+}
+
+// The error function and its complement come from the same rational
+// approximations Go uses, so a call here answers the same number Go answers
+// rather than an approximation of it.
+function go2jsMathErf(x) {
+	const value = Number(x);
+
+	if (Number.isNaN(value)) {
+		return NaN;
+	}
+
+	if (value === Infinity) {
+		return 1;
+	}
+
+	if (value === -Infinity) {
+		return -1;
+	}
+
+	const sign = value < 0;
+	const t = Math.abs(value);
+
+	if (t < 0.84375) {
+		let temp;
+
+		if (t < 1 / (1 << 28)) {
+			if (t < 2.848094538889218e-306) {
+				temp = 0.125 * (8 * t + 1.02703333676410069053e+00 * t);
+			} else {
+				temp = t + 1.28379167095512586316e-01 * t;
+			}
+		} else {
+			const z = t * t;
+			const r = 1.28379167095512558561e-01 + z * (-3.25042107247001499370e-01 + z * (-2.84817495755985104766e-02 + z * (-5.77027029648944159157e-03 + z * -2.37630166566501626084e-05)));
+			const s = 1 + z * (3.97917223959155352819e-01 + z * (6.50222499887672944485e-02 + z * (5.08130628187576562776e-03 + z * (1.32494738004321644526e-04 + z * -3.96022827877536812320e-06))));
+			const y = r / s;
+
+			temp = t + t * y;
+		}
+
+		return sign ? -temp : temp;
+	}
+
+	if (t < 1.25) {
+		const s = t - 1;
+		const P = -2.36211856075265944077e-03 + s * (4.14856118683748331666e-01 + s * (-3.72207876035701323847e-01 + s * (3.18346619901161753674e-01 + s * (-1.10894694282396677476e-01 + s * (3.54783043256182359371e-02 + s * -2.16637559486879084300e-03)))));
+		const Q = 1 + s * (1.06420880400844228286e-01 + s * (5.40397917702171048937e-01 + s * (7.18286544141962662868e-02 + s * (1.26171219808761642112e-01 + s * (1.36370839120290507362e-02 + s * 1.19844998467991074170e-02)))));
+
+		if (sign) {
+			return -8.45062911510467529297e-01 - P / Q;
+		}
+
+		return 8.45062911510467529297e-01 + P / Q;
+	}
+
+	if (t >= 6) {
+		return sign ? -1 : 1;
+	}
+
+	const s = 1 / (t * t);
+	let R, S;
+
+	if (t < 1 / 0.35) {
+		R = -9.86494403484714822705e-03 + s * (-6.93858572707181764372e-01 + s * (-1.05586262253232909814e+01 + s * (-6.23753324503260060396e+01 + s * (-1.62396669462573470355e+02 + s * (-1.84605092906711035994e+02 + s * (-8.12874355063065934246e+01 + s * -9.81432934416914548592e+00))))));
+		S = 1 + s * (1.96512716674392571292e+01 + s * (1.37657754143519042600e+02 + s * (4.34565877475229228821e+02 + s * (6.45387271733267880336e+02 + s * (4.29008140027567833386e+02 + s * (1.08635005541779435134e+02 + s * (6.57024977031928170135e+00 + s * -6.04244152148580987438e-02)))))));
+	} else {
+		R = -9.86494292470009928597e-03 + s * (-7.99283237680523006574e-01 + s * (-1.77579549177547519889e+01 + s * (-1.60636384855821916062e+02 + s * (-6.37566443368389627722e+02 + s * (-1.02509513161107724954e+03 + s * -4.83519191608651397019e+02)))));
+		S = 1 + s * (3.03380607434824582924e+01 + s * (3.25792512996573918826e+02 + s * (1.53672958608443695994e+03 + s * (3.19985821950859553908e+03 + s * (2.55305040643316442583e+03 + s * (4.74528541206955367215e+02 + s * -2.24409524465858183362e+01))))));
+	}
+
+	const z = go2jsMathFloat64frombits(go2jsMathFloat64bits(t) & 0xffffffff00000000n);
+	const r = go2jsMathExp(-z * z - 0.5625) * go2jsMathExp((z - t) * (z + t) + R / S);
+
+	if (sign) {
+		return r / t - 1;
+	}
+
+	return 1 - r / t;
+}
+
+function go2jsMathErfc(x) {
+	const value = Number(x);
+
+	if (Number.isNaN(value)) {
+		return NaN;
+	}
+	if (value === Infinity) {
+		return 0;
+	}
+	if (value === -Infinity) {
+		return 2;
+	}
+
+	const sign = value < 0;
+	const t = Math.abs(value);
+
+	if (t < 0.84375) {
+		let temp;
+
+		if (t < 1 / (1 << 56)) {
+			temp = t;
+		} else {
+			const z = t * t;
+			const r = 1.28379167095512558561e-01 + z * (-3.25042107247001499370e-01 + z * (-2.84817495755985104766e-02 + z * (-5.77027029648944159157e-03 + z * -2.37630166566501626084e-05)));
+			const s = 1 + z * (3.97917223959155352819e-01 + z * (6.50222499887672944485e-02 + z * (5.08130628187576562776e-03 + z * (1.32494738004321644526e-04 + z * -3.96022827877536812320e-06))));
+			const y = r / s;
+
+			if (t < 0.25) {
+				temp = t + t * y;
+			} else {
+				temp = 0.5 + (t * y + (t - 0.5));
+			}
+		}
+
+		return sign ? 1 + temp : 1 - temp;
+	}
+
+	if (t < 1.25) {
+		const s = t - 1;
+		const P = -2.36211856075265944077e-03 + s * (4.14856118683748331666e-01 + s * (-3.72207876035701323847e-01 + s * (3.18346619901161753674e-01 + s * (-1.10894694282396677476e-01 + s * (3.54783043256182359371e-02 + s * -2.16637559486879084300e-03)))));
+		const Q = 1 + s * (1.06420880400844228286e-01 + s * (5.40397917702171048937e-01 + s * (7.18286544141962662868e-02 + s * (1.26171219808761642112e-01 + s * (1.36370839120290507362e-02 + s * 1.19844998467991074170e-02)))));
+
+		if (sign) {
+			return 1 + 8.45062911510467529297e-01 + P / Q;
+		}
+
+		return 1 - 8.45062911510467529297e-01 - P / Q;
+	}
+
+	if (t < 28) {
+		const s = 1 / (t * t);
+		let R, S;
+
+		if (t < 1 / 0.35) {
+			R = -9.86494403484714822705e-03 + s * (-6.93858572707181764372e-01 + s * (-1.05586262253232909814e+01 + s * (-6.23753324503260060396e+01 + s * (-1.62396669462573470355e+02 + s * (-1.84605092906711035994e+02 + s * (-8.12874355063065934246e+01 + s * -9.81432934416914548592e+00))))));
+			S = 1 + s * (1.96512716674392571292e+01 + s * (1.37657754143519042600e+02 + s * (4.34565877475229228821e+02 + s * (6.45387271733267880336e+02 + s * (4.29008140027567833386e+02 + s * (1.08635005541779435134e+02 + s * (6.57024977031928170135e+00 + s * -6.04244152148580987438e-02)))))));
+		} else {
+			if (sign && t > 6) {
+				return 2;
+			}
+
+			R = -9.86494292470009928597e-03 + s * (-7.99283237680523006574e-01 + s * (-1.77579549177547519889e+01 + s * (-1.60636384855821916062e+02 + s * (-6.37566443368389627722e+02 + s * (-1.02509513161107724954e+03 + s * -4.83519191608651397019e+02)))));
+			S = 1 + s * (3.03380607434824582924e+01 + s * (3.25792512996573918826e+02 + s * (1.53672958608443695994e+03 + s * (3.19985821950859553908e+03 + s * (2.55305040643316442583e+03 + s * (4.74528541206955367215e+02 + s * -2.24409524465858183362e+01))))));
+		}
+
+		const z = go2jsMathFloat64frombits(go2jsMathFloat64bits(t) & 0xffffffff00000000n);
+		const r = go2jsMathExp(-z * z - 0.5625) * go2jsMathExp((z - t) * (z + t) + R / S);
+
+		if (sign) {
+			return 2 - r / t;
+		}
+
+		return r / t;
+	}
+
+	return sign ? 2 : 0;
+}
+
+function go2jsMathErfinv(x) {
+	const value = Number(x);
+
+	if (Number.isNaN(value) || value <= -1 || value >= 1) {
+		if (value === -1 || value === 1) {
+			return value > 0 ? Infinity : -Infinity;
+		}
+
+		return NaN;
+	}
+
+	const sign = value < 0;
+	const t = Math.abs(value);
+	let ans;
+
+	if (t <= 0.85) {
+		const r = 0.180625 - 0.25 * t * t;
+		const z1 = ((((((8.8709406962545514830200e2 * r + 1.1819493347062294404278e4) * r + 2.3782041382114385731252e4) * r + 1.6235862515167575384252e4) * r + 4.8548868893843886794648e3) * r + 6.9706266534389598238465e2) * r + 4.7072688112383978012285e1) * r + 1.1975323115670912564578e0;
+		const z2 = ((((((5.2264952788528545610e3 * r + 2.8729085735721942674e4) * r + 3.9307895800092710610e4) * r + 2.1213794301586595867e4) * r + 5.3941960214247511077e3) * r + 6.8718700749205790830e2) * r + 4.2313330701600911252e1) * r + 1.0000000000000000000e0;
+
+		ans = (t * z1) / z2;
+	} else {
+		let r = Math.sqrt(Math.LN2 - Math.log(1.0 - t));
+		let z1, z2;
+
+		if (r <= 5.0) {
+			r -= 1.6;
+			z1 = ((((((7.74545014278341407640e-4 * r + 2.27238449892691845833e-2) * r + 2.41780725177450611770e-1) * r + 1.27045825245236838258e0) * r + 3.64784832476320460504e0) * r + 5.76949722146069140550e0) * r + 4.63033784615654529590e0) * r + 1.42343711074968357734e0;
+			z2 = ((((((1.4859850019840355905497876e-9 * r + 7.7441459065157709165577218e-4) * r + 2.1494160384252876777097297e-2) * r + 2.0945065210512749128288442e-1) * r + 9.7547832001787427186894837e-1) * r + 2.3707661626024532365971225e0) * r + 2.9036514445419946173133295e0) * r + 1.4142135623730950488016887e0;
+		} else {
+			r -= 5.0;
+			z1 = ((((((2.01033439929228813265e-7 * r + 2.71155556874348757815e-5) * r + 1.24266094738807843860e-3) * r + 2.65321895265761230930e-2) * r + 2.96560571828504891230e-1) * r + 1.78482653991729133580e0) * r + 5.46378491116411436990e0) * r + 6.65790464350110377720e0;
+			z2 = ((((((2.891024605872965461538222e-15 * r + 2.010321207683943062279931e-7) * r + 2.611088405080593625138020e-5) * r + 1.112800997078859844711555e-3) * r + 2.103693768272068968719679e-2) * r + 1.936480946950659106176712e-1) * r + 8.482908416595164588112026e-1) * r + 1.414213562373095048801689e0;
+		}
+
+		ans = z1 / z2;
+	}
+
+	return sign ? -ans : ans;
+}
+
+function go2jsMathErfcinv(x) {
+	return go2jsMathErfinv(1 - Number(x));
+}
+
+// The fused multiply add reads the numbers it was given as the bits they are
+// made of and multiplies and adds them at once, so the product is not rounded
+// before the sum is taken and only the answer itself is rounded.
+const go2jsFmaUvInf = 0x7ff0000000000000n;
+const go2jsFmaMask = 0xffffffffffffffffn;
+const go2jsFmaFracMask = 0x000fffffffffffffn;
+
+function go2jsFmaNonzero(value) {
+	return value !== 0n ? 1n : 0n;
+}
+
+function go2jsFmaZero(value) {
+	return value === 0n ? 1n : 0n;
+}
+
+function go2jsFmaMul64(a, b) {
+	const product = (a & go2jsFmaMask) * (b & go2jsFmaMask);
+
+	return [product >> 64n, product & go2jsFmaMask];
+}
+
+function go2jsFmaAdd64(a, b, carry) {
+	const total = (a & go2jsFmaMask) + (b & go2jsFmaMask) + carry;
+
+	return [total & go2jsFmaMask, total >> 64n];
+}
+
+function go2jsFmaSub64(a, b, borrow) {
+	const diff = (a & go2jsFmaMask) - (b & go2jsFmaMask) - borrow;
+
+	return [diff & go2jsFmaMask, diff < 0n ? 1n : 0n];
+}
+
+function go2jsFmaShl64(value, count) {
+	if (count >= 64n) {
+		return 0n;
+	}
+
+	return (value << count) & go2jsFmaMask;
+}
+
+function go2jsFmaLeadingZeros64(value) {
+	const masked = value & go2jsFmaMask;
+
+	return masked === 0n ? 64 : 64 - masked.toString(2).length;
+}
+
+function go2jsFmaLeadingZeros(u1, u2) {
+	const high = go2jsFmaLeadingZeros64(u1);
+
+	if (high === 64) {
+		return 64 + go2jsFmaLeadingZeros64(u2);
+	}
+
+	return high;
+}
+
+function go2jsFmaShl(u1, u2, count) {
+	const both = ((u1 & go2jsFmaMask) << 64n) | (u2 & go2jsFmaMask);
+	const shifted = (both << count) & ((1n << 128n) - 1n);
+
+	return [shifted >> 64n, shifted & go2jsFmaMask];
+}
+
+function go2jsFmaShr(u1, u2, count) {
+	const both = ((u1 & go2jsFmaMask) << 64n) | (u2 & go2jsFmaMask);
+	const shifted = both >> count;
+
+	return [shifted >> 64n, shifted & go2jsFmaMask];
+}
+
+// go2jsFmaShrcompress shifts a two word number to the right and folds the bits
+// that fall off the bottom into a single bit, which keeps the part of them that
+// still matters for rounding.
+function go2jsFmaShrcompress(u1, u2, count) {
+	if (count === 0n) {
+		return [u1 & go2jsFmaMask, u2 & go2jsFmaMask];
+	}
+	if (count === 64n) {
+		return [0n, (u1 & go2jsFmaMask) | go2jsFmaNonzero(u2)];
+	}
+	if (count >= 128n) {
+		return [0n, go2jsFmaNonzero((u1 & go2jsFmaMask) | (u2 & go2jsFmaMask))];
+	}
+	if (count < 64n) {
+		const [r1, r2] = go2jsFmaShr(u1, u2, count);
+
+		return [r1, r2 | go2jsFmaNonzero(u2 & ((1n << count) - 1n))];
+	}
+
+	const [r1, r2] = go2jsFmaShr(u1, u2, count);
+
+	return [r1, r2 | go2jsFmaNonzero((u1 & ((1n << (count - 64n)) - 1n)) | u2)];
+}
+
+// go2jsFmaSplit reads a number apart as its sign, its exponent and the digits
+// that make it up, putting back the bit a normal number leaves out and lifting a
+// number too small to hold that bit up until it can.
+function go2jsFmaSplit(bits) {
+	const sign = bits >> 63n;
+	const exponent = Number((bits >> 52n) & 0x7ffn);
+	let mantissa = bits & go2jsFmaFracMask;
+
+	if (exponent === 0) {
+		const shift = BigInt(go2jsFmaLeadingZeros64(mantissa) - 11);
+		mantissa = (mantissa << shift) & go2jsFmaMask;
+
+		return [sign, 1 - Number(shift), mantissa];
+	}
+
+	mantissa |= 1n << 52n;
+
+	return [sign, exponent, mantissa];
+}
+
+function go2jsMathFMA(x, y, z) {
+	const bx = go2jsMathFloat64bits(x);
+	const by = go2jsMathFloat64bits(y);
+	const bz = go2jsMathFloat64bits(z);
+
+	if (x === 0 || y === 0 || z === 0 || (bx & go2jsFmaUvInf) === go2jsFmaUvInf || (by & go2jsFmaUvInf) === go2jsFmaUvInf) {
+		return x * y + z;
+	}
+	if ((bz & go2jsFmaUvInf) === go2jsFmaUvInf) {
+		return z;
+	}
+
+	let [xs, xe, xm] = go2jsFmaSplit(bx);
+	const [ys, ye, ym] = go2jsFmaSplit(by);
+	let [zs, ze, zm] = go2jsFmaSplit(bz);
+
+	let pe = xe + ye - 1023 + 1;
+
+	let [pm1, pm2] = go2jsFmaMul64(go2jsFmaShl64(xm, 10n), go2jsFmaShl64(ym, 11n));
+	let zm1 = go2jsFmaShl64(zm, 10n);
+	let zm2 = 0n;
+	let ps = xs ^ ys;
+
+	const topEmpty = ((~pm1 & go2jsFmaMask) >> 62n) & 1n;
+	[pm1, pm2] = go2jsFmaShl(pm1, pm2, topEmpty);
+	pe -= Number(topEmpty);
+
+	if (pe < ze || (pe === ze && pm1 < zm1)) {
+		[ps, pe, pm1, pm2, zs, ze, zm1, zm2] = [zs, ze, zm1, zm2, ps, pe, pm1, pm2];
+	}
+
+	if (ps !== zs && pe === ze && pm1 === zm1 && pm2 === zm2) {
+		return 0;
+	}
+
+	[zm1, zm2] = go2jsFmaShrcompress(zm1, zm2, BigInt(pe - ze));
+
+	let m;
+
+	if (ps === zs) {
+		const [sum2, carry] = go2jsFmaAdd64(pm2, zm2, 0n);
+		const [sum1] = go2jsFmaAdd64(pm1, zm1, carry);
+
+		pm2 = sum2;
+		pm1 = sum1;
+		pe -= Number((~pm1 & go2jsFmaMask) >> 63n);
+
+		// The count is sixty four plus the top bit, which drops the top word
+		// away and leaves the digits in the low word where the answer is read.
+		const shift = 64n + (pm1 >> 63n);
+		const [, rounded] = go2jsFmaShrcompress(pm1, pm2, shift);
+
+		m = rounded;
+	} else {
+		const [diff2, borrow] = go2jsFmaSub64(pm2, zm2, 0n);
+		const [diff1] = go2jsFmaSub64(pm1, zm1, borrow);
+
+		pm2 = diff2;
+		pm1 = diff1;
+
+		const zeros = go2jsFmaLeadingZeros(pm1, pm2);
+		pe -= zeros;
+
+		const [high, low] = go2jsFmaShl(pm1, pm2, BigInt(zeros - 1));
+
+		m = high | go2jsFmaNonzero(low);
+	}
+
+	if (pe > 2045 || (pe === 2045 && (((m + (1n << 9n)) & go2jsFmaMask) >> 63n) === 1n)) {
+		return go2jsMathFloat64frombits((ps << 63n) | go2jsFmaUvInf);
+	}
+	if (pe < 0) {
+		const n = BigInt(-pe);
+		m = (m >> n) | go2jsFmaNonzero(m & ((1n << n) - 1n));
+		pe = 0;
+	}
+
+	// The lowest ten bits of the digits say whether the value sits exactly
+	// between two numbers, which is read before the digits are shifted down.
+	const tie = (m & ((1n << 10n) - 1n)) ^ (1n << 9n);
+	m = ((m + (1n << 9n)) & go2jsFmaMask) >> 10n;
+	m &= ~go2jsFmaZero(tie) & go2jsFmaMask;
+	pe &= -Number(go2jsFmaNonzero(m));
+
+	return go2jsMathFloat64frombits(((ps << 63n) + (BigInt(pe) << 52n) + m) & go2jsFmaMask);
 }
 
 function go2jsMathMod(x, y) {
