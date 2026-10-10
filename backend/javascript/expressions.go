@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // javaScriptStringLiteral renders a Go string as a JavaScript string literal.
@@ -20,7 +21,21 @@ func javaScriptStringLiteral(value string) string {
 
 	builder.WriteByte('"')
 
-	for _, char := range value {
+	for index := 0; index < len(value); {
+		char, size := utf8.DecodeRuneInString(value[index:])
+
+		// A byte that is not the UTF-8 of a rune has nowhere to sit in a
+		// JavaScript string of runes, so it is held the way the runtime holds
+		// one: a lone low surrogate, which is read back as the very byte it was
+		// wherever the string is measured, sliced, indexed or written out.
+		if char == utf8.RuneError && size == 1 {
+			fmt.Fprintf(&builder, `\u%04x`, 0xdc00+int(value[index]))
+			index++
+			continue
+		}
+
+		index += size
+
 		switch char {
 		case '"':
 			builder.WriteString(`\"`)
