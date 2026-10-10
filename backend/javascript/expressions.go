@@ -738,6 +738,20 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		e.write(")")
 
 	case *ast.UnaryExpr:
+		// A minus sign in front of a worked out floating constant is worked out
+		// with it, which keeps the number the program asked for: Go reads -0.0 as
+		// the same number as 0.0, since a negative nothing is not a number a
+		// constant can be, while a JavaScript engine reading -0.0 would keep a
+		// negative nothing and answer a question about it differently.
+		if x.Op == token.SUB || x.Op == token.ADD {
+			if basic, ok := e.analyzedType(x).(*gotypes.Basic); ok && basic.Info()&gotypes.IsFloat != 0 {
+				if folded, ok := e.foldedFloatConstant(x); ok {
+					e.write(folded)
+					return nil
+				}
+			}
+		}
+
 		if x.Op == token.MUL && e.isScalarReceiverIdent(x.X) {
 			e.needsRuntime = true
 			e.write(e.scalarReceiver)
