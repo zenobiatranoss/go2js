@@ -249,6 +249,39 @@ func SupportedStdlibSymbols() map[string][]string {
 	collect(packageTypes)
 	collect(reportOnlyTypes)
 
+	// The variables a package answers for are counted like the rest, but only
+	// for packages the registry already knows: a sentinel such as syscall's is
+	// reachable by a selector yet syscall is not a supported package, so it
+	// must not invent a row of its own.
+	collectVars := func(store map[string]string) {
+		for key := range store {
+			dot := strings.LastIndex(key, ".")
+			if dot <= 0 || dot == len(key)-1 {
+				continue
+			}
+
+			pkg, name := key[:dot], key[dot+1:]
+			list, known := symbols[pkg]
+			if !known {
+				continue
+			}
+
+			found := false
+			for _, existing := range list {
+				if existing == name {
+					found = true
+					break
+				}
+			}
+			if !found {
+				symbols[pkg] = append(list, name)
+			}
+		}
+	}
+
+	collectVars(packageVarValues)
+	collectVars(packageVarTypes)
+
 	for pkg := range symbols {
 		sort.Strings(symbols[pkg])
 	}
@@ -262,9 +295,18 @@ func SupportedStdlibSymbols() map[string][]string {
 // They are counted as covered in the support report even though a zero value of
 // them has no constructor of its own to be built from.
 var reportOnlyTypes = map[string]string{
-	"strings.Reader":   "",
-	"strings.Replacer": "",
-	"bytes.Reader":     "",
+	"strings.Reader":           "",
+	"strings.Replacer":         "",
+	"bytes.Reader":             "",
+	"sort.IntSlice":            "",
+	"sort.StringSlice":         "",
+	"sort.Float64Slice":        "",
+	"sort.Interface":           "",
+	"container/heap.Interface": "",
+	"hash/crc32.Table":         "",
+	"crc32.Table":              "",
+	"hash/crc64.Table":         "",
+	"crc64.Table":              "",
 }
 
 func isStdlibPkgAlias(name string) bool {

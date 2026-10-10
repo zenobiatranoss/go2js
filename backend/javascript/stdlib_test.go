@@ -14,7 +14,7 @@ func TestStdlibFuncName(t *testing.T) {
 		{"strings", "TrimSuffix", "go2jsStringsTrimSuffix", true},
 		{"strconv", "Unquote", "go2jsStrconvUnquote", true},
 		{"strconv", "FormatFloat", "go2jsStrconvFormatFloat", true},
-		{"math", "Exp", "Math.exp", true},
+		{"math", "Exp", "go2jsMathExp", true},
 		{"math", "Sin", "Math.sin", true},
 		{"math", "IsNaN", "Number.isNaN", true},
 		{"sort", "Ints", "go2jsSortInts", true},
