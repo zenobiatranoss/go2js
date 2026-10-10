@@ -54,26 +54,6 @@ name the runtime does **not** answer for. A name in its "missing" column is
 currently a compile-time error, not a silent wrong answer, so the honest
 limit is: whatever the report still lists.
 
-## Gaps being worked on
-
-These are places where the two runtimes still tell different stories, tracked
-in the working notes so they aren't mistaken for settled behavior.
-
-- **A slice, a map, or a function is refused as a key and refused as an
-  equal.** `map[any]` with a slice key panics, `any(slice) == any(slice)`
-  panics, and `reflect.DeepEqual` looks inside — all the way Go does. But a
-  *declared* type that holds one of those slips by: `type S struct{a []int}`
-  compares silently instead of refusing the way Go refuses it.
-- **A boxed key in `map[any]` writes but doesn't read back.** A key stored
-  through `any(int64(5))` lives under a wrapper the map keeps, but a later
-  lookup builds a wrapper of its own, so the map reaches for a key it can't
-  find and answers with the zero value. Plain int, float64, string, and bool
-  keys read back correctly.
-- **Float64 arithmetic in an interface still equals the same whole number.**
-  `any(3 + 0.0) == any(3)` is true where Go says false, because only an
-  explicit `float64(...)` conversion is wrapped with a type of its own. The
-  numbers line up, but the types don't get the chance to.
-
 ## When parity can't be exact
 
 Sometimes the two runtimes can't agree on a detail, and we're okay with that:
