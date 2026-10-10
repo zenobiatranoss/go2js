@@ -14,8 +14,8 @@ of the package is a compile-time error yet.
 | base64 (`encoding/base64`) | 2       | 11    | 18   % | CorruptInputError, Encoding, NewEncoding, NoPadding, RawStdEncoding, RawURLEncoding, StdEncoding, StdPadding, URLEncoding |
 | big          | 0       | 0     | 0    % | none |
 | binary (`encoding/binary`) | 6       | 22    | 27   % | Append, AppendByteOrder, AppendUvarint, AppendVarint, ByteOrder, Decode, Encode, MaxVarintLen16, MaxVarintLen32, MaxVarintLen64, NativeEndian, Read, … |
-| bufio        | 11      | 25    | 44   % | ErrAdvanceTooFar, ErrBadReadCount, ErrFinalToken, ErrNegativeAdvance, ErrTooLong, NewReadWriter, ReadWriter, Reader, ScanBytes, ScanRunes, ScanWords, Scanner, … |
-| bytes        | 44      | 64    | 68   % | FieldsFunc, FieldsFuncSeq, FieldsSeq, IndexFunc, IndexRune, LastIndexByte, LastIndexFunc, Lines, SplitAfterN, SplitAfterSeq, SplitSeq, ToLowerSpecial, … |
+| bufio        | 14      | 25    | 56   % | ErrAdvanceTooFar, ErrBadReadCount, ErrFinalToken, ErrNegativeAdvance, ErrTooLong, NewReadWriter, ReadWriter, Reader, Scanner, SplitFunc, Writer |
+| bytes        | 61      | 64    | 95   % | ToLowerSpecial, ToTitleSpecial, ToUpperSpecial |
 | cmp          | 3       | 4     | 75   % | Ordered |
 | container/heap | 5       | 6     | 83   % | Interface |
 | container/list | 1       | 3     | 33   % | Element, List |
@@ -34,7 +34,7 @@ of the package is a compile-time error yet.
 | encoding/hex | 7       | 14    | 50   % | AppendDecode, AppendEncode, Decode, ErrLength, InvalidByteError, NewDecoder, NewEncoder |
 | errors       | 6       | 6     | 100  % | none |
 | exec         | 0       | 0     | 0    % | none |
-| filepath (`path/filepath`) | 17      | 27    | 62   % | ErrBadPattern, EvalSymlinks, FromSlash, HasPrefix, IsLocal, ListSeparator, Localize, Separator, SplitList, WalkFunc |
+| filepath (`path/filepath`) | 19      | 27    | 70   % | ErrBadPattern, EvalSymlinks, HasPrefix, IsLocal, ListSeparator, Localize, Separator, WalkFunc |
 | flag         | 33      | 44    | 75   % | Arg, BoolFunc, ErrHelp, ErrorHandling, Flag, FlagSet, Func, Getter, TextVar, UnquoteUsage, Value |
 | fmt          | 7       | 29    | 24   % | Append, Appendf, Appendln, FormatString, Formatter, Fscan, Fscanf, Fscanln, GoStringer, Print, Printf, Println, … |
 | fs           | 0       | 0     | 0    % | none |
@@ -53,13 +53,13 @@ of the package is a compile-time error yet.
 | maps         | 10      | 10    | 100  % | none |
 | math         | 85      | 97    | 87   % | Erf, Erfc, Erfcinv, Erfinv, FMA, J0, J1, Jn, Lgamma, Y0, Y1, Yn |
 | math/big     | 1       | 25    | 4    % | Above, Accuracy, AwayFromZero, Below, ErrNaN, Exact, Float, Int, Jacobi, MaxBase, MaxExp, MaxPrec, … |
-| math/bits    | 35      | 50    | 70   % | Add32, Add64, Div32, Div64, Mul32, Mul64, Rem32, Rem64, ReverseBytes, ReverseBytes16, ReverseBytes32, ReverseBytes64, … |
+| math/bits    | 45      | 50    | 90   % | ReverseBytes, ReverseBytes16, ReverseBytes32, ReverseBytes64, UintSize |
 | math/rand    | 12      | 23    | 52   % | ExpFloat64, Int31, Int31n, Int63n, NewZipf, NormFloat64, Rand, Read, Source, Source64, Zipf |
 | net          | 11      | 102   | 10   % | Addr, AddrError, Buffers, Conn, DNSConfigError, DNSError, DefaultResolver, Dial, DialIP, DialTCP, DialTimeout, DialUDP, … |
 | net/http/httptest | 4       | 9     | 44   % | DefaultRemoteAddr, NewServer, NewTLSServer, NewUnstartedServer, Server |
 | os           | 48      | 118   | 40   % | Args, Chdir, Chown, Clearenv, CopyFS, DirEntry, DirFS, ErrClosed, ErrDeadlineExceeded, ErrExist, ErrInvalid, ErrNoDeadline, … |
 | os/exec      | 7       | 9     | 77   % | ErrDot, ErrWaitDelay |
-| path         | 7       | 9     | 77   % | ErrBadPattern, Match |
+| path         | 8       | 9     | 88   % | ErrBadPattern |
 | reflect      | 47      | 75    | 62   % | Append, AppendSlice, BothDir, ChanDir, ChanOf, Copy, FuncOf, MakeChan, MakeFunc, Method, NewAt, RecvDir, … |
 | regexp       | 4       | 9     | 44   % | CompilePOSIX, Match, MatchReader, MustCompilePOSIX, Regexp |
 | runtime      | 17      | 50    | 34   % | AddCleanup, BlockProfile, BlockProfileRecord, Breakpoint, CPUProfile, Cleanup, Compiler, Error, GOROOT, GoroutineProfile, LockOSThread, MemProfile, … |
@@ -68,7 +68,7 @@ of the package is a compile-time error yet.
 | slog         | 0       | 0     | 0    % | none |
 | sort         | 18      | 22    | 81   % | Float64Slice, IntSlice, Interface, StringSlice |
 | strconv      | 37      | 38    | 97   % | NumError |
-| strings      | 52      | 60    | 86   % | FieldsFuncSeq, FieldsSeq, Lines, SplitAfterSeq, SplitSeq, ToLowerSpecial, ToTitleSpecial, ToUpperSpecial |
+| strings      | 57      | 60    | 95   % | ToLowerSpecial, ToTitleSpecial, ToUpperSpecial |
 | sync         | 8       | 12    | 66   % | Locker, OnceFunc, OnceValue, OnceValues |
 | tabwriter    | 0       | 0     | 0    % | none |
 | template     | 0       | 0     | 0    % | none |
@@ -82,4 +82,4 @@ of the package is a compile-time error yet.
 | url (`net/url`) | 11      | 16    | 68   % | Error, EscapeError, InvalidHostError, Userinfo, Values |
 | utf8 (`unicode/utf8`) | 19      | 19    | 100  % | none |
 
-**Total: 1060 of 2086 package-level exported names (50%) covered across 71 packages.**
+**Total: 1098 of 2086 package-level exported names (52%) covered across 71 packages.**

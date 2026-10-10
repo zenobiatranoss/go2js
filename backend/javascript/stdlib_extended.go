@@ -1790,6 +1790,11 @@ func extendedStdlibFuncs() {
 		"IndexRune":     "go2jsStringsIndexRune",
 		"Builder":       "go2jsStringsBuilder",
 		"NewReplacer":   "go2jsStringsNewReplacer",
+		"SplitSeq":      "go2jsStringsSplitSeq",
+		"SplitAfterSeq": "go2jsStringsSplitAfterSeq",
+		"FieldsSeq":     "go2jsStringsFieldsSeq",
+		"FieldsFuncSeq": "go2jsStringsFieldsFuncSeq",
+		"Lines":         "go2jsStringsLines",
 	})
 
 	extend(strconvFuncs, map[string]string{
@@ -1931,6 +1936,23 @@ func extendedStdlibFuncs() {
 		"Map":             "go2jsBytesMap",
 		"SplitAfter":      "go2jsBytesSplitAfter",
 		"LastIndexAny":    "go2jsBytesLastIndexAny",
+		"FieldsFunc":      "go2jsBytesFieldsFunc",
+		"FieldsFuncSeq":   "go2jsBytesFieldsFuncSeq",
+		"FieldsSeq":       "go2jsBytesFieldsSeq",
+		"IndexFunc":       "go2jsBytesIndexFunc",
+		"IndexRune":       "go2jsBytesIndexRune",
+		"LastIndexByte":   "go2jsBytesLastIndexByte",
+		"LastIndexFunc":   "go2jsBytesLastIndexFunc",
+		"Lines":           "go2jsBytesLines",
+		"SplitAfterN":     "go2jsBytesSplitAfterN",
+		"SplitAfterSeq":   "go2jsBytesSplitAfterSeq",
+		"SplitSeq":        "go2jsBytesSplitSeq",
+		"ToValidUTF8":     "go2jsBytesToValidUTF8",
+		"TrimFunc":        "go2jsBytesTrimFunc",
+		"TrimLeft":        "go2jsBytesTrimLeft",
+		"TrimLeftFunc":    "go2jsBytesTrimLeftFunc",
+		"TrimRight":       "go2jsBytesTrimRight",
+		"TrimRightFunc":   "go2jsBytesTrimRightFunc",
 	})
 
 	extend(ioFuncs, map[string]string{
@@ -3047,13 +3069,19 @@ function go2jsBytesSplit(a, sep) {
 }
 
 function go2jsBytesSplitN(a, sep, n) {
+	if (n === 0) {
+		return [];
+	}
+
 	const parts = go2jsBytesSplit(a, sep);
 
-	if (n < 0) {
+	if (n < 0 || parts.length <= n) {
 		return parts;
 	}
 
-	return parts.slice(0, n);
+	// The last part a count allows is everything the separator did not cut off,
+	// so the pieces past the count are joined back together as one.
+	return parts.slice(0, n - 1).concat([go2jsBytesJoin(parts.slice(n - 1), sep)]);
 }
 
 function go2jsBytesTitle(a) {
@@ -3092,7 +3120,10 @@ function go2jsBytesTrimSuffix(a, suffix) {
 }
 
 function go2jsBytesFields(a) {
-	return go2jsBytesSplit(go2jsBytesTrimSpace(a), go2jsStringToBytes(" "));
+	// A field is a run of text between runs of space, so the spaces are read as
+	// text and the fields are the parts that are not, which is what strings.Fields
+	// answers and not what a cut on a single space answers.
+	return go2jsStringsFields(go2jsRawText(a)).map(field => go2jsStringToBytes(field));
 }
 
 function go2jsBytesNewBuffer(data) {
@@ -3152,6 +3183,285 @@ function go2jsBytesCutSuffix(a, suffix) {
 function go2jsBytesCompare(a, b) {
 	return go2jsCompareValues(go2jsToArray(a), go2jsToArray(b));
 }
+
+// go2jsSeqOfArray turns a worked-out slice into a sequence that hands its items
+// over one at a time, which is the shape an iterator has: the walker passes a
+// function the items go through, and a false answer stops the walk.
+function go2jsSeqOfArray(items) {
+	const values = items === null || items === undefined ? [] : items;
+
+	return function (handOff) {
+		for (let index = 0; index < values.length; index++) {
+			if (!go2jsCallNow(handOff, null, [values[index]])) {
+				return;
+			}
+		}
+	};
+}
+
+// go2jsTextLines cuts text into the lines Go cuts it into, where each line keeps
+// the newline that ends it and a last line without one is a line of its own. An
+// empty text has no lines at all.
+function go2jsTextLines(text) {
+	const lines = [];
+	let start = 0;
+
+	while (start < text.length) {
+		const at = text.indexOf("\n", start);
+
+		if (at < 0) {
+			lines.push(text.slice(start));
+			break;
+		}
+
+		lines.push(text.slice(start, at + 1));
+		start = at + 1;
+	}
+
+	return lines;
+}
+
+function go2jsStringsSplitSeq(value, sep) {
+	return go2jsSeqOfArray(go2jsStringsSplit(value, sep));
+}
+
+function go2jsStringsSplitAfterSeq(value, sep) {
+	return go2jsSeqOfArray(go2jsStringsSplitAfter(value, sep));
+}
+
+function go2jsStringsFieldsSeq(value) {
+	return go2jsSeqOfArray(go2jsStringsFields(value));
+}
+
+function go2jsStringsFieldsFuncSeq(value, predicate) {
+	return go2jsSeqOfArray(go2jsStringsFieldsFunc(value, predicate));
+}
+
+function go2jsStringsLines(value) {
+	return go2jsSeqOfArray(go2jsTextLines(go2jsStringify(value)));
+}
+
+// go2jsBytesLinesSeq cuts a byte slice into lines, where each line keeps the
+// newline that ends it and the bytes are cut without being read as text.
+function go2jsBytesLineSlices(a) {
+	const bytes = go2jsToArray(a);
+	const lines = [];
+	let start = 0;
+
+	while (start < bytes.length) {
+		let at = -1;
+
+		for (let index = start; index < bytes.length; index++) {
+			if (bytes[index] === 0x0a) {
+				at = index;
+				break;
+			}
+		}
+
+		if (at < 0) {
+			lines.push(bytes.slice(start));
+			break;
+		}
+
+		lines.push(bytes.slice(start, at + 1));
+		start = at + 1;
+	}
+
+	return lines;
+}
+
+function go2jsBytesSplitSeq(a, sep) {
+	return go2jsSeqOfArray(go2jsBytesSplit(a, sep));
+}
+
+function go2jsBytesSplitAfterSeq(a, sep) {
+	return go2jsSeqOfArray(go2jsBytesSplitAfter(a, sep));
+}
+
+function go2jsBytesFieldsSeq(a) {
+	return go2jsSeqOfArray(go2jsBytesFields(a));
+}
+
+function go2jsBytesFieldsFuncSeq(a, predicate) {
+	return go2jsSeqOfArray(go2jsBytesFieldsFunc(a, predicate));
+}
+
+function go2jsBytesLines(a) {
+	return go2jsSeqOfArray(go2jsBytesLineSlices(a));
+}
+
+// go2jsBytesSplitAfterN cuts a byte slice the way bytes.SplitAfterN does, where
+// the last part a count allows is everything past the second to last cut, and a
+// count that reaches past the number of cuts leaves the slice cut everywhere.
+function go2jsBytesSplitAfterN(a, sep, n) {
+	if (n === 0) {
+		return [];
+	}
+
+	const parts = go2jsBytesSplitAfter(a, sep);
+
+	if (n < 0 || parts.length <= n) {
+		return parts;
+	}
+
+	// The last part a count allows is everything past the second to last cut, so
+	// the pieces past the count are joined back without a separator between them
+	// since each of them already carries the separator that cut it.
+	return parts.slice(0, n - 1).concat([go2jsBytesJoin(parts.slice(n - 1), [])]);
+}
+
+// go2jsBytesFieldsFunc cuts a byte slice into the runs of text between the runes
+// a function names, which is what bytes.FieldsFunc does.
+function go2jsBytesFieldsFunc(a, predicate) {
+	return go2jsStringsFieldsFunc(go2jsRawText(a), predicate).map(field => go2jsStringToBytes(field));
+}
+
+// go2jsBytesIndexFunc answers where in a byte slice the first rune a function
+// names sits, counted in bytes from the front.
+function go2jsBytesIndexFunc(a, predicate) {
+	return go2jsStringsIndexFunc(go2jsRawText(a), predicate);
+}
+
+// go2jsBytesLastIndexFunc answers where in a byte slice the last rune a function
+// names sits.
+function go2jsBytesLastIndexFunc(a, predicate) {
+	return go2jsStringsLastIndexFunc(go2jsRawText(a), predicate);
+}
+
+function go2jsBytesIndexRune(a, r) {
+	return go2jsStringsIndexRune(go2jsRawText(a), r);
+}
+
+function go2jsBytesLastIndexByte(a, b) {
+	return go2jsToArray(a).lastIndexOf(Number(b) & 255);
+}
+
+function go2jsBytesTrimFunc(a, predicate) {
+	return go2jsStringToBytes(go2jsStringsTrimFunc(go2jsRawText(a), predicate));
+}
+
+function go2jsBytesTrimLeft(a, cutset) {
+	return go2jsStringToBytes(go2jsStringsTrimLeft(go2jsRawText(a), cutset));
+}
+
+function go2jsBytesTrimLeftFunc(a, predicate) {
+	return go2jsStringToBytes(go2jsStringsTrimLeftFunc(go2jsRawText(a), predicate));
+}
+
+function go2jsBytesTrimRight(a, cutset) {
+	return go2jsStringToBytes(go2jsStringsTrimRight(go2jsRawText(a), cutset));
+}
+
+function go2jsBytesTrimRightFunc(a, predicate) {
+	return go2jsStringToBytes(go2jsStringsTrimRightFunc(go2jsRawText(a), predicate));
+}
+
+// go2jsDecodeRune reads the rune the bytes from a place write, and a sequence
+// that writes no rune is answered as the replacement rune in a single byte,
+// which is what Go answers when it reads text it cannot understand.
+function go2jsDecodeRune(bytes, start) {
+	const first = bytes[start];
+
+	if (first < 0x80) {
+		return [first, 1];
+	}
+
+	let size;
+	let code;
+	let lower = 0x80;
+	let upper = 0xbf;
+
+	if (first >= 0xc2 && first <= 0xdf) {
+		size = 2;
+		code = first & 0x1f;
+	} else if (first >= 0xe0 && first <= 0xef) {
+		size = 3;
+		code = first & 0x0f;
+
+		if (first === 0xe0) {
+			lower = 0xa0;
+		} else if (first === 0xed) {
+			upper = 0x9f;
+		}
+	} else if (first >= 0xf0 && first <= 0xf4) {
+		size = 4;
+		code = first & 0x07;
+
+		if (first === 0xf0) {
+			lower = 0x90;
+		} else if (first === 0xf4) {
+			upper = 0x8f;
+		}
+	} else {
+		return [0xfffd, 1];
+	}
+
+	if (start + size > bytes.length) {
+		return [0xfffd, 1];
+	}
+
+	for (let offset = 1; offset < size; offset++) {
+		const byte = bytes[start + offset];
+		const low = offset === 1 ? lower : 0x80;
+		const high = offset === 1 ? upper : 0xbf;
+
+		if (byte < low || byte > high) {
+			return [0xfffd, 1];
+		}
+
+		code = (code << 6) | (byte & 0x3f);
+	}
+
+	return [code, size];
+}
+
+// go2jsBytesToValidUTF8 gives back a byte slice where every run of bytes that
+// writes no rune is written as the replacement bytes, and a run of them becomes
+// one replacement rather than one for each byte of it.
+function go2jsBytesToValidUTF8(a, replacement) {
+	const bytes = go2jsToArray(a);
+	const repl = go2jsToArray(replacement);
+	const out = [];
+	let invalid = false;
+	let index = 0;
+
+	while (index < bytes.length) {
+		const first = bytes[index];
+
+		if (first < 0x80) {
+			out.push(first);
+			index++;
+			invalid = false;
+			continue;
+		}
+
+		const decoded = go2jsDecodeRune(bytes, index);
+		const size = decoded[1];
+
+		if (size === 1) {
+			if (!invalid) {
+				invalid = true;
+
+				for (const byte of repl) {
+					out.push(byte);
+				}
+			}
+
+			index += size;
+			continue;
+		}
+
+		for (let offset = 0; offset < size; offset++) {
+			out.push(bytes[index + offset]);
+		}
+
+		index += size;
+		invalid = false;
+	}
+
+	return out;
+}
+
 
 function go2jsCallMethod(target, method, ...args) {
 	if (target === null || target === undefined) {
