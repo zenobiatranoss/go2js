@@ -122,8 +122,25 @@ func (e *emitter) emitChannelRecv(expr ast.Expr) error {
 		return err
 	}
 
+	// Receiving from a channel that was closed and emptied is the zero value of
+	// what the channel carries, which is the one value a receive makes up rather
+	// than takes, so the runtime is told what to make of it.
+	e.write(", ")
+	e.write(e.channelElementZero(expr))
+
 	e.write("))")
 	return nil
+}
+
+// channelElementZero is the zero value of what a channel hands over, which is
+// what a receive answers with once the channel has been closed and drained.
+func (e *emitter) channelElementZero(channel ast.Expr) string {
+	element := e.channelElementType(channel)
+	if element == nil {
+		return "null"
+	}
+
+	return e.zeroValue(element)
 }
 
 func (e *emitter) emitChannelLen(expr ast.Expr) error {
