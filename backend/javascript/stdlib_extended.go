@@ -142,6 +142,9 @@ var packageVarValues = map[string]string{
 	"os.ErrPermission":       `go2jsSentinelError("permission denied")`,
 	"os.ErrDeadlineExceeded": `go2jsSentinelError("i/o timeout")`,
 
+	"path.ErrBadPattern":     `go2jsPathBadPattern`,
+	"filepath.ErrBadPattern": `go2jsFilepathBadPattern`,
+
 	"syscall.ENOENT": `go2jsSentinelError("no such file or directory", "syscall.Errno")`,
 	"syscall.EEXIST": `go2jsSentinelError("file exists", "syscall.Errno")`,
 	"syscall.EACCES": `go2jsSentinelError("permission denied", "syscall.Errno")`,
@@ -1583,6 +1586,9 @@ var packageVarTypes = map[string]string{
 	"os.ErrDeadlineExceeded": "error",
 	"os.ErrClosed":           "error",
 	"os.ErrPermission":       "error",
+
+	"path.ErrBadPattern":     "error",
+	"filepath.ErrBadPattern": "error",
 
 	"syscall.ENOENT": "error",
 	"syscall.EEXIST": "error",
@@ -4155,11 +4161,11 @@ function go2jsErrnoSentinel(code) {
 	}
 }
 
-function go2jsSentinelError(message, typeName) {
+function go2jsSentinelError(message, typeName, key) {
 	return function go2jsSentinelErrorValue() {
 		const name = typeName === undefined || typeName === null || typeName === "" ? "*errors.errorString" : typeName;
-		const key = name + "\u0000" + message;
-		let error = go2jsSentinelErrors.get(key);
+		const cacheKey = (key === undefined || key === null || key === "" ? name : key) + "\u0000" + message;
+		let error = go2jsSentinelErrors.get(cacheKey);
 
 		if (error === undefined) {
 			error = go2jsNameError(new Error(message), name);
@@ -4172,7 +4178,7 @@ function go2jsSentinelError(message, typeName) {
 				};
 			}
 
-			go2jsSentinelErrors.set(key, error);
+			go2jsSentinelErrors.set(cacheKey, error);
 		}
 
 		return error;

@@ -11,14 +11,14 @@ of the package is a compile-time error yet.
 | package      | covered | total | %      | missing (first few) |
 | ------------ | ------- | ----- | ------ | ------------------- |
 | atomic (`sync/atomic`) | 7       | 47    | 14   % | AddInt32, AddInt64, AddUint32, AddUint64, AddUintptr, AndInt32, AndInt64, AndUint32, AndUint64, AndUintptr, CompareAndSwapInt32, CompareAndSwapInt64, … |
-| base64 (`encoding/base64`) | 2       | 11    | 18   % | CorruptInputError, Encoding, NewEncoding, NoPadding, RawStdEncoding, RawURLEncoding, StdEncoding, StdPadding, URLEncoding |
+| base64 (`encoding/base64`) | 6       | 11    | 54   % | CorruptInputError, Encoding, NewEncoding, NoPadding, StdPadding |
 | big          | 0       | 0     | 0    % | none |
 | binary (`encoding/binary`) | 6       | 22    | 27   % | Append, AppendByteOrder, AppendUvarint, AppendVarint, ByteOrder, Decode, Encode, MaxVarintLen16, MaxVarintLen32, MaxVarintLen64, NativeEndian, Read, … |
 | bits         | 0       | 0     | 0    % | none |
 | bufio        | 14      | 25    | 56   % | ErrAdvanceTooFar, ErrBadReadCount, ErrFinalToken, ErrNegativeAdvance, ErrTooLong, NewReadWriter, ReadWriter, Reader, Scanner, SplitFunc, Writer |
 | bytes        | 61      | 64    | 95   % | ToLowerSpecial, ToTitleSpecial, ToUpperSpecial |
 | cmp          | 3       | 4     | 75   % | Ordered |
-| container/heap | 5       | 6     | 83   % | Interface |
+| container/heap | 6       | 6     | 100  % | none |
 | container/list | 1       | 3     | 33   % | Element, List |
 | context      | 10      | 17    | 58   % | CancelCauseFunc, CancelFunc, Context, WithCancelCause, WithDeadlineCause, WithTimeoutCause, WithoutCancel |
 | crc32        | 0       | 0     | 0    % | none |
@@ -27,7 +27,7 @@ of the package is a compile-time error yet.
 | crypto/md5   | 4       | 4     | 100  % | none |
 | crypto/rand  | 2       | 5     | 40   % | Int, Prime, Text |
 | crypto/sha1  | 4       | 4     | 100  % | none |
-| crypto/sha256 | 4       | 7     | 57   % | New224, Size224, Sum224 |
+| crypto/sha256 | 7       | 7     | 100  % | none |
 | crypto/sha512 | 13      | 13    | 100  % | none |
 | csv (`encoding/csv`) | 2       | 9     | 22   % | ErrBareQuote, ErrFieldCount, ErrQuote, ErrTrailingComma, ParseError, Reader, Writer |
 | debug (`runtime/debug`) | 2       | 19    | 10   % | BuildInfo, BuildSetting, CrashOptions, FreeOSMemory, GCStats, Module, ParseBuildInfo, ReadBuildInfo, ReadGCStats, SetCrashOutput, SetGCPercent, SetMaxStack, … |
@@ -35,18 +35,18 @@ of the package is a compile-time error yet.
 | encoding/hex | 7       | 14    | 50   % | AppendDecode, AppendEncode, Decode, ErrLength, InvalidByteError, NewDecoder, NewEncoder |
 | errors       | 6       | 6     | 100  % | none |
 | exec         | 0       | 0     | 0    % | none |
-| filepath (`path/filepath`) | 19      | 27    | 70   % | ErrBadPattern, EvalSymlinks, HasPrefix, IsLocal, ListSeparator, Localize, Separator, WalkFunc |
+| filepath (`path/filepath`) | 22      | 27    | 81   % | EvalSymlinks, HasPrefix, IsLocal, Localize, WalkFunc |
 | flag         | 33      | 44    | 75   % | Arg, BoolFunc, ErrHelp, ErrorHandling, Flag, FlagSet, Func, Getter, TextVar, UnquoteUsage, Value |
 | fmt          | 7       | 29    | 24   % | Append, Appendf, Appendln, FormatString, Formatter, Fscan, Fscanf, Fscanln, GoStringer, Print, Printf, Println, … |
 | fs           | 0       | 0     | 0    % | none |
 | hash/adler32 | 2       | 3     | 66   % | Size |
-| hash/crc32   | 10      | 12    | 83   % | IEEETable, Table |
-| hash/crc64   | 7       | 8     | 87   % | Table |
+| hash/crc32   | 12      | 12    | 100  % | none |
+| hash/crc64   | 8       | 8     | 100  % | none |
 | hash/fnv     | 6       | 6     | 100  % | none |
 | html         | 2       | 2     | 100  % | none |
 | html/template | 9       | 37    | 24   % | ErrAmbigContext, ErrBadHTML, ErrBranchEnd, ErrEndContext, ErrJSTemplate, ErrNoSuchTemplate, ErrOutputContext, ErrPartialCharset, ErrPartialEscape, ErrPredefinedEscaper, ErrRangeLoopReentry, ErrSlashAmbig, … |
 | http (`net/http`) | 109     | 184   | 59   % | AllowQuerySemicolons, CanonicalHeaderKey, CloseNotifier, ConnState, CookieJar, DefaultTransport, DetectContentType, Dir, ErrAbortHandler, ErrBodyNotAllowed, ErrBodyReadAfterClose, ErrContentLength, … |
-| io           | 17      | 52    | 32   % | ByteReader, ByteScanner, ByteWriter, Closer, Discard, EOF, ErrClosedPipe, ErrNoProgress, ErrShortBuffer, ErrShortWrite, ErrUnexpectedEOF, LimitedReader, … |
+| io           | 20      | 52    | 38   % | ByteReader, ByteScanner, ByteWriter, Closer, ErrClosedPipe, ErrNoProgress, ErrShortBuffer, ErrShortWrite, LimitedReader, OffsetWriter, Pipe, PipeReader, … |
 | io/fs        | 17      | 45    | 37   % | DirEntry, ErrClosed, ErrExist, ErrInvalid, ErrNotExist, ErrPermission, FS, File, FileInfo, FileInfoToDirEntry, FileMode, FormatDirEntry, … |
 | json (`encoding/json`) | 9       | 25    | 36   % | Decoder, Delim, Encoder, InvalidUTF8Error, InvalidUnmarshalError, Marshaler, MarshalerError, Number, RawMessage, SyntaxError, Token, UnmarshalFieldError, … |
 | log          | 26      | 27    | 96   % | Logger |
@@ -58,16 +58,16 @@ of the package is a compile-time error yet.
 | math/rand    | 12      | 23    | 52   % | ExpFloat64, Int31, Int31n, Int63n, NewZipf, NormFloat64, Rand, Read, Source, Source64, Zipf |
 | net          | 11      | 102   | 10   % | Addr, AddrError, Buffers, Conn, DNSConfigError, DNSError, DefaultResolver, Dial, DialIP, DialTCP, DialTimeout, DialUDP, … |
 | net/http/httptest | 4       | 9     | 44   % | DefaultRemoteAddr, NewServer, NewTLSServer, NewUnstartedServer, Server |
-| os           | 48      | 118   | 40   % | Args, Chdir, Chown, Clearenv, CopyFS, DirEntry, DirFS, ErrClosed, ErrDeadlineExceeded, ErrExist, ErrInvalid, ErrNoDeadline, … |
+| os           | 56      | 118   | 47   % | Chdir, Chown, Clearenv, CopyFS, DirEntry, DirFS, ErrInvalid, ErrNoDeadline, ErrProcessDone, Executable, Exit, Expand, … |
 | os/exec      | 7       | 9     | 77   % | ErrDot, ErrWaitDelay |
-| path         | 8       | 9     | 88   % | ErrBadPattern |
+| path         | 9       | 9     | 100  % | none |
 | reflect      | 47      | 75    | 62   % | Append, AppendSlice, BothDir, ChanDir, ChanOf, Copy, FuncOf, MakeChan, MakeFunc, Method, NewAt, RecvDir, … |
 | regexp       | 4       | 9     | 44   % | CompilePOSIX, Match, MatchReader, MustCompilePOSIX, Regexp |
 | runtime      | 17      | 50    | 34   % | AddCleanup, BlockProfile, BlockProfileRecord, Breakpoint, CPUProfile, Cleanup, Compiler, Error, GOROOT, GoroutineProfile, LockOSThread, MemProfile, … |
 | sha512       | 0       | 0     | 0    % | none |
 | slices       | 40      | 40    | 100  % | none |
 | slog         | 0       | 0     | 0    % | none |
-| sort         | 18      | 22    | 81   % | Float64Slice, IntSlice, Interface, StringSlice |
+| sort         | 22      | 22    | 100  % | none |
 | strconv      | 37      | 38    | 97   % | NumError |
 | strings      | 57      | 60    | 95   % | ToLowerSpecial, ToTitleSpecial, ToUpperSpecial |
 | sync         | 8       | 12    | 66   % | Locker, OnceFunc, OnceValue, OnceValues |
@@ -83,4 +83,4 @@ of the package is a compile-time error yet.
 | url (`net/url`) | 11      | 16    | 68   % | Error, EscapeError, InvalidHostError, Userinfo, Values |
 | utf8 (`unicode/utf8`) | 19      | 19    | 100  % | none |
 
-**Total: 1108 of 2086 package-level exported names (53%) covered across 72 packages.**
+**Total: 1138 of 2086 package-level exported names (54%) covered across 72 packages.**

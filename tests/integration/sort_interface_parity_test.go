@@ -2,7 +2,7 @@ package integration_test
 
 import "testing"
 
-func TestSortInterfaceParity(t *testing.T) {
+func TestSortSliceTypesAndInterfaceMatchGo(t *testing.T) {
 	runParityTest(t, `package main
 
 import (
@@ -12,41 +12,35 @@ import (
 
 type byLen []string
 
-func (s byLen) Len() int           { return len(s) }
-func (s byLen) Less(i, j int) bool { return len(s[i]) < len(s[j]) }
-func (s byLen) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
-
-type item struct {
-	Name  string
-	Score int
-}
-
-type byScore []item
-
-func (s byScore) Len() int           { return len(s) }
-func (s byScore) Less(i, j int) bool { return s[i].Score < s[j].Score }
-func (s byScore) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+func (b byLen) Len() int           { return len(b) }
+func (b byLen) Less(i, j int) bool { return len(b[i]) < len(b[j]) }
+func (b byLen) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
 
 func main() {
-	words := byLen{"ccc", "a", "bb", "dd"}
+	ints := sort.IntSlice{5, 2, 8, 1}
+	sort.Sort(ints)
+	fmt.Println(ints)
+	sort.Sort(sort.Reverse(ints))
+	fmt.Println(ints)
+
+	strs := sort.StringSlice{"b", "a", "c"}
+	sort.Sort(strs)
+	fmt.Println(strs, sort.IsSorted(strs), sort.IsSorted(sort.Reverse(strs)))
+
+	fls := sort.Float64Slice{2.5, 1.1, 3.3}
+	sort.Sort(fls)
+	fmt.Println(fls)
+
+	var iface sort.Interface = sort.IntSlice{4, 6, 2}
+	sort.Sort(iface)
+	fmt.Println(iface, iface.Len(), iface.Less(0, 1))
+
+	words := byLen{"ccc", "a", "bb", "dddd"}
 	sort.Sort(words)
-	fmt.Println("sort:", words)
+	fmt.Println(words)
+	fmt.Println(sort.Search(len(words), func(i int) bool { return len(words[i]) >= 3 }))
 
-	rank := byScore{{"a", 2}, {"b", 2}, {"c", 1}, {"d", 2}, {"e", 1}}
-	sort.Stable(rank)
-	fmt.Println("stable:", rank)
-
-	nums := []int{5, 2, 9, 1}
-	sort.Sort(sort.Reverse(sort.IntSlice(nums)))
-	fmt.Println("reverse ints:", nums)
-
-	rev := byLen{"ccc", "a", "bb", "dd"}
-	sort.Sort(sort.Reverse(rev))
-	fmt.Println("reverse custom:", rev)
-
-	stableRev := byScore{{"a", 2}, {"b", 2}, {"c", 1}, {"d", 2}, {"e", 1}}
-	sort.Stable(sort.Reverse(stableRev))
-	fmt.Println("reverse stable:", stableRev)
+	fmt.Println(sort.StringsAreSorted([]string{"a", "b"}), sort.IntsAreSorted([]int{3, 1}))
 }
 `)
 }

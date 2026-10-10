@@ -21,3 +21,30 @@ func main() {
 }
 `)
 }
+
+func TestPathMatchBadPatternSentinelMatchesGo(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"path"
+	"path/filepath"
+)
+
+func main() {
+	_, perr := path.Match("[", "x")
+	fmt.Println(perr == path.ErrBadPattern, perr)
+
+	_, ferr := filepath.Match("[", "x")
+	fmt.Println(ferr == filepath.ErrBadPattern, ferr)
+
+	fmt.Println(path.ErrBadPattern == filepath.ErrBadPattern)
+
+	_, verr := filepath.Match("a\\", "a")
+	fmt.Println(verr == filepath.ErrBadPattern)
+
+	ok, nerr := path.Match("a*", "abc")
+	fmt.Println(ok, nerr)
+}
+`)
+}
