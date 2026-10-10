@@ -12630,28 +12630,77 @@ function go2jsHexEncodeToString(src) {
 	return out;
 }
 
-function go2jsHexDecodeString(s) {
-	const out = [];
-
-	for (let i = 0; i + 1 < s.length; i += 2) {
-		const byte = parseInt(s.slice(i, i + 2), 16);
-
-		if (Number.isNaN(byte)) {
-			throw new Error("encoding/hex: invalid byte: " + s.slice(i, i + 2));
-		}
-
-		out.push(byte);
+// go2jsHexValue reads one hex digit for what it stands for, and reports a
+// character that is not one with a number no digit could be.
+function go2jsHexValue(code) {
+	if (code >= 0x30 && code <= 0x39) {
+		return code - 0x30;
 	}
 
-	return out;
+	if (code >= 0x41 && code <= 0x46) {
+		return code - 0x41 + 10;
+	}
+
+	if (code >= 0x61 && code <= 0x66) {
+		return code - 0x61 + 10;
+	}
+
+	return -1;
+}
+
+// go2jsHexInvalidByte names the character that stopped a reading, written the
+// way the language writes a printed rune.
+function go2jsHexInvalidByte(byte) {
+	const hex = byte.toString(16).toUpperCase().padStart(4, "0");
+	const quoted = byte >= 0x20 && byte !== 0x7f ? " '" + String.fromCharCode(byte) + "'" : "";
+
+	return go2jsNameError(new Error("encoding/hex: invalid byte: U+" + hex + quoted), "hex.InvalidByteError");
+}
+
+function go2jsHexDecodeString(s) {
+	const src = go2jsStringify(s);
+	const out = [];
+	let index = 1;
+
+	for (; index < src.length; index += 2) {
+		const high = go2jsHexValue(src.charCodeAt(index - 1));
+		const low = go2jsHexValue(src.charCodeAt(index));
+
+		// A character that is not a hex digit stops the reading where it is,
+		// keeping what was read before it, the way go hands back the bytes it
+		// managed together with the fault.
+		if (high < 0) {
+			return [out, go2jsHexInvalidByte(src.charCodeAt(index - 1))];
+		}
+
+		if (low < 0) {
+			return [out, go2jsHexInvalidByte(src.charCodeAt(index))];
+		}
+
+		out.push((high << 4) | low);
+	}
+
+	// A reading that stops with half a byte left is not a fault in any character
+	// it has, so it is told apart from one that named a bad character.
+	if (src.length % 2 === 1) {
+		const last = src.charCodeAt(src.length - 1);
+
+		if (go2jsHexValue(last) < 0) {
+			return [out, go2jsHexInvalidByte(last)];
+		}
+
+		return [out, go2jsNameError(new Error("encoding/hex: odd length hex string"), "*errors.errorString")];
+	}
+
+	return [out, null];
 }
 
 function go2jsHexEncodedLen(n) {
-	return n * 2;
+	return Math.trunc(Number(n)) * 2;
 }
 
-function go2jsHexDecodedLen(s) {
-	return s.length >> 1;
+function go2jsHexDecodedLen(n) {
+	return Math.trunc(Number(n) / 2);
 }
 
 function go2jsHexDump(src) {
