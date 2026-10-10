@@ -1097,6 +1097,9 @@ function go2jsTimeValue(date) {
             date.setUTCFullYear(date.getUTCFullYear() + Number(years), date.getUTCMonth() + Number(months), date.getUTCDate() + Number(days));
             const next = go2jsTimeValue(date);
 
+            // Reckoning a moment from its fields keeps the finer part it was
+            // holding, since none of those fields are a fraction of a second.
+            next.__go2js_nsec = this.__go2js_nsec === undefined ? 0 : this.__go2js_nsec;
             next.__go2js_location = this.__go2js_location;
             next.__go2js_zone = this.__go2js_zone;
 
@@ -1108,8 +1111,21 @@ function go2jsTimeValue(date) {
         UnixNano: function() {
             // The count of nanoseconds since the epoch is counted in seconds
             // and then in what is left of the second, which for a moment before
-            // the epoch is a count of the second it sits before it.
-            return go2jsTimeQuotient(this.value.getTime(), 1000) * 1000000000 + go2jsTimeNanos(this);
+            // the epoch is a count of the second it sits before it. The whole
+            // count is wider than a double keeps exactly, so it is worked out
+            // as digits and narrowed back once it fits.
+            return go2jsNarrow(BigInt(go2jsTimeQuotient(this.value.getTime(), 1000)) * 1000000000n + BigInt(go2jsTimeNanos(this)));
+        },
+        UnixMicro: function() {
+            // The count of microseconds is the count of seconds and the whole
+            // microseconds within one, cut off the nanoseconds below them.
+            return go2jsNarrow(BigInt(go2jsTimeQuotient(this.value.getTime(), 1000)) * 1000000n + BigInt(Math.trunc(go2jsTimeNanos(this) / 1000)));
+        },
+        UnixMilli: function() {
+            // The count of milliseconds is the count of seconds and the whole
+            // milliseconds within one, which is the count of them the moment's
+            // fields already hold.
+            return go2jsNarrow(BigInt(go2jsTimeQuotient(this.value.getTime(), 1000)) * 1000n + BigInt(Math.trunc(go2jsTimeNanos(this) / 1000000)));
         },
         IsZero: function() {
             return this.value.getTime() === 0 || this.__go2js_time_zero === true;
@@ -1130,10 +1146,16 @@ function go2jsTimeValue(date) {
             return go2jsTimeString(this);
         },
         Add: function(duration) {
-            const nanos = go2jsDurationNanos(duration);
+            const nanos = Number(go2jsDurationNanos(duration));
             const held = this.__go2js_nsec === undefined ? 0 : this.__go2js_nsec;
-            let fine = held + (nanos % 1000000);
-            let millis = this.value.getTime() + go2jsTimeQuotient(nanos, 1000000);
+            // A span is counted in whole milliseconds and in what is left over,
+            // and what is left over is counted from the whole millisecond below
+            // it rather than from zero, so a span before zero leaves a positive
+            // remainder and the two parts always name the same span.
+            const remainder = nanos % 1000000;
+            const step = (nanos - remainder) / 1000000;
+            let fine = held + remainder;
+            let millis = this.value.getTime() + step;
 
             // A moment moved past the end of a second carries what it was holding
             // into the next second rather than dropping it, which is what moving a
