@@ -392,53 +392,242 @@ function go2jsBufioNewWriter(destination) {
 	};
 }
 
+// go2jsBufioNewScanner reads through everything the reader has and hands it out
+// a piece at a time, the piece being whatever the split function it is given
+// says one is. The split function is one of the package's own until a program
+// asks for another, which is the way Go starts a scanner too.
 function go2jsBufioNewScanner(source) {
-	const lines = go2jsBufioSplitLines(go2jsBufioText(source));
-	let index = 0;
-	let line = "";
+	const bytes = go2jsStringToBytes(go2jsBufioText(source));
+	let position = 0;
+	let token = null;
+	let err = null;
+	let split = go2jsBufioScanLines;
 
 	return {
+		Split: function (fn) {
+			if (typeof fn === "function") {
+				split = fn;
+			}
+
+			return null;
+		},
 		Scan: function () {
-			if (index >= lines.length) {
+			// Everything the reader had is already in hand, so every piece the
+			// split function is asked about is the last of what is left, which
+			// is what lets it hand back a token with no separator after it.
+			const rest = bytes.slice(position);
+			const result = split(rest, true);
+			const advance = Number(result[0]) || 0;
+			const piece = result[1];
+			const failure = result[2];
+
+			if (failure !== null && failure !== undefined) {
+				err = failure;
+
 				return false;
 			}
 
-			line = lines[index];
-			index++;
+			position += advance;
 
-			return true;
+			if (piece !== null && piece !== undefined) {
+				token = piece;
+
+				return true;
+			}
+
+			return false;
 		},
 		Text: function () {
-			return line;
+			return token === null ? "" : go2jsBufioBytesToString(token);
 		},
 		Bytes: function () {
-			return go2jsStringToBytes(line);
+			return token === null ? [] : token;
 		},
 		Buffer: function () {
-			return line;
+			return token === null ? [] : token;
 		},
 		Err: function () {
-			return null;
+			return err;
 		},
 	};
 }
 
-function go2jsBufioSplitLines(text) {
-	if (text === "") {
-		return [];
-	}
-
-	const lines = text.split("\n");
-
-	if (lines.length > 0 && lines[lines.length - 1] === "") {
-		lines.pop();
-	}
-
-	return lines.map(line => (line.endsWith("\r") ? line.slice(0, -1) : line));
+// go2jsBufioBytesToString is the text the bytes of a token stand for.
+function go2jsBufioBytesToString(bytes) {
+	return go2jsBytesToString(go2jsToArray(bytes));
 }
 
-function go2jsBufioScanLines() {
-	return 0;
+// go2jsBufioDropCR takes a carriage return off the end of a line, which is what
+// a line ending in the two characters of a Windows line ending leaves over.
+function go2jsBufioDropCR(bytes) {
+	if (bytes.length > 0 && bytes[bytes.length - 1] === 13) {
+		return bytes.slice(0, -1);
+	}
+
+	return bytes;
+}
+
+// go2jsBufioRuneAt reads one rune out of a run of UTF-8 bytes, answering the
+// rune and how many bytes it took. A byte that cannot begin or continue a rune
+// stands for the replacement rune and is one byte long, the way Go reads it.
+function go2jsBufioRuneAt(bytes, index) {
+	const first = bytes[index] & 255;
+
+	if (first < 128) {
+		return [first, 1];
+	}
+
+	const continuations = count => {
+		let rune = first & (255 >> (count + 1));
+
+		for (let offset = 1; offset < count; offset++) {
+			const next = bytes[index + offset];
+
+			if (next === undefined || (next & 192) !== 128) {
+				return null;
+			}
+
+			rune = (rune << 6) | (next & 63);
+		}
+
+		return rune;
+	};
+
+	if (first >= 240) {
+		const rune = continuations(4);
+
+		if (rune !== null && rune >= 65536) {
+			return [rune, 4];
+		}
+	} else if (first >= 224) {
+		const rune = continuations(3);
+
+		if (rune !== null && rune >= 2048) {
+			return [rune, 3];
+		}
+	} else if (first >= 192) {
+		const rune = continuations(2);
+
+		if (rune !== null && rune >= 128) {
+			return [rune, 2];
+		}
+	}
+
+	return [65533, 1];
+}
+
+// go2jsBufioIsSpace reports whether a rune is one Go calls a space, which is a
+// rune a word is told apart by when a scanner splits on words.
+function go2jsBufioIsSpace(rune) {
+	if (rune === 32 || (rune >= 9 && rune <= 13) || rune === 133 || rune === 160) {
+		return true;
+	}
+
+	if (rune < 0x2000) {
+		return false;
+	}
+
+	return (rune >= 0x2000 && rune <= 0x200a) || rune === 0x2028 || rune === 0x2029 ||
+		rune === 0x202f || rune === 0x205f || rune === 0x3000 || rune === 0x1680 ||
+		rune === 0xfeff;
+}
+
+// go2jsBufioScanLines is bufio.ScanLines: one token for each line, with a
+// carriage return before the newline dropped.
+function go2jsBufioScanLines(data, atEOF) {
+	const bytes = go2jsToArray(data);
+
+	if (atEOF && bytes.length === 0) {
+		return [0, null, null];
+	}
+
+	for (let index = 0; index < bytes.length; index++) {
+		if (bytes[index] === 10) {
+			return [index + 1, go2jsBufioDropCR(bytes.slice(0, index)), null];
+		}
+	}
+
+	if (atEOF) {
+		return [bytes.length, go2jsBufioDropCR(bytes), null];
+	}
+
+	return [0, null, null];
+}
+
+// go2jsBufioScanWords is bufio.ScanWords: one token for each run of characters
+// that are not spaces.
+function go2jsBufioScanWords(data, atEOF) {
+	const bytes = go2jsToArray(data);
+
+	if (atEOF && bytes.length === 0) {
+		return [0, null, null];
+	}
+
+	let start = 0;
+
+	while (start < bytes.length) {
+		const rune = go2jsBufioRuneAt(bytes, start);
+
+		if (!go2jsBufioIsSpace(rune[0])) {
+			break;
+		}
+
+		start += rune[1];
+	}
+
+	if (start >= bytes.length) {
+		if (atEOF) {
+			return [bytes.length, null, null];
+		}
+
+		return [0, null, null];
+	}
+
+	let end = start;
+
+	while (end < bytes.length) {
+		const rune = go2jsBufioRuneAt(bytes, end);
+
+		if (go2jsBufioIsSpace(rune[0])) {
+			break;
+		}
+
+		end += rune[1];
+	}
+
+	if (start < end) {
+		return [end, bytes.slice(start, end), null];
+	}
+
+	if (atEOF) {
+		return [bytes.length, null, null];
+	}
+
+	return [0, null, null];
+}
+
+// go2jsBufioScanBytes is bufio.ScanBytes: one token for each byte.
+function go2jsBufioScanBytes(data, atEOF) {
+	const bytes = go2jsToArray(data);
+
+	if (bytes.length === 0) {
+		return [0, null, null];
+	}
+
+	return [1, [bytes[0] & 255], null];
+}
+
+// go2jsBufioScanRunes is bufio.ScanRunes: one token for each rune.
+function go2jsBufioScanRunes(data, atEOF) {
+	const bytes = go2jsToArray(data);
+
+	if (bytes.length === 0) {
+		return [0, null, null];
+	}
+
+	const rune = go2jsBufioRuneAt(bytes, 0);
+
+	return [rune[1], bytes.slice(0, rune[1]), null];
 }
 `
 }
