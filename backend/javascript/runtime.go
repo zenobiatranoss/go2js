@@ -2159,6 +2159,37 @@ function go2jsURL() {
 		return go2jsURLString(url);
 	};
 
+	// RequestURI is the URL as it is written on a request line: the path it
+	// asks for, or a slash when it names none, with the query after it. An
+	// opaque URL is its own request target, and one that begins with two
+	// slashes is given the scheme back so the two are not mistaken for an
+	// authority.
+	url.RequestURI = function() {
+		let result = url.Opaque;
+
+		if (result === "") {
+			result = url.EscapedPath();
+
+			if (result === "") {
+				result = "/";
+			}
+		} else if (result.startsWith("//")) {
+			result = url.Scheme + ":" + result;
+		}
+
+		if (url.ForceQuery || url.RawQuery !== "") {
+			result += "?" + url.RawQuery;
+		}
+
+		return result;
+	};
+
+	url.EscapedFragment = function() {
+		const escaped = url.RawFragment;
+
+		return escaped !== "" && go2jsURLValidEncoded(escaped, "fragment") ? escaped : go2jsURLFragmentEscape(url.Fragment);
+	};
+
 	// A password is a secret, so a URL written for reading shows where one was
 	// without saying what it was.
 	url.Redacted = function() {
@@ -2394,7 +2425,24 @@ function go2jsURLEscapedPath(url) {
 // it, which is what tells a path that was written on purpose from one that was
 // written by escaping a path.
 function go2jsURLValidEncoded(text, mode) {
-	for (const char of text) {
+	const value = go2jsStringify(text);
+
+	for (let index = 0; index < value.length; index++) {
+		const char = value[index];
+
+		// A percent is written with the two digits that name the byte, so it is
+		// read with them rather than asked whether it escapes on its own.
+		if (char === "%") {
+			const named = value.slice(index + 1, index + 3);
+
+			if (named.length < 2 || !/^[0-9A-Fa-f]{2}$/.test(named)) {
+				return false;
+			}
+
+			index += 2;
+			continue;
+		}
+
 		if (go2jsURLShouldEscape(char, mode)) {
 			return false;
 		}
