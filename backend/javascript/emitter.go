@@ -3050,7 +3050,7 @@ func (e *emitter) emitConversion(call *ast.CallExpr) error {
 			// a number with more digits than a double keeps is brought down to
 			// the thirty two bits it is going into, rather than left as the wide
 			// number it still is
-			if sourceBasic, ok := source.Underlying().(*gotypesstd.Basic); ok && sourceBasic.Info()&gotypesstd.IsInteger != 0 && !hasWideIntOperand(e, call.Args[0]) {
+			if sourceBasic, ok := source.Underlying().(*gotypesstd.Basic); ok && sourceBasic.Info()&gotypesstd.IsInteger != 0 && !hasWideIntOperand(e, call.Args[0]) && !integerConversionWraps(source, target) {
 				if err := e.emitExpr(call.Args[0]); err != nil {
 					return err
 				}
@@ -3167,6 +3167,25 @@ func (e *emitter) emitConversion(call *ast.CallExpr) error {
 			e.write(strconv.Quote(basic.Name()))
 		}
 
+		e.write(")")
+		return nil
+	}
+
+	// A whole number read as a narrower or differently signed whole number keeps
+	// only the digits the type it is going into holds, which the runtime does,
+	// since a value read out of a double still carries the width of a double and
+	// -1 read as a uint32 is 4294967295 rather than -1.
+	if basic := basicOf(target); basic != nil && integerConversionWraps(e.analyzedType(call.Args[0]), target) {
+		e.needsRuntime = true
+		e.write(wideConversionName(basic))
+		e.write("(")
+
+		if err := e.emitExpr(call.Args[0]); err != nil {
+			return err
+		}
+
+		e.write(", ")
+		e.write(strconv.Quote(basic.Name()))
 		e.write(")")
 		return nil
 	}
