@@ -168,6 +168,24 @@ func (e *emitter) emitNamedConversion(call *ast.CallExpr, named *gotypesstd.Name
 		return fmt.Errorf("unsupported conversion to %s", named.Obj().Name())
 	}
 
+	// A named whole number read as a narrower or differently signed whole number
+	// keeps only the digits the type it is going into holds, which its underlying
+	// kind names rather than the name it was given.
+	if integerConversionWraps(e.analyzedType(call.Args[0]), named) {
+		e.needsRuntime = true
+		e.write(wideConversionName(basic))
+		e.write("(")
+
+		if err := e.emitExpr(call.Args[0]); err != nil {
+			return err
+		}
+
+		e.write(", ")
+		e.write(strconv.Quote(basic.Name()))
+		e.write(")")
+		return nil
+	}
+
 	if name == "go2jsComplexConvert" {
 		e.needsRuntime = true
 	}
@@ -208,6 +226,54 @@ func isSizedIntegerKind(kind gotypesstd.BasicKind) bool {
 	default:
 		return false
 	}
+}
+
+// integerBits is the width in bits a whole number kind is held in, which is what
+// a conversion has to keep the digits of when it narrows or changes sign.
+func integerBits(kind gotypesstd.BasicKind) int {
+	switch kind {
+	case gotypesstd.Int8, gotypesstd.Uint8:
+		return 8
+	case gotypesstd.Int16, gotypesstd.Uint16:
+		return 16
+	case gotypesstd.Int32, gotypesstd.Uint32:
+		return 32
+	default:
+		return 64
+	}
+}
+
+// integerConversionWraps reports whether reading a whole number as another whole
+// number changes the number it stands for, which happens when the sign changes
+// or when the type it is going into is narrower. A widening that keeps the sign
+// leaves every number it can hold where it was, so it needs no wrap at all.
+func integerConversionWraps(source, target gotypesstd.Type) bool {
+	from := basicOf(source)
+	to := basicOf(target)
+
+	if from == nil || to == nil || from == to {
+		return false
+	}
+
+	if from.Info()&gotypesstd.IsInteger == 0 || to.Info()&gotypesstd.IsInteger == 0 {
+		return false
+	}
+
+	fromSigned := from.Info()&gotypesstd.IsUnsigned == 0
+	toSigned := to.Info()&gotypesstd.IsUnsigned == 0
+
+	if fromSigned == toSigned {
+		return integerBits(to.Kind()) < integerBits(from.Kind())
+	}
+
+	// Reading an unsigned number as a signed one widens or keeps the same width;
+	// every number the narrower signed type cannot hold is one the number it is
+	// read from may already be, so only a widening is safe to leave alone.
+	if fromSigned {
+		return true
+	}
+
+	return integerBits(to.Kind()) <= integerBits(from.Kind())
 }
 
 // wideConversionName names the runtime function that turns a whole number into
