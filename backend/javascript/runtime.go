@@ -7724,7 +7724,7 @@ function go2jsShortTypeName(name) {
 }
 
 function go2jsSwitchTypeOf(value) {
-	return go2jsShortTypeName(go2jsTypeOf(value));
+	return go2jsTypeOf(value);
 }
 
 // go2jsSwitchCaseIndex reports which of the labels a type switch names is the
@@ -7755,7 +7755,15 @@ function go2jsSwitchCaseIndex(value, labels) {
 			continue;
 		}
 
-		if (name === label || go2jsSatisfiesInterface(value, label)) {
+		// A label names a type the way the source wrote it: an imported type
+		// carries its package and a local one does not, while the runtime's name
+		// for a type is qualified by the package it was declared in. An exact
+		// name is therefore tried first, then an agreement of the two names cut
+		// to their last part, and finally the labels that name an interface,
+		// which match on the methods the value carries.
+		if (name === label ||
+			go2jsShortTypeName(name) === go2jsShortTypeName(label) ||
+			go2jsSatisfiesInterface(value, label)) {
 			return index;
 		}
 	}
