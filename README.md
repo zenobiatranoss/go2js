@@ -291,23 +291,18 @@ silently compiling it wrong.
 
 ## Standard library support
 
-A call into one of these packages is written against a runtime written for it,
-rather than against a JavaScript package with the same name:
+The runtime officially answers for the packages below. A call into one of them
+is written against a runtime written for it, rather than against a JavaScript
+package with the same name, and every package here answers **at least 90%** of
+its package-level exported names:
 
 ```
-fmt        strings    strconv    sort     slices    cmp       bytes
-errors     io         os         os/exec  path      path/filepath
-math       math/rand  time       context  log       flag      testing
-bufio      container/heap  container/list      encoding/binary
-encoding   encoding/base64   encoding/csv  encoding/hex  encoding/json
-net        net/http   net/http/httptest  net/url
-regexp     reflect    runtime   runtime/debug
-sync       sync/atomic
-maps       unicode    unicode/utf16   unicode/utf8
-text/tabwriter      text/template
-crypto/hmac        crypto/md5   crypto/rand   crypto/sha1   crypto/sha256
+strings    bytes      strconv    sort     slices     cmp       maps
+errors     path       path/filepath        container/heap
+math       unicode/utf16        unicode/utf8        text/tabwriter
+log        os/exec
+crypto/hmac        crypto/md5   crypto/sha1   crypto/sha256   crypto/sha512
 hash/...   (hash/adler32, hash/crc32, hash/crc64, hash/fnv)
-crypto/sha512
 ```
 
 A note on the crypto and hash packages: `hash/crc32`, `hash/crc64`, `hash/fnv`,
@@ -315,10 +310,14 @@ A note on the crypto and hash packages: `hash/crc32`, `hash/crc64`, `hash/fnv`,
 runtime as the rest of the standard library, while `crypto/md5`, `crypto/sha1`,
 and `crypto/sha256` are written against JavaScript libraries of the same name.
 
-This list grows regularly. If a function you need isn't wired up yet, see
-[Contributing](#contributing) — adding one is a well-trodden path.
+Many more packages — `fmt`, `os`, `io`, `time`, `net/http`, `encoding/json`,
+`context`, `sync`, `flag`, and others — are **partly** implemented. The names
+they do answer are answered correctly, and a name they don't is refused with a
+clear "not available" error rather than compiled wrong. They are simply not yet
+deep enough to be listed as supported here. The generated report names exactly
+which names each one answers.
 
-The exact surface — every package and every name the runtime answers for — is
+That surface — every package and every name the runtime answers for — is
 generated, not promised: see [docs/stdlib-support.md](docs/stdlib-support.md),
 and ask the tool itself for it with
 

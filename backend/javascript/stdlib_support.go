@@ -303,6 +303,7 @@ var reportOnlyTypes = map[string]string{
 	"sort.Float64Slice":        "",
 	"sort.Interface":           "",
 	"container/heap.Interface": "",
+	"cmp.Ordered":              "",
 	"hash/crc32.Table":         "",
 	"crc32.Table":              "",
 	"hash/crc64.Table":         "",

@@ -144,6 +144,10 @@ var packageVarValues = map[string]string{
 
 	"path.ErrBadPattern":     `go2jsPathBadPattern`,
 	"filepath.ErrBadPattern": `go2jsFilepathBadPattern`,
+	"exec.ErrDot":            `go2jsSentinelError("cannot run executable found relative to current directory")`,
+	"exec.ErrWaitDelay":      `go2jsSentinelError("exec: WaitDelay expired before I/O complete")`,
+	"os/exec.ErrDot":         `go2jsSentinelError("cannot run executable found relative to current directory")`,
+	"os/exec.ErrWaitDelay":   `go2jsSentinelError("exec: WaitDelay expired before I/O complete")`,
 
 	"syscall.ENOENT": `go2jsSentinelError("no such file or directory", "syscall.Errno")`,
 	"syscall.EEXIST": `go2jsSentinelError("file exists", "syscall.Errno")`,
@@ -1589,6 +1593,10 @@ var packageVarTypes = map[string]string{
 
 	"path.ErrBadPattern":     "error",
 	"filepath.ErrBadPattern": "error",
+	"exec.ErrDot":            "error",
+	"exec.ErrWaitDelay":      "error",
+	"os/exec.ErrDot":         "error",
+	"os/exec.ErrWaitDelay":   "error",
 
 	"syscall.ENOENT": "error",
 	"syscall.EEXIST": "error",

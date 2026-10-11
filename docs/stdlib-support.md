@@ -10,6 +10,7 @@ of the package is a compile-time error yet.
 
 | package      | covered | total | %      | missing (first few) |
 | ------------ | ------- | ----- | ------ | ------------------- |
+| adler32      | 0       | 0     | 0    % | none |
 | atomic (`sync/atomic`) | 7       | 47    | 14   % | AddInt32, AddInt64, AddUint32, AddUint64, AddUintptr, AndInt32, AndInt64, AndUint32, AndUint64, AndUintptr, CompareAndSwapInt32, CompareAndSwapInt64, … |
 | base64 (`encoding/base64`) | 6       | 11    | 54   % | CorruptInputError, Encoding, NewEncoding, NoPadding, StdPadding |
 | big          | 0       | 0     | 0    % | none |
@@ -17,7 +18,7 @@ of the package is a compile-time error yet.
 | bits         | 0       | 0     | 0    % | none |
 | bufio        | 14      | 25    | 56   % | ErrAdvanceTooFar, ErrBadReadCount, ErrFinalToken, ErrNegativeAdvance, ErrTooLong, NewReadWriter, ReadWriter, Reader, Scanner, SplitFunc, Writer |
 | bytes        | 61      | 64    | 95   % | ToLowerSpecial, ToTitleSpecial, ToUpperSpecial |
-| cmp          | 3       | 4     | 75   % | Ordered |
+| cmp          | 4       | 4     | 100  % | none |
 | container/heap | 6       | 6     | 100  % | none |
 | container/list | 1       | 3     | 33   % | Element, List |
 | context      | 10      | 17    | 58   % | CancelCauseFunc, CancelFunc, Context, WithCancelCause, WithDeadlineCause, WithTimeoutCause, WithoutCancel |
@@ -35,11 +36,11 @@ of the package is a compile-time error yet.
 | encoding/hex | 7       | 14    | 50   % | AppendDecode, AppendEncode, Decode, ErrLength, InvalidByteError, NewDecoder, NewEncoder |
 | errors       | 6       | 6     | 100  % | none |
 | exec         | 0       | 0     | 0    % | none |
-| filepath (`path/filepath`) | 22      | 27    | 81   % | EvalSymlinks, HasPrefix, IsLocal, Localize, WalkFunc |
+| filepath (`path/filepath`) | 25      | 27    | 92   % | EvalSymlinks, WalkFunc |
 | flag         | 33      | 44    | 75   % | Arg, BoolFunc, ErrHelp, ErrorHandling, Flag, FlagSet, Func, Getter, TextVar, UnquoteUsage, Value |
 | fmt          | 7       | 29    | 24   % | Append, Appendf, Appendln, FormatString, Formatter, Fscan, Fscanf, Fscanln, GoStringer, Print, Printf, Println, … |
 | fs           | 0       | 0     | 0    % | none |
-| hash/adler32 | 2       | 3     | 66   % | Size |
+| hash/adler32 | 3       | 3     | 100  % | none |
 | hash/crc32   | 12      | 12    | 100  % | none |
 | hash/crc64   | 8       | 8     | 100  % | none |
 | hash/fnv     | 6       | 6     | 100  % | none |
@@ -59,7 +60,7 @@ of the package is a compile-time error yet.
 | net          | 11      | 102   | 10   % | Addr, AddrError, Buffers, Conn, DNSConfigError, DNSError, DefaultResolver, Dial, DialIP, DialTCP, DialTimeout, DialUDP, … |
 | net/http/httptest | 4       | 9     | 44   % | DefaultRemoteAddr, NewServer, NewTLSServer, NewUnstartedServer, Server |
 | os           | 56      | 118   | 47   % | Chdir, Chown, Clearenv, CopyFS, DirEntry, DirFS, ErrInvalid, ErrNoDeadline, ErrProcessDone, Executable, Exit, Expand, … |
-| os/exec      | 7       | 9     | 77   % | ErrDot, ErrWaitDelay |
+| os/exec      | 9       | 9     | 100  % | none |
 | path         | 9       | 9     | 100  % | none |
 | reflect      | 47      | 75    | 62   % | Append, AppendSlice, BothDir, ChanDir, ChanOf, Copy, FuncOf, MakeChan, MakeFunc, Method, NewAt, RecvDir, … |
 | regexp       | 4       | 9     | 44   % | CompilePOSIX, Match, MatchReader, MustCompilePOSIX, Regexp |
@@ -83,4 +84,4 @@ of the package is a compile-time error yet.
 | url (`net/url`) | 11      | 16    | 68   % | Error, EscapeError, InvalidHostError, Userinfo, Values |
 | utf8 (`unicode/utf8`) | 19      | 19    | 100  % | none |
 
-**Total: 1138 of 2086 package-level exported names (54%) covered across 72 packages.**
+**Total: 1145 of 2086 package-level exported names (54%) covered across 73 packages.**

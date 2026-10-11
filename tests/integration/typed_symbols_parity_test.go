@@ -42,3 +42,29 @@ func main() {
 }
 `)
 }
+
+func TestCmpOrderedAdler32SizeAndExecSentinelsMatchGo(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"cmp"
+	"fmt"
+	"hash/adler32"
+	"os/exec"
+)
+
+func bigger[T cmp.Ordered](a, b T) T {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func main() {
+	fmt.Println(adler32.Size)
+	fmt.Println(exec.ErrDot, exec.ErrWaitDelay)
+	fmt.Println(exec.ErrDot == exec.ErrDot)
+	fmt.Println(bigger(3, 9), bigger("x", "a"), bigger(1.5, 0.5))
+}
+`)
+}

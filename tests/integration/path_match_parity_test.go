@@ -48,3 +48,26 @@ func main() {
 }
 `)
 }
+
+func TestFilepathIsLocalAndLocalizeMatchGo(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"path/filepath"
+)
+
+func main() {
+	fmt.Println(filepath.HasPrefix("/a/b", "/a"), filepath.HasPrefix("a/b", "b"))
+
+	for _, p := range []string{"", "/", ".", "..", "../a", "a/..", "a/b", "a/../b", "./a", "a/./b", "a//b"} {
+		fmt.Printf("IsLocal(%q)=%v\n", p, filepath.IsLocal(p))
+	}
+
+	for _, p := range []string{".", "a", "a/b", "", "/a", "a/", "a/../b", "a//b", "a/..", ".."} {
+		got, err := filepath.Localize(p)
+		fmt.Printf("Localize(%q)=(%q,%v)\n", p, got, err)
+	}
+}
+`)
+}
