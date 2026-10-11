@@ -2478,9 +2478,11 @@ function go2jsMathExpMulti(hi, lo, k) {
 	return go2jsMathLdexp(y, k);
 }
 
-// go2jsMathExp raises e to a number the way go does, over the same series go
-// sums and with the same splitting of the number, so the answer matches go's to
-// the last bit rather than only to the nearest one.
+// go2jsMathExp raises e to a number the way go's portable source does, over the
+// same series go sums and with the same splitting of the number, so the answer
+// matches that algorithm to the last bit. On amd64 and arm64 go swaps in an
+// assembly routine for this one, and the two round differently in the last
+// place, so a run on those builds can still differ by one unit.
 function go2jsMathExp(x) {
 	const value = Number(x);
 
@@ -2515,8 +2517,10 @@ function go2jsMathExp(x) {
 }
 
 // The error function and its complement come from the same rational
-// approximations Go uses, so a call here answers the same number Go answers
-// rather than an approximation of it.
+// approximations Go uses, evaluated over the same exponential this file
+// provides, so a call here follows Go's portable source. Where Go's own
+// exponential is the assembly one the two can differ by a unit in the last
+// place, but the answer is never an approximation of a different kind.
 function go2jsMathErf(x) {
 	const value = Number(x);
 
