@@ -2241,19 +2241,38 @@ function go2jsStringsTrimRight(value, cutset) {
 
 function go2jsStringsTitle(value) {
 	let out = "";
-	let previousIsSeparator = true;
+	let prev = 0x20;
 
 	for (const char of go2jsStringify(value)) {
-		if (previousIsSeparator) {
-			out += char.toUpperCase();
+		const r = char.codePointAt(0);
+
+		if (go2jsStringsTitleSeparator(prev)) {
+			const t = go2jsCaseTitle[r];
+			out += String.fromCodePoint(t === undefined ? r : t);
 		} else {
-			out += char.toLowerCase();
+			out += char;
 		}
 
-		previousIsSeparator = /[^\p{L}\p{N}]/u.test(char);
+		prev = r;
 	}
 
 	return out;
+}
+
+function go2jsStringsTitleSeparator(r) {
+	if (r <= 0x7f) {
+		if ((r >= 0x30 && r <= 0x39) || (r >= 0x61 && r <= 0x7a) || (r >= 0x41 && r <= 0x5a) || r === 0x5f) {
+			return false;
+		}
+
+		return true;
+	}
+
+	if (go2jsUnicodeIsLetter(r) || go2jsUnicodeIsDigit(r)) {
+		return false;
+	}
+
+	return go2jsUnicodeIsSpace(r);
 }
 
 function go2jsStringsMap(mapping, value) {
