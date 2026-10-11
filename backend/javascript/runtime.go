@@ -14072,17 +14072,6 @@ function go2jsStrconvFormatVerb(value) {
 	return String.fromCodePoint(code);
 }
 
-// go2jsStrconvExponent writes an exponent the way Go writes one: a sign and at
-// least two digits, because a one digit exponent is written 0 in front of it.
-function go2jsStrconvExponent(text, upper) {
-	return text.replace(/[eE]([+-]?\d+)$/, (_, digits) => {
-		const sign = digits.startsWith("-") ? "-" : "+";
-		const rest = digits.replace(/^[+-]/, "");
-
-		return (upper ? "E" : "e") + sign + (rest.length < 2 ? "0" + rest : rest);
-	});
-}
-
 function go2jsStrconvFormatFloat(value, format, precision, bitSize) {
 	let number = Number(value);
 
@@ -14090,6 +14079,17 @@ function go2jsStrconvFormatFloat(value, format, precision, bitSize) {
 
 	if (typeof value === "bigint") {
 		return value.toString();
+	}
+
+	if (typeof value === "bigint") {
+		return value.toString();
+	}
+
+	// A number that was asked about as a smaller kind of number is rounded to
+	// that kind first, so the digits written are the digits it keeps and a value
+	// past the range of that kind becomes an infinity.
+	if (bitSize === 32) {
+		number = Math.fround(number);
 	}
 
 	if (Number.isNaN(number)) {
@@ -14100,60 +14100,541 @@ function go2jsStrconvFormatFloat(value, format, precision, bitSize) {
 		return number < 0 ? "-Inf" : "+Inf";
 	}
 
-	// A number that was asked about as a smaller kind of number is rounded to
-	// that kind first, so the digits written are the digits it keeps.
-	if (bitSize === 32) {
-		number = Math.fround(number);
+	switch (format) {
+	case "x":
+	case "X":
+		return go2jsStrconvFormatHex(number, format, precision, bitSize);
+	case "b":
+		return go2jsStrconvFormatBinary(number, bitSize);
 	}
 
-	switch (format) {
-	case "f":
-		return precision >= 0 ? number.toFixed(precision) : String(number);
-	case "e":
-		return go2jsStrconvExponent(number.toExponential(precision < 0 ? 6 : precision), false);
-	case "E":
-		return go2jsStrconvExponent(number.toExponential(precision < 0 ? 6 : precision), true);
-	case "g":
-	case "G":
-		// The shortest form is the number as JavaScript writes it, and it is
-		// written as an exponent once the position of the first digit is far
-		// enough from the point, which is the same distance Go uses.
-		const text = go2jsStrconvShortestFloat(number);
+	return go2jsStrconvBigFtoa(number, format, precision, bitSize);
+}
 
-		if (precision >= 0 && (format === "g" ? precision !== 0 : precision !== 0)) {
-			const fixed = format === "g" ? number.toPrecision(precision) : number.toExponential(precision - 1);
+// go2jsStrconvBigFtoa writes a number in one of the decimal forms Go's strconv
+// writes, by carrying the value as an exact multiple precision decimal and
+// rounding it the way Go rounds. Every digit it prints is a digit Go prints,
+// including the shortest form, the sign of a negative zero, and the tie that
+// Go breaks to even.
+function go2jsStrconvBigFtoa(number, format, precision, bitSize) {
+	const flt = go2jsStrconvFloatInfo(bitSize);
+	const bits = go2jsStrconvFloatBits(number, bitSize);
+	const mb = BigInt(flt.mantbits);
+	const eb = BigInt(flt.expbits);
+	const neg = (bits & (1n << (mb + eb))) !== 0n;
+	let exp = Number((bits >> mb) & ((1n << eb) - 1n));
+	let mant = bits & ((1n << mb) - 1n);
 
-			return format === "g" ? go2jsStrconvExponent(fixed, false) : go2jsStrconvExponent(fixed, true);
+	if (exp === 0) {
+		exp++;
+	} else {
+		mant |= 1n << mb;
+	}
+
+	exp += flt.bias;
+	const shortest = precision < 0;
+	const digs = go2jsDecAssign(mant);
+
+	go2jsDecShift(digs, exp - flt.mantbits);
+
+	if (shortest) {
+		go2jsDecRoundShortest(digs, mant, exp, bitSize);
+
+		switch (format) {
+		case "e":
+		case "E":
+			precision = Math.max(digs.nd - 1, 0);
+			break;
+		case "f":
+			precision = Math.max(digs.nd - digs.dp, 0);
+			break;
+		case "g":
+		case "G":
+			precision = digs.nd;
+			break;
 		}
+	} else {
+		switch (format) {
+		case "e":
+		case "E":
+			go2jsDecRound(digs, precision + 1);
+			break;
+		case "f":
+			go2jsDecRound(digs, digs.dp + precision);
+			break;
+		case "g":
+		case "G":
+			if (precision === 0) {
+				precision = 1;
+			}
 
-		return go2jsStrconvExponent(text, format === "G");
-	default:
-		return String(number);
+			go2jsDecRound(digs, precision);
+			break;
+		}
+	}
+
+	return go2jsStrconvFormatDigits(shortest, neg, digs, precision, format);
+}
+
+// go2jsDecAssign is Go's decimal Assign: the digits of an unsigned whole number
+// with the point after the last one, and trailing zeros trimmed.
+function go2jsDecAssign(value) {
+	const str = value.toString();
+
+	const a = { d: str.split(""), nd: str.length, dp: str.length, trunc: false };
+
+	go2jsDecTrim(a);
+
+	return a;
+}
+
+// go2jsDecTrim is Go's decimal trim: trailing zeros carry no meaning, and a
+// number with no digits left keeps a point at zero.
+function go2jsDecTrim(a) {
+	while (a.nd > 0 && a.d[a.nd - 1] === "0") {
+		a.nd--;
+	}
+
+	if (a.nd === 0) {
+		a.dp = 0;
 	}
 }
 
-// go2jsStrconvShortestFloat writes a number the way the shortest form of Go's
-// strconv writes it, which switches to an exponent once the digits run far from
-// the point in either direction.
-function go2jsStrconvShortestFloat(number) {
-	if (number === 0) {
-		return String(number);
+// go2jsDecShift multiplies the decimal by a power of two: left for a positive
+// shift, right for a negative one. The work is done exactly with whole numbers,
+// since a decimal cannot hold 1/2 exactly but can hold every power of five.
+function go2jsDecShift(a, k) {
+	if (a.nd === 0) {
+		return;
 	}
 
-	const magnitude = Math.abs(number);
-	const exponent = Math.floor(Math.log10(magnitude));
-	const digits = String(number).replace(/^-/, "").replace(".", "").replace(/e.*$/, "").replace(/0+$/, "") || "0";
+	const digits = BigInt(a.d.slice(0, a.nd).join(""));
+	const nd = a.nd;
+	const dp = a.dp;
+	let scaled;
+	let scale;
 
-	// Go writes the exponent form once the first digit is left of one past the
-	// point for a large number, or right of four under it for a small one.
-	if (exponent < -4 || exponent >= 6) {
-		const mantissa = number / Math.pow(10, exponent);
-		const rounded = Number(mantissa.toPrecision(17));
-
-		return String(rounded) + "e" + (exponent < 0 ? "-" : "+") + Math.abs(exponent);
+	if (k > 0) {
+		scaled = digits * (2n ** BigInt(k));
+		scale = 0;
+	} else {
+		const m = -k;
+		scaled = digits * (5n ** BigInt(m));
+		scale = m;
 	}
 
-	return String(number);
+	let str = scaled.toString();
+	const cap = 2000;
+
+	if (str.length > cap) {
+		if (/[1-9]/.test(str.slice(cap))) {
+			a.trunc = true;
+		}
+
+		str = str.slice(0, cap);
+	}
+
+	a.d = str.split("");
+	a.nd = str.length;
+	a.dp = dp - nd - scale + str.length;
+	go2jsDecTrim(a);
+}
+
+// go2jsDecRoundShortest is Go's roundShortest: it walks the decimal digits
+// against the halfway points on either side of the number and stops at the
+// shortest run that still names it, rounding to the nearer when both fit.
+function go2jsDecRoundShortest(d, mant, exp, bitSize) {
+	const flt = go2jsStrconvFloatInfo(bitSize);
+
+	if (mant === 0n) {
+		d.nd = 0;
+		return;
+	}
+
+	const minexp = flt.bias + 1;
+
+	if (exp > minexp && 332 * (d.dp - d.nd) >= 100 * (exp - flt.mantbits)) {
+		return;
+	}
+
+	const upper = go2jsDecAssign(mant*2n + 1n);
+	go2jsDecShift(upper, exp - flt.mantbits - 1);
+
+	let mantlo;
+	let explo;
+
+	if (mant > (1n << BigInt(flt.mantbits)) || exp === minexp) {
+		mantlo = mant - 1n;
+		explo = exp;
+	} else {
+		mantlo = mant*2n - 1n;
+		explo = exp - 1;
+	}
+
+	const lower = go2jsDecAssign(mantlo*2n + 1n);
+	go2jsDecShift(lower, explo - flt.mantbits - 1);
+	const inclusive = mant % 2n === 0n;
+	let upperdelta = 0;
+
+	for (let ui = 0; ; ui++) {
+		const mi = ui - upper.dp + d.dp;
+
+		if (mi >= d.nd) {
+			break;
+		}
+
+		const li = ui - upper.dp + lower.dp;
+		let l = "0";
+
+		if (li >= 0 && li < lower.nd) {
+			l = lower.d[li];
+		}
+
+		let m = "0";
+
+		if (mi >= 0) {
+			m = d.d[mi];
+		}
+
+		let u = "0";
+
+		if (ui < upper.nd) {
+			u = upper.d[ui];
+		}
+
+		const okdown = l !== m || (inclusive && li + 1 === lower.nd);
+
+		if (upperdelta === 0 && m.charCodeAt(0) + 1 < u.charCodeAt(0)) {
+			upperdelta = 2;
+		} else if (upperdelta === 0 && m !== u) {
+			upperdelta = 1;
+		} else if (upperdelta === 1 && (m !== "9" || u !== "0")) {
+			upperdelta = 2;
+		}
+
+		const okup = upperdelta > 0 && (inclusive || upperdelta > 1 || ui + 1 < upper.nd);
+
+		if (okdown && okup) {
+			go2jsDecRound(d, mi + 1);
+			return;
+		}
+
+		if (okdown) {
+			go2jsDecRoundDown(d, mi + 1);
+			return;
+		}
+
+		if (okup) {
+			go2jsDecRoundUp(d, mi + 1);
+			return;
+		}
+	}
+}
+
+// go2jsDecShouldRoundUp decides whether to round up when keeping nd digits,
+// and breaks an exact halfway to even.
+function go2jsDecShouldRoundUp(a, nd) {
+	if (nd < 0 || nd >= a.nd) {
+		return false;
+	}
+
+	if (a.d[nd] === "5" && nd + 1 === a.nd) {
+		if (a.trunc) {
+			return true;
+		}
+
+		return nd > 0 && (a.d[nd-1].charCodeAt(0) - 48) % 2 !== 0;
+	}
+
+	return a.d[nd] >= "5";
+}
+
+// go2jsDecRound keeps nd digits.
+function go2jsDecRound(a, nd) {
+	if (nd < 0 || nd >= a.nd) {
+		return;
+	}
+
+	if (go2jsDecShouldRoundUp(a, nd)) {
+		go2jsDecRoundUp(a, nd);
+	} else {
+		go2jsDecRoundDown(a, nd);
+	}
+}
+
+// go2jsDecRoundDown keeps the first nd digits.
+function go2jsDecRoundDown(a, nd) {
+	if (nd < 0 || nd >= a.nd) {
+		return;
+	}
+
+	a.nd = nd;
+	go2jsDecTrim(a);
+}
+
+// go2jsDecRoundUp keeps the first nd digits, adding one to the last.
+function go2jsDecRoundUp(a, nd) {
+	if (nd < 0 || nd >= a.nd) {
+		return;
+	}
+
+	for (let i = nd - 1; i >= 0; i--) {
+		if (a.d[i] !== "9") {
+			a.d[i] = String.fromCharCode(a.d[i].charCodeAt(0) + 1);
+			a.nd = i + 1;
+			return;
+		}
+	}
+
+	a.d = ["1"];
+	a.nd = 1;
+	a.dp++;
+}
+
+// go2jsStrconvFormatDigits arranges digits in the form the requested verb asks
+// for, following Go's strconv.
+function go2jsStrconvFormatDigits(shortest, neg, digs, precision, format) {
+	if (format === "e" || format === "E") {
+		return go2jsStrconvFmtE(neg, digs, precision, format);
+	}
+
+	if (format === "f") {
+		return go2jsStrconvFmtF(neg, digs, precision);
+	}
+
+	let eprec = precision;
+
+	if (eprec > digs.nd && digs.nd >= digs.dp) {
+		eprec = digs.nd;
+	}
+
+	if (shortest) {
+		eprec = 6;
+	}
+
+	const exp = digs.dp - 1;
+
+	if (exp < -4 || exp >= eprec) {
+		if (precision > digs.nd) {
+			precision = digs.nd;
+		}
+
+		return go2jsStrconvFmtE(neg, digs, precision - 1, format === "G" ? "E" : "e");
+	}
+
+	if (precision > digs.dp) {
+		precision = digs.nd;
+	}
+
+	return go2jsStrconvFmtF(neg, digs, Math.max(precision - digs.dp, 0));
+}
+
+// go2jsStrconvFmtE writes digits as -d.dddde±dd.
+function go2jsStrconvFmtE(neg, digs, precision, format) {
+	const d = digs.d;
+	let out = neg ? "-" : "";
+
+	out += digs.nd !== 0 ? d[0] : "0";
+
+	if (precision > 0) {
+		out += ".";
+
+		let i = 1;
+		const m = Math.min(digs.nd, precision + 1);
+
+		if (i < m) {
+			out += d.slice(i, m).join("");
+			i = m;
+		}
+
+		for (; i <= precision; i++) {
+			out += "0";
+		}
+	}
+
+	out += format;
+
+	let exp = digs.nd === 0 ? 0 : digs.dp - 1;
+
+	out += exp < 0 ? "-" : "+";
+	exp = Math.abs(exp);
+
+	if (exp < 10) {
+		out += "0" + String(exp);
+	} else if (exp < 100) {
+		out += String(exp);
+	} else {
+		out += String(exp);
+	}
+
+	return out;
+}
+
+// go2jsStrconvFmtF writes digits as -ddd.dddd.
+function go2jsStrconvFmtF(neg, digs, precision) {
+	const d = digs.d;
+	let out = neg ? "-" : "";
+
+	if (digs.dp > 0) {
+		const m = Math.min(digs.nd, digs.dp);
+
+		out += d.slice(0, m).join("");
+
+		for (let i = m; i < digs.dp; i++) {
+			out += "0";
+		}
+	} else {
+		out += "0";
+	}
+
+	if (precision > 0) {
+		out += ".";
+
+		for (let i = 0; i < precision; i++) {
+			const j = digs.dp + i;
+
+			out += j >= 0 && j < digs.nd ? d[j] : "0";
+		}
+	}
+
+	return out;
+}
+
+// go2jsStrconvFloatInfo is the shape of an IEEE754 number: how many bits hold
+// the significand and the exponent, and how far the exponent is biased.
+function go2jsStrconvFloatInfo(bitSize) {
+	return bitSize === 32
+		? { mantbits: 23, expbits: 8, bias: -127 }
+		: { mantbits: 52, expbits: 11, bias: -1023 };
+}
+
+// go2jsStrconvFloatBits reads the raw bits a number keeps in the given width.
+function go2jsStrconvFloatBits(number, bitSize) {
+	const buf = new ArrayBuffer(bitSize === 32 ? 4 : 8);
+	const view = new DataView(buf);
+
+	if (bitSize === 32) {
+		view.setFloat32(0, number, true);
+
+		return BigInt(view.getUint32(0, true));
+	}
+
+	view.setFloat64(0, number, true);
+
+	return view.getBigUint64(0, true);
+}
+
+// go2jsStrconvFormatBinary writes a number the way Go's 'b' format writes it:
+// its binary significand in decimal, a p, and the power of two it is scaled by.
+function go2jsStrconvFormatBinary(number, bitSize) {
+	const info = go2jsStrconvFloatInfo(bitSize);
+	const bits = go2jsStrconvFloatBits(number, bitSize);
+	const signMask = 1n << BigInt(info.mantbits + info.expbits);
+	const neg = (bits & signMask) !== 0n;
+	let exp = Number((bits >> BigInt(info.mantbits)) & ((1n << BigInt(info.expbits)) - 1n));
+	let mant = bits & ((1n << BigInt(info.mantbits)) - 1n);
+
+	if (exp === (1 << info.expbits) - 1) {
+		return "NaN";
+	}
+
+	if (exp === 0) {
+		exp++;
+	} else {
+		mant |= 1n << BigInt(info.mantbits);
+	}
+
+	exp += info.bias;
+	exp -= info.mantbits;
+
+	return (neg ? "-" : "") + mant.toString() + "p" + (exp >= 0 ? "+" : "") + String(exp);
+}
+
+// go2jsStrconvFormatHex writes a number the way the hexadecimal forms of Go's
+// strconv write it: the leading digit, the fraction, and a binary exponent of
+// at least two digits.
+function go2jsStrconvFormatHex(number, format, precision, bitSize) {
+	const info = go2jsStrconvFloatInfo(bitSize);
+	const bits = go2jsStrconvFloatBits(number, bitSize);
+	const mb = BigInt(info.mantbits);
+	const eb = BigInt(info.expbits);
+	const signMask = 1n << (mb + eb);
+	const neg = (bits & signMask) !== 0n;
+	let exp = Number((bits >> mb) & ((1n << eb) - 1n));
+	let mant = bits & ((1n << mb) - 1n);
+
+	if (exp === (1 << info.expbits) - 1) {
+		return "NaN";
+	}
+
+	if (exp === 0) {
+		exp++;
+	} else {
+		mant |= 1n << mb;
+	}
+
+	exp += info.bias;
+
+	if (mant === 0n) {
+		exp = 0;
+	}
+
+	// Put the leading 1, if any, at bit 60.
+	mant = (mant << (60n - mb)) & go2jsUint64Mask;
+	while (mant !== 0n && (mant & (1n << 60n)) === 0n) {
+		mant = (mant << 1n) & go2jsUint64Mask;
+		exp--;
+	}
+
+	// Round when the caller asked for a fraction short enough to round.
+	if (precision >= 0 && precision < 15) {
+		const shift = BigInt(precision * 4);
+		const extra = (mant << shift) & ((1n << 60n) - 1n);
+		mant >>= 60n - shift;
+		if ((extra | (mant & 1n)) > (1n << 59n)) {
+			mant++;
+		}
+		mant = (mant << (60n - shift)) & go2jsUint64Mask;
+		if ((mant & (1n << 61n)) !== 0n) {
+			mant >>= 1n;
+			exp++;
+		}
+	}
+
+	const lower = format === "x";
+	const hex = lower ? "0123456789abcdef" : "0123456789ABCDEF";
+	let out = neg ? "-" : "";
+	out += "0" + format + String((mant >> 60n) & 1n);
+
+	mant = (mant << 4n) & go2jsUint64Mask;
+
+	if (precision < 0 && mant !== 0n) {
+		out += ".";
+
+		while (mant !== 0n) {
+			out += hex[Number((mant >> 60n) & 15n)];
+			mant = (mant << 4n) & go2jsUint64Mask;
+		}
+	} else if (precision > 0) {
+		out += ".";
+
+		for (let i = 0; i < precision; i++) {
+			out += hex[Number((mant >> 60n) & 15n)];
+			mant = (mant << 4n) & go2jsUint64Mask;
+		}
+	}
+
+	out += lower ? "p" : "P";
+	out += exp < 0 ? "-" : "+";
+	out += go2jsStrconvExponentDigits(Math.abs(exp));
+
+	return out;
+}
+
+// go2jsStrconvExponentDigits writes the digits of an exponent, which Go writes
+// with at least two digits.
+function go2jsStrconvExponentDigits(value) {
+	return value < 10 ? "0" + String(value) : String(value);
 }
 
 function go2jsStrconvFormatBool(value) {
