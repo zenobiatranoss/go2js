@@ -1737,6 +1737,69 @@ function go2jsFilepathIsAbs(value) {
 	return String(value).startsWith("/");
 }
 
+// go2jsFilepathHasPrefix reads a name as one beginning with the text of another,
+// which is a question about the text and not about the parts of a path.
+function go2jsFilepathHasPrefix(value, prefix) {
+	return go2jsStringsHasPrefix(value, prefix);
+}
+
+// go2jsFilepathIsLocal reads a name as one kept inside the tree it is read
+// against: not empty, not rooted, and with no part that steps out of it.
+function go2jsFilepathIsLocal(value) {
+	const path = String(value);
+
+	if (path === "" || path.startsWith("/")) {
+		return false;
+	}
+
+	let steps = false;
+
+	for (const part of path.split("/")) {
+		if (part === "." || part === "..") {
+			steps = true;
+			break;
+		}
+	}
+
+	const cleaned = steps ? go2jsFilepathClean(path) : path;
+
+	return cleaned !== ".." && !cleaned.startsWith("../");
+}
+
+// go2jsFilepathLocalize reads a slash separated name as a name of the machine's
+// paths, which for the machine this runtime stands for is the same text unless
+// the name is not a clean relative one or holds a byte a name cannot hold.
+function go2jsFilepathLocalize(value) {
+	const path = String(value);
+
+	if (!go2jsValidPath(path) || path.indexOf("\u0000") >= 0) {
+		return ["", go2jsSentinelError("invalid path")()];
+	}
+
+	return [path, null];
+}
+
+// go2jsValidPath reads a name as one the file tree allows: the current
+// directory, or a name of parts none of which is empty, the current directory
+// or the one above it.
+function go2jsValidPath(path) {
+	if (path === ".") {
+		return true;
+	}
+
+	if (path === "") {
+		return false;
+	}
+
+	for (const part of path.split("/")) {
+		if (part === "" || part === "." || part === "..") {
+			return false;
+		}
+	}
+
+	return true;
+}
+
 function go2jsFilepathRel(base, target) {
 	const from = go2jsFilepathClean(base);
 	const to = go2jsFilepathClean(target);

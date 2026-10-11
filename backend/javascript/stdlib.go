@@ -392,6 +392,9 @@ var filepathFuncs = map[string]string{
 	"Glob":       "go2jsFilepathGlob",
 	"Walk":       "go2jsFilepathWalk",
 	"WalkDir":    "go2jsFilepathWalkDir",
+	"HasPrefix":  "go2jsFilepathHasPrefix",
+	"IsLocal":    "go2jsFilepathIsLocal",
+	"Localize":   "go2jsFilepathLocalize",
 }
 
 var regexpFuncs = map[string]string{

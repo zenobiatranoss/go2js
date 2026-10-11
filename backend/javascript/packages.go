@@ -30,6 +30,8 @@ var packageConstants = map[string]string{
 	"sha256.BlockSize":        "64",
 	"md5.Size":                "16",
 	"md5.BlockSize":           "64",
+	"hash/adler32.Size":       "4",
+	"adler32.Size":            "4",
 	"os.Stdin":                "go2jsOSStdin()",
 	"os.Stdout":               "go2jsOSStdout()",
 	"os.Stderr":               "go2jsOSStderr()",
