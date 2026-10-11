@@ -27,7 +27,7 @@ the parity test is the one rule everything lives by.
 ## Phase 2 — deepen the standard library (in progress)
 
 The gap report is the map for this phase: today the runtime answers for
-**50%** of the package-level exported names across **71** packages (functions,
+**54%** of the package-level exported names across **73** packages (functions,
 constants and types together, so the number is honest rather than flattering).
 The work is one function at a time, each landing with its parity test.
 
@@ -35,7 +35,7 @@ The work is one function at a time, each landing with its parity test.
 | ------ | ------------- | ------ |
 | `strconv` | formatting edge cases are the highest-leverage parity | **97%**: formatting, quote family, `ParseFloat`-family rounding and the error sentinels done; `NumError` wrapping is the honest gap left |
 | `fmt` | the printing verbs are what most programs reach for | `%v %+v %#v`, `%q/%c/%g/%e/%f`, width and precision done; `Scan*` family, `Append*` remain |
-| `math` | pure functions, no I/O, ideal parity tests | **87%**: constants and core functions; special functions (`J0`, `Erf`, `FMA`, …) remain |
+| `math` | pure functions, no I/O, ideal parity tests | **92%**: constants and core functions; the special functions (`J0`, `Lgamma`, …) remain. The functions that are present answer to within a few units in the last place rather than bit-for-bit, because Go's own `Exp`/`Exp2`/`Log` are platform assembly (see `limitations.md`) |
 | `math/big` | `Int`, `Float`, `Rat` — no JS equivalent exists | at the start (wrapper `Int` only) |
 | `time` | everyone formats dates | **83%**: layouts, months, durations, formatting + monotonic clock done; `Parse` now reads RFC3339, named and numeric zones, 12-hour markers, abbreviations and fractions — the `MST`-name dialect and `LoadLocation` zone databases are the gap left |
 | `net/http` | the flagship package | handler/routing/`ResponseRecorder` work; full request surface remains |
@@ -84,7 +84,9 @@ when the tests and the generated report say so, never by intent.
 - [ ] **The core is clean.** Phase 1 holds and no parity defect is known in the
   covered surface: every bug found is fixed with a regression test, and the
   only output differences left are the ones written down as deliberate
-  limitations.
+  limitations — the concurrency timing, the minified stack traces, the
+  benchmark allocation counts and the last-bit differences in `math`'s special
+  functions.
 - [x] **The supported set is named and deep.** The README lists the packages
   the runtime officially answers for. Every package in that set answers **≥
   90%** of its package-level exported names, and the set as a whole averages

@@ -37,6 +37,15 @@ corners. Read these before you promise a deadline around it.
   of UTF-16 code units, so an astral character may pad one cell short. Go
   counts runes. Parity tests avoid combining astral width checks with
   padding below a known threshold.
+- **The special functions of `math` can differ in the last bit.** Go writes
+  `Exp`, `Exp2` and `Log` as platform assembly on amd64 and arm64, with a
+  portable source fallback that rounds differently, so no JavaScript can match
+  a `go run` on those builds bit-for-bit; the same goes for `Sin`, `Cos`,
+  `Atan`, `Pow`, `Erf` and the rest, which may be answered a unit in the last
+  place away. Every result is right to within a few units in the last place of
+  the true value, but a program that tests a `math` result for exact equality
+  against a `go run` — especially one built for a different architecture — can
+  see a difference. `Sqrt`, `Ldexp`, `Float64bits` and the like are exact.
 - **`unsafe` is refused loudly.** `unsafe.Sizeof`, `Alignof`, `Offsetof`,
   `Add`, `Pointer` and `Uintptr` exist as compile-time constants; anything
   else is a compile error rather than a lie.
