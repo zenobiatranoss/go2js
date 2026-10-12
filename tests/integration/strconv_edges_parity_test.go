@@ -153,3 +153,36 @@ func main() {
 }
 `)
 }
+
+func TestStrconvQuoteAndPrintOnRawBytesMatchGo(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"strconv"
+)
+
+func main() {
+	for _, b := range [][]byte{
+		{0x61, 0xff, 0x62},
+		{0xc3},
+		{0xc3, 0x28},
+		{0xe2, 0x82},
+		{0xf0, 0x9f, 0x98, 0x80},
+		{0xed, 0xa0, 0x80},
+		{0xff, 0xfe},
+		{0x00, 0x01, 0x7f},
+		{0xf4, 0x90, 0x80, 0x80},
+		{0xc0, 0x80},
+	} {
+		s := string(b)
+		fmt.Printf("% x => %q | %s | %s\n", b, s, strconv.QuoteToASCII(s), strconv.QuoteToGraphic(s))
+		fmt.Printf("   %s\n", strconv.Quote(s))
+	}
+
+	fmt.Println(strconv.IsPrint('a'), strconv.IsPrint(0x00a0), strconv.IsPrint(0x85), strconv.IsPrint(0x2028), strconv.IsPrint(0x1F600))
+	fmt.Println(strconv.IsGraphic('a'), strconv.IsGraphic(0x00a0), strconv.IsGraphic(0x85), strconv.IsGraphic(0x2028), strconv.IsGraphic(0x1F600))
+	fmt.Println(strconv.Quote("héllo\tworld\U0001F600"))
+}
+`)
+}

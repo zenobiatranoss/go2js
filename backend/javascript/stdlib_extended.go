@@ -2399,31 +2399,23 @@ function go2jsStrconvAppendQuoteRune(target, value) {
 	return go2jsStrconvAppendBytes(target, go2jsStrconvQuoteRune(value));
 }
 
-// go2jsStrconvRuneText turns a rune into the one character it stands for, so a
-// question asked about a rune is asked about the character it names rather than
-// about the number that names it.
-function go2jsStrconvRuneText(value) {
-	if (typeof value === "number" && Number.isInteger(value)) {
-		if (value < 0 || value > 1114111) {
-			return "�";
-		}
-
-		return String.fromCodePoint(value);
-	}
-
-	return go2jsStringify(value);
-}
-
+// go2jsStrconvIsPrint reports whether a rune is a printing character by Go's
+// rule: a letter, mark, number, punctuation mark or symbol, or the plain ASCII
+// space. Other spaces and unassigned or control runes are not, which is why the
+// table cannot be reached by asking about the character alone.
 function go2jsStrconvIsPrint(value) {
-	const text = go2jsStrconvRuneText(value);
+	const code = Number(value);
 
-	return text.length > 0 && !/[\x00-\x1f\x7f]/.test(text);
+	return go2jsValidRune(code) && go2jsStrconvRuneIsPrint(code);
 }
 
+// go2jsStrconvIsGraphic reports whether a rune is a graphic character by Go's
+// rule, which is a printing character or one of the spaces that are not the
+// plain ASCII space.
 function go2jsStrconvIsGraphic(value) {
-	const text = go2jsStrconvRuneText(value);
+	const code = Number(value);
 
-	return text.length > 0 && !/[\x00-\x1f\x7f]/.test(text);
+	return go2jsValidRune(code) && (go2jsStrconvRuneIsPrint(code) || go2jsStrconvRuneIsGraphic(code));
 }
 
 function go2jsMathCbrt(value) {
