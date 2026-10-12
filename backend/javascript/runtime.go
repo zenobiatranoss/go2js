@@ -14296,7 +14296,7 @@ function go2jsUtf8Rune(bytes, at, width) {
 // go2jsQuoteBytes writes a byte slice the way %q writes a string: each rune is
 // escaped on its own, and a byte that does not begin a valid UTF8 sequence is
 // written as \xNN because it stands for no rune at all.
-function go2jsQuoteBytes(value) {
+function go2jsQuoteBytes(value, asciiOnly, graphicOnly) {
 	const bytes = Array.from(value, (item) => Number(item) & 255);
 	const out = ['"'];
 
@@ -14323,7 +14323,7 @@ function go2jsQuoteBytes(value) {
 			continue;
 		}
 
-		go2jsStrconvAppendEscapedRune(out, rune, '"', false, false);
+		go2jsStrconvAppendEscapedRune(out, rune, '"', asciiOnly, graphicOnly);
 		i += width;
 	}
 
@@ -14359,15 +14359,11 @@ function go2jsUtf8Width(bytes, at) {
 }
 
 function go2jsStrconvQuoteWith(value, asciiOnly, graphicOnly) {
-	const out = ['"'];
-
-	for (const char of String(value)) {
-		go2jsStrconvAppendEscapedRune(out, char.codePointAt(0), '"', asciiOnly, graphicOnly);
-	}
-
-	out.push('"');
-
-	return out.join("");
+	// A Go string is a run of bytes, and a byte that is not part of a valid UTF8
+	// sequence has nowhere of its own to sit in a JavaScript string. Reading the
+	// string back as the bytes it is made of lets each one be escaped as Go
+	// escapes it, whether or not it spells a rune.
+	return go2jsQuoteBytes(go2jsStringToBytes(value), asciiOnly, graphicOnly);
 }
 
 function go2jsStrconvQuote(s) {
