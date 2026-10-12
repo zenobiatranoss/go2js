@@ -101,3 +101,66 @@ func main() {
 }
 `)
 }
+
+// A replacement is written once per old piece found, and the search for the
+// next piece begins after the piece just written, so a replacement that holds
+// the old piece is not replaced again; an empty old piece stands between runes,
+// a count below zero means every one, and a split or a count over an empty piece
+// counts runes rather than the halves of a code point.
+func TestStringsReplaceAndEmptySeparatorMatchGo(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+func main() {
+	fmt.Println(strings.Replace("oink oink oink", "k", "ky", 2))
+	fmt.Println(strings.Replace("oink oink oink", "oink", "ky", 2))
+	fmt.Println(strings.Replace("aaaa", "a", "aa", 2))
+	fmt.Println(strings.Replace("abc", "", "-", -1), strings.Replace("abc", "", "-", 2))
+	fmt.Println(strings.Replace("héllo héllo", "é", "ee", 1))
+	fmt.Println(strings.ReplaceAll("moo moo", "o", "0"), strings.ReplaceAll("abc", "", "X"))
+	fmt.Println(strings.ReplaceAll("a\u0301b", "", "."))
+	fmt.Printf("%q %q\n", strings.Split("héllo", ""), strings.Split("aé", ""))
+	fmt.Println(strings.Count("héllo", ""), strings.Count("a\u0301", ""))
+	fmt.Println(strings.Replace("aaa", "aa", "b", 1), strings.Replace("aaaa", "aa", "b", -1))
+}
+`)
+}
+
+// An empty separator is not the absence of a separator but a cut at every rune,
+// and a count over an empty piece counts runes rather than bytes, so a slice of
+// text cut apart and put back together reads the same whether it came as bytes
+// or as a string.
+func TestBytesAndStringsEmptySeparatorMatchGo(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"bytes"
+	"fmt"
+	"strings"
+)
+
+func main() {
+	fmt.Printf("%q\n", strings.Split("héllo", ""))
+	fmt.Printf("%q\n", strings.SplitN("héllo", "", 3))
+	fmt.Printf("%q\n", strings.SplitAfter("héllo", ""))
+	fmt.Printf("%q\n", strings.SplitAfterN("héllo", "", 3))
+	fmt.Printf("%q\n", strings.Split("a😀b", ""))
+	fmt.Println(strings.Count("héllo", ""), strings.Count("a😀b", ""))
+
+	fmt.Printf("%q\n", bytes.Split([]byte("héllo"), nil))
+	fmt.Printf("%q\n", bytes.SplitN([]byte("héllo"), []byte{}, 3))
+	fmt.Printf("%q\n", bytes.SplitAfter([]byte("héllo"), nil))
+	fmt.Printf("%q\n", bytes.SplitAfter([]byte("a😀b"), []byte{}))
+	fmt.Println(bytes.Count([]byte("héllo"), nil), bytes.Count([]byte("a😀b"), []byte("")))
+
+	fmt.Printf("%q\n", bytes.Replace([]byte("abc"), []byte{}, []byte("-"), -1))
+	fmt.Printf("%q\n", bytes.Replace([]byte("abc"), []byte{}, []byte("-"), 2))
+	fmt.Printf("%q\n", bytes.ReplaceAll([]byte("héllo"), []byte{}, []byte(".")))
+	fmt.Printf("%q\n", bytes.Replace([]byte("a😀b"), []byte{}, []byte("-"), -1))
+}
+`)
+}
