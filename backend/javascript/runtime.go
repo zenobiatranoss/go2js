@@ -14433,17 +14433,319 @@ function go2jsStrconvQuoteRuneWith(value, asciiOnly, graphicOnly) {
 	return out.join("");
 }
 
-function go2jsStrconvUnquote(s) {
-	try {
-		if (s.length >= 2 && s[0] === String.fromCharCode(96) && s[s.length - 1] === String.fromCharCode(96)) {
-			return [s.slice(1, -1), null];
+// go2jsStrconvUnhex turns a hexadecimal digit byte into the value it stands
+// for, or -1 when the byte is not a digit.
+function go2jsStrconvUnhex(code) {
+	if (code >= 48 && code <= 57) {
+		return code - 48;
+	}
+
+	if (code >= 97 && code <= 102) {
+		return code - 97 + 10;
+	}
+
+	if (code >= 65 && code <= 70) {
+		return code - 65 + 10;
+	}
+
+	return -1;
+}
+
+// go2jsStrconvSpellsValidUTF8 says whether every byte from one point up to
+// another spells a run of valid UTF8.
+function go2jsStrconvSpellsValidUTF8(bytes, from, to) {
+	for (let i = from; i < to;) {
+		const width = go2jsUtf8Width(bytes, i);
+
+		if (width === 0 || i + width > to) {
+			return false;
 		}
-		return [JSON.parse(s), null];
-	} catch (err) {
-		// The error a quoted string that cannot be read gives back is the plain
-		// one Go hands back, with nothing said about which function ran.
+
+		i += width;
+	}
+
+	return true;
+}
+
+// go2jsStrconvUnquoteCharBytes reads the rune that leads a quoted string of
+// bytes, the way strconv.UnquoteChar does: a plain byte is handed back as it
+// is, a backslash escape is told apart as the rune it stands for, and the
+// point after it is handed back along with whether the rune took more than one
+// byte to write. Bytes are read, not text, because a string may hold bytes that
+// spell no rune at all.
+function go2jsStrconvUnquoteCharBytes(bytes, at, quote) {
+	const bad = () => [0, false, at, false];
+
+	if (at >= bytes.length) {
+		return bad();
+	}
+
+	const first = bytes[at];
+
+	if (first === quote && (quote === 39 || quote === 34)) {
+		return bad();
+	}
+
+	if (first >= 0x80) {
+		const width = go2jsUtf8Width(bytes, at);
+
+		if (width === 0) {
+			return [0xfffd, true, at + 1, true];
+		}
+
+		return [go2jsUtf8Rune(bytes, at, width), true, at + width, true];
+	}
+
+	if (first !== 92) {
+		return [first, false, at + 1, true];
+	}
+
+	if (at + 1 >= bytes.length) {
+		return bad();
+	}
+
+	const esc = bytes[at + 1];
+	let next = at + 2;
+	let value = 0;
+	let multibyte = false;
+
+	switch (esc) {
+	case 97:
+		value = 7;
+		break;
+	case 98:
+		value = 8;
+		break;
+	case 102:
+		value = 12;
+		break;
+	case 110:
+		value = 10;
+		break;
+	case 114:
+		value = 13;
+		break;
+	case 116:
+		value = 9;
+		break;
+	case 118:
+		value = 11;
+		break;
+	case 120:
+	case 117:
+	case 85: {
+		const size = esc === 120 ? 2 : esc === 117 ? 4 : 8;
+
+		if (bytes.length - next < size) {
+			return bad();
+		}
+
+		let v = 0;
+
+		for (let i = 0; i < size; i++) {
+			const digit = go2jsStrconvUnhex(bytes[next + i]);
+
+			if (digit < 0) {
+				return bad();
+			}
+
+			v = v * 16 + digit;
+		}
+
+		next += size;
+
+		if (esc === 120) {
+			value = v;
+			break;
+		}
+
+		if (!go2jsValidRune(v)) {
+			return bad();
+		}
+
+		value = v;
+		multibyte = true;
+		break;
+	}
+	case 48:
+	case 49:
+	case 50:
+	case 51:
+	case 52:
+	case 53:
+	case 54:
+	case 55: {
+		let v = esc - 48;
+
+		if (bytes.length - next < 2) {
+			return bad();
+		}
+
+		for (let i = 0; i < 2; i++) {
+			const digit = bytes[next + i] - 48;
+
+			if (digit < 0 || digit > 7) {
+				return bad();
+			}
+
+			v = v * 8 + digit;
+		}
+
+		next += 2;
+
+		if (v > 255) {
+			return bad();
+		}
+
+		value = v;
+		break;
+	}
+	case 92:
+		value = 92;
+		break;
+	case 39:
+	case 34:
+		if (esc !== quote) {
+			return bad();
+		}
+
+		value = esc;
+		break;
+	default:
+		return bad();
+	}
+
+	return [value, multibyte, next, true];
+}
+
+// go2jsStrconvUnquoteBytes reads a quoted string at the front of a run of
+// bytes and hands back the value, how many bytes it read and whether it read
+// one. When asked to unescape it hands back the value with quotes and escapes
+// taken off, and otherwise the quoted text just as it stands, which is what
+// strconv.QuotedPrefix wants.
+function go2jsStrconvUnquoteBytes(bytes, unescape) {
+	const fail = () => [null, 0, false];
+
+	if (bytes.length < 2) {
+		return fail();
+	}
+
+	const quote = bytes[0];
+	let end = -1;
+
+	for (let i = 1; i < bytes.length; i++) {
+		if (bytes[i] === quote) {
+			end = i + 1;
+			break;
+		}
+	}
+
+	if (quote === 96) {
+		if (end < 0) {
+			return fail();
+		}
+
+		if (!unescape) {
+			return [bytes.slice(0, end), end, true];
+		}
+
+		const out = [];
+
+		for (let i = 1; i < end - 1; i++) {
+			if (bytes[i] !== 13) {
+				out.push(bytes[i]);
+			}
+		}
+
+		return [out, end, true];
+	}
+
+	if (quote !== 34 && quote !== 39) {
+		return fail();
+	}
+
+	if (end < 0) {
+		return fail();
+	}
+
+	let clean = true;
+
+	for (let i = 0; i < end; i++) {
+		if (bytes[i] === 92 || bytes[i] === 10) {
+			clean = false;
+			break;
+		}
+	}
+
+	if (clean) {
+		let valid;
+
+		if (quote === 34) {
+			valid = go2jsStrconvSpellsValidUTF8(bytes, 1, end - 1);
+		} else {
+			const width = go2jsUtf8Width(bytes, 1);
+
+			valid = width > 0 && width === end - 2;
+		}
+
+		if (valid) {
+			if (unescape) {
+				return [bytes.slice(1, end - 1), end, true];
+			}
+
+			return [bytes.slice(0, end), end, true];
+		}
+	}
+
+	const out = [];
+	let i = 1;
+
+	while (i < bytes.length && bytes[i] !== quote) {
+		const step = go2jsStrconvUnquoteCharBytes(bytes, i, quote);
+
+		if (bytes[i] === 10 || !step[3]) {
+			return fail();
+		}
+
+		i = step[2];
+
+		if (unescape) {
+			if (step[0] < 0x80 || !step[1]) {
+				out.push(step[0] & 0xff);
+			} else {
+				for (const byte of go2jsTextEncoder.encode(String.fromCodePoint(step[0]))) {
+					out.push(byte);
+				}
+			}
+		}
+
+		if (quote === 39) {
+			break;
+		}
+	}
+
+	if (!(i < bytes.length && bytes[i] === quote)) {
+		return fail();
+	}
+
+	i += 1;
+
+	if (unescape) {
+		return [out, i, true];
+	}
+
+	return [bytes.slice(0, i), i, true];
+}
+
+function go2jsStrconvUnquote(s) {
+	const bytes = go2jsStringToBytes(s);
+	const result = go2jsStrconvUnquoteBytes(bytes, true);
+
+	if (!result[2] || result[1] !== bytes.length) {
 		return ["", new Error("invalid syntax")];
 	}
+
+	return [go2jsBytesToString(result[0]), null];
 }
 
 function go2jsStrconvFormatVerb(value) {
