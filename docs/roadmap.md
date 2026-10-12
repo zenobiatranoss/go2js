@@ -35,7 +35,7 @@ The work is one function at a time, each landing with its parity test.
 | ------ | ------------- | ------ |
 | `strconv` | formatting edge cases are the highest-leverage parity | **97%**: formatting, quote family, `ParseFloat`-family rounding and the error sentinels done; `NumError` wrapping is the honest gap left |
 | `fmt` | the printing verbs are what most programs reach for | `%v %+v %#v`, `%q/%c/%g/%e/%f`, width and precision done; `Scan*` family, `Append*` remain |
-| `math` | pure functions, no I/O, ideal parity tests | **92%**: constants and core functions; the special functions (`J0`, `Lgamma`, …) remain. The functions that are present answer to within a few units in the last place rather than bit-for-bit, because Go's own `Exp`/`Exp2`/`Log` are platform assembly (see `limitations.md`) |
+| `math` | pure functions, no I/O, ideal parity tests | **92%**: constants and core functions; the special functions (`J0`, `Lgamma`, …) remain. `Cbrt`, `Sin`, `Cos`, `Sincos`, `Tan`, `Asin`, `Acos`, `Atan`, `Atan2`, `Log1p`, `Expm1` and `Atanh` are ported from Go's portable source and match bit-for-bit; the rest answer to within a few units in the last place because Go's own `Exp`/`Exp2`/`Log` are platform assembly (see `limitations.md`) |
 | `math/big` | `Int`, `Float`, `Rat` — no JS equivalent exists | at the start (wrapper `Int` only) |
 | `time` | everyone formats dates | **83%**: layouts, months, durations, formatting + monotonic clock done; `Parse` now reads RFC3339, named and numeric zones, 12-hour markers, abbreviations and fractions — the `MST`-name dialect and `LoadLocation` zone databases are the gap left |
 | `net/http` | the flagship package | handler/routing/`ResponseRecorder` work; full request surface remains |

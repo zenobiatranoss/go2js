@@ -36,7 +36,7 @@ func main() {
 	for _, want := range []string{
 		"go2jsStringsTrimPrefix",
 		"go2jsStrconvFormatBool",
-		"Math.sin",
+		"go2jsMathSin",
 		"go2jsSortInts",
 	} {
 		if !strings.Contains(output, want) {
