@@ -165,6 +165,13 @@ var packageVarValues = map[string]string{
 
 func extendedRuntimeSource() string {
 	return `
+// go2jsSliceList reads a slice that may be nil as the empty slice it is, so a
+// function that only reads or rebuilds its slice can leave a nil slice to the
+// same code a slice with no elements takes.
+function go2jsSliceList(a) {
+	return a === null || a === undefined ? [] : a;
+}
+
 function go2jsSlicesSort(a) {
 	if (a === null || a === undefined) {
 		return;
@@ -184,6 +191,8 @@ function go2jsSlicesSort(a) {
 }
 
 function go2jsSlicesMergeSort(a, compare) {
+	a = go2jsSliceList(a);
+
 	const scratch = new Array(a.length);
 
 	const merge = (lo, mid, hi) => {
@@ -228,6 +237,8 @@ function go2jsSlicesMergeSort(a, compare) {
 }
 
 function go2jsSlicesSortFunc(a, compare) {
+	a = go2jsSliceList(a);
+
 	a.sort((x, y) => {
 		const result = go2jsCallNow(compare, null, [x, y]);
 
@@ -240,10 +251,14 @@ function go2jsSlicesSortStableFunc(a, compare) {
 }
 
 function go2jsSlicesReverse(a) {
+	a = go2jsSliceList(a);
+
 	a.reverse();
 }
 
 function go2jsSlicesContains(a, value) {
+	a = go2jsSliceList(a);
+
 	for (const item of a) {
 		if (go2jsEqual(item, value)) {
 			return true;
@@ -254,6 +269,8 @@ function go2jsSlicesContains(a, value) {
 }
 
 function go2jsSlicesIndex(a, value) {
+	a = go2jsSliceList(a);
+
 	for (let index = 0; index < a.length; index++) {
 		if (go2jsEqual(a[index], value)) {
 			return index;
@@ -264,6 +281,8 @@ function go2jsSlicesIndex(a, value) {
 }
 
 function go2jsSlicesIndexFunc(a, predicate) {
+	a = go2jsSliceList(a);
+
 	for (let index = 0; index < a.length; index++) {
 		if (go2jsCallNow(predicate, null, [a[index]])) {
 			return index;
@@ -278,6 +297,8 @@ function go2jsSlicesContainsFunc(a, predicate) {
 }
 
 function go2jsSlicesIndexAny(a, values) {
+	a = go2jsSliceList(a);
+
 	for (let index = 0; index < a.length; index++) {
 		if (values.includes(a[index])) {
 			return index;
@@ -289,13 +310,10 @@ function go2jsSlicesIndexAny(a, values) {
 
 
 function go2jsSlicesEqual(a, b) {
-	if (a === b) {
-		return true;
-	}
-
-	if (a === null || b === null || a === undefined || b === undefined) {
-		return false;
-	}
+	// A nil slice is the empty slice, so two slices with nothing in them are
+	// equal whether either one is nil.
+	a = go2jsSliceList(a);
+	b = go2jsSliceList(b);
 
 	if (a.length !== b.length) {
 		return false;
@@ -311,13 +329,8 @@ function go2jsSlicesEqual(a, b) {
 }
 
 function go2jsSlicesEqualFunc(a, b, equals) {
-	if (a === b) {
-		return true;
-	}
-
-	if (a === null || b === null || a === undefined || b === undefined) {
-		return false;
-	}
+	a = go2jsSliceList(a);
+	b = go2jsSliceList(b);
 
 	if (a.length !== b.length) {
 		return false;
@@ -390,6 +403,8 @@ function go2jsSlicesCompareFunc(a, b, compare) {
 // slices.IsSorted reads an order, which is the way a < b is read for the
 // values themselves.
 function go2jsSlicesIsSorted(a) {
+	a = go2jsSliceList(a);
+
 	for (let next = 1; next < a.length; next++) {
 		if (go2jsCompareValues(a[next], a[next - 1]) < 0) {
 			return false;
@@ -402,6 +417,8 @@ function go2jsSlicesIsSorted(a) {
 // go2jsSlicesIsSortedFunc reports whether the slice is ordered by the
 // comparison handed in, the way slices.IsSortedFunc reads one.
 function go2jsSlicesIsSortedFunc(a, compare) {
+	a = go2jsSliceList(a);
+
 	for (let next = 1; next < a.length; next++) {
 		if (go2jsCallNow(compare, null, [a[next], a[next - 1]]) < 0) {
 			return false;
@@ -414,8 +431,10 @@ function go2jsSlicesIsSortedFunc(a, compare) {
 // go2jsSlicesMax is the greatest value of a slice, the way slices.Max reads
 // one.
 function go2jsSlicesMax(a) {
+	a = go2jsSliceList(a);
+
 	if (a.length === 0) {
-		throw new Error("slices.Max: empty list");
+		go2jsPanic("slices.Max: empty list");
 	}
 
 	let best = a[0];
@@ -430,8 +449,10 @@ function go2jsSlicesMax(a) {
 }
 
 function go2jsSlicesMin(a) {
+	a = go2jsSliceList(a);
+
 	if (a.length === 0) {
-		throw new Error("slices.Min: empty list");
+		go2jsPanic("slices.Min: empty list");
 	}
 
 	let best = a[0];
@@ -447,8 +468,10 @@ function go2jsSlicesMin(a) {
 
 
 function go2jsSlicesMaxFunc(a, compare) {
+	a = go2jsSliceList(a);
+
 	if (a.length === 0) {
-		throw new Error("slices.MaxFunc: empty list");
+		go2jsPanic("slices.MaxFunc: empty list");
 	}
 
 	let best = a[0];
@@ -463,8 +486,10 @@ function go2jsSlicesMaxFunc(a, compare) {
 }
 
 function go2jsSlicesMinFunc(a, compare) {
+	a = go2jsSliceList(a);
+
 	if (a.length === 0) {
-		throw new Error("slices.MinFunc: empty list");
+		go2jsPanic("slices.MinFunc: empty list");
 	}
 
 	let best = a[0];
@@ -487,6 +512,8 @@ function go2jsSlicesSorted(source) {
 }
 
 function go2jsSlicesCompact(a) {
+	a = go2jsSliceList(a);
+
 	const out = [];
 
 	for (const item of a) {
@@ -499,6 +526,8 @@ function go2jsSlicesCompact(a) {
 }
 
 function go2jsSlicesCompactFunc(a, equals) {
+	a = go2jsSliceList(a);
+
 	const out = [];
 
 	for (const item of a) {
@@ -511,12 +540,16 @@ function go2jsSlicesCompactFunc(a, equals) {
 }
 
 function go2jsSlicesInsert(a, index, ...values) {
+	a = go2jsSliceList(a);
+
 	const clamped = Math.max(0, Math.min(index, a.length));
 
 	return a.slice(0, clamped).concat(values, a.slice(clamped));
 }
 
 function go2jsSlicesDelete(a, start, end) {
+	a = go2jsSliceList(a);
+
 	const low = Math.max(0, Math.min(start, a.length));
 	const high = Math.max(low, Math.min(end, a.length));
 
@@ -524,10 +557,12 @@ function go2jsSlicesDelete(a, start, end) {
 }
 
 function go2jsSlicesDeleteFunc(a, predicate) {
-	return a.filter(item => !go2jsCallNow(predicate, null, [item]));
+	return go2jsSliceList(a).filter(item => !go2jsCallNow(predicate, null, [item]));
 }
 
 function go2jsSlicesGrow(a, count) {
+	a = go2jsSliceList(a);
+
 	if (a.length === 0) {
 		return [];
 	}
@@ -549,21 +584,27 @@ function go2jsSlicesClear(a) {
 // index or end before one, which is what a slice expression of three indices
 // stands for: the elements between the two bounds.
 function go2jsSlicesAfter(a, index) {
-	return a.slice(index);
+	return go2jsSliceList(a).slice(index);
 }
 
 function go2jsSlicesBefore(a, index) {
-	return a.slice(0, index);
+	return go2jsSliceList(a).slice(0, index);
 }
 
 // go2jsSlicesReplace answers a slice with some of its own elements replaced by
 // others, which is the assignment to an element of a slice rather than to the
-// slice itself.
+// slice itself. A nil slice has nowhere to put the value and is left alone.
 function go2jsSlicesReplace(a, index, values) {
+	if (a === null || a === undefined) {
+		return;
+	}
+
 	a[index] = values;
 }
 
 function go2jsSlicesClip(a) {
+	a = go2jsSliceList(a);
+
 	if (a.length === 0) {
 		return [];
 	}
@@ -579,7 +620,7 @@ function go2jsSlicesConcat(...lists) {
 	const out = [];
 
 	for (const list of lists) {
-		for (const item of list) {
+		for (const item of go2jsSliceList(list)) {
 			out.push(item);
 		}
 	}
@@ -707,6 +748,12 @@ function go2jsSlicesAppendSeq(destination, source) {
 }
 
 function go2jsSlicesBinarySearch(a, target) {
+	// A nil slice holds nothing, so there is nowhere to search and the answer is
+	// the front of the empty range.
+	if (a === null || a === undefined) {
+		return [0, false];
+	}
+
 	let low = 0;
 	let high = a.length;
 
@@ -724,6 +771,10 @@ function go2jsSlicesBinarySearch(a, target) {
 }
 
 function go2jsSlicesBinarySearchFunc(a, target, compare) {
+	if (a === null || a === undefined) {
+		return [0, false];
+	}
+
 	let low = 0;
 	let high = a.length;
 
@@ -3722,6 +3773,8 @@ function go2jsSortSliceStable(a, less) {
 }
 
 function go2jsSortStringsAreSorted(a) {
+	a = go2jsSliceList(a);
+
 	for (let index = 1; index < a.length; index++) {
 		if (go2jsCompareValues(a[index - 1], a[index]) > 0) {
 			return false;
