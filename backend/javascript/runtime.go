@@ -13287,8 +13287,8 @@ function go2jsStringsTrim(s, cutset) {
 }
 
 function go2jsStringsSplit(s, sep) {
-	if (sep === "") {
-		return s.split("");
+	if (sep.length === 0) {
+		return Array.from(s);
 	}
 	return s.split(sep);
 }
@@ -13297,20 +13297,56 @@ function go2jsStringsJoin(parts, sep) {
 	return parts.join(sep);
 }
 
+// go2jsStringsReplace puts a new piece of text in place of an old one, at most
+// a given number of times counting from the front, the way Go does it: the
+// search for the next old piece begins after the piece just written, so a
+// replacement that itself holds the old piece is left alone. An empty old piece
+// stands between every rune, and a count below zero means every one.
 function go2jsStringsReplace(s, old, replacement, count) {
-	if (count < 0) {
-		return s.split(old).join(replacement);
+	if (old === replacement || count === 0) {
+		return s;
 	}
 
-	let result = s;
-	for (let i = 0; i < count; i++) {
-		result = result.replace(old, replacement);
+	if (old.length === 0) {
+		const runes = Array.from(s);
+		const limit = count < 0 ? runes.length + 1 : Math.min(count, runes.length + 1);
+		const out = [];
+
+		for (let i = 0; i < limit; i++) {
+			out.push(replacement);
+
+			if (i < runes.length) {
+				out.push(runes[i]);
+			}
+		}
+		for (let i = limit; i < runes.length; i++) {
+			out.push(runes[i]);
+		}
+
+		return out.join("");
 	}
-	return result;
+
+	let result = "";
+	let start = 0;
+	let replaced = 0;
+
+	while (count < 0 || replaced < count) {
+		const index = s.indexOf(old, start);
+
+		if (index < 0) {
+			break;
+		}
+
+		result += s.slice(start, index) + replacement;
+		start = index + old.length;
+		replaced++;
+	}
+
+	return result + s.slice(start);
 }
 
 function go2jsStringsReplaceAll(s, old, replacement) {
-	return s.split(old).join(replacement);
+	return go2jsStringsReplace(s, old, replacement, -1);
 }
 
 function go2jsStringsRepeat(s, count) {
@@ -13605,8 +13641,8 @@ function go2jsHexBytes(src) {
 }
 
 function go2jsStringsCount(s, substr) {
-	if (substr === "") {
-		return s.length + 1;
+	if (substr.length === 0) {
+		return Array.from(s).length + 1;
 	}
 	return s.split(substr).length - 1;
 }

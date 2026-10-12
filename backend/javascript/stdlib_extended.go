@@ -4293,7 +4293,7 @@ function go2jsBytesLastIndex(a, sub) {
 
 function go2jsBytesCount(a, sub) {
 	if (go2jsToArray(sub).length === 0) {
-		return go2jsToArray(a).length + 1;
+		return go2jsUTF8RuneCount(go2jsToArray(a)) + 1;
 	}
 
 	let count = 0;
@@ -4380,13 +4380,25 @@ function go2jsBytesMap(mapping, a) {
 // go2jsBytesSplitAfter splits a slice in two at each separator and keeps the
 // separator at the end of the piece before it, which is the difference between
 // this and a split that leaves it out.
+// go2jsBytesSplitAfter cuts a slice so each piece keeps the separator that ends
+// it, and an empty separator leaves each rune as its own piece.
 function go2jsBytesSplitAfter(a, sep) {
 	const whole = go2jsToArray(a);
 	const separator = go2jsToArray(sep);
 	const out = [];
 
 	if (separator.length === 0) {
-		return [whole];
+		let at = 0;
+
+		while (at < whole.length) {
+			const width = go2jsUtf8Width(whole, at);
+			const step = width > 0 ? width : 1;
+
+			out.push(whole.slice(at, at + step));
+			at += step;
+		}
+
+		return out;
 	}
 
 	let start = 0;
@@ -4504,17 +4516,50 @@ function go2jsBytesRepeat(b, count) {
 	return out;
 }
 
+// go2jsBytesReplace writes a new slice in place of an old one, at most a given
+// number of times from the front, the way Go does it: the search begins after
+// the piece just written, and an empty old piece stands between every rune of
+// the slice, so each of those runes is kept whole.
 function go2jsBytesReplace(a, old, replacement, n) {
 	const haystack = go2jsToArray(a);
 	const needle = go2jsToArray(old);
+	const rep = go2jsToArray(replacement);
+
+	if (needle.length === 0) {
+		if (rep.length === 0) {
+			return haystack;
+		}
+
+		const runes = go2jsUTF8RuneCount(haystack);
+		const limit = n < 0 ? runes + 1 : Math.min(n, runes + 1);
+		const out = [];
+		let at = 0;
+
+		for (let i = 0; i < limit; i++) {
+			out.push(...rep);
+
+			if (i < runes) {
+				const width = go2jsUtf8Width(haystack, at);
+				const step = width > 0 ? width : 1;
+
+				out.push(...haystack.slice(at, at + step));
+				at += step;
+			}
+		}
+
+		out.push(...haystack.slice(at));
+
+		return out;
+	}
+
 	const limit = n < 0 ? Number.POSITIVE_INFINITY : n;
 	const out = [];
 	let index = 0;
 	let replaced = 0;
 
 	while (index < haystack.length) {
-		if (replaced < limit && go2jsBytesEqual(haystack.slice(index, index + needle.length), needle) && needle.length > 0) {
-			out.push(...go2jsToArray(replacement));
+		if (replaced < limit && go2jsBytesEqual(haystack.slice(index, index + needle.length), needle)) {
+			out.push(...rep);
 			index += needle.length;
 			replaced++;
 			continue;
@@ -4532,9 +4577,7 @@ function go2jsBytesReplaceAll(a, old, replacement) {
 }
 
 function go2jsBytesSplit(a, sep) {
-	return go2jsRawText(a)
-		.split(go2jsRawText(sep))
-		.map(part => go2jsStringToBytes(part));
+	return go2jsStringsSplit(go2jsRawText(a), go2jsRawText(sep)).map(field => go2jsStringToBytes(field));
 }
 
 function go2jsBytesSplitN(a, sep, n) {
