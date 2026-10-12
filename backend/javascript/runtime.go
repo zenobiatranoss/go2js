@@ -692,13 +692,25 @@ function go2jsMonthName(month) {
         "July", "August", "September", "October", "November", "December"
     ];
 
-    return names[month - 1] || "";
+    // A month outside the year is not a month, and Go writes it out as the
+    // number it was rather than as a name of its own.
+    if (month >= 1 && month <= 12) {
+        return names[month - 1];
+    }
+
+    return "%!Month(" + String(month) + ")";
 }
 
 function go2jsWeekdayName(weekday) {
     const names = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-    return names[weekday] || "";
+    // A day outside the week is not a day, and Go writes it out as the number it
+    // was rather than as a name of its own.
+    if (weekday >= 0 && weekday <= 6) {
+        return names[weekday];
+    }
+
+    return "%!Weekday(" + String(weekday) + ")";
 }
 
 // go2jsTimeLocation names where a moment is being read, which is what a location
@@ -1050,6 +1062,9 @@ function go2jsTimeValue(date) {
         Clock: function() {
             return [this.Hour(), this.Minute(), this.Second()];
         },
+        Date: function() {
+            return [this.Year(), this.Month(), this.Day()];
+        },
         YearDay: function() {
             const local = fields(this);
             const year = local.getUTCFullYear();
@@ -1133,13 +1148,36 @@ function go2jsTimeValue(date) {
             return this.value.getTime() === 0 || this.__go2js_time_zero === true;
         },
         Before: function(other) {
-            return this.value.getTime() < go2jsTimeDateOf(other).getTime();
+            return this.Compare(other) < 0;
         },
         After: function(other) {
-            return this.value.getTime() > go2jsTimeDateOf(other).getTime();
+            return this.Compare(other) > 0;
         },
         Equal: function(other) {
-            return this.value.getTime() === go2jsTimeDateOf(other).getTime();
+            return this.Compare(other) === 0;
+        },
+        Compare: function(other) {
+            // Two moments read against the same monotonic clock are put in order
+            // by that reading, which is finer than the wall clock; otherwise the
+            // wall clock is read down to the nanosecond, since two moments within
+            // the same millisecond are not the same moment.
+            const that = go2jsTimeOf(other);
+
+            if (this.__go2js_mono !== undefined && that.__go2js_mono !== undefined) {
+                return this.__go2js_mono < that.__go2js_mono ? -1 : (this.__go2js_mono > that.__go2js_mono ? 1 : 0);
+            }
+
+            const here = go2jsTimeQuotient(this.value.getTime(), 1000);
+            const there = go2jsTimeQuotient(that.value.getTime(), 1000);
+
+            if (here !== there) {
+                return here < there ? -1 : 1;
+            }
+
+            const fine = go2jsTimeNanos(this);
+            const coarse = go2jsTimeNanos(that);
+
+            return fine < coarse ? -1 : (fine > coarse ? 1 : 0);
         },
         Format: function(layout) {
             return go2jsTimeFormat(this.value, String(layout), this);
@@ -1454,6 +1492,10 @@ function go2jsTimeFormat(date, layout, location) {
     const dayName = go2jsTimeDays[local.getUTCDay()];
     const zone = go2jsTimeFormatZone(date, location);
 
+    // The day of the year is a count of days from the first of January, which
+    // the two pieces that ask for it write out.
+    const yearDay = Math.floor((Date.UTC(year, month, day) - Date.UTC(year, 0, 1)) / 86400000) + 1;
+
     let out = "";
     let index = 0;
 
@@ -1470,6 +1512,8 @@ function go2jsTimeFormat(date, layout, location) {
             ["Mon", dayName.slice(0, 3)],
             ["2006", pad(year, 4)],
             ["06", pad(year % 100, 2)],
+            ["002", pad(yearDay, 3)],
+            ["__2", "  ".slice(0, 3 - String(yearDay).length) + yearDay],
             ["_2", day < 10 ? " " + day : String(day)],
             ["01", pad(month + 1, 2)],
             ["15", pad(hour, 2)],
@@ -11047,6 +11091,15 @@ function go2jsFormatSelf(value, verb, flags, width, precision) {
 	}
 
 	let format = go2jsLookupNamedMethod(receiver, "Format");
+
+	// fmt.Formatter's Format method takes the state and the verb, and it is the
+	// only Format method fmt hands a verb to. A type such as time.Time carries a
+	// Format method of its own that takes a layout string instead, and handing
+	// the verb to that one writes nothing to the state, which would turn %v into
+	// an empty string. Only a method shaped like fmt.Formatter's is used.
+	if (format !== null && typeof receiver.Format === "function" && receiver.Format.length < 2) {
+		format = null;
+	}
 
 	if (format === null && receiver.__go2js_interface === true && typeof receiver.type === "string") {
 		const method = go2jsMethodTable[receiver.type + ".Format"];
