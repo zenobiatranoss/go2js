@@ -658,155 +658,18 @@ function go2jsStrconvAppendBytes(target, text) {
 // strconv.UnquoteChar does: a plain character is handed back as it is, a
 // backslash escape is told apart as the rune it stands for, and what is left
 // of the string after it is handed back along with whether the rune took more
-// than one byte to write.
+// than one byte to write. The reading is done over bytes, so a string that
+// holds bytes spelling no rune at all is read the way Go reads it.
 function go2jsStrconvUnquoteChar(s, quote) {
-	const text = String(s);
+	const bytes = go2jsStringToBytes(String(s));
+	const code = typeof quote === "number" ? quote & 0xff : String(quote).charCodeAt(0);
+	const step = go2jsStrconvUnquoteCharBytes(bytes, 0, code);
 
-	const bad = () => [0, false, "", go2jsSentinelError("invalid syntax")()];
-
-	if (text.length === 0) {
-		return bad();
+	if (!step[3]) {
+		return [0, false, "", go2jsSentinelError("invalid syntax")()];
 	}
 
-	const first = text.charCodeAt(0);
-
-	if (first === quote && (quote === 39 || quote === 34)) {
-		return bad();
-	}
-
-	if (first >= 0x80) {
-		const code = text.codePointAt(0);
-
-		return [code, true, text.slice(code > 0xffff ? 2 : 1), null];
-	}
-
-	if (first !== 92) {
-		return [first, false, text.slice(1), null];
-	}
-
-	if (text.length <= 1) {
-		return bad();
-	}
-
-	const esc = text.charCodeAt(1);
-	let rest = text.slice(2);
-	let value = 0;
-	let multibyte = false;
-
-	switch (esc) {
-	case 97: // a
-		value = 7;
-		break;
-	case 98: // b
-		value = 8;
-		break;
-	case 102: // f
-		value = 12;
-		break;
-	case 110: // n
-		value = 10;
-		break;
-	case 114: // r
-		value = 13;
-		break;
-	case 116: // t
-		value = 9;
-		break;
-	case 118: // v
-		value = 11;
-		break;
-	case 120: // x
-	case 117: // u
-	case 85: // U
-	{
-		const n = esc === 120 ? 2 : esc === 117 ? 4 : 8;
-		let v = 0;
-
-		if (rest.length < n) {
-			return bad();
-		}
-
-		for (let index = 0; index < n; index++) {
-			const code = rest.charCodeAt(index);
-
-			if (code >= 48 && code <= 57) {
-				v = (v << 4) | (code - 48);
-			} else if (code >= 97 && code <= 102) {
-				v = (v << 4) | (code - 97 + 10);
-			} else if (code >= 65 && code <= 70) {
-				v = (v << 4) | (code - 65 + 10);
-			} else {
-				return bad();
-			}
-		}
-
-		rest = rest.slice(n);
-
-		if (esc === 120) {
-			value = v;
-			break;
-		}
-
-		if (!go2jsUTF8ValidRune(v)) {
-			return bad();
-		}
-
-		value = v;
-		multibyte = true;
-		break;
-	}
-	case 48:
-	case 49:
-	case 50:
-	case 51:
-	case 52:
-	case 53:
-	case 54:
-	case 55:
-	{
-		let v = esc - 48;
-
-		if (rest.length < 2) {
-			return bad();
-		}
-
-		for (let index = 0; index < 2; index++) {
-			const x = rest.charCodeAt(index) - 48;
-
-			if (x < 0 || x > 7) {
-				return bad();
-			}
-
-			v = (v << 3) | x;
-		}
-
-		rest = rest.slice(2);
-
-		if (v > 255) {
-			return bad();
-		}
-
-		value = v;
-		break;
-	}
-	case 92: // backslash
-		value = 92;
-		break;
-	case 39: // single quote
-	case 34: // double quote
-	{
-		if (esc !== quote) {
-			return bad();
-		}
-
-		value = esc;
-		break;
-	}
-	default:
-		return bad();
-	}
-
-	return [value, multibyte, rest, null];
+	return [step[0], step[1], go2jsBytesToString(bytes.slice(step[2])), null];
 }
 
 // go2jsStrconvParseComplex reads a complex number from text the way strconv
@@ -1029,27 +892,14 @@ function go2jsStrconvCanBackquote(value) {
 }
 
 function go2jsStrconvQuotedPrefix(value) {
-	const text = go2jsStringify(value);
-	const quote = text[0];
+	const bytes = go2jsStringToBytes(String(value));
+	const result = go2jsStrconvUnquoteBytes(bytes, false);
 
-	if (quote !== String.fromCharCode(34) && quote !== String.fromCharCode(39) && quote !== String.fromCharCode(96)) {
-		return [null, go2jsSentinelError("invalid syntax")];
+	if (!result[2]) {
+		return ["", go2jsSentinelError("invalid syntax")()];
 	}
 
-	for (let index = 1; index < text.length; index++) {
-		const char = text[index];
-
-		if (char === String.fromCharCode(92)) {
-			index++;
-			continue;
-		}
-
-		if (char === quote) {
-			return [text.slice(0, index + 1), null];
-		}
-	}
-
-	return [null, go2jsSentinelError("invalid syntax")];
+	return [go2jsBytesToString(result[0]), null];
 }
 
 function go2jsStringsSplitN(value, sep, n) {

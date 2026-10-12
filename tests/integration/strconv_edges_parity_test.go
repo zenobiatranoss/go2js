@@ -200,3 +200,52 @@ func main() {
 }
 `)
 }
+
+func TestStrconvUnquoteFamilyMatchesGo(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"strconv"
+)
+
+func main() {
+	for _, s := range []string{
+		"\"hello\"", "\x60raw\x60", "\"a\\xffb\"", "\"\\u00e9\"", "\"\\U0001F600\"",
+		"'a'", "'\\u00e9'", "\"tab\\tend\"", "\"\\141\\142\"", "\"\\x41\"",
+		"\"\\q\"", "\"unterminated", "\"", "\"a\" \"b\"", "\"quote\\\"in\"",
+		"'\\''", "\"\\\\\"", "\"new\nline\"", "", "x", "\"\\uD800\"",
+		"\"\\U00110000\"", "\"\\400\"", "'ab'", "\"\\xZZ\"",
+	} {
+		q, err := strconv.Unquote(s)
+		fmt.Printf("%q %v\n", q, err)
+	}
+
+	for _, s := range []string{"\"abc\"def", "xyz", "\x60raw\x60s", "'a'b", "\"a\\\"b\"c", "\"unterm"} {
+		q, err := strconv.QuotedPrefix(s)
+		fmt.Printf("p %q %v\n", q, err)
+	}
+
+	for _, tc := range []struct {
+		s string
+		q byte
+	}{
+		{"\xffabc", '"'},
+		{"\xffabc", '\''},
+		{"\U0001F600x", '"'},
+		{"\U0001F600", '\''},
+		{"\\xffz", '"'},
+		{"\\u00e9x", '"'},
+		{"\\U0001F600y", '"'},
+		{"\\377z", '"'},
+		{"\\400", '"'},
+		{"abc", '"'},
+		{"\\nxx", '"'},
+		{"", '"'},
+	} {
+		r, mb, tail, err := strconv.UnquoteChar(tc.s, tc.q)
+		fmt.Printf("c %d %v %q %v\n", r, mb, tail, err)
+	}
+}
+`)
+}
