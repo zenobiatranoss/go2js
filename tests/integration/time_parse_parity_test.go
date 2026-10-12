@@ -60,3 +60,45 @@ func main() {
 }
 `)
 }
+
+// A field read with a value it cannot hold is turned down by name, the moment
+// read is the zero moment, and a duration that is not written the way Go
+// writes one is turned down with the words Go uses for it.
+func TestTimeParseRangeAndDurationErrors(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"time"
+)
+
+func main() {
+	for _, c := range [][2]string{
+		{"2006-01-02", "2020-13-01"},
+		{"2006-01-02", "2020-00-01"},
+		{"2006-01-02", "2020-02-30"},
+		{"2006-01-02", "2019-02-29"},
+		{"2006-01-02", "2020-01-32"},
+		{"15:04:05", "25:00:00"},
+		{"15:04:05", "12:60:00"},
+		{"15:04:05", "12:00:60"},
+	} {
+		got, err := time.Parse(c[0], c[1])
+		fmt.Printf("%v | %v\n", got.String(), err)
+	}
+
+	zero := time.Time{}
+	fmt.Println(zero.String(), zero.IsZero())
+
+	for _, d := range []string{"1h30m", "1.5h", "-1h30m", "0", "1us", "1\xc2\xb5s"} {
+		v, err := time.ParseDuration(d)
+		fmt.Printf("%q %v %v\n", d, v, err)
+	}
+
+	for _, d := range []string{"1h30m10", "1w", "1d", "abc", "", "1h 30m", "1h-30m", ".5s"} {
+		v, err := time.ParseDuration(d)
+		fmt.Printf("%q %v %v\n", d, v, err)
+	}
+}
+`)
+}
