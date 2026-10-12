@@ -996,8 +996,10 @@ function go2jsTimeZero() {
 
     // The zero time is a moment like any other, so it is marked as this one
     // rather than only being the moment it stands for, since a moment far from
-    // the clock of the host is not a moment nothing was ever told.
+    // the clock of the host is not a moment nothing was ever told. Its location
+    // is UTC, which is the name Go writes for it.
     zero.__go2js_time_zero = true;
+    zero.__go2js_location = "UTC";
 
     return zero;
 }
@@ -11321,6 +11323,19 @@ function go2jsFormatValue(verb, spec, value, raw) {
 	// with a plus, the way fmt writes (re+imi), so it is answered first.
 	if (go2jsIsComplexOperand(value, accepted)) {
 		return go2jsFormatComplex(verb, parsed, value, accepted, flags, precision);
+	}
+
+	// A pointer, a slice, a map or a channel with nothing behind it has no
+	// address to reach, and Go writes the zero address for it rather than the
+	// word it uses for a value that is not there at all.
+	if (verb === "p") {
+		const empty = value === null || value === undefined ||
+			(typeof value === "object" &&
+				(value.__go2js_nil === true || value.__go2js_typed_nil === true));
+
+		if (empty) {
+			return go2jsPad("0x0", parsed, false);
+		}
 	}
 
 	switch (verb) {

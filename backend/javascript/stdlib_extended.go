@@ -5278,7 +5278,14 @@ function go2jsTimeParse(layout, value) {
 	const parts = { year: 0, month: 1, day: 1, hour: 0, minute: 0, second: 0, milli: 0, nsec: 0, offset: null, pm: null };
 
 	const refuse = function() {
-		return [null, go2jsTimeParseError(String(layout), text)];
+		return [go2jsTimeZero(), go2jsTimeParseError(String(layout), text)];
+	};
+
+	// A field read with a value it cannot hold is refused by naming the field,
+	// which is the way Go turns such a reading down, and the moment read is the
+	// zero moment rather than nothing at all.
+	const rangeError = function(field) {
+		return [go2jsTimeZero(), go2jsSentinelError("parsing time " + go2jsStrconvQuote(text) + ": " + field + " out of range")()];
 	};
 
 	const digits = function(min, max) {
@@ -5396,7 +5403,7 @@ function go2jsTimeParse(layout, value) {
 				// number of digits it carries, so a text with fewer or more of them
 				// than it was asked for is refused rather than read as another second.
 				if (found[0].length > 9 || (!optional && found[0].length !== width)) {
-					return [null, go2jsTimeParseChunkError(layoutText, text, "." + fraction[1], "." + found[0])];
+					return [go2jsTimeZero(), go2jsTimeParseChunkError(layoutText, text, "." + fraction[1], "." + found[0])];
 				}
 
 				const read = found[0].slice(0, optional ? found[0].length : width);
@@ -5492,6 +5499,10 @@ function go2jsTimeParse(layout, value) {
 				return refuse();
 			}
 
+			if (month < 1 || month > 12) {
+				return rangeError("month");
+			}
+
 			parts.month = month;
 			break;
 		}
@@ -5528,6 +5539,10 @@ function go2jsTimeParse(layout, value) {
 				return refuse();
 			}
 
+			if (hour < 0 || hour >= 24) {
+				return rangeError("hour");
+			}
+
 			parts.hour = hour;
 			break;
 		}
@@ -5536,6 +5551,10 @@ function go2jsTimeParse(layout, value) {
 
 			if (hour === null) {
 				return refuse();
+			}
+
+			if (hour < 0 || hour > 12) {
+				return rangeError("hour");
 			}
 
 			parts.hour = hour;
@@ -5548,6 +5567,10 @@ function go2jsTimeParse(layout, value) {
 				return refuse();
 			}
 
+			if (minute < 0 || minute >= 60) {
+				return rangeError("minute");
+			}
+
 			parts.minute = minute;
 			break;
 		}
@@ -5558,6 +5581,10 @@ function go2jsTimeParse(layout, value) {
 				return refuse();
 			}
 
+			if (second < 0 || second >= 60) {
+				return rangeError("second");
+			}
+
 			parts.second = second;
 			break;
 		}
@@ -5566,6 +5593,10 @@ function go2jsTimeParse(layout, value) {
 
 			if (month === null) {
 				return refuse();
+			}
+
+			if (month < 1 || month > 12) {
+				return rangeError("month");
 			}
 
 			parts.month = month;
@@ -5588,6 +5619,10 @@ function go2jsTimeParse(layout, value) {
 				return refuse();
 			}
 
+			if (hour < 0 || hour > 12) {
+				return rangeError("hour");
+			}
+
 			parts.hour = hour;
 			break;
 		}
@@ -5598,6 +5633,10 @@ function go2jsTimeParse(layout, value) {
 				return refuse();
 			}
 
+			if (minute < 0 || minute >= 60) {
+				return rangeError("minute");
+			}
+
 			parts.minute = minute;
 			break;
 		}
@@ -5606,6 +5645,10 @@ function go2jsTimeParse(layout, value) {
 
 			if (second === null) {
 				return refuse();
+			}
+
+			if (second < 0 || second >= 60) {
+				return rangeError("second");
 			}
 
 			parts.second = second;
@@ -5697,9 +5740,25 @@ function go2jsTimeParse(layout, value) {
 		}
 	}
 
-	if (parts.month < 1 || parts.month > 12 || parts.day < 1 || parts.day > 31 ||
-		parts.hour > 23 || parts.minute > 59 || parts.second > 59) {
-		return refuse();
+	// The day is the one field whose range depends on another, since a month
+	// carries a different number of days, and a leap year carries one more in
+	// February, so it is turned down once the whole reading is known.
+	const daysIn = function(month, year) {
+		if (month === 2) {
+			const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+
+			return leap ? 29 : 28;
+		}
+
+		if (month === 4 || month === 6 || month === 9 || month === 11) {
+			return 30;
+		}
+
+		return 31;
+	};
+
+	if (parts.day < 1 || parts.day > daysIn(parts.month, parts.year)) {
+		return rangeError("day");
 	}
 
 	let date = new Date(0);

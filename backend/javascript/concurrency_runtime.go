@@ -1525,7 +1525,8 @@ function DurationRound(d, multiple) {
 
 function go2jsParseDuration(text) {
 	const source = String(text);
-	const scale = {
+	const invalid = () => go2jsSentinelError("time: invalid duration " + go2jsStrconvQuote(source))();
+	const units = {
 		ns: 1,
 		us: 1000,
 		"\u00b5s": 1000,
@@ -1536,35 +1537,107 @@ function go2jsParseDuration(text) {
 		h: 3600000000000
 	};
 
-	const pattern = /([+-]?(?:\d+(?:\.\d*)?|\.\d+))(ns|us|\u00b5s|\u03bcs|ms|s|m|h)/g;
-
+	let rest = source;
+	let negative = false;
 	let total = 0;
-	let matched = false;
-	let position = 0;
-	let match;
 
-	while ((match = pattern.exec(source)) !== null) {
-		if (match.index !== position) {
-			return [go2jsDuration(0), go2jsSentinelError("time: invalid duration " + JSON.stringify(source))];
-		}
+	// A leading sign belongs to the whole reading rather than to its first part.
+	if (rest !== "") {
+		const sign = rest[0];
 
-		position = pattern.lastIndex;
-		matched = true;
-
-		let value = Number(match[1]);
-		if (value < 0) {
-			value = -value;
-			total -= value * scale[match[2]];
-		} else {
-			total += value * scale[match[2]];
+		if (sign === "-" || sign === "+") {
+			negative = sign === "-";
+			rest = rest.slice(1);
 		}
 	}
 
-	if (!matched || position !== source.replace(/^\s+|\s+$/g, "").length) {
-		return [go2jsDuration(0), go2jsSentinelError("time: invalid duration " + JSON.stringify(source))];
+	// A lone zero is the only reading allowed to carry no unit.
+	if (rest === "0") {
+		return [go2jsDuration(0), null];
 	}
 
-	return [go2jsDuration(Math.round(total)), null];
+	if (rest === "") {
+		return [go2jsDuration(0), invalid()];
+	}
+
+	while (rest !== "") {
+		// The next thing must be a digit or a point, since a reading is made of
+		// whole parts and fractional parts, each followed by its unit.
+		if (!(rest[0] === "." || (rest[0] >= "0" && rest[0] <= "9"))) {
+			return [go2jsDuration(0), invalid()];
+		}
+
+		let whole = 0;
+		let fraction = 0;
+		let scale = 1;
+
+		const integerText = /^[0-9]*/.exec(rest)[0];
+
+		if (integerText.length > 0) {
+			whole = Number(integerText);
+			rest = rest.slice(integerText.length);
+		}
+
+		let fractionText = "";
+
+		if (rest[0] === ".") {
+			rest = rest.slice(1);
+			fractionText = /^[0-9]*/.exec(rest)[0];
+			rest = rest.slice(fractionText.length);
+
+			if (fractionText.length > 0) {
+				scale = Math.pow(10, fractionText.length);
+				fraction = Number(fractionText);
+			}
+		}
+
+		if (integerText.length === 0 && fractionText.length === 0) {
+			return [go2jsDuration(0), invalid()];
+		}
+
+		// The unit runs up to the next digit or point, so it is the letters
+		// between this reading and the one that follows.
+		let at = 0;
+
+		while (at < rest.length && !(rest[at] === "." || (rest[at] >= "0" && rest[at] <= "9"))) {
+			at++;
+		}
+
+		if (at === 0) {
+			return [go2jsDuration(0), go2jsSentinelError("time: missing unit in duration " + go2jsStrconvQuote(source))()];
+		}
+
+		const unitText = rest.slice(0, at);
+		rest = rest.slice(at);
+
+		if (!Object.prototype.hasOwnProperty.call(units, unitText)) {
+			return [go2jsDuration(0), go2jsSentinelError("time: unknown unit " + go2jsStrconvQuote(unitText) + " in duration " + go2jsStrconvQuote(source))()];
+		}
+
+		const unit = units[unitText];
+
+		if (whole > Math.pow(2, 63) / unit) {
+			return [go2jsDuration(0), invalid()];
+		}
+
+		whole *= unit;
+
+		if (fraction > 0) {
+			whole += Math.floor(fraction * (unit / scale));
+
+			if (whole > Math.pow(2, 63)) {
+				return [go2jsDuration(0), invalid()];
+			}
+		}
+
+		total += whole;
+	}
+
+	if (negative) {
+		total = -total;
+	}
+
+	return [go2jsDuration(total), null];
 }
 
 `

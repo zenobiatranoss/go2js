@@ -152,3 +152,29 @@ func main() {
 }
 `)
 }
+
+// A value with nothing behind it has no address to reach, and %p writes the
+// zero address for it rather than the word for a missing value.
+func TestFmtPointerNilZeroAddress(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+func main() {
+	var s []int
+	var m map[string]int
+	var p *int
+	var c chan int
+	var f func()
+	var i interface{}
+
+	fmt.Printf("%p\n", s)
+	fmt.Printf("%p\n", m)
+	fmt.Printf("%p\n", p)
+	fmt.Printf("%p\n", c)
+	fmt.Printf("%p\n", f)
+	fmt.Printf("%p\n", i)
+	fmt.Println(fmt.Sprintf("%p", s))
+}
+`)
+}
