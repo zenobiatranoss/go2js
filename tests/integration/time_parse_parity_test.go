@@ -102,3 +102,39 @@ func main() {
 }
 `)
 }
+
+// A time is a value that writes itself, so the verbs that ask a value for its
+// own text write the moment rather than an empty string: time.Time carries a
+// Format method of its own that takes a layout, and it must not be mistaken for
+// the Format method of fmt.Formatter. A run of spaces in a layout is matched
+// against a run of spaces in the text rather than left out when a piece follows.
+func TestTimeSelfTextAndLiteralSpaces(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"time"
+)
+
+func main() {
+	zero := time.Time{}
+	a := time.Date(2020, 5, 12, 13, 14, 15, 0, time.UTC)
+
+	fmt.Printf("zero=[%v] self=[%s] bare=%v\n", zero, zero, zero)
+	fmt.Printf("a=[%v] self=[%s] quoted=[%q]\n", a, a, a)
+	fmt.Printf("ptr=[%v]\n", &a)
+
+	for _, c := range [][2]string{
+		{"2 Jan 2006", "2020-13-01"},
+		{"2 Jan 2006", "20 May 12"},
+		{"2 Jan 2006", "2 May 2020"},
+		{"Jan 2, 2006", "May12, 2020"},
+		{"Jan 2, 2006", "May 12,2020"},
+		{"15:04:05", "13:14:15"},
+	} {
+		got, err := time.Parse(c[0], c[1])
+		fmt.Printf("%q | %q => %v | %v\n", c[0], c[1], got.String(), err)
+	}
+}
+`)
+}

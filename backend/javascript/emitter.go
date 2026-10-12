@@ -2944,17 +2944,35 @@ func (e *emitter) emitConversion(call *ast.CallExpr) error {
 
 	// A whole number read as a span of time is a span of time, and the paths
 	// below would answer a named type from the plain type it is built on, which
-	// for a whole number is a bare number with no way of being written out.
-	if isDurationGoType(target) && e.isIntegerExpr(call.Args[0]) {
-		e.needsRuntime = true
-		e.write("go2jsDuration(")
+	// for a whole number is a bare number with no way of being written out. A
+	// number with a fraction is first brought down to a whole one the way Go
+	// brings it, since a span of time counts in whole nanoseconds.
+	if isDurationGoType(target) {
+		source := e.analyzedType(call.Args[0])
 
-		if err := e.emitExpr(call.Args[0]); err != nil {
-			return err
+		if isIntegerType(source) {
+			e.needsRuntime = true
+			e.write("go2jsDuration(")
+
+			if err := e.emitExpr(call.Args[0]); err != nil {
+				return err
+			}
+
+			e.write(")")
+			return nil
 		}
 
-		e.write(")")
-		return nil
+		if isFloatType(source) {
+			e.needsRuntime = true
+			e.write("go2jsDuration(go2jsWideToSigned(")
+
+			if err := e.emitExpr(call.Args[0]); err != nil {
+				return err
+			}
+
+			e.write(", \"int64\"))")
+			return nil
+		}
 	}
 
 	// A conversion from nothing has no work to do: a slice, a map, a pointer,

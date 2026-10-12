@@ -5541,7 +5541,7 @@ function go2jsTimeParse(layout, value) {
 	const parts = { year: 0, month: 1, day: 1, hour: 0, minute: 0, second: 0, milli: 0, nsec: 0, offset: null, pm: null };
 
 	const refuse = function() {
-		return [go2jsTimeZero(), go2jsTimeParseError(String(layout), text)];
+		return [go2jsTimeZero(), go2jsTimeParseChunkError(String(layout), text, currentElement, currentHold)];
 	};
 
 	// A field read with a value it cannot hold is refused by naming the field,
@@ -5550,6 +5550,12 @@ function go2jsTimeParse(layout, value) {
 	const rangeError = function(field) {
 		return [go2jsTimeZero(), go2jsSentinelError("parsing time " + go2jsStrconvQuote(text) + ": " + field + " out of range")()];
 	};
+
+	// The piece of the layout a reading is being taken from and the text it is
+	// being read out of are kept so that a refusal can tell which of them refused
+	// the other, which is the way Go names the two pieces it could not match.
+	let currentElement = "";
+	let currentHold = "";
 
 	const digits = function(min, max) {
 		const found = /^[0-9]+/.exec(text.slice(position));
@@ -5599,16 +5605,6 @@ function go2jsTimeParse(layout, value) {
 		return true;
 	};
 
-	const literal = function(wanted) {
-		if (text.slice(position, position + wanted.length) !== wanted) {
-			return false;
-		}
-
-		position += wanted.length;
-
-		return true;
-	};
-
 	const named = function(names) {
 		for (let i = 0; i < names.length; i++) {
 			const full = names[i];
@@ -5632,6 +5628,8 @@ function go2jsTimeParse(layout, value) {
 	while (layoutAt < layoutText.length) {
 		const rest = layoutText.slice(layoutAt);
 
+		currentHold = text.slice(position);
+
 		// The pieces are read longest first, the same order a layout is written
 		// out in, so that a name is not read as a shorter name it begins with.
 		const pieces = ["January", "Jan", "Monday", "Mon", "2006", "_2", "01", "15", "03", "04", "05", "02",
@@ -5653,6 +5651,8 @@ function go2jsTimeParse(layout, value) {
 				const width = fraction[1].length;
 				const optional = fraction[1][0] === "9";
 
+				currentElement = "." + fraction[1];
+
 				position += 1;
 
 				const found = /^[0-9]+/.exec(text.slice(position));
@@ -5666,7 +5666,7 @@ function go2jsTimeParse(layout, value) {
 				// number of digits it carries, so a text with fewer or more of them
 				// than it was asked for is refused rather than read as another second.
 				if (found[0].length > 9 || (!optional && found[0].length !== width)) {
-					return [go2jsTimeZero(), go2jsTimeParseChunkError(layoutText, text, "." + fraction[1], "." + found[0])];
+					return refuse();
 				}
 
 				const read = found[0].slice(0, optional ? found[0].length : width);
@@ -5682,10 +5682,15 @@ function go2jsTimeParse(layout, value) {
 			}
 
 			// Anything else in a layout is written out as it is, so it has to be
-			// there for the text to be read as the layout says it is written.
+			// there for the text to be read as the layout says it is written. A
+			// run of such characters is taken together, the way Go reads the run
+			// of text before the next piece of a layout, and a space in it is the
+			// one character Go lets the text leave out.
 			const ch = rest[0];
 
 			if (ch === "Z") {
+				currentElement = "Z";
+
 				if (text[position] === "Z") {
 					position += 1;
 					layoutAt += 1;
@@ -5704,11 +5709,62 @@ function go2jsTimeParse(layout, value) {
 				continue;
 			}
 
-			if (!literal(ch)) {
-				return refuse();
+			let literalEnd = layoutAt;
+
+			while (literalEnd < layoutText.length) {
+				const tail = layoutText.slice(literalEnd);
+
+				if (tail[0] === "." && /^\.([0-9]+)/.test(tail)) {
+					break;
+				}
+
+				if (pieces.some(candidate => tail.startsWith(candidate))) {
+					break;
+				}
+
+				literalEnd++;
 			}
 
-			layoutAt += 1;
+			const literal = layoutText.slice(layoutAt, literalEnd);
+
+			currentElement = literal;
+
+			// A run of spaces in the layout stands for a run of spaces in the
+			// text, and the text may leave them out only when it has nothing
+			// left at all, which is the way Go matches the spaces before a
+			// piece rather than letting a non-space stand for them.
+			let step = 0;
+
+			while (step < literal.length) {
+				if (literal[step] === " ") {
+					if (position < text.length && text[position] !== " ") {
+						currentHold = text.slice(position);
+
+						return refuse();
+					}
+
+					while (step < literal.length && literal[step] === " ") {
+						step += 1;
+					}
+
+					while (text[position] === " ") {
+						position += 1;
+					}
+
+					continue;
+				}
+
+				if (position >= text.length || text[position] !== literal[step]) {
+					currentHold = text.slice(position);
+
+					return refuse();
+				}
+
+				position += 1;
+				step += 1;
+			}
+
+			layoutAt = literalEnd;
 
 			continue;
 		}
@@ -5716,6 +5772,8 @@ function go2jsTimeParse(layout, value) {
 		// A piece that reads what it stands for takes it from the text as it
 		// goes and so has already moved past itself, while one that is written
 		// out as it is has its own length to move past.
+		currentElement = piece;
+
 		switch (piece) {
 		case "January":
 		case "Jan": {
@@ -5955,11 +6013,15 @@ function go2jsTimeParse(layout, value) {
 				: (/^[+-][0-9]{2}:?[0-9]{2}/.exec(text.slice(position)) || [null])[0];
 
 			// A fraction of a second may stand between the seconds and the zone,
-			// which is where a layout that never asked for one lets it stand.
+			// which is where a layout that never asked for one lets it stand. It
+			// is read as the seconds just gone read it, so what is left is what a
+			// zone is read against, which is the value Go reports as unmatched.
 			if (zone === null && text[position] === ".") {
 				if (!readFraction()) {
 					return refuse();
 				}
+
+				currentHold = text.slice(position);
 
 				zone = wanted === "Z"
 					? (/^Z/.test(text.slice(position)) ? "Z" : (/^[+-][0-9]{2}:?[0-9]{2}/.exec(text.slice(position)) || [null])[0])
@@ -5975,6 +6037,23 @@ function go2jsTimeParse(layout, value) {
 			// bottom of the loop and the text pointer moves the letter it was.
 			position += String(zone).length;
 
+			// An offset is a time of day east or west of UTC, so an hour past the
+			// day or a minute past the hour is not an offset and is turned down by
+			// the part of it that went past the range it can hold.
+			if (zone !== "Z") {
+				const offset = /^([+-])([0-9]{2}):?([0-9]{2})$/.exec(zone);
+
+				if (offset !== null) {
+					if (parseInt(offset[2], 10) > 23) {
+						return rangeError("time zone offset hour");
+					}
+
+					if (parseInt(offset[3], 10) > 59) {
+						return rangeError("time zone offset minute");
+					}
+				}
+			}
+
 			parts.offset = zone === "Z" ? null : go2jsParseZoneSeconds(zone);
 			break;
 		}
@@ -5989,7 +6068,7 @@ function go2jsTimeParse(layout, value) {
 		// A text may still hold a fraction of a second the layout never asked
 		// for, which Go reads it for, so it is taken here rather than refused.
 		if (!(text[position] === "." && readFraction() && position === text.length)) {
-			return refuse();
+			return [go2jsTimeZero(), go2jsTimeParseExtraError(layoutText, text, text.slice(position))];
 		}
 	}
 
@@ -6075,6 +6154,14 @@ function go2jsTimeParseChunkError(layout, value, layoutChunk, valueChunk) {
 function go2jsTimeParseError(layout, value) {
 	return go2jsSentinelError("parsing time " + JSON.stringify(value) + " as " +
 		JSON.stringify(layout) + ": cannot parse")();
+}
+
+// go2jsTimeParseExtraError is the refusal of a text that carries more than the
+// layout asked for, which Go names as the text left over rather than as a piece
+// of the layout it could not match.
+function go2jsTimeParseExtraError(layout, value, extra) {
+	return go2jsSentinelError("parsing time " + JSON.stringify(value) +
+		": extra text: " + JSON.stringify(extra))();
 }
 
 // An errno is a number that says what a condition was, and it is asked of
