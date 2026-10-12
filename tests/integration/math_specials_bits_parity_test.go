@@ -137,3 +137,62 @@ func main() {
 }
 `)
 }
+
+// The scaling of a number, the exponent read back from it, the gamma function
+// and the IEEE remainder each stand on their own away from the exponential, so
+// they are held to the same answer Go gives, down to a subnormal scale, the
+// sign of a zero remainder and the named fields of gamma's special cases.
+func TestMathLdexpLogbGammaRemainderMatchGo(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"math"
+)
+
+func main() {
+	for _, v := range []float64{0.5, 1, 1.5, 2, 3, 8, 100, 1e10, 1e-10, 5e-324, 2.2250738585072014e-308, 1.7976931348623157e308, -3, math.Inf(1), math.Inf(-1), math.NaN()} {
+		fmt.Printf("logb %v %b\n", v, math.Logb(v))
+	}
+	for _, k := range []int{-1074, -1075, -1073, -1022, -1021, 0, 1, 1023, 1024, 53, -53} {
+		fmt.Printf("ldexp %d %b %b\n", k, math.Ldexp(1, k), math.Ldexp(3, k))
+	}
+	for _, v := range []float64{0.5, -0.5, 1, 2, 3, 5, 10, -1.5, 0.25, 33, 0, math.Copysign(0, -1), -1, -2, math.Inf(1), math.Inf(-1), math.NaN()} {
+		fmt.Printf("gamma %v %b\n", v, math.Gamma(v))
+	}
+	for _, x := range []float64{-3, -2, -1, -0.5, 0, 0.5, 1, 1.5, 2, 3, 10, 100, 3.14159, 2.71828, 1e10, 1e-10} {
+		for _, y := range []float64{-2, -0.5, 0, 0.5, 3, 8} {
+			fmt.Printf("rem %v %v %b\n", x, y, math.Remainder(x, y))
+		}
+	}
+}
+`)
+}
+
+// The even-rounding of a number, the split of a number into its whole and
+// fractional parts, and the complement of the error function near zero each
+// have a rule of their own at the edges Go names: a half lands on the even
+// whole number, a whole part keeps the sign of its zero fraction, and a tiny
+// argument is not lost when its complement is near one.
+func TestMathRoundToEvenModfErfcSmallMatchGo(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"math"
+)
+
+func main() {
+	for _, v := range []float64{-2.5, -1.5, -0.5, 0.5, 1.5, 2.5, 3.5, -3.5, 4.5, 0.49999999999999994, 1e300, 4503599627370496.5} {
+		fmt.Printf("roundeven %v %b\n", v, math.RoundToEven(v))
+	}
+	for _, v := range []float64{-3, -0.0, 0, 1e-300, -1e-300, 2.5, -2.5, 1e300, math.Inf(1), math.Inf(-1), math.NaN()} {
+		i, f := math.Modf(v)
+		fmt.Printf("modf %v %b %b\n", v, i, f)
+	}
+	for _, v := range []float64{0, 1e-300, 1e-100, 1e-20, 1e-10, 1e-8, 1e-9, 4e-9, 0.2, 0.5, 0.8, -1e-10, -1e-8} {
+		fmt.Printf("erfc %v %b\n", v, math.Erfc(v))
+	}
+}
+`)
+}
