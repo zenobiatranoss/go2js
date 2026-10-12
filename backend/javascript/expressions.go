@@ -114,6 +114,33 @@ func isArithmeticOp(op token.Token) bool {
 	}
 }
 
+// isOrderComparison reports whether an operator asks which of two values comes
+// first, which is the question a string answers over its bytes rather than over
+// the units JavaScript keeps it in.
+func isOrderComparison(op token.Token) bool {
+	switch op {
+	case token.LSS, token.LEQ, token.GTR, token.GEQ:
+		return true
+	default:
+		return false
+	}
+}
+
+// isStringType reports whether a type is a string, whether or not it carries a
+// name of its own.
+func isStringType(t gotypes.Type) bool {
+	if t == nil {
+		return false
+	}
+
+	basic, ok := t.Underlying().(*gotypes.Basic)
+	if !ok {
+		return false
+	}
+
+	return basic.Kind() == gotypes.String || basic.Kind() == gotypes.UntypedString
+}
+
 // isFloat32Type reports whether a number is kept in the width a float32 has,
 // which is fewer digits than the width a float64 has.
 func isFloat32Type(t gotypes.Type) bool {
@@ -496,6 +523,30 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 
 		if e.isComplexExpr(x) {
 			return e.emitComplexBinary(x)
+		}
+
+		// A string is ordered by the bytes it is made of, and JavaScript orders
+		// the sixteen bit units it keeps a string in, which part company for a
+		// character outside the basic plane, so the question is asked of the
+		// bytes the runtime reads back out of both strings.
+		if isOrderComparison(x.Op) && isStringType(e.analyzedType(x.X)) && isStringType(e.analyzedType(x.Y)) {
+			e.needsRuntime = true
+			e.write("(go2jsStrCompare(")
+
+			if err := e.emitExpr(x.X); err != nil {
+				return err
+			}
+
+			e.write(", ")
+
+			if err := e.emitExpr(x.Y); err != nil {
+				return err
+			}
+
+			e.write(") ")
+			e.write(x.Op.String())
+			e.write(" 0)")
+			return nil
 		}
 
 		// A shift is however many bits a program asks for in Go, and a

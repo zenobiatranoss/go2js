@@ -9560,9 +9560,33 @@ function go2jsStringify(value) {
 }
 
 // go2jsCompareValues orders map keys the way Go's fmt package does.
+// go2jsStrCompare orders two strings the way Go orders them, which is over the
+// bytes each is made of. JavaScript orders strings over the sixteen bit units it
+// keeps them in, and a character outside the basic plane takes two of those
+// units, so an astronaut emoji sorts before a character of the basic plane that
+// Go puts it after. Reading both strings back as the bytes they hold puts the
+// two orders back together.
+function go2jsStrCompare(a, b) {
+	const left = go2jsStringToBytes(a);
+	const right = go2jsStringToBytes(b);
+	const common = Math.min(left.length, right.length);
+
+	for (let i = 0; i < common; i++) {
+		if (left[i] !== right[i]) {
+			return left[i] < right[i] ? -1 : 1;
+		}
+	}
+
+	return left.length < right.length ? -1 : left.length > right.length ? 1 : 0;
+}
+
 function go2jsCompareValues(a, b) {
 	if (typeof a === "number" && typeof b === "number") {
 		return a < b ? -1 : a > b ? 1 : 0;
+	}
+
+	if (typeof a === "string" && typeof b === "string") {
+		return go2jsStrCompare(a, b);
 	}
 
 	const left = go2jsFormat(a);
@@ -15017,6 +15041,10 @@ function go2jsStrconvAppendBool(dst, value) {
 }
 
 function go2jsSortInts(values) {
+	if (values === null || values === undefined) {
+		return;
+	}
+
 	values.sort((a, b) => a - b);
 }
 
@@ -15235,11 +15263,19 @@ function go2jsSortIsSorted(values, less) {
 }
 
 function go2jsSortFloat64s(values) {
+	if (values === null || values === undefined) {
+		return;
+	}
+
 	values.sort((a, b) => a - b);
 }
 
 function go2jsSortStrings(values) {
-	values.sort();
+	if (values === null || values === undefined) {
+		return;
+	}
+
+	values.sort((a, b) => go2jsStrCompare(a, b));
 }
 
 function go2jsMathSignbit(value) {
