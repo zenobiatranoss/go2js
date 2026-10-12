@@ -4429,8 +4429,22 @@ function go2jsBytesCutSuffix(a, suffix) {
 	return [go2jsToArray(a).slice(0, go2jsToArray(a).length - go2jsToArray(suffix).length), true];
 }
 
+// go2jsBytesCompare orders two byte slices the way bytes.Compare does: the
+// first byte that differs decides, and a slice that runs out first is the
+// smaller. A nil slice is the empty slice, so it comes before anything with a
+// byte in it.
 function go2jsBytesCompare(a, b) {
-	return go2jsCompareValues(go2jsToArray(a), go2jsToArray(b));
+	const left = go2jsToArray(a);
+	const right = go2jsToArray(b);
+	const common = Math.min(left.length, right.length);
+
+	for (let i = 0; i < common; i++) {
+		if (left[i] !== right[i]) {
+			return left[i] < right[i] ? -1 : 1;
+		}
+	}
+
+	return left.length < right.length ? -1 : left.length > right.length ? 1 : 0;
 }
 
 // go2jsSeqOfArray turns a worked-out slice into a sequence that hands its items
