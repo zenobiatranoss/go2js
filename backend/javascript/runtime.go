@@ -13347,17 +13347,38 @@ function go2jsStringsEqualFold(a, b) {
 }
 
 function go2jsStringsCompare(a, b) {
-	if (a < b) {
-		return -1;
-	}
-	if (a > b) {
-		return 1;
-	}
-	return 0;
+	return go2jsStrCompare(a, b);
 }
 
-function go2jsStringsToValidUTF8(s) {
-	return s;
+// go2jsStringsToValidUTF8 replaces every byte that does not begin a valid UTF8
+// sequence with the replacement, which is the way Go reads a string that may
+// hold bytes that are not text. A valid sequence that spells the replacement
+// character itself is left as it is, since it is a rune Go keeps.
+function go2jsStringsToValidUTF8(s, replacement) {
+	const bytes = go2jsStringToBytes(s);
+	const fill = go2jsStringToBytes(replacement);
+	const out = [];
+
+	for (let i = 0; i < bytes.length;) {
+		const width = go2jsUtf8Width(bytes, i);
+
+		if (width === 0) {
+			for (const item of fill) {
+				out.push(item);
+			}
+
+			i += 1;
+			continue;
+		}
+
+		for (let j = 0; j < width; j++) {
+			out.push(bytes[i + j]);
+		}
+
+		i += width;
+	}
+
+	return go2jsBytesToString(out);
 }
 
 function go2jsStringsLastIndex(s, substr) {

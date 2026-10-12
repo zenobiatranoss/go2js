@@ -71,3 +71,28 @@ func main() {
 }
 `)
 }
+
+func TestBytesCompareAndStringsUTF8MatchGo(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"bytes"
+	"fmt"
+	"strings"
+)
+
+func main() {
+	fmt.Println(bytes.Compare(nil, []byte("a")), bytes.Compare([]byte("a"), nil), bytes.Compare(nil, nil))
+	fmt.Println(bytes.Compare([]byte{1, 2}, []byte{1, 2, 3}), bytes.Compare([]byte{1, 3}, []byte{1, 2, 9}))
+	fmt.Println(bytes.Compare([]byte("\uE000"), []byte("\U0001F600")))
+
+	fmt.Println(strings.Compare("", "a"), strings.Compare("a", ""), strings.Compare("\uE000", "\U0001F600"))
+
+	fmt.Printf("%q\n", strings.ToValidUTF8("a\xffb", "?"))
+	fmt.Printf("%q\n", strings.ToValidUTF8("a\xffb", ""))
+	fmt.Printf("%q\n", strings.ToValidUTF8("\xc3\x28ok", "!"))
+	fmt.Printf("%q\n", strings.ToValidUTF8("\uFFFD\xff", "?"))
+	fmt.Printf("%q\n", strings.ToValidUTF8("héllo", "?"))
+}
+`)
+}
