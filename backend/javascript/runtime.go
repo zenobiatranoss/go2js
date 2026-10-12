@@ -10873,8 +10873,13 @@ function go2jsRuneIsPrintable(code) {
 // go2jsQuoteRuneBody renders a rune the way strconv.QuoteRune does, using the
 // short escapes Go prefers before falling back to \u.
 function go2jsQuoteRuneBody(code) {
-	if (code < 0 || code > 0x10FFFF || (code >= 0xD800 && code <= 0xDFFF) ||
-		!go2jsRuneIsPrintable(code)) {
+	// A number that does not name a rune is quoted as the replacement character,
+	// which is what Go reads an invalid rune as before it writes the literal.
+	if (code < 0 || code > 0x10FFFF || (code >= 0xD800 && code <= 0xDFFF)) {
+		code = 0xFFFD;
+	}
+
+	if (!go2jsRuneIsPrintable(code)) {
 		const short = go2jsRuneShortEscapes[code];
 
 		if (short !== undefined) {

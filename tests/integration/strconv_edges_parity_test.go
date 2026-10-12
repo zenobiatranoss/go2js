@@ -186,3 +186,17 @@ func main() {
 }
 `)
 }
+
+func TestFmtQuoteInvalidRuneMatchesGo(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+func main() {
+	for _, r := range []rune{-1, -100, 0xd800, 0xdcff, 0xdfff, 0x110000, 0x10ffff, 0xfffd, 'a', '\n'} {
+		fmt.Printf("%q %d\n", r, r)
+	}
+	fmt.Printf("%q %q\n", []rune{'a', -1, 0x110000}, [...]int32{0xdcff, 0x41})
+}
+`)
+}
