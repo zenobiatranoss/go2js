@@ -37,15 +37,19 @@ corners. Read these before you promise a deadline around it.
   of UTF-16 code units, so an astral character may pad one cell short. Go
   counts runes. Parity tests avoid combining astral width checks with
   padding below a known threshold.
-- **The special functions of `math` can differ in the last bit.** Go writes
-  `Exp`, `Exp2` and `Log` as platform assembly on amd64 and arm64, with a
-  portable source fallback that rounds differently, so no JavaScript can match
-  a `go run` on those builds bit-for-bit; the same goes for `Sin`, `Cos`,
-  `Atan`, `Pow`, `Erf` and the rest, which may be answered a unit in the last
-  place away. Every result is right to within a few units in the last place of
-  the true value, but a program that tests a `math` result for exact equality
-  against a `go run` — especially one built for a different architecture — can
-  see a difference. `Sqrt`, `Ldexp`, `Float64bits` and the like are exact.
+- **`math` is exact where Go's own code is portable.** Go writes `Exp`, `Exp2`
+  and `Log` as platform assembly on amd64 and arm64, with a portable source
+  fallback that rounds differently, so no JavaScript can match a `go run` on
+  those builds bit-for-bit. Every result that rests on them — `Exp`, `Exp2`,
+  `Log`, `Log2`, `Log10`, `Pow`, `Sinh`, `Cosh`, `Tanh`, `Asinh`, `Acosh`,
+  `Erf`, `Erfc`, `Erfinv`, `Erfcinv` and the rest — may be answered a unit in
+  the last place away. The remaining transcendental functions are ported from
+  Go's portable source and match a `go run` on amd64 and arm64 bit-for-bit:
+  `Cbrt`, `Sin`, `Cos`, `Sincos`, `Tan`, `Asin`, `Acos`, `Atan`, `Atan2`,
+  `Log1p`, `Expm1` and `Atanh`. `Sqrt`, `Ldexp`, `Float64bits` and the like are
+  exact. A program that tests one of the inexact functions for exact equality
+  against a `go run` built for a different architecture can still see a
+  difference.
 - **`unsafe` is refused loudly.** `unsafe.Sizeof`, `Alignof`, `Offsetof`,
   `Add`, `Pointer` and `Uintptr` exist as compile-time constants; anything
   else is a compile error rather than a lie.

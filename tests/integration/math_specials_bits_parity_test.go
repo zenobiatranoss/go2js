@@ -66,3 +66,74 @@ func main() {
 }
 `)
 }
+
+func TestMathTranscendentalsMatchGoBitForBit(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"math"
+)
+
+func bitsOf(v float64) string { return fmt.Sprintf("%016x", math.Float64bits(v)) }
+
+func main() {
+	reals := []float64{
+		0, math.Copysign(0, -1), 1, -1,
+		0.5, -0.5, 0.7071067811865476, 0.66, 2.414213562373095,
+		1e-300, -1e-300, 1e-9, -1e-9, 1e-6, 1e-3, 0.1, 0.2, 0.3, 0.7, 0.9,
+		1.1, 1.5, 2, 3, 10, 1000, 1e6, 1e9, 1e15, 1e18,
+		536870911, 536870912, 536870913, 1e300, -1e300,
+		math.MaxFloat64, math.SmallestNonzeroFloat64, 709, -710,
+	}
+	for _, x := range reals {
+		fmt.Println(bitsOf(math.Cbrt(x)), bitsOf(math.Sin(x)), bitsOf(math.Cos(x)),
+			bitsOf(math.Tan(x)), bitsOf(math.Atan(x)), bitsOf(math.Expm1(x)))
+		s, c := math.Sincos(x)
+		fmt.Println(bitsOf(s), bitsOf(c))
+	}
+
+	for _, x := range []float64{math.Inf(1), math.Inf(-1)} {
+		fmt.Println(bitsOf(math.Cbrt(x)), bitsOf(math.Atan(x)), bitsOf(math.Expm1(x)))
+	}
+
+	for _, x := range []float64{-1, -0.9999999, -0.5, 0, 0.5, 0.9999999, 1, 1e-300} {
+		fmt.Println(bitsOf(math.Asin(x)), bitsOf(math.Acos(x)))
+	}
+
+	for _, x := range []float64{-1, -0.5, 0, 0.5, 1, 1e-300, 1e300} {
+		fmt.Println(bitsOf(math.Atan2(x, 1)), bitsOf(math.Atan2(x, -1)),
+			bitsOf(math.Atan2(1, x)), bitsOf(math.Atan2(x, x)))
+	}
+
+	for _, x := range []float64{-1, -0.9999999, -0.5, -1e-10, 0, 0.3, 0.9, 0.9999999, 1, 1e300} {
+		fmt.Println(bitsOf(math.Log1p(x)))
+	}
+
+	for _, x := range []float64{-1, -0.9999999, -0.5, -1e-10, 0, 0.3, 0.9, 0.9999999, 1} {
+		fmt.Println(bitsOf(math.Atanh(x)))
+	}
+}
+`)
+}
+
+func TestMathLog1pExpm1SmallMatchGo(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"math"
+)
+
+func main() {
+	for i := -40; i <= 40; i++ {
+		x := math.Ldexp(1, i)
+		fmt.Printf("%016x %016x\n", math.Float64bits(math.Log1p(x)), math.Float64bits(math.Expm1(x)))
+	}
+	for i := -40; i <= 0; i++ {
+		x := math.Ldexp(1, i)
+		fmt.Printf("%016x\n", math.Float64bits(math.Log1p(-x)))
+	}
+}
+`)
+}

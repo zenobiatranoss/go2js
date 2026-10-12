@@ -2427,7 +2427,57 @@ function go2jsStrconvIsGraphic(value) {
 }
 
 function go2jsMathCbrt(value) {
-	return Math.cbrt(Number(value));
+	// Port of Go's portable math.cbrt (netlib fdlibm s_cbrt.c). amd64 and arm64
+	// use this same portable code (haveArchCbrt is only true on s390x), so the
+	// result matches go run bit-for-bit.
+	const x0 = Number(value);
+
+	if (x0 === 0 || Number.isNaN(x0) || !isFinite(x0)) {
+		return x0;
+	}
+
+	const B1 = 715094163;
+	const B2 = 696219795;
+	const C = 5.42857142857142815906e-1;
+	const D = -7.05306122448979611050e-1;
+	const E = 1.41428571428571436819e+00;
+	const F = 1.60714285714285720630e+00;
+	const G = 3.57142857142857150787e-01;
+	const SmallestNormal = 2.22507385850720138309e-308;
+
+	let x = x0;
+	let sign = false;
+
+	if (x < 0) {
+		x = -x;
+		sign = true;
+	}
+
+	let t = go2jsMathFloat64frombits((go2jsMathFloat64bits(x) / 3n + BigInt(B1) * 0x100000000n) & go2jsUint64Mask);
+
+	if (x < SmallestNormal) {
+		t = 18014398509481984; // 2**54
+		t *= x;
+		t = go2jsMathFloat64frombits((go2jsMathFloat64bits(t) / 3n + BigInt(B2) * 4294967296n) & go2jsUint64Mask);
+	}
+
+	let r = (t * t) / x;
+	let s = C + r * t;
+	t *= G + F / (s + E + D / s);
+
+	t = go2jsMathFloat64frombits((go2jsMathFloat64bits(t) & (0xffffffffcn << 28n)) + 0x40000000n);
+
+	s = t * t;
+	r = x / s;
+	const w = t + t;
+	r = (r - t) / (w + r);
+	t = t + t * r;
+
+	if (x0 < 0) {
+		return -t;
+	}
+
+	return t;
 }
 
 // go2jsMathLdexp scales a number by a power of two, which is exact until the
@@ -2973,10 +3023,6 @@ function go2jsMathAcosh(value) {
 	return Math.acosh(Number(value));
 }
 
-function go2jsMathAtanh(value) {
-	return Math.atanh(Number(value));
-}
-
 function go2jsMathCopysign(x, y) {
 	const magnitude = Math.abs(Number(x));
 
@@ -2994,10 +3040,638 @@ function go2jsMathModf(value) {
 	return [integer, n - integer];
 }
 
-function go2jsMathSincos(value) {
-	const n = Number(value);
+const go2jsMathSinCoef = [1.58962301576546568060e-10, -2.50507477628578072866e-8, 2.75573136213857245213e-6, -1.98412698295895385996e-4, 8.33333333332211858878e-3, -1.66666666666666307295e-1];
+const go2jsMathCosCoef = [-1.13585365213876817300e-11, 2.08757008419747316778e-9, -2.75573141792967388112e-7, 2.48015872888517045348e-5, -1.38888888888730564116e-3, 4.16666666666665929218e-2];
+const go2jsMathTanP = [-1.30936939181383777646e4, 1.15351664838587416140e6, -1.79565251976484877988e7];
+const go2jsMathTanQ = [1.0, 1.36812963470692954678e4, -1.32089234440210967447e6, 2.50083801823357915839e7, -5.38695755929454629881e7];
+const go2jsMath4OverPi = 1.2732395447351628;
+const go2jsMathPi4A = 7.85398125648498535156e-1;
+const go2jsMathPi4B = 3.77489470793079817668e-8;
+const go2jsMathPi4C = 2.69515142907905952645e-15;
+const go2jsMathPiOver2 = 1.5707963267948966;
+const go2jsMathPiOver4 = 0.7853981633974483;
+const go2jsMathThreePiOver4 = 2.3561944901923448;
+const go2jsMathPi = 3.1415926535897931;
+const go2jsMathMpi4 = [
+	0x0000000000000001n, 0x45f306dc9c882a53n, 0xf84eafa3ea69bb81n, 0xb6c52b3278872083n,
+	0xfca2c757bd778ac3n, 0x6e48dc74849ba5c0n, 0x0c925dd413a32439n, 0xfc3bd63962534e7dn,
+	0xd1046bea5d768909n, 0xd338e04d68befc82n, 0x7323ac7306a673e9n, 0x3908bf177bf25076n,
+	0x3ff12fffbc0b301fn, 0xde5e2316b414da3en, 0xda6cfd9e4f96136en, 0x9e8c7ecd3cbfd45an,
+	0xea4f758fd7cbe2f6n, 0x7a0e73ef14a525d4n, 0xd7f6bf623f1aba10n, 0xac06608df8f6d757n,
+];
 
-	return [Math.sin(n), Math.cos(n)];
+function go2jsMathMul64(a, b) {
+	const product = a * b;
+
+	return [product >> 64n, product & go2jsUint64Mask];
+}
+
+function go2jsMathAdd64(a, b, carry) {
+	const sum = a + b + carry;
+
+	return [sum & go2jsUint64Mask, sum >> 64n];
+}
+
+function go2jsMathLeadingZeros64(value) {
+	let v = value & go2jsUint64Mask;
+	let count = 0;
+
+	while (count < 64 && (v & 0x8000000000000000n) === 0n) {
+		v = (v << 1n) & go2jsUint64Mask;
+		count++;
+	}
+
+	return count;
+}
+
+// go2jsMathTrigReduce implements Payne-Hanek range reduction by Pi/4, a port of
+// go's math.trigReduce. It returns the integer part mod 8 (j) and the fractional
+// part (z) of x / (Pi/4) for x > 0.
+function go2jsMathTrigReduce(x) {
+	const pi4 = Math.PI / 4;
+	if (x < pi4) {
+		return [0n, x];
+	}
+
+	const ix0 = go2jsMathFloat64bits(x);
+	const exp = Number((ix0 >> 52n) & 0x7ffn) - 1023 - 52;
+	let ix = (ix0 & ~(0x7ffn << 52n)) | (1n << 52n);
+	const d = exp + 61;
+	const digit = Math.floor(d / 64);
+	const bitshift = d - digit * 64;
+	const s = BigInt(bitshift);
+	const n = BigInt(64 - bitshift);
+	const z0 = ((go2jsMathMpi4[digit] << s) | (go2jsMathMpi4[digit + 1] >> n)) & go2jsUint64Mask;
+	const z1 = ((go2jsMathMpi4[digit + 1] << s) | (go2jsMathMpi4[digit + 2] >> n)) & go2jsUint64Mask;
+	const z2 = ((go2jsMathMpi4[digit + 2] << s) | (go2jsMathMpi4[digit + 3] >> n)) & go2jsUint64Mask;
+
+	const z2hi = go2jsMathMul64(z2, ix)[0];
+	const z1m = go2jsMathMul64(z1, ix);
+	const z0lo = (z0 * ix) & go2jsUint64Mask;
+	const first = go2jsMathAdd64(z1m[1], z2hi, 0n);
+	const lo = first[0];
+	const second = go2jsMathAdd64(z0lo, z1m[0], first[1]);
+	let hi = second[0];
+
+	let j = hi >> 61n;
+	hi = ((hi << 3n) | (lo >> 61n)) & go2jsUint64Mask;
+	const lz = go2jsMathLeadingZeros64(hi);
+	const e = BigInt(1023 - (lz + 1));
+	const extra = 64 - (lz + 1);
+	const loShifted = extra >= 0 ? (lo >> BigInt(extra)) : 0n;
+	hi = (((hi << BigInt(lz + 1)) & go2jsUint64Mask) | loShifted) >> 12n;
+	hi |= e << 52n;
+
+	let z = go2jsMathFloat64frombits(hi);
+	if ((j & 1n) === 1n) {
+		j = (j + 1n) & 7n;
+		z = z - 1;
+	}
+
+	return [j, z * pi4];
+}
+
+// go2jsMathPi4Reduce computes the integer part (unmasked) and the extended
+// precision remainder of x / (Pi/4), mirroring the branch go's Sin/Cos/Tan use
+// below reduceThreshold.
+function go2jsMathPi4Reduce(x) {
+	if (x >= 536870912) {
+		return go2jsMathTrigReduce(x);
+	}
+
+	let j = BigInt(Math.trunc(x * go2jsMath4OverPi));
+	let y = Number(j);
+	if ((j & 1n) === 1n) {
+		j += 1n;
+		y += 1;
+	}
+	const z = ((x - y * go2jsMathPi4A) - y * go2jsMathPi4B) - y * go2jsMathPi4C;
+
+	return [j, z];
+}
+
+function go2jsMathSin(value) {
+	const x = Number(value);
+	if (x === 0 || Number.isNaN(x)) {
+		return x;
+	}
+	if (!isFinite(x)) {
+		return NaN;
+	}
+
+	let sign = false;
+	let v = x;
+	if (v < 0) {
+		v = -v;
+		sign = true;
+	}
+
+	const reduced = go2jsMathPi4Reduce(v);
+	let j = reduced[0] & 7n;
+	const z = reduced[1];
+
+	if (j > 3n) {
+		sign = !sign;
+		j -= 4n;
+	}
+
+	const zz = z * z;
+	let y;
+	if (j === 1n || j === 2n) {
+		y = 1 - 0.5 * zz + zz * zz * (((((go2jsMathCosCoef[0] * zz + go2jsMathCosCoef[1]) * zz + go2jsMathCosCoef[2]) * zz + go2jsMathCosCoef[3]) * zz + go2jsMathCosCoef[4]) * zz + go2jsMathCosCoef[5]);
+	} else {
+		y = z + z * zz * (((((go2jsMathSinCoef[0] * zz + go2jsMathSinCoef[1]) * zz + go2jsMathSinCoef[2]) * zz + go2jsMathSinCoef[3]) * zz + go2jsMathSinCoef[4]) * zz + go2jsMathSinCoef[5]);
+	}
+	if (sign) {
+		y = -y;
+	}
+
+	return y;
+}
+
+function go2jsMathCos(value) {
+	const x = Number(value);
+	if (Number.isNaN(x) || !isFinite(x)) {
+		return NaN;
+	}
+
+	let sign = false;
+	const v = Math.abs(x);
+	const reduced = go2jsMathPi4Reduce(v);
+	let j = reduced[0] & 7n;
+	const z = reduced[1];
+
+	if (j > 3n) {
+		j -= 4n;
+		sign = !sign;
+	}
+	if (j > 1n) {
+		sign = !sign;
+	}
+
+	const zz = z * z;
+	let y;
+	if (j === 1n || j === 2n) {
+		y = z + z * zz * (((((go2jsMathSinCoef[0] * zz + go2jsMathSinCoef[1]) * zz + go2jsMathSinCoef[2]) * zz + go2jsMathSinCoef[3]) * zz + go2jsMathSinCoef[4]) * zz + go2jsMathSinCoef[5]);
+	} else {
+		y = 1 - 0.5 * zz + zz * zz * (((((go2jsMathCosCoef[0] * zz + go2jsMathCosCoef[1]) * zz + go2jsMathCosCoef[2]) * zz + go2jsMathCosCoef[3]) * zz + go2jsMathCosCoef[4]) * zz + go2jsMathCosCoef[5]);
+	}
+	if (sign) {
+		y = -y;
+	}
+
+	return y;
+}
+
+function go2jsMathTan(value) {
+	const x = Number(value);
+	if (x === 0 || Number.isNaN(x)) {
+		return x;
+	}
+	if (!isFinite(x)) {
+		return NaN;
+	}
+
+	let sign = false;
+	let v = x;
+	if (v < 0) {
+		v = -v;
+		sign = true;
+	}
+
+	const reduced = go2jsMathPi4Reduce(v);
+	const j = reduced[0];
+	const z = reduced[1];
+	const zz = z * z;
+
+	let y;
+	if (zz > 1e-14) {
+		y = z + z * (zz * ((go2jsMathTanP[0] * zz + go2jsMathTanP[1]) * zz + go2jsMathTanP[2]) / ((((zz + go2jsMathTanQ[1]) * zz + go2jsMathTanQ[2]) * zz + go2jsMathTanQ[3]) * zz + go2jsMathTanQ[4]));
+	} else {
+		y = z;
+	}
+	if ((j & 2n) === 2n) {
+		y = -1 / y;
+	}
+	if (sign) {
+		y = -y;
+	}
+
+	return y;
+}
+
+function go2jsMathSincos(value) {
+	const x = Number(value);
+	if (x === 0) {
+		return [x, 1];
+	}
+	if (Number.isNaN(x) || !isFinite(x)) {
+		return [NaN, NaN];
+	}
+
+	let sinSign = false;
+	let cosSign = false;
+	let v = x;
+	if (v < 0) {
+		v = -v;
+		sinSign = true;
+	}
+
+	const reduced = go2jsMathPi4Reduce(v);
+	let j = reduced[0] & 7n;
+	const z = reduced[1];
+
+	if (j > 3n) {
+		j -= 4n;
+		sinSign = !sinSign;
+		cosSign = !cosSign;
+	}
+	if (j > 1n) {
+		cosSign = !cosSign;
+	}
+
+	const zz = z * z;
+	let cos = 1 - 0.5 * zz + zz * zz * (((((go2jsMathCosCoef[0] * zz + go2jsMathCosCoef[1]) * zz + go2jsMathCosCoef[2]) * zz + go2jsMathCosCoef[3]) * zz + go2jsMathCosCoef[4]) * zz + go2jsMathCosCoef[5]);
+	let sin = z + z * zz * (((((go2jsMathSinCoef[0] * zz + go2jsMathSinCoef[1]) * zz + go2jsMathSinCoef[2]) * zz + go2jsMathSinCoef[3]) * zz + go2jsMathSinCoef[4]) * zz + go2jsMathSinCoef[5]);
+	if (j === 1n || j === 2n) {
+		const swap = sin;
+		sin = cos;
+		cos = swap;
+	}
+	if (cosSign) {
+		cos = -cos;
+	}
+	if (sinSign) {
+		sin = -sin;
+	}
+
+	return [sin, cos];
+}
+
+function go2jsMathXatan(x) {
+	const P0 = -8.750608600031904122785e-01;
+	const P1 = -1.615753718733365076637e+01;
+	const P2 = -7.500855792314704667340e+01;
+	const P3 = -1.228866684490136173410e+02;
+	const P4 = -6.485021904942025371773e+01;
+	const Q0 = +2.485846490142306297962e+01;
+	const Q1 = +1.650270098316988542046e+02;
+	const Q2 = +4.328810604912902668951e+02;
+	const Q3 = +4.853903996359136964868e+02;
+	const Q4 = +1.945506571482613964425e+02;
+
+	let z = x * x;
+	z = z * ((((P0 * z + P1) * z + P2) * z + P3) * z + P4) / (((((z + Q0) * z + Q1) * z + Q2) * z + Q3) * z + Q4);
+	z = x * z + x;
+
+	return z;
+}
+
+function go2jsMathSatan(x) {
+	const morebits = 6.123233995736765886130e-17;
+	const tan3pio8 = 2.41421356237309504880;
+	if (x <= 0.66) {
+		return go2jsMathXatan(x);
+	}
+	if (x > tan3pio8) {
+		return go2jsMathPiOver2 - go2jsMathXatan(1 / x) + morebits;
+	}
+
+	return go2jsMathPiOver4 + go2jsMathXatan((x - 1) / (x + 1)) + 0.5 * morebits;
+}
+
+function go2jsMathAtan(value) {
+	const x = Number(value);
+	if (x === 0) {
+		return x;
+	}
+	if (x > 0) {
+		return go2jsMathSatan(x);
+	}
+
+	return -go2jsMathSatan(-x);
+}
+
+function go2jsMathAsin(value) {
+	const x = Number(value);
+	if (x === 0) {
+		return x;
+	}
+
+	let sign = false;
+	let v = x;
+	if (v < 0) {
+		v = -v;
+		sign = true;
+	}
+	if (v > 1) {
+		return NaN;
+	}
+
+	let temp = Math.sqrt(1 - v * v);
+	if (v > 0.7) {
+		temp = go2jsMathPiOver2 - go2jsMathSatan(temp / v);
+	} else {
+		temp = go2jsMathSatan(v / temp);
+	}
+	if (sign) {
+		temp = -temp;
+	}
+
+	return temp;
+}
+
+function go2jsMathAcos(value) {
+	return go2jsMathPiOver2 - go2jsMathAsin(value);
+}
+
+function go2jsMathAtan2(y, x) {
+	const yy = Number(y);
+	const xx = Number(x);
+
+	if (Number.isNaN(yy) || Number.isNaN(xx)) {
+		return NaN;
+	}
+	if (yy === 0) {
+		if (xx >= 0 && !go2jsMathSignbit(xx)) {
+			return go2jsMathCopysign(0, yy);
+		}
+
+		return go2jsMathCopysign(go2jsMathPi, yy);
+	}
+	if (xx === 0) {
+		return go2jsMathCopysign(go2jsMathPiOver2, yy);
+	}
+	if (!isFinite(xx)) {
+		if (xx === Infinity) {
+			if (!isFinite(yy)) {
+				return go2jsMathCopysign(go2jsMathPiOver4, yy);
+			}
+
+			return go2jsMathCopysign(0, yy);
+		}
+		if (!isFinite(yy)) {
+			return go2jsMathCopysign(go2jsMathThreePiOver4, yy);
+		}
+
+		return go2jsMathCopysign(go2jsMathPi, yy);
+	}
+	if (!isFinite(yy)) {
+		return go2jsMathCopysign(go2jsMathPiOver2, yy);
+	}
+
+	let q = go2jsMathAtan(yy / xx);
+	if (xx < 0) {
+		if (q <= 0) {
+			return q + go2jsMathPi;
+		}
+
+		return q - go2jsMathPi;
+	}
+
+	return q;
+}
+
+function go2jsMathLog1p(input) {
+	const x = Number(input);
+	if (x < -1 || Number.isNaN(x)) {
+		return NaN;
+	}
+	if (x === -1) {
+		return -Infinity;
+	}
+	if (x === Infinity) {
+		return Infinity;
+	}
+
+	const Sqrt2M1 = 4.142135623730950488017e-01;
+	const Sqrt2HalfM1 = -2.928932188134524755992e-01;
+	const Small = 1 / 536870912; // 2**-29
+	const Tiny = 1 / 18014398509481984; // 2**-54
+	const Two53 = 9007199254740992; // 2**53
+	const Ln2Hi = 6.93147180369123816490e-01;
+	const Ln2Lo = 1.90821492927058770002e-10;
+	const Lp1 = 6.666666666666735130e-01;
+	const Lp2 = 3.999999999940941908e-01;
+	const Lp3 = 2.857142874366239149e-01;
+	const Lp4 = 2.222219843214978396e-01;
+	const Lp5 = 1.818357216161805012e-01;
+	const Lp6 = 1.531383769920937332e-01;
+	const Lp7 = 1.479819860511658591e-01;
+
+	const absx = Math.abs(x);
+	let f = 0;
+	let iu = 0n;
+	let k = 1;
+	if (absx < Sqrt2M1) {
+		if (absx < Small) {
+			if (absx < Tiny) {
+				return x;
+			}
+			return x - x * x * 0.5;
+		}
+		if (x > Sqrt2HalfM1) {
+			k = 0;
+			f = x;
+			iu = 1n;
+		}
+	}
+	let c = 0;
+	if (k !== 0) {
+		let u;
+		if (absx < Two53) {
+			u = 1 + x;
+			iu = go2jsMathFloat64bits(u);
+			k = Number((iu >> 52n) & 0x7ffn) - 1023;
+			if (k > 0) {
+				c = 1 - (u - x);
+			} else {
+				c = x - (u - 1);
+			}
+			c /= u;
+		} else {
+			u = x;
+			iu = go2jsMathFloat64bits(u);
+			k = Number((iu >> 52n) & 0x7ffn) - 1023;
+			c = 0;
+		}
+		iu &= 0x000fffffffffffffn;
+		if (iu < 0x0006a09e667f3bcdn) {
+			u = go2jsMathFloat64frombits(iu | 0x3ff0000000000000n);
+		} else {
+			k++;
+			u = go2jsMathFloat64frombits(iu | 0x3fe0000000000000n);
+			iu = (0x0010000000000000n - iu) >> 2n;
+		}
+		f = u - 1;
+	}
+	const hfsq = 0.5 * f * f;
+	if (iu === 0n) {
+		if (f === 0) {
+			if (k === 0) {
+				return 0;
+			}
+			c += k * Ln2Lo;
+			return k * Ln2Hi + c;
+		}
+		const R0 = hfsq * (1 - 0.66666666666666666 * f);
+		if (k === 0) {
+			return f - R0;
+		}
+		return k * Ln2Hi - ((R0 - (k * Ln2Lo + c)) - f);
+	}
+	const s = f / (2 + f);
+	const z = s * s;
+	const R = z * (Lp1 + z * (Lp2 + z * (Lp3 + z * (Lp4 + z * (Lp5 + z * (Lp6 + z * Lp7))))));
+	if (k === 0) {
+		return f - (hfsq - s * (hfsq + R));
+	}
+	return k * Ln2Hi - ((hfsq - (s * (hfsq + R) + (k * Ln2Lo + c))) - f);
+}
+
+function go2jsMathExpm1(input) {
+	let x = Number(input);
+	if (x === Infinity || Number.isNaN(x)) {
+		return x;
+	}
+	if (x === -Infinity) {
+		return -1;
+	}
+
+	const Othreshold = 7.09782712893383973096e+02;
+	const Ln2X56 = 3.88162421113569373274e+01;
+	const Ln2HalfX3 = 1.03972077083991796413e+00;
+	const Ln2Half = 3.46573590279972654709e-01;
+	const Ln2Hi = 6.93147180369123816490e-01;
+	const Ln2Lo = 1.90821492927058770002e-10;
+	const InvLn2 = 1.44269504088896338700e+00;
+	const Tiny = 1 / 18014398509481984; // 2**-54
+	const Q1 = -3.33333333333331316428e-02;
+	const Q2 = 1.58730158725481460165e-03;
+	const Q3 = -7.93650757867487942473e-05;
+	const Q4 = 4.00821782732936239552e-06;
+	const Q5 = -2.01099218183624371326e-07;
+
+	let absx = x;
+	let sign = false;
+	if (x < 0) {
+		absx = -absx;
+		sign = true;
+	}
+
+	if (absx >= Ln2X56) {
+		if (sign) {
+			return -1;
+		}
+		if (absx >= Othreshold) {
+			return Infinity;
+		}
+	}
+
+	let c = 0;
+	let k = 0;
+	if (absx > Ln2Half) {
+		let hi, lo;
+		if (absx < Ln2HalfX3) {
+			if (!sign) {
+				hi = x - Ln2Hi;
+				lo = Ln2Lo;
+				k = 1;
+			} else {
+				hi = x + Ln2Hi;
+				lo = -Ln2Lo;
+				k = -1;
+			}
+		} else {
+			if (!sign) {
+				k = Math.trunc(InvLn2 * x + 0.5);
+			} else {
+				k = Math.trunc(InvLn2 * x - 0.5);
+			}
+			const t = k;
+			hi = x - t * Ln2Hi;
+			lo = t * Ln2Lo;
+		}
+		x = hi - lo;
+		c = (hi - x) - lo;
+	} else if (absx < Tiny) {
+		return x;
+	} else {
+		k = 0;
+	}
+
+	const hfx = 0.5 * x;
+	const hxs = x * hfx;
+	const r1 = 1 + hxs * (Q1 + hxs * (Q2 + hxs * (Q3 + hxs * (Q4 + hxs * Q5))));
+	const t = 3 - r1 * hfx;
+	let e = hxs * ((r1 - t) / (6 - x * t));
+	if (k === 0) {
+		return x - (x * e - hxs);
+	}
+	e = x * (e - c) - c;
+	e -= hxs;
+	if (k === -1) {
+		return 0.5 * (x - e) - 0.5;
+	}
+	if (k === 1) {
+		if (x < -0.25) {
+			return -2 * (e - (x + 0.5));
+		}
+		return 1 + 2 * (x - e);
+	}
+	if (k <= -2 || k > 56) {
+		let y = 1 - (e - x);
+		y = go2jsMathFloat64frombits((go2jsMathFloat64bits(y) + ((BigInt(k) & go2jsUint64Mask) << 52n)) & go2jsUint64Mask);
+		return y - 1;
+	}
+	if (k < 20) {
+		const tk = go2jsMathFloat64frombits(0x3ff0000000000000n - (0x20000000000000n >> BigInt(k)));
+		let y = tk - (e - x);
+		y = go2jsMathFloat64frombits((go2jsMathFloat64bits(y) + (BigInt(k) << 52n)) & go2jsUint64Mask);
+		return y;
+	}
+	const tk = go2jsMathFloat64frombits((BigInt(0x3ff - k) << 52n) & go2jsUint64Mask);
+	let y = x - (e + tk);
+	y += 1;
+	y = go2jsMathFloat64frombits((go2jsMathFloat64bits(y) + (BigInt(k) << 52n)) & go2jsUint64Mask);
+
+	return y;
+}
+
+function go2jsMathAtanh(value) {
+	const x0 = Number(value);
+	if (x0 < -1 || x0 > 1 || Number.isNaN(x0)) {
+		return NaN;
+	}
+	if (x0 === 1) {
+		return Infinity;
+	}
+	if (x0 === -1) {
+		return -Infinity;
+	}
+
+	let sign = false;
+	let x = x0;
+	if (x < 0) {
+		x = -x;
+		sign = true;
+	}
+
+	const NearZero = 1 / 268435456; // 2**-28
+	let temp;
+	if (x < NearZero) {
+		temp = x;
+	} else if (x < 0.5) {
+		temp = x + x;
+		temp = 0.5 * go2jsMathLog1p(temp + temp * x / (1 - x));
+	} else {
+		temp = 0.5 * go2jsMathLog1p((x + x) / (1 - x));
+	}
+	if (sign) {
+		temp = -temp;
+	}
+
+	return temp;
 }
 
 function go2jsMathMaxInt() { return 9223372036854775807; }
