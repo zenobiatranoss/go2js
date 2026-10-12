@@ -2553,7 +2553,7 @@ function go2jsMathLdexp(frac, exp) {
 
 	if (k < -1022) {
 		k += 53;
-		scale = 1 / (1 << 53);
+		scale = 1 / 9007199254740992;
 	}
 
 	let out = bits & ~(0x7ffn << 52n);
@@ -2709,7 +2709,7 @@ function go2jsMathErfc(x) {
 	if (t < 0.84375) {
 		let temp;
 
-		if (t < 1 / (1 << 56)) {
+		if (t < 1.3877787807814457e-17) {
 			temp = t;
 		} else {
 			const z = t * t;
@@ -3019,31 +3019,234 @@ function go2jsMathMod(x, y) {
 	return Number(x) % Number(y);
 }
 
+// go2jsMathRemainder is the IEEE 754 remainder of x/y, a value with the sign
+// of x whose size is under half of y, found the way Go's portable source finds
+// it so that a half-way quotient picks the even neighbour.
 function go2jsMathRemainder(x, y) {
-	const a = Number(x);
-	const b = Number(y);
+	let a = Number(x);
+	let b = Number(y);
 
-	if (b === 0) {
+	if (Number.isNaN(a) || Number.isNaN(b) || !isFinite(a) || b === 0) {
 		return NaN;
 	}
+	if (!isFinite(b)) {
+		return a;
+	}
 
-	const quotient = a / b;
-	const rounded = Math.round(quotient);
-	const diff = a - rounded * b;
+	let sign = false;
 
-	return diff === 0 ? 0 : diff;
+	if (a < 0) {
+		a = -a;
+		sign = true;
+	}
+	if (b < 0) {
+		b = -b;
+	}
+	if (a === b) {
+		return sign ? -0 : 0;
+	}
+	if (b <= 1.7976931348623157e308 / 2) {
+		a = go2jsMathMod(a, b + b);
+	}
+	if (b < 4.45014771701440276618e-308) {
+		if (a + a > b) {
+			a -= b;
+			if (a + a >= b) {
+				a -= b;
+			}
+		}
+	} else {
+		const half = 0.5 * b;
+
+		if (a > half) {
+			a -= b;
+			if (a >= half) {
+				a -= b;
+			}
+		}
+	}
+	if (sign) {
+		a = -a;
+	}
+
+	return a;
 }
 
 function go2jsMathHypot(...values) {
 	return Math.hypot(...values.map(Number));
 }
 
-function go2jsMathGamma(value) {
-	return Math.exp(Math.log(Number(value)));
+const go2jsMathGamP = [1.60119522476751861407e-04, 1.19135147006586384913e-03, 1.04213797561761569935e-02, 4.76367800457137231464e-02, 2.07448227648435975150e-01, 4.94214826801497100753e-01, 9.99999999999999996796e-01];
+const go2jsMathGamQ = [-2.31581873324120129819e-05, 5.39605580493303397842e-04, -4.45641913851797240494e-03, 1.18139785222060435552e-02, 3.58236398605498653373e-02, -2.34591795718243348568e-01, 7.14304917030273074085e-02, 1.00000000000000000320e+00];
+const go2jsMathGamS = [7.87311395793093628397e-04, -2.29549961613378126380e-04, -2.68132617805781232825e-03, 3.47222221605458667310e-03, 8.33333333333482257126e-02];
+
+// go2jsMathStirling gives the two factors of the gamma function by Stirling's
+// formula, left apart so the caller may multiply them without overflowing the
+// way Go's own stirling does.
+function go2jsMathStirling(x) {
+	if (x > 200) {
+		return [Infinity, 1];
+	}
+
+	let w = 1 / x;
+
+	w = 1 + w * ((((go2jsMathGamS[0] * w + go2jsMathGamS[1]) * w + go2jsMathGamS[2]) * w + go2jsMathGamS[3]) * w + go2jsMathGamS[4]);
+
+	let y1 = go2jsMathExp(x);
+	let y2 = 1.0;
+
+	if (x > 143.01608) {
+		const v = Math.pow(x, 0.5 * x - 0.25);
+
+		y2 = v / y1;
+		y1 = v;
+	} else {
+		y1 = Math.pow(x, x - 0.5) / y1;
+	}
+
+	return [y1, 2.506628274631000502417 * w * y2];
 }
 
+function go2jsMathIsNegInt(value) {
+	if (value < 0) {
+		return Math.trunc(value) === value;
+	}
+
+	return false;
+}
+
+// go2jsMathGamma reads the gamma function of a number the way Go's portable
+// source reads it, by recurrence and a rational approximation below 33 and by
+// Stirling's formula above, so the answers agree to the last bit except where
+// the formula reaches for the exponential, which differs from Go's assembly by
+// a unit in the last place.
+function go2jsMathGamma(x) {
+	let value = Number(x);
+	const Euler = 0.57721566490153286060651209008240243104215933593992;
+
+	if (go2jsMathIsNegInt(value) || value === -Infinity || Number.isNaN(value)) {
+		return NaN;
+	}
+	if (value === Infinity) {
+		return Infinity;
+	}
+	if (value === 0) {
+		return 1 / value < 0 ? -Infinity : Infinity;
+	}
+
+	let q = Math.abs(value);
+	let p = Math.floor(q);
+
+	if (q > 33) {
+		if (value >= 0) {
+			const s = go2jsMathStirling(value);
+
+			return s[0] * s[1];
+		}
+
+		let signgam = 1;
+
+		if ((BigInt(p) & 1n) === 0n) {
+			signgam = -1;
+		}
+
+		let z = q - p;
+
+		if (z > 0.5) {
+			p = p + 1;
+			z = q - p;
+		}
+
+		z = q * go2jsMathSin(Math.PI * z);
+		if (z === 0) {
+			return signgam * Infinity;
+		}
+
+		const sq = go2jsMathStirling(q);
+		const absz = Math.abs(z);
+		const d = absz * sq[0] * sq[1];
+
+		if (!isFinite(d)) {
+			z = Math.PI / absz / sq[0] / sq[1];
+		} else {
+			z = Math.PI / d;
+		}
+
+		return signgam * z;
+	}
+
+	let z = 1.0;
+
+	while (value >= 3) {
+		value = value - 1;
+		z = z * value;
+	}
+	while (value < 0) {
+		if (value > -1e-09) {
+			if (value === 0) {
+				return Infinity;
+			}
+
+			return z / ((1 + Euler * value) * value);
+		}
+		z = z / value;
+		value = value + 1;
+	}
+	while (value < 2) {
+		if (value < 1e-09) {
+			if (value === 0) {
+				return Infinity;
+			}
+
+			return z / ((1 + Euler * value) * value);
+		}
+		z = z / value;
+		value = value + 1;
+	}
+
+	if (value === 2) {
+		return z;
+	}
+
+	value = value - 2;
+	p = (((((value * go2jsMathGamP[0] + go2jsMathGamP[1]) * value + go2jsMathGamP[2]) * value + go2jsMathGamP[3]) * value + go2jsMathGamP[4]) * value + go2jsMathGamP[5]) * value + go2jsMathGamP[6];
+	const qv = ((((((value * go2jsMathGamQ[0] + go2jsMathGamQ[1]) * value + go2jsMathGamQ[2]) * value + go2jsMathGamQ[3]) * value + go2jsMathGamQ[4]) * value + go2jsMathGamQ[5]) * value + go2jsMathGamQ[6]) * value + go2jsMathGamQ[7];
+
+	return z * p / qv;
+}
+
+// go2jsMathLogb gives the binary exponent of a number, found by scaling it into
+// [1, 2) so that a subnormal is counted the same way a normal is.
 function go2jsMathLogb(value) {
-	return Math.log2(Number(value));
+	let x = Number(value);
+
+	if (x === 0) {
+		return -Infinity;
+	}
+	if (Number.isNaN(x)) {
+		return x;
+	}
+	if (!isFinite(x)) {
+		return Infinity;
+	}
+
+	let exp = 0;
+
+	x = Math.abs(x);
+
+	if (x < 1) {
+		while (x < 1) {
+			x *= 2;
+			exp--;
+		}
+	} else {
+		while (x >= 2) {
+			x /= 2;
+			exp++;
+		}
+	}
+
+	return exp;
 }
 
 function go2jsMathSinh(value) {
@@ -3076,11 +3279,28 @@ function go2jsMathDim(x, y) {
 	return Math.max(Number(x) - Number(y), 0);
 }
 
+// go2jsMathModf splits a number into a whole part and a fractional part that
+// sum back to it, both taking the sign of the number, so the fraction beside a
+// negative whole number is a negative zero.
 function go2jsMathModf(value) {
-	const n = Number(value);
-	const integer = Math.trunc(n);
+	const f = Number(value);
 
-	return [integer, n - integer];
+	if (f < 1) {
+		if (f < 0) {
+			const parts = go2jsMathModf(-f);
+
+			return [-parts[0], -parts[1]];
+		}
+		if (f === 0) {
+			return [f, f];
+		}
+
+		return [0, f];
+	}
+
+	const integer = Math.trunc(f);
+
+	return [integer, f - integer];
 }
 
 const go2jsMathSinCoef = [1.58962301576546568060e-10, -2.50507477628578072866e-8, 2.75573136213857245213e-6, -1.98412698295895385996e-4, 8.33333333332211858878e-3, -1.66666666666666307295e-1];

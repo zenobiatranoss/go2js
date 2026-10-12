@@ -293,6 +293,10 @@ function go2jsMathRound(value) {
 	return difference > 0.5 ? floor + 1 : floor;
 }
 
+// go2jsMathRoundToEven rounds a number to the whole number nearest it, and a
+// number exactly halfway between two takes the even one, the way Go writes it
+// out: the whole part is taken, and only a half that would land on an odd whole
+// number is moved a step away from zero.
 function go2jsMathRoundToEven(value) {
 	const x = Number(value);
 
@@ -300,13 +304,15 @@ function go2jsMathRoundToEven(value) {
 		return x;
 	}
 
-	const rounded = Math.round(x);
+	const whole = Math.trunc(x);
+	const odd = Math.abs(whole % 2) === 1;
+	const difference = Math.abs(x - whole);
 
-	if (Math.abs(x % 1) === 0.5 && rounded % 2 !== 0) {
-		return rounded - Math.sign(x);
+	if (difference > 0.5 || (difference === 0.5 && odd)) {
+		return whole + (x < 0 ? -1 : 1);
 	}
 
-	return rounded;
+	return whole;
 }
 
 function go2jsMathFrexp(value) {
