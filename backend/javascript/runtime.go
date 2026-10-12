@@ -16188,6 +16188,12 @@ function go2jsUTF8DecodeRuneInString(s) {
 
 	const code = text.codePointAt(0);
 
+	// A code unit of the surrogate range stands on its own only when it is a
+	// byte that spells no rune, and Go reads it as the replacement character.
+	if (code >= 0xd800 && code <= 0xdfff) {
+		return [0xfffd, 1];
+	}
+
 	return [code, go2jsUTF8RuneDecodeSize(code)];
 }
 
@@ -16212,23 +16218,84 @@ function go2jsUTF8DecodeLastRuneInString(s) {
 
 	const code = text.codePointAt(at);
 
+	// a lone high surrogate left at the front is a byte that spells no rune
+	if (code >= 0xd800 && code <= 0xdfff) {
+		return [0xfffd, 1];
+	}
+
 	return [code, go2jsUTF8RuneDecodeSize(code)];
 }
 
+// go2jsUTF8DecodeRune reads the rune that leads a byte slice, the way
+// utf8.DecodeRune does: an empty slice gives the replacement character and no
+// width, and a byte that does not begin a rune gives the replacement character
+// and the width of one. Bytes are read one by one, since reading them as text
+// would fold every byte that spells no rune into the replacement character and
+// lose how wide it was.
 function go2jsUTF8DecodeRune(value) {
-	const bytes = Array.from(value);
+	const bytes = Array.from(value, (item) => Number(item) & 255);
 
 	if (bytes.length === 0) {
 		return [0xfffd, 0];
 	}
 
-	return go2jsUTF8DecodeRuneInString(Buffer.from(bytes).toString("utf8"));
+	const width = go2jsUtf8Width(bytes, 0);
+
+	if (width === 0) {
+		return [0xfffd, 1];
+	}
+
+	const rune = go2jsUtf8Rune(bytes, 0, width);
+
+	if (width > 1 && rune === 0) {
+		return [0xfffd, 1];
+	}
+
+	return [rune, width];
 }
 
+// go2jsUTF8DecodeLastRune reads the rune that ends a byte slice, stepping back
+// over the bytes a rune may be written with before reading the one that leads
+// them.
 function go2jsUTF8DecodeLastRune(value) {
-	const text = Buffer.from(Array.from(value)).toString("utf8");
+	const bytes = Array.from(value, (item) => Number(item) & 255);
+	const end = bytes.length;
 
-	return go2jsUTF8DecodeLastRuneInString(text);
+	if (end === 0) {
+		return [0xfffd, 0];
+	}
+
+	let start = end - 1;
+
+	if (bytes[start] < 0x80) {
+		return [bytes[start], 1];
+	}
+
+	const limit = end - 4 < 0 ? 0 : end - 4;
+
+	for (start--; start >= limit; start--) {
+		if ((bytes[start] & 0xc0) !== 0x80) {
+			break;
+		}
+	}
+
+	if (start < 0) {
+		start = 0;
+	}
+
+	const width = go2jsUtf8Width(bytes, start);
+
+	if (width === 0 || start + width !== end) {
+		return [0xfffd, 1];
+	}
+
+	const rune = go2jsUtf8Rune(bytes, start, width);
+
+	if (width > 1 && rune === 0) {
+		return [0xfffd, 1];
+	}
+
+	return [rune, width];
 }
 
 // go2jsUTF8AppendRune writes a rune onto the end of a byte slice, which is the

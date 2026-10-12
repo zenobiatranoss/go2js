@@ -80,3 +80,35 @@ func main() {
 }
 `)
 }
+
+// a byte that does not begin a rune reads back as the replacement character
+// with a width of one, whether it is looked at through a byte slice or a string
+// made of those bytes, and the same holds for a rune read from the far end.
+func TestUTF8InvalidBytes(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"unicode/utf8"
+)
+
+func main() {
+	for _, b := range [][]byte{
+		{0xff, 0x61}, {0xc3}, {0xc0, 0x80}, {0xed, 0xa0, 0x80}, {0xe2, 0x82, 0xac},
+		{}, {0x61, 0xff}, {0x61, 0xc3, 0xa9}, {0xf4, 0x90, 0x80, 0x80}, {0xf0, 0x9f, 0x98, 0x80},
+	} {
+		r, size := utf8.DecodeRune(b)
+		lr, lsize := utf8.DecodeLastRune(b)
+		fmt.Printf("% x => %d %d | %d %d\n", b, r, size, lr, lsize)
+	}
+
+	for _, s := range []string{"", "a", "\xff", "\uFFFD", "\U0001F600", "hé"} {
+		r, size := utf8.DecodeRuneInString(s)
+		lr, lsize := utf8.DecodeLastRuneInString(s)
+		fmt.Printf("%q => %d %d | %d %d\n", s, r, size, lr, lsize)
+	}
+
+	fmt.Println(utf8.RuneLen(0xd800), utf8.RuneLen(-1), utf8.RuneLen(0x10ffff), utf8.ValidRune(0xdfff), utf8.ValidRune(0x10ffff))
+}
+`)
+}
