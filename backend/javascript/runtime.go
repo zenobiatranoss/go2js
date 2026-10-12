@@ -13558,231 +13558,569 @@ function go2jsStrconvItoa(value, base) {
 	return Math.trunc(value).toString(base);
 }
 
-// go2jsStrconvBase reads the base a number is written in and the digits of it,
-// with the sign already taken off. A base of nothing asks Go to read it from
-// how the digits are written: a leading 0x, 0o or 0b names sixteen, eight or
-// two, a bare leading zero names eight, and anything else names ten.
-function go2jsStrconvBase(text, base) {
-	let resolved = base === undefined || base === null ? 0 : base;
-	let digits = text;
-	const inferred = resolved === 0;
-
-	if (inferred) {
-		if (/^0[xX]/.test(digits)) {
-			resolved = 16;
-			digits = digits.slice(2);
-		} else if (/^0[oO]/.test(digits)) {
-			resolved = 8;
-			digits = digits.slice(2);
-		} else if (/^0[bB]/.test(digits)) {
-			resolved = 2;
-			digits = digits.slice(2);
-		} else if (digits.length > 1 && digits[0] === "0") {
-			resolved = 8;
-		} else {
-			resolved = 10;
-		}
-
-		// Go lets a number written with no base of its own group its digits with
-		// underscores.
-		digits = digits.replace(/_/g, "");
-	}
-
-	return [resolved, digits];
+// go2jsStrconvSyntaxError, go2jsStrconvRangeError and go2jsStrconvBaseError build
+// the errors Go raises while reading a value, worded as Go words them so a program
+// that prints an error prints what Go prints.
+function go2jsStrconvSyntaxError(name, text) {
+	return new Error("strconv." + name + ": parsing " + JSON.stringify(go2jsStringify(text)) + ": invalid syntax");
 }
 
-// go2jsStrconvDigits holds what a base means a digit of a number is, and answers
-// the whole number those digits spell in that base.
-function go2jsStrconvNumber(base, digits) {
-	if (base === 10) {
-		return Number(digits);
-	}
-
-	return parseInt(digits, base);
+function go2jsStrconvRangeError(name, text) {
+	return new Error("strconv." + name + ": parsing " + JSON.stringify(go2jsStringify(text)) + ": value out of range");
 }
 
-// go2jsStrconvBig holds the whole number a run of digits spells, however wide the
-// number it spells is, since Go answers a sixty-four bit count with all of it.
-function go2jsStrconvBig(base, digits) {
-	switch (base) {
-	case 16:
-		return BigInt("0x" + digits);
-	case 8:
-		return BigInt("0o" + digits);
-	case 2:
-		return BigInt("0b" + digits);
-	default:
-		return BigInt(digits);
-	}
+function go2jsStrconvBaseError(name, text, base) {
+	return new Error("strconv." + name + ": parsing " + JSON.stringify(go2jsStringify(text)) + ": invalid base " + base);
 }
 
-// go2jsStrconvParseInteger reads a whole number in the way Go's strconv does:
-// nothing but the digits of the number and an optional sign may be there, and
-// JavaScript's own parsing is far more forgiving, so the text is checked first.
-function go2jsStrconvParseInteger(text, base) {
-	if (typeof text === "string") {
-		text = text.trim();
-	} else {
-		text = go2jsStringify(text);
-	}
-
-	const sign = /^[+-]/.test(text) ? text[0] : "";
-
-	if (sign) {
-		text = text.slice(1);
-	}
-
-	if (text.length === 0) {
-		return null;
-	}
-
-	const [resolved, digits] = go2jsStrconvBase(text, base);
-
-	// A base that is not one of the ones Go accepts names no number at all.
-	if (![2, 8, 10, 16].includes(resolved)) {
-		return null;
-	}
-
-	const pattern = resolved === 16 ? /^[0-9a-fA-F]+$/ : resolved === 10 ? /^[0-9]+$/ : resolved === 8 ? /^[0-7]+$/ : /^[01]+$/;
-
-	if (!pattern.test(digits)) {
-		return null;
-	}
-
-	const value = go2jsStrconvNumber(resolved, digits);
-
-	if (typeof value !== "number" || !Number.isFinite(value)) {
-		return null;
-	}
-
-	return sign === "-" ? -value : value;
+// go2jsStrconvIsRangeError reports whether an error is the one Go raises for a
+// value too wide for the width it was read at.
+function go2jsStrconvIsRangeError(err) {
+	return err instanceof Error && /value out of range$/.test(err.message);
 }
 
-// go2jsStrconvFitsWidth reports whether a number is inside the width it was
-// asked to be read at, because Go answers a count that does not fit with an
-// error rather than with the number it could not hold.
-function go2jsStrconvFitsWidth(value, bitSize) {
-	switch (bitSize) {
-	case 0:
-	case 8:
-		return value >= -128 && value <= 255;
-	case 16:
-		return value >= -32768 && value <= 65535;
-	case 32:
-		return value >= -2147483648 && value <= 4294967295;
-	default:
-		return true;
+// go2jsStrconvDigitValue reads what a digit in a number means, in any base up to
+// thirty-six, and answers -1 for a character that is not a digit.
+function go2jsStrconvDigitValue(ch) {
+	const code = ch.charCodeAt(0);
+
+	if (code >= 48 && code <= 57) {
+		return code - 48;
 	}
+
+	if (code >= 97 && code <= 122) {
+		return code - 87;
+	}
+
+	if (code >= 65 && code <= 90) {
+		return code - 55;
+	}
+
+	return -1;
 }
 
-function go2jsStrconvAtoi(s) {
-	const value = go2jsStrconvParseInteger(s, 10);
-
-	if (value === null) {
-		return [0, new Error("strconv.Atoi: parsing " + JSON.stringify(s) + ": invalid syntax")];
-	}
-
-	if (!go2jsStrconvFitsWidth(value, 64)) {
-		return [0, new Error("strconv.Atoi: parsing " + JSON.stringify(s) + ": value out of range")];
-	}
-
-	return [value, null];
-}
-
-function go2jsStrconvParseInt(s, base, bitSize) {
-	const text = go2jsStringify(s).trim();
-
+// go2jsStrconvUnderscoreOK reports whether the underscores in a number are where
+// Go lets them be: between two digits, and only when the number was written with
+// no base of its own. Go's own rule is kept whole, so a number Go refuses is
+// refused here too.
+function go2jsStrconvUnderscoreOK(text) {
+	let saw = "^";
+	let i = 0;
 	let body = text;
-	const sign = /^[+-]/.test(body) ? body[0] : "";
 
-	if (sign) {
+	if (body.length >= 1 && (body[0] === "-" || body[0] === "+")) {
 		body = body.slice(1);
 	}
 
-	const [resolved, digits] = go2jsStrconvBase(body, base);
-	const pattern = resolved === 16 ? /^[0-9a-fA-F]+$/ : resolved === 10 ? /^[0-9]+$/ : resolved === 8 ? /^[0-7]+$/ : /^[01]+$/;
-
-	if (![2, 8, 10, 16].includes(resolved) || !pattern.test(digits)) {
-		return [0, new Error('strconv.ParseInt: parsing "' + text + '": invalid syntax')];
+	let hex = false;
+	if (body.length >= 2 && body[0] === "0" && (body[1] === "b" || body[1] === "B" || body[1] === "o" || body[1] === "O" || body[1] === "x" || body[1] === "X")) {
+		i = 2;
+		saw = "0";
+		hex = body[1] === "x" || body[1] === "X";
 	}
 
-	if (bitSize === 64 || bitSize === 0 || bitSize === undefined) {
-		const magnitude = go2jsStrconvBig(resolved, digits);
-		const limit = sign === "-" ? 9223372036854775808n : 9223372036854775807n;
+	for (; i < body.length; i++) {
+		const ch = body[i];
 
-		if (magnitude > limit) {
-			return [0, new Error('strconv.ParseInt: parsing "' + text + '": value out of range')];
+		if ((ch >= "0" && ch <= "9") || (hex && ((ch >= "a" && ch <= "f") || (ch >= "A" && ch <= "F")))) {
+			saw = "0";
+			continue;
 		}
 
-		return [sign === "-" ? -magnitude : magnitude, null];
+		if (ch === "_") {
+			if (saw !== "0") {
+				return false;
+			}
+			saw = "_";
+			continue;
+		}
+
+		if (saw === "_") {
+			return false;
+		}
+
+		saw = "!";
 	}
 
-	const value = sign === "-" ? -go2jsStrconvNumber(resolved, digits) : go2jsStrconvNumber(resolved, digits);
-	const minimum = -Math.pow(2, bitSize - 1);
-	const maximum = Math.pow(2, bitSize - 1) - 1;
+	return saw !== "_";
+}
 
-	if (value < minimum) {
-		return [minimum, new Error('strconv.ParseInt: parsing "' + text + '": value out of range')];
+// go2jsStrconvAtoi reads a signed decimal whole number, as Go's strconv.Atoi
+// does, and answers the widest count that fits a sixty-four bit int along with
+// the error Go raises for a number that does not.
+function go2jsStrconvAtoi(s) {
+	return go2jsStrconvParseSigned(go2jsStringify(s), 10, 64, "Atoi");
+}
+
+// go2jsStrconvParseUnsigned reads a whole number in any base from two to
+// thirty-six, as Go's strconv.ParseUint does: Go's own base inference, prefix
+// and underscore rules are followed, and a value too wide for the width asked is
+// answered with the widest value that width holds along with the range error.
+function go2jsStrconvParseUnsigned(text, base, bitSize) {
+	if (text.length === 0) {
+		return [0, go2jsStrconvSyntaxError("ParseUint", text)];
 	}
 
-	if (value > maximum) {
-		return [maximum, new Error('strconv.ParseInt: parsing "' + text + '": value out of range')];
+	let body = text;
+	const base0 = base === 0;
+	let resolved = base;
+
+	if (base >= 2 && base <= 36) {
+		// A base named outright is used as it is.
+	} else if (base0) {
+		resolved = 10;
+
+		if (body[0] === "0") {
+			const second = body.length > 1 ? body[1].toLowerCase() : "";
+
+			if (body.length >= 3 && second === "b") {
+				resolved = 2;
+				body = body.slice(2);
+			} else if (body.length >= 3 && second === "o") {
+				resolved = 8;
+				body = body.slice(2);
+			} else if (body.length >= 3 && second === "x") {
+				resolved = 16;
+				body = body.slice(2);
+			} else {
+				resolved = 8;
+				body = body.slice(1);
+			}
+		}
+	} else {
+		return [0, go2jsStrconvBaseError("ParseUint", text, base)];
 	}
 
-	return [value, null];
+	if (bitSize === 0 || bitSize === undefined || bitSize === null) {
+		bitSize = 64;
+	}
+
+	const maxVal = (1n << BigInt(bitSize)) - 1n;
+	const bigBase = BigInt(resolved);
+	let n = 0n;
+	let underscores = false;
+
+	for (const ch of body) {
+		if (ch === "_") {
+			if (!base0) {
+				return [0, go2jsStrconvSyntaxError("ParseUint", text)];
+			}
+
+			underscores = true;
+			continue;
+		}
+
+		const digit = go2jsStrconvDigitValue(ch);
+
+		if (digit < 0 || digit >= resolved) {
+			return [0, go2jsStrconvSyntaxError("ParseUint", text)];
+		}
+
+		n = n * bigBase + BigInt(digit);
+
+		if (n > maxVal) {
+			return [maxVal, go2jsStrconvRangeError("ParseUint", text)];
+		}
+	}
+
+	if (underscores && !go2jsStrconvUnderscoreOK(text)) {
+		return [0, go2jsStrconvSyntaxError("ParseUint", text)];
+	}
+
+	return [n, null];
+}
+
+// go2jsStrconvParseSigned reads a whole number with a sign, as Go's strconv does,
+// by reading the digits without the sign and then fitting them to the width once
+// the sign is known.
+function go2jsStrconvParseSigned(text, base, bitSize, name) {
+	if (text.length === 0) {
+		return [0, go2jsStrconvSyntaxError(name, text)];
+	}
+
+	let body = text;
+	let neg = false;
+
+	if (body[0] === "+") {
+		body = body.slice(1);
+	} else if (body[0] === "-") {
+		neg = true;
+		body = body.slice(1);
+	}
+
+	const size = bitSize === 0 || bitSize === undefined || bitSize === null ? 64 : bitSize;
+	const [unsigned, err] = go2jsStrconvParseUnsigned(body, base, size);
+
+	if (err !== null && !go2jsStrconvIsRangeError(err)) {
+		if (/invalid base/.test(err.message)) {
+			return [0, go2jsStrconvBaseError(name, text, base)];
+		}
+
+		return [0, go2jsStrconvSyntaxError(name, text)];
+	}
+
+	const cutoff = 1n << BigInt(size - 1);
+
+	if (!neg && unsigned >= cutoff) {
+		return [cutoff - 1n, go2jsStrconvRangeError(name, text)];
+	}
+
+	if (neg && unsigned > cutoff) {
+		return [-cutoff, go2jsStrconvRangeError(name, text)];
+	}
+
+	return [neg ? -unsigned : unsigned, null];
+}
+
+function go2jsStrconvParseInt(s, base, bitSize) {
+	return go2jsStrconvParseSigned(go2jsStringify(s), base, bitSize, "ParseInt");
 }
 
 function go2jsStrconvParseUint(s, base, bitSize) {
-	const text = go2jsStringify(s).trim();
+	return go2jsStrconvParseUnsigned(go2jsStringify(s), base, bitSize);
+}
 
-	if (text.startsWith("-") || text.startsWith("+")) {
-		return [0, new Error('strconv.ParseUint: parsing "' + text + '": invalid syntax')];
+// go2jsStrconvSpecial reads the names Go accepts for the values that are not
+// finite: an infinity, with or without a sign, and a NaN, which Go takes only
+// without a sign. It answers the value and how many characters it read, or null.
+function go2jsStrconvSpecial(s) {
+	if (s.length === 0) {
+		return null;
 	}
 
-	const [resolved, digits] = go2jsStrconvBase(text, base);
-	const pattern = resolved === 16 ? /^[0-9a-fA-F]+$/ : resolved === 10 ? /^[0-9]+$/ : resolved === 8 ? /^[0-7]+$/ : /^[01]+$/;
+	let i = 0;
+	let sign = 1;
+	let hadSign = false;
 
-	if (![2, 8, 10, 16].includes(resolved) || !pattern.test(digits)) {
-		return [0, new Error('strconv.ParseUint: parsing "' + text + '": invalid syntax')];
+	if (s[0] === "+" || s[0] === "-") {
+		hadSign = true;
+		if (s[0] === "-") {
+			sign = -1;
+		}
+		i = 1;
 	}
 
-	if (bitSize === 64 || bitSize === 0 || bitSize === undefined) {
-		const magnitude = go2jsStrconvBig(resolved, digits);
+	if (i >= s.length) {
+		return null;
+	}
 
-		if (magnitude <= 18446744073709551615n) {
-			return [magnitude, null];
+	const first = s[i].toLowerCase();
+
+	if (first === "i") {
+		const rest = s.slice(i).toLowerCase();
+		const target = "infinity";
+		let n = 0;
+
+		while (n < rest.length && n < target.length && rest[n] === target[n]) {
+			n++;
 		}
 
-		return [0, new Error('strconv.ParseUint: parsing "' + text + '": value out of range')];
+		if (n > 3 && n < 8) {
+			n = 3;
+		}
+
+		if (n === 3 || n === 8) {
+			return [sign * Infinity, i + n];
+		}
+
+		return null;
 	}
 
-	const value = go2jsStrconvNumber(resolved, digits);
-	const maximum = Math.pow(2, bitSize) - 1;
-
-	if (value < 0 || value > maximum) {
-		return [Math.max(0, Math.min(value, maximum)), new Error('strconv.ParseUint: parsing "' + text + '": value out of range')];
+	if (first === "n" && !hadSign && s.slice(i, i + 3).toLowerCase() === "nan") {
+		return [NaN, i + 3];
 	}
 
-	return [value, null];
+	return null;
+}
+
+// go2jsStrconvReadFloat reads the digits of a floating point number the way Go's
+// strconv does, keeping the mantissa as a whole number of its own kind so that
+// even the widest hexadecimal literal keeps every digit. It answers where the
+// number ended, whether it was written in hexadecimal, and the parts the value is
+// built from.
+function go2jsStrconvReadFloat(s) {
+	let underscores = false;
+	let i = 0;
+	let neg = false;
+
+	if (i >= s.length) {
+		return { ok: false, n: 0 };
+	}
+
+	if (s[i] === "+") {
+		i++;
+	} else if (s[i] === "-") {
+		neg = true;
+		i++;
+	}
+
+	let base = 10;
+	let maxMantDigits = 19;
+	let expChar = "e";
+	let hex = false;
+
+	if (i + 2 < s.length && s[i] === "0" && (s[i + 1] === "x" || s[i + 1] === "X")) {
+		base = 16;
+		maxMantDigits = 16;
+		i += 2;
+		expChar = "p";
+		hex = true;
+	}
+
+	let sawdot = false;
+	let sawdigits = false;
+	let nd = 0;
+	let ndMant = 0;
+	let dp = 0;
+	let mantissa = 0n;
+	let trunc = false;
+
+	loop: for (; i < s.length; i++) {
+		const c = s[i];
+
+		if (c === "_") {
+			underscores = true;
+			continue;
+		}
+
+		if (c === ".") {
+			if (sawdot) {
+				break loop;
+			}
+
+			sawdot = true;
+			dp = nd;
+			continue;
+		}
+
+		if (c >= "0" && c <= "9") {
+			sawdigits = true;
+
+			if (c === "0" && nd === 0) {
+				dp--;
+				continue;
+			}
+
+			nd++;
+
+			if (ndMant < maxMantDigits) {
+				mantissa = mantissa * BigInt(base) + BigInt(c.charCodeAt(0) - 48);
+				ndMant++;
+			} else if (c !== "0") {
+				trunc = true;
+			}
+
+			continue;
+		}
+
+		if (base === 16 && ((c >= "a" && c <= "f") || (c >= "A" && c <= "F"))) {
+			sawdigits = true;
+			nd++;
+
+			// Every hexadecimal digit is kept, however many there are, so that a
+			// literal with more bits than a double holds is rounded from all of it.
+			mantissa = mantissa * 16n + BigInt(go2jsStrconvDigitValue(c));
+			ndMant++;
+
+			continue;
+		}
+
+		break;
+	}
+
+	if (!sawdigits) {
+		return { ok: false, n: i };
+	}
+
+	if (!sawdot) {
+		dp = nd;
+	}
+
+	if (base === 16) {
+		dp *= 4;
+		ndMant *= 4;
+	}
+
+	if (i < s.length && s[i].toLowerCase() === expChar) {
+		i++;
+
+		if (i >= s.length) {
+			return { ok: false, n: i };
+		}
+
+		let esign = 1;
+
+		if (s[i] === "+") {
+			i++;
+		} else if (s[i] === "-") {
+			i++;
+			esign = -1;
+		}
+
+		if (i >= s.length || s[i] < "0" || s[i] > "9") {
+			return { ok: false, n: i };
+		}
+
+		let e = 0;
+
+		for (; i < s.length && ((s[i] >= "0" && s[i] <= "9") || s[i] === "_"); i++) {
+			if (s[i] === "_") {
+				underscores = true;
+				continue;
+			}
+
+			if (e < 10000) {
+				e = e * 10 + (s.charCodeAt(i) - 48);
+			}
+		}
+
+		dp += e * esign;
+	} else if (base === 16) {
+		return { ok: false, n: i };
+	}
+
+	let exp = 0;
+
+	if (mantissa !== 0n) {
+		exp = dp - ndMant;
+	}
+
+	if (underscores && !go2jsStrconvUnderscoreOK(s.slice(0, i))) {
+		return { ok: false, n: i };
+	}
+
+	return { ok: true, n: i, hex: hex, neg: neg, mantissa: mantissa, exp: exp, trunc: trunc };
+}
+
+// go2jsStrconvScaleFloat rounds a value written as a whole mantissa times a
+// power of two to the nearest value of the width asked, rounding to even when
+// the value sits exactly between two of them. The mantissa is kept whole so that
+// even a hexadecimal literal with more bits than a double holds is rounded once,
+// from all of it, the way Go rounds it.
+function go2jsStrconvScaleFloat(mantissa, exp2, bits32) {
+	if (mantissa === 0n) {
+		return 0;
+	}
+
+	const mantbits = bits32 ? 23 : 52;
+	const bias = bits32 ? 127 : 1023;
+	const minNormal = 1 - bias;
+	const minSub = minNormal - mantbits;
+
+	const n = mantissa.toString(2).length;
+	const e = exp2 + n - 1;
+
+	if (e > bias) {
+		return Infinity;
+	}
+
+	let significand;
+
+	if (e >= minNormal) {
+		const shift = n - 1 - mantbits;
+		const unitExp = e - mantbits;
+
+		if (shift <= 0) {
+			significand = mantissa << BigInt(-shift);
+		} else {
+			significand = go2jsStrconvRoundBits(mantissa, shift);
+		}
+
+		return Number(significand) * (2 ** unitExp);
+	}
+
+	// A value below the smallest normal number is written in units of the
+	// smallest positive value there is, and any bits past that unit are dropped.
+	const shift = minSub - exp2;
+
+	if (shift > n) {
+		return 0;
+	}
+
+	if (shift <= 0) {
+		significand = mantissa << BigInt(-shift);
+	} else {
+		significand = go2jsStrconvRoundBits(mantissa, shift);
+	}
+
+	return Number(significand) * (2 ** minSub);
+}
+
+// go2jsStrconvRoundBits drops the low bits of a mantissa, rounding the rest to
+// the nearest whole number and to even when it is exactly between two of them.
+function go2jsStrconvRoundBits(mantissa, shift) {
+	const q = mantissa >> BigInt(shift);
+	const rem = mantissa - (q << BigInt(shift));
+	const half = 1n << BigInt(shift - 1);
+
+	if (rem > half || (rem === half && (q & 1n) === 1n)) {
+		return q + 1n;
+	}
+
+	return q;
+}
+
+// go2jsStrconvAtofHex rounds a hexadecimal floating point number to the nearest
+// value of the width asked.
+function go2jsStrconvAtofHex(neg, mantissa, exp, bits32) {
+	let value = go2jsStrconvScaleFloat(mantissa, exp, bits32);
+
+	if (neg) {
+		value = -value;
+	}
+
+	// A value that reached infinity is one Go reports as out of range; a value
+	// that sank to zero is not, and is answered as zero without an error.
+	return [value, !Number.isFinite(value)];
 }
 
 function go2jsStrconvParseFloat(s, bitSize) {
-	const text = go2jsStringify(s).trim();
+	const text = go2jsStringify(s);
+	const bits32 = bitSize === 32;
 
-	// JavaScript reads a whole number as an integer no matter which fraction was
-	// asked for, so the fraction is asked about on its own.
-	if (!/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(text)) {
-		return [0, new Error('strconv.ParseFloat: parsing "' + text + '": invalid syntax')];
+	const special = go2jsStrconvSpecial(text);
+
+	if (special !== null) {
+		if (special[1] !== text.length) {
+			return [0, go2jsStrconvSyntaxError("ParseFloat", text)];
+		}
+
+		return [bits32 ? Math.fround(special[0]) : special[0], null];
 	}
 
-	const value = parseFloat(text);
+	const parsed = go2jsStrconvReadFloat(text);
 
-	if (Number.isNaN(value)) {
-		return [0, new Error('strconv.ParseFloat: parsing "' + text + '": invalid syntax')];
+	if (!parsed.ok || parsed.n !== text.length) {
+		return [0, go2jsStrconvSyntaxError("ParseFloat", text)];
 	}
 
-	if (bitSize === 32) {
-		return [Math.fround(value), null];
+	if (parsed.hex) {
+		const [value, overflow] = go2jsStrconvAtofHex(parsed.neg, parsed.mantissa, parsed.exp, bits32);
+
+		if (overflow) {
+			return [value, go2jsStrconvRangeError("ParseFloat", text)];
+		}
+
+		return [value, null];
+	}
+
+	// JavaScript reads a decimal floating point number with the same rounding Go
+	// does, so once the underscores Go allows are gone the text can be handed to
+	// it whole.
+	const value = Number(text.replace(/_/g, ""));
+
+	if (!Number.isFinite(value)) {
+		return [value, go2jsStrconvRangeError("ParseFloat", text)];
+	}
+
+	if (bits32) {
+		const rounded = Math.fround(value);
+
+		if (!Number.isFinite(rounded)) {
+			return [rounded, go2jsStrconvRangeError("ParseFloat", text)];
+		}
+
+		return [rounded, null];
 	}
 
 	return [value, null];
@@ -13799,6 +14137,14 @@ function go2jsStrconvParseBool(s) {
 }
 
 function go2jsStrconvFormatInt(value, base) {
+	base = base === undefined || base === 0 ? 10 : base;
+
+	// A count wider than a double holds exactly keeps its own kind of whole
+	// number, and Go writes the digits of that number, not of a rounded one.
+	if (typeof value === "bigint") {
+		return value.toString(base);
+	}
+
 	return Math.trunc(value).toString(base);
 }
 
