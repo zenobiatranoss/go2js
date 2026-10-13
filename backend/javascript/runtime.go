@@ -10626,10 +10626,15 @@ function go2jsTypedKind(value) {
 // a space between them, the way Go writes "% x" over a string or a byte slice,
 // and the sharp flag gives every byte its own 0x when a space is there too but
 // the whole run a single 0x otherwise, which is how "% #x" and "%#x" read.
-function go2jsFormatHexBytes(value, upper, space, alt) {
+function go2jsFormatHexBytes(value, upper, space, alt, precision) {
 	const parts = [];
+	// A precision cuts the bytes to that many before they are written, the way
+	// fmt stops reading a string once its count is reached.
+	const items = precision !== null && precision !== undefined && precision < go2jsToArray(value).length
+		? go2jsToArray(value).slice(0, precision)
+		: go2jsToArray(value);
 
-	for (const item of go2jsToArray(value)) {
+	for (const item of items) {
 		parts.push((Number(item) & 255).toString(16).padStart(2, "0"));
 	}
 
@@ -11457,6 +11462,13 @@ function go2jsFormatValue(verb, spec, value, raw, nested) {
 		// its precision on the fraction it was already rendered with, so the
 		// digits are left as they are.
 		const isInteger = go2jsIsIntegerTypeName(accepted);
+
+		// A precision of zero asked of a whole zero writes nothing at all, only
+		// the padding the width asks for, and the zero flag has nothing to fill.
+		if (isInteger && precision === 0 && (num === 0 || Object.is(num, -0))) {
+			return go2jsPad("", {...parsed, flags: parsed.flags.replace(/0/g, "")}, false);
+		}
+
 		const digits = precision !== null && isInteger ? go2jsZeroPadDigits(body, precision) : body;
 
 		return go2jsPadNumber(prefix + digits, prefix, digits, parsed, isInteger);
@@ -11523,15 +11535,25 @@ function go2jsFormatValue(verb, spec, value, raw, nested) {
 			// A float formatted with %b is its IEEE754 expansion: the leading
 			// bit of the significand, then the exponent as a power of two.
 			if (accepted !== undefined && go2jsIsFloatTypeName(accepted)) {
-				return go2jsFormatFloatBits(Number(value), accepted);
+				// The expansion carries its own minus for a negative value, so
+				// the sign and the width are added around it the way they are
+				// for a hex float, which also brings its own sign.
+				return numberText(intValue, go2jsFormatFloatBits(Number(value), accepted), "", true);
 			}
 
 			return integerBody(intValue, 2, flags.includes("#") ? "0b" : "");
 		case "o":
-			return integerBody(intValue, 8, flags.includes("#") ? "0" : "");
-		case "O":
-			// %O always carries the 0o prefix, while %o only does with #.
-			return integerBody(intValue, 8, "0o");
+		case "O": {
+			// The sharp flag puts a zero in front of the octal digits, but only
+			// when the digits, cut to the precision that broadens them, do not
+			// already start with one. %O always carries the 0o prefix, while %o
+			// only does with #.
+			const digits = Math.abs(Math.trunc(intValue)).toString(8);
+			const broadened = precision !== null && precision > digits.length;
+			const sharp = flags.includes("#") && intValue !== 0 && !broadened ? "0" : "";
+
+			return integerBody(intValue, 8, (verb === "O" ? "0o" : "") + sharp);
+		}
 		case "x":
 			if (accepted !== undefined && go2jsIsFloatTypeName(accepted)) {
 				return numberText(intValue, go2jsFormatHexFloat(Number(value), precision, false, flags.includes("#")), "", true);
@@ -11543,11 +11565,11 @@ function go2jsFormatValue(verb, spec, value, raw, nested) {
 			// the reading is the shape of the value rather than a number of
 			// it.
 			if (Array.isArray(value) || value instanceof Uint8Array) {
-				return go2jsPad(go2jsFormatHexBytes(value, false, flags.includes(" "), flags.includes("#")), parsed, false);
+				return go2jsPad(go2jsFormatHexBytes(value, false, flags.includes(" "), flags.includes("#"), precision), parsed, false);
 			}
 
 			if (typeof value === "string" || typeof value === "boolean") {
-				return go2jsPad(go2jsFormatHexBytes(go2jsStringToBytes(value), false, flags.includes(" "), flags.includes("#")), parsed, false);
+				return go2jsPad(go2jsFormatHexBytes(go2jsStringToBytes(value), false, flags.includes(" "), flags.includes("#"), precision), parsed, false);
 			}
 
 			return integerBody(intValue, 16, flags.includes("#") ? "0x" : "", false);
@@ -11561,7 +11583,7 @@ function go2jsFormatValue(verb, spec, value, raw, nested) {
 			}
 
 			if (typeof value === "string" || typeof value === "boolean") {
-				return go2jsPad(go2jsFormatHexBytes(go2jsStringToBytes(value), true, flags.includes(" "), flags.includes("#")), parsed, false);
+				return go2jsPad(go2jsFormatHexBytes(go2jsStringToBytes(value), true, flags.includes(" "), flags.includes("#"), precision), parsed, false);
 			}
 
 			return integerBody(intValue, 16, flags.includes("#") ? "0X" : "", true);
@@ -11610,13 +11632,24 @@ function go2jsFormatValue(verb, spec, value, raw, nested) {
 			}
 
 			if (precision !== null) {
-				text = text.slice(0, precision);
+				text = go2jsTruncateRunes(text, precision);
 			}
 
 			return go2jsPad(text, parsed, false);
 		}
 		case "v":
 		case "w": {
+			// A float under %v with a precision is written the way %g writes it
+			// with that precision, which is the shortest form only when no
+			// precision was asked for. The sharp flag keeps its own go-syntax
+			// reading below.
+			if (precision !== null && !flags.includes("#") && go2jsIsFloatTypeName(accepted)) {
+				// %v keeps the space flag for a number but not the plus flag,
+				// which under %v asks for a struct's field names rather than a
+				// sign, so the plus is dropped before the number is written.
+				return go2jsFormatG(Number(value), precision, {...parsed, flags: parsed.flags.replace(/\+/g, "")}, false);
+			}
+
 			let text;
 			// A sign flag asks for a sign in front of a number that has none of
 			// its own to show, so it only applies when the text rendered is the
@@ -11642,7 +11675,7 @@ function go2jsFormatValue(verb, spec, value, raw, nested) {
 
 			if (precision !== null) {
 				if (accepted === "string") {
-					text = text.slice(0, precision);
+					text = go2jsTruncateRunes(text, precision);
 				} else if (isInteger && go2jsDigitsOf(text) < precision) {
 					text = go2jsZeroPadDigits(text, precision);
 				}
@@ -11947,31 +11980,36 @@ function go2jsFormatComplex(verb, parsed, value, accepted, flags, precision) {
 	const { re, im } = go2jsComplexValue(value);
 
 	if (!go2jsVerbAccepts(verb, typeName)) {
-		// A refused verb reports the operand the way %v would write it.
-		return "%!" + verb + "(" + typeName + "=" + go2jsFormatComplexText("v", parsed, re, im, "", null) + ")";
+		// A refused verb reports the operand the way %v would write it, with
+		// neither the width nor the flags the refused verb asked for.
+		const plain = {...parsed, flags: "", width: 0, precision: null};
+
+		return "%!" + verb + "(" + typeName + "=" + go2jsFormatComplexText("v", plain, re, im, "", null) + ")";
 	}
 
-	return go2jsPad(go2jsFormatComplexText(verb, parsed, re, im, flags, precision), parsed, false);
+	return go2jsFormatComplexText(verb, parsed, re, im, flags, precision);
 }
 
-// go2jsFormatComplexText writes the (re+imi) body. The imaginary part is written
-// as a magnitude with its sign kept out of the part itself, because the sign
-// joins the two parts rather than belonging to the imaginary one. A width, a
-// sign and a sharp flag belong to the whole value, so neither part carries them.
+// go2jsFormatComplexText writes the (re+imi) body. Each part is a float written
+// with the whole value's width, precision and flags, because that is how fmt
+// writes a complex: the parentheses and the i are added around two padded
+// numbers. The imaginary part always shows a sign of its own, and the plus flag
+// under %v is the struct-field flag rather than a sign, so it is dropped.
 function go2jsFormatComplexText(verb, parsed, re, im, flags, precision) {
-	// %v and %g write each part in its shortest form and ignore a precision,
-	// which is how a complex reads in Go.
-	const part = verb === "v" || verb === "g" || verb === "G" ? "v" : verb;
-	const spec = part === "v" || precision === null ? "%v" : "%." + precision + part;
-	// Both parts are floats in Go, so they are tagged as one, which is what lets
-	// the float verbs accept them instead of refusing the part.
-	const asFloat = (part) => go2jsTyped(part, "float64");
-	const real = go2jsFormatValue(part, spec, asFloat(re));
-	const negative = im < 0 || Object.is(im, -0);
-	const magnitude = negative ? -im : im;
-	const imaginary = go2jsFormatValue(part, spec, asFloat(magnitude));
+	// %v renders a float the way %g does, with whatever precision was asked.
+	const part = verb === "v" ? "g" : verb;
+	const shown = (value, partFlags) => {
+		const spec = "%" + partFlags + (parsed.width > 0 ? String(parsed.width) : "") +
+			(precision === null ? "" : "." + precision) + part;
 
-	return "(" + real + (negative ? "-" : "+") + imaginary + "i)";
+		// Both parts are floats in Go, so they are tagged as one, which is what
+		// lets the float verbs accept them instead of refusing the part.
+		return go2jsFormatValue(part, spec, go2jsTyped(value, "float64"));
+	};
+	const realFlags = verb === "v" ? flags.replace(/\+/g, "") : flags;
+	const imagFlags = realFlags.includes("+") ? realFlags : realFlags + "+";
+
+	return "(" + shown(re, realFlags) + shown(im, imagFlags) + "i)";
 }
 
 // go2jsIsSliceTypeName reports whether a type name names a slice, and
@@ -12011,6 +12049,21 @@ function go2jsCompoundElementType(accepted) {
 	const array = accepted !== null && accepted !== undefined ? /^\[(\d+)\](.*)$/.exec(accepted) : null;
 
 	return array === null ? null : array[2];
+}
+
+// go2jsBasicTypeName writes an element under the type Go names it by, since the
+// aliases byte and rune are the same type as uint8 and int32 and fmt reports
+// those rather than the alias a slice was declared with.
+function go2jsBasicTypeName(name) {
+	if (name === "byte") {
+		return "uint8";
+	}
+
+	if (name === "rune") {
+		return "int32";
+	}
+
+	return name;
 }
 
 // go2jsCompoundElements returns the elements of a slice or an array operand, or
@@ -12105,7 +12158,12 @@ function go2jsFormatCompound(value, accepted, verb, flags, width, precision, isB
 	const elements = go2jsCompoundElements(value, accepted);
 
 	if (elements !== null) {
-		const element = go2jsCompoundElementType(accepted);
+		// The type the list itself carries names its element type better than
+		// the one read off its first value, so a float a list holds is read as
+		// a float even when it arrived without a declared type, as a field of
+		// an unnamed struct does.
+		const carried = value !== null && value !== undefined && typeof value.__go2js_type === "string" ? value.__go2js_type : null;
+		const element = go2jsBasicTypeName(go2jsCompoundElementType(carried) ?? go2jsCompoundElementType(accepted));
 
 		for (const item of elements) {
 			parts.push(go2jsFormatValue(verb, inner, element === null ? item : go2jsTyped(item, element), false, true));
@@ -12138,6 +12196,20 @@ function go2jsFormatCompound(value, accepted, verb, flags, width, precision, isB
 		const ctor = value.constructor;
 		const fields = ctor && typeof ctor.name === "string" ? go2jsStructFormats[ctor.name] : null;
 
+		// The declared type of each field travels with it, so that a width or a
+		// precision reaches what a field holds the way fmt reads the field's
+		// type: a float inside a slice inside a struct is a float, and rounds
+		// under the precision rather than printing in full.
+		const goName = ctor && typeof ctor.name === "string" ? go2jsTypeNamesByConstructor.get(ctor) : undefined;
+		const descriptors = goName !== undefined ? go2jsStructFields[goName] : undefined;
+		const fieldTypes = Object.create(null);
+
+		if (descriptors !== undefined) {
+			for (const descriptor of descriptors) {
+				fieldTypes[descriptor.Name] = descriptor.Type || "";
+			}
+		}
+
 		for (const key of Object.keys(value)) {
 			if (fields && typeof fields[key] === "string" && go2jsVerbInSet(verb, "vsxXq")) {
 				const formatter = go2jsMethodTable[fields[key]];
@@ -12148,7 +12220,9 @@ function go2jsFormatCompound(value, accepted, verb, flags, width, precision, isB
 				}
 			}
 
-			parts.push(go2jsFormatValue(verb, inner, value[key], false, true));
+			const fieldType = fieldTypes[key] || "";
+
+			parts.push(go2jsFormatValue(verb, inner, fieldType === "" ? value[key] : go2jsTyped(value[key], fieldType), false, true));
 		}
 
 		return "{" + parts.join(" ") + "}";
