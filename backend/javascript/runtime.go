@@ -8333,8 +8333,8 @@ function go2jsCap(value) {
 	if (value instanceof go2jsNativeMap || value instanceof go2jsNativeSet) {
 		return value.size;
 	}
-	if (Array.isArray(value)) {
-		return value.length;
+	if (Array.isArray(value) || value instanceof Uint8Array) {
+		return typeof value.__go2js_cap === "number" ? value.__go2js_cap : value.length;
 	}
 	if (typeof value === "string") {
 		return go2jsStringByteLength(value);
@@ -9947,7 +9947,7 @@ function go2jsFormat(value, typeName, kind, shape, plus, nested, raw) {
 		return "map[" + parts.join(" ") + "]";
 	}
 
-	if (Array.isArray(value)) {
+	if (Array.isArray(value) || value instanceof Uint8Array) {
 		const elementType = go2jsElementTypeName(go2jsDeclaredTypeName(typeName) !== "" ? typeName : (value.__go2js_type || go2jsGoTypeName(value)));
 		const parts = [];
 
@@ -10736,6 +10736,12 @@ function go2jsFormatHexBytes(value, upper, space, alt, precision) {
 }
 
 function go2jsIsByteArray(value) {
+	// A slice of bytes the runtime holds is a typed array, which is a byte slice
+	// however it is reached, even when it is empty.
+	if (value instanceof Uint8Array) {
+		return true;
+	}
+
 	if (!Array.isArray(value) || value.length === 0) {
 		return false;
 	}

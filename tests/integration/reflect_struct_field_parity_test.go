@@ -538,3 +538,29 @@ func main() {
 }
 `)
 }
+
+// A slice of bytes reached through a reflect value is written as the bytes it
+// holds, reports the length and capacity it has, and agrees with the slice it
+// came from whichever verb reads it or however it is boxed.
+func TestReflectBytesReadBack(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"reflect"
+)
+
+func main() {
+	raw := []byte{65, 66, 67}
+	b := reflect.ValueOf(raw).Bytes()
+	fmt.Println(b)
+	fmt.Println(len(b), cap(b), b[1])
+
+	fmt.Printf("%v|%s|%q|%d\n", b, b, b, b)
+	fmt.Println(string(b))
+
+	var boxed interface{} = b
+	fmt.Println(boxed, len(boxed.([]byte)))
+}
+`)
+}

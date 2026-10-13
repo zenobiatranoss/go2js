@@ -605,6 +605,12 @@ function go2jsSliceLen(value) {
 		return 0;
 	}
 
+	// A slice of bytes is a typed array rather than a view onto one, and it
+	// stands for itself, so its length and its capacity are its own.
+	if (value instanceof Uint8Array) {
+		return value.length;
+	}
+
 	const state = go2jsSliceState(value);
 	return state ? state.length : 0;
 }
@@ -612,6 +618,10 @@ function go2jsSliceLen(value) {
 function go2jsSliceCap(value) {
 	if (value === null || value === undefined) {
 		return 0;
+	}
+
+	if (value instanceof Uint8Array) {
+		return typeof value.__go2js_cap === "number" ? value.__go2js_cap : value.length;
 	}
 
 	const state = go2jsSliceState(value);
