@@ -59,6 +59,12 @@ corners. Read these before you promise a deadline around it.
 - **Quoted runes beyond the BMP.** `strconv.QuoteRune` on an astral rune
   reports what the rune is and prints a literal escape; the lone-surrogate
   form of a string is not round-tripped.
+- **A nil pointer, channel or function inside a compound.** Such a nil reads
+  as `<nil>` in a slice, a map or a struct, which is what `%v` shows. Go also
+  writes the zero address `0` for the verbs that count an address (`%d`, `%x`)
+  and names the type in a refusal (`%!s(*int=<nil>)`); go2js keeps the
+  angle-bracket nil for those instead. A nil *interface* at the same depth is
+  written as `<nil>` for every verb, as Go writes it.
 
 ## Things that simply are not there yet
 

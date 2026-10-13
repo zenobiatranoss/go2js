@@ -78,6 +78,30 @@ func main() {
 `)
 }
 
+func TestUnicodeVerbUnsignedAndCharacter(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+func main() {
+	fmt.Printf("%U\n", int(-1))
+	fmt.Printf("%U\n", int8(-1))
+	fmt.Printf("%U\n", int32(-1))
+	fmt.Printf("%U\n", int64(-1))
+	fmt.Printf("%U\n", uint32(4294967295))
+	fmt.Printf("%U\n", 'A')
+	fmt.Printf("%U\n", 0)
+	fmt.Printf("%U\n", 0x1F600)
+	fmt.Printf("%#U\n", 65)
+	fmt.Printf("%#U\n", 10)
+	fmt.Printf("%#U\n", 'é')
+	fmt.Printf("%#U\n", -1)
+	fmt.Printf("%#U\n", 0x1F600)
+	fmt.Printf("%05U\n", 65)
+}
+`)
+}
+
 func TestSliceVerbsApplyToEachElement(t *testing.T) {
 	runParityTest(t, `package main
 
@@ -217,6 +241,28 @@ func main() {
 
 	fmt.Println(float64(12345678901234567000), float32(12345678901234567000))
 	fmt.Println(float64(C), float64(C)+1)
+}
+`)
+}
+
+func TestNestedNilInterfaceAcrossVerbs(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+func main() {
+	// A nil reached through a compound is written as the angle-bracket nil for
+	// whatever verb reads it, since there is no value there to refuse it.
+	fmt.Printf("%v %d %s %x %q\n", []interface{}{nil}, []interface{}{nil}, []interface{}{nil}, []interface{}{nil}, []interface{}{nil})
+	fmt.Printf("%v %d %s %x %q\n", []error{nil}, []error{nil}, []error{nil}, []error{nil}, []error{nil})
+	fmt.Printf("%v %d %s\n", map[string]interface{}{"a": nil}, map[string]interface{}{"a": nil}, map[string]interface{}{"a": nil})
+
+	// A nil slice or map keeps the empty literal its shape names.
+	fmt.Printf("%v %d %s\n", [][]int{nil}, [][]int{nil}, [][]int{nil})
+	fmt.Printf("%v %d %s\n", []map[string]int{nil}, []map[string]int{nil}, []map[string]int{nil})
+
+	// The empty interface carries a space in its name everywhere it appears.
+	fmt.Printf("%T %T %T\n", []interface{}{1}, map[string]interface{}{"a": 1}, [][]interface{}{nil})
 }
 `)
 }
