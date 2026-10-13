@@ -6883,8 +6883,20 @@ const go2jsTypeNames = Object.create(null);
 // it was declared with can be found.
 const go2jsTypeNamesByConstructor = new WeakMap();
 const go2jsMethodSets = Object.create(null);
+const go2jsValueMethodSets = Object.create(null);
 const go2jsStructFields = Object.create(null);
 const go2jsTypeKinds = Object.create(null);
+
+// go2jsRegisterValueMethods records the methods a value of a named type carries,
+// which is the methods declared with a value receiver rather than the pointer
+// ones. The whole method set is what a pointer carries, and a type that keeps
+// only one of the two would report a value as having a method it can only reach
+// through a pointer, which is what reflect must not do.
+function go2jsRegisterValueMethods(name, methods) {
+	if (typeof name === "string" && name !== "" && Array.isArray(methods)) {
+		go2jsValueMethodSets[name] = methods;
+	}
+}
 
 function go2jsRegisterTypeName(constructor, name, methods, fields, kind) {
 	go2jsTypeNames[name] = constructor;

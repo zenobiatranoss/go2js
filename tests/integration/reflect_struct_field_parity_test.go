@@ -245,3 +245,51 @@ func main() {
 }
 `)
 }
+
+// A value carries only the methods declared with a value receiver, while a
+// pointer carries every method of the type it points at. A type that reported
+// the whole set for a value would say a program can call a method through a
+// value that only a pointer reaches, and would report a value as implementing
+// an interface it does not.
+func TestReflectValueAndPointerMethodSetsDiffer(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"reflect"
+)
+
+type Greeter interface {
+	Greet() string
+}
+
+type Counter interface {
+	Count() int
+}
+
+type person struct {
+	Name string
+}
+
+func (p person) Greet() string { return "hi " + p.Name }
+func (p *person) Count() int   { return len(p.Name) }
+
+func main() {
+	vt := reflect.TypeOf(person{})
+	pt := reflect.TypeOf(&person{})
+
+	fmt.Println(vt.NumMethod(), vt.Kind())
+	fmt.Println(pt.NumMethod(), pt.Kind(), pt.Elem().NumMethod())
+
+	fmt.Println(vt.Implements(reflect.TypeOf((*Greeter)(nil)).Elem()))
+	fmt.Println(vt.Implements(reflect.TypeOf((*Counter)(nil)).Elem()))
+	fmt.Println(pt.Implements(reflect.TypeOf((*Counter)(nil)).Elem()))
+	fmt.Println(pt.Implements(reflect.TypeOf((*Greeter)(nil)).Elem()))
+
+	m, ok := vt.MethodByName("Greet")
+	fmt.Println(m.Name, m.Type.Kind(), ok)
+	_, missing := vt.MethodByName("Count")
+	fmt.Println(missing)
+}
+`)
+}

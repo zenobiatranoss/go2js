@@ -118,20 +118,26 @@ function go2jsReflectMapZero(type) {
 // is the type reflect.ArrayOf builds. The length is kept on the descriptor
 // because Len is the only thing that tells one array from another.
 function go2jsReflectArrayOf(length, element) {
-	return go2jsReflectType("array", "", element, null, go2jsReflectMethodsOf(element), length);
+	// An array built from an element type is never a named type, so it carries
+	// no methods of its own, whatever the element carries.
+	return go2jsReflectType("array", "", element, null, [], length);
 }
 
 // go2jsReflectSliceOf reports the slice of an element type, which is the type
 // reflect.SliceOf builds. A slice of a byte is the same slice under the other
 // name, and it is written into as bytes, so it is one here too.
 function go2jsReflectSliceOf(element) {
-	return go2jsReflectType("slice", "", element, null, go2jsReflectMethodsOf(element));
+	// A slice built from an element type is never a named type, so it carries no
+	// methods of its own.
+	return go2jsReflectType("slice", "", element, null, []);
 }
 
 // go2jsReflectMapOf reports the map of a key and an element type, which is the
 // type reflect.MapOf builds.
 function go2jsReflectMapOf(key, element) {
-	return go2jsReflectType("map", "", element, key, go2jsReflectMethodsOf(element));
+	// A map built from a key and an element type is never a named type, so it
+	// carries no methods of its own.
+	return go2jsReflectType("map", "", element, key, []);
 }
 
 // go2jsReflectTypeLen reports the length of a type, which is the one kind of
@@ -158,7 +164,7 @@ function go2jsReflectLazyList(target, name, lookup) {
 	Object.defineProperty(target, name, {
 		get: function() {
 			if (!found) {
-				const listed = lookup(target.name);
+				const listed = lookup(target);
 
 				if (listed !== null && listed !== undefined) {
 					value = listed;
@@ -195,11 +201,13 @@ function go2jsReflectType(go2jsKind, go2jsName, go2jsElem, go2jsKey, go2jsMethod
 	// nothing is tried again rather than remembered, because the registration it
 	// was looking for has yet to run.
 	if (go2jsKind === "struct") {
-		go2jsReflectLazyList(type, "fields", go2jsReflectFieldsOfName);
+		go2jsReflectLazyList(type, "fields", function(go2jsType) {
+			return go2jsReflectFieldsOfName(go2jsType.name);
+		});
 	}
 
 	if (!Array.isArray(go2jsMethods) || go2jsMethods.length === 0) {
-		go2jsReflectLazyList(type, "methods", go2jsReflectMethodsOfName);
+		go2jsReflectLazyList(type, "methods", go2jsReflectMethodsForType);
 	}
 
 	// A type writes itself as the name it has, so a program that prints one, or
@@ -231,7 +239,14 @@ function go2jsReflectMethodsOf(type) {
 // A pointer type has no name of its own, and every method of the type it points
 // at is in its method set, so the methods travel across unchanged.
 function go2jsReflectPtrTo(type) {
-	return go2jsReflectType("ptr", "", type, null, go2jsReflectMethodsOf(type));
+	// A pointer reaches every method of the type it points at, including the
+	// ones declared with a pointer receiver, so the whole set is taken rather
+	// than the value set the element may carry on its own.
+	const methods = type !== null && type !== undefined && type.name !== ""
+		? go2jsReflectMethodsOfName(type.name)
+		: go2jsReflectMethodsOf(type);
+
+	return go2jsReflectType("ptr", "", type, null, methods);
 }
 
 // go2jsReflectTypeImplements reports whether a type carries every method an
@@ -347,7 +362,7 @@ function go2jsReflectTypeOf(value, type) {
 	// given there, and it is the value underneath that says what it is.
 	const bare = go2jsStripWrappers(value);
 	const name = go2jsReflectNameOfValue(bare);
-	const descriptor = go2jsReflectType(go2jsReflectTypeKind(bare), name, null, null, go2jsReflectMethodsOfName(name));
+	const descriptor = go2jsReflectType(go2jsReflectTypeKind(bare), name, null, null, []);
 
 	// A descriptor read off a value has to say which fields the value has, or
 	// NumField and Field have nothing to answer with, because nothing else about
@@ -451,7 +466,7 @@ function go2jsReflectDeclaredType(name) {
 	// A name that is not a type written out in full is the name of a named
 	// type, and what kind of type it is was recorded when the program said so.
 	if (/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/.test(text)) {
-		return go2jsReflectType(go2jsReflectTypeKindOfName(text), text.slice(text.lastIndexOf(".") + 1), null, null, go2jsReflectMethodsOfName(text));
+		return go2jsReflectType(go2jsReflectTypeKindOfName(text), text.slice(text.lastIndexOf(".") + 1), null, null, []);
 	}
 
 	return null;
@@ -501,6 +516,42 @@ function go2jsReflectMethodsOfName(name) {
 	}
 
 	return [];
+}
+
+// go2jsReflectValueMethodsOfName looks up the methods a value of a named type
+// carries, which is the ones declared with a value receiver. A type that never
+// registered a value set is one the emitter did not describe, so the whole set
+// is the best that can be said of it.
+function go2jsReflectValueMethodsOfName(name) {
+	if (typeof name !== "string" || name === "") {
+		return [];
+	}
+
+	const short = name.slice(name.lastIndexOf(".") + 1);
+
+	for (const registered of Object.keys(go2jsValueMethodSets)) {
+		if (registered === name || registered.slice(registered.lastIndexOf(".") + 1) === short) {
+			return go2jsValueMethodSets[registered];
+		}
+	}
+
+	return go2jsReflectMethodsOfName(name);
+}
+
+// go2jsReflectMethodsForType reports the method set a type descriptor carries,
+// which is the whole set for a pointer and the value set for everything else,
+// because a pointer reaches every method of the type it points at and a value
+// reaches only the ones declared with a value receiver.
+function go2jsReflectMethodsForType(type) {
+	if (type === null || type === undefined) {
+		return [];
+	}
+
+	if (type.kind === "ptr") {
+		return go2jsReflectMethodsOfName(type.name);
+	}
+
+	return go2jsReflectValueMethodsOfName(type.name);
 }
 
 // go2jsReflectClassOfName reports the class a name was registered for. A name
@@ -2166,7 +2217,11 @@ func (e *emitter) reflectTypeDescriptor(t gotypesstd.Type) (string, error) {
 
 	methods := "[]"
 
-	if names := reflectMethodNames(t); len(names) > 0 {
+	// A type descriptor spells out the methods a value of the type carries,
+	// which is the value set for everything but a pointer; a pointer carries the
+	// whole set, and reflectValueMethodNames reads a pointer as the whole set of
+	// the type it points at.
+	if names := reflectValueMethodNames(t); len(names) > 0 {
 		quoted := make([]string, 0, len(names))
 
 		for _, name := range names {
@@ -2267,6 +2322,96 @@ func collectReflectPromotedMethods(t gotypesstd.Type, seen map[string]bool, visi
 		if field := fields.Field(i); field.Embedded() {
 			collectReflectMethods(field.Type(), seen, visited)
 		}
+	}
+}
+
+// reflectValueMethodNames gathers the method set of a value of a named type,
+// which is the methods declared with a value receiver. A pointer carries the
+// whole set, and a value carries only the part of it a value can reach; a type
+// that reported both for a value would say a program can call a method through
+// a value that it can only call through a pointer.
+func reflectValueMethodNames(t gotypesstd.Type) []string {
+	seen := map[string]bool{}
+	collectReflectValueMethods(t, seen, map[gotypesstd.Type]bool{})
+
+	names := make([]string, 0, len(seen))
+
+	for name := range seen {
+		names = append(names, name)
+	}
+
+	sort.Strings(names)
+
+	return names
+}
+
+// collectReflectValueMethods gathers the methods a value carries. A method
+// declared with a pointer receiver is left out, because a value cannot call it.
+// An embedded value brings only the methods a value of it carries, while an
+// embedded pointer brings the whole method set of the type it points at.
+func collectReflectValueMethods(t gotypesstd.Type, seen map[string]bool, visited map[gotypesstd.Type]bool) {
+	if t == nil || visited[t] {
+		return
+	}
+
+	visited[t] = true
+
+	switch typed := t.(type) {
+	case *gotypesstd.Alias:
+		collectReflectValueMethods(gotypesstd.Unalias(t), seen, visited)
+	case *gotypesstd.Pointer:
+		// A pointer is not a value type, and its method set is the whole one.
+		collectReflectMethods(typed.Elem(), seen, visited)
+	case *gotypesstd.Named:
+		for i := 0; i < typed.NumMethods(); i++ {
+			method := typed.Method(i)
+
+			if signature, isSignature := method.Type().(*gotypesstd.Signature); isSignature {
+				if receiver := signature.Recv(); receiver != nil {
+					if _, isPointer := receiver.Type().(*gotypesstd.Pointer); isPointer {
+						continue
+					}
+				}
+			}
+
+			seen[method.Name()] = true
+		}
+
+		if underlying, isInterface := typed.Underlying().(*gotypesstd.Interface); isInterface {
+			collectReflectValueMethods(underlying, seen, visited)
+		}
+
+		collectReflectValuePromotedMethods(typed, seen, visited)
+	case *gotypesstd.Interface:
+		for i := 0; i < typed.NumMethods(); i++ {
+			seen[typed.Method(i).Name()] = true
+		}
+	}
+}
+
+// collectReflectValuePromotedMethods gathers the methods an embedded field
+// brings into the method set of a value. An embedded value brings the methods a
+// value of its type carries, and an embedded pointer brings the whole set of
+// the type it points at.
+func collectReflectValuePromotedMethods(t gotypesstd.Type, seen map[string]bool, visited map[gotypesstd.Type]bool) {
+	underlying, isStruct := t.Underlying().(*gotypesstd.Struct)
+	if !isStruct {
+		return
+	}
+
+	for i := 0; i < underlying.NumFields(); i++ {
+		field := underlying.Field(i)
+
+		if !field.Embedded() {
+			continue
+		}
+
+		if _, isPointer := field.Type().(*gotypesstd.Pointer); isPointer {
+			collectReflectMethods(field.Type(), seen, visited)
+			continue
+		}
+
+		collectReflectValueMethods(field.Type(), seen, visited)
 	}
 }
 

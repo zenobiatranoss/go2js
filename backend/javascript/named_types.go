@@ -807,6 +807,21 @@ func (e *emitter) emitTypeNameRegistration(typeIdent *ast.Ident, declared *ast.S
 	e.write(");")
 	e.newline()
 
+	// The methods a value of the type carries travel on their own, because a
+	// pointer carries every method while a value carries only the ones declared
+	// with a value receiver, and reflect has to tell the two apart. The whole
+	// set is registered first, so a type with only pointer methods still says
+	// its value carries none rather than falling back to the whole set.
+	if len(reflectMethodNames(typeName.Type())) > 0 {
+		e.writeIndent()
+		e.write("go2jsRegisterValueMethods(")
+		e.write(strconv.Quote(qualified))
+		e.write(", ")
+		e.write(quoteList(reflectValueMethodNames(typeName.Type())))
+		e.write(");")
+		e.newline()
+	}
+
 	return nil
 }
 
