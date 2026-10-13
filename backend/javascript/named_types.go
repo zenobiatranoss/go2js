@@ -109,6 +109,35 @@ func (e *emitter) emitNamedConversion(call *ast.CallExpr, named *gotypesstd.Name
 		return nil
 	}
 
+	// A named slice is built on a slice, so a conversion to it does the work
+	// the unnamed slice would do — a string read as its bytes, or as its runes
+	// — and the value carries the name it was given.
+	if _, ok := named.Underlying().(*gotypesstd.Slice); ok {
+		source := e.analyzedType(call.Args[0])
+
+		if source != nil && gotypesstd.Identical(source.Underlying(), named.Underlying()) {
+			return e.emitExpr(call.Args[0])
+		}
+
+		helper, ok := sliceConversionHelper(named, source)
+		if !ok {
+			return fmt.Errorf("unsupported conversion to %s", named.Obj().Name())
+		}
+
+		e.needsRuntime = true
+		e.write("go2jsSliceTyped(")
+		e.write(strconv.Quote(goTypeName(named.Underlying())))
+		e.write(", ")
+		e.write(helper)
+
+		if err := e.emitExpr(call.Args[0]); err != nil {
+			return err
+		}
+
+		e.write("))")
+		return nil
+	}
+
 	basic, ok := named.Underlying().(*gotypesstd.Basic)
 	if !ok {
 		return fmt.Errorf("unsupported conversion to %s", named.Obj().Name())

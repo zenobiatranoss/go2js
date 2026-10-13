@@ -152,3 +152,39 @@ func main() {
 }
 `)
 }
+
+func TestNamedSliceConversion(t *testing.T) {
+	// A conversion to a named slice is the conversion to the slice it is built
+	// on, and the value keeps the name it was given: a string read as the bytes
+	// or the runes of a named slice, a copy between two named byte slices, and
+	// a conversion between two names for the same slice.
+	runParityTest(t, `package main
+
+import "fmt"
+
+type Buf []byte
+type Bytes []byte
+type Runes []rune
+type Nums []int
+
+func main() {
+	b := Buf("hi")
+	fmt.Println(len(b), b)
+	fmt.Printf("%v %d %s %q %x %T\n", b, b, b, b, b, b)
+
+	r := Runes("héllo")
+	fmt.Println(len(r), r)
+	fmt.Printf("%v %q %x %T\n", r, r, r, r)
+
+	var c Bytes = []byte{'a', 'b'}
+	d := Bytes(c)
+	fmt.Printf("%v %s %q %T\n", d, d, d, d)
+
+	n := Nums{1, 2}
+	m := Nums(n)
+	fmt.Printf("%v %T\n", m, m)
+
+	fmt.Printf("%v %T\n", Buf(nil), Runes(nil))
+}
+`)
+}
