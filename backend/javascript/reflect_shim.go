@@ -968,6 +968,18 @@ function go2jsReflectValueIndex(receiver, index) {
 	const target = go2jsReflectRead(receiver);
 	const at = Math.trunc(Number(index));
 
+	// A string is indexed by bytes rather than by the code units the runtime
+	// stores it as, and an element of one is the unsigned byte at that place.
+	if (typeof target === "string") {
+		const bytes = go2jsStringToBytes(target);
+
+		if (at < 0 || at >= bytes.length) {
+			go2jsPanic("reflect: string index out of range");
+		}
+
+		return go2jsReflectValue(bytes[at], go2jsReflectType("uint8", "uint8", null, null, []));
+	}
+
 	// An element of a slice or an array is reached by way of the container it
 	// stands in, so a write to it goes back the same way. A box holding only the
 	// element would be a copy, and a program could write to it all afternoon
@@ -1114,8 +1126,9 @@ function go2jsReflectValueIsValid(receiver) {
 }
 
 function go2jsReflectValueCanSet(receiver) {
-	return go2jsReflectValueBox(receiver) && receiver.v !== null && receiver.v !== undefined &&
-		typeof receiver.v === "object";
+	// Only a value that stands over storage can be written to, which is the same
+	// as being able to have its address taken.
+	return go2jsReflectValueCanAddr(receiver);
 }
 
 // go2jsReflectValueMapIndex reads an entry of a map. A key the map does not
@@ -1862,7 +1875,10 @@ function go2jsReflectValueCall(receiver, args) {
 // pointer is a method of what it points at, which is how a pointer answers for
 // the interface its element type implements.
 function go2jsReflectValueAddr(receiver) {
-	if (!go2jsReflectValueBox(receiver)) {
+	// Only a value standing over storage has an address. A value read off
+	// another value, such as one a call handed back, has no storage of its own,
+	// so taking its address is refused rather than answered with a fresh cell.
+	if (typeof receiver.get !== "function" || typeof receiver.set !== "function") {
 		go2jsPanic("reflect: Addr of unaddressable value");
 	}
 
@@ -2245,6 +2261,12 @@ function go2jsReflectValueBool(receiver) {
 function go2jsReflectValueLen(receiver) {
 	const value = go2jsReflectUnwrap(go2jsReflectRead(receiver));
 
+	// A string is counted in bytes, the way Go counts it, rather than in the
+	// code units the runtime happens to store it as.
+	if (typeof value === "string") {
+		return go2jsStringByteLength(value);
+	}
+
 	if (value === null || value === undefined) {
 		return 0;
 	}
@@ -2378,7 +2400,10 @@ function go2jsReflectValueCanInterface(receiver) {
 }
 
 function go2jsReflectValueCanAddr(receiver) {
-	return go2jsReflectValueIsValid(receiver) && receiver.__go2js_reflectValue === true;
+	// A value can have its address taken only when it stands over storage, which
+	// a box over a plain value does not, however valid the value it holds is.
+	return go2jsReflectValueIsValid(receiver) &&
+		typeof receiver.get === "function" && typeof receiver.set === "function";
 }
 
 // A slice, a map and a function cannot be compared in Go, and the rest can, so
