@@ -183,7 +183,7 @@ function go2jsReflectLazyList(target, name, lookup) {
 	});
 }
 
-function go2jsReflectType(go2jsKind, go2jsName, go2jsElem, go2jsKey, go2jsMethods, go2jsLen, go2jsResults, go2jsVariadic) {
+function go2jsReflectType(go2jsKind, go2jsName, go2jsElem, go2jsKey, go2jsMethods, go2jsLen, go2jsOuts, go2jsVariadic, go2jsIns) {
 	const type = {
 		__go2js_reflectType: true,
 		kind: go2jsKind,
@@ -192,10 +192,13 @@ function go2jsReflectType(go2jsKind, go2jsName, go2jsElem, go2jsKey, go2jsMethod
 		key: go2jsKey || null,
 		methods: go2jsMethods || [],
 		len: typeof go2jsLen === "number" ? go2jsLen : null,
-		// A function type carries how many results it hands back and whether it
-		// takes a trailing run of arguments, because reflect.Call has to box that
-		// many results and IsVariadic has to answer with it.
-		results: typeof go2jsResults === "number" ? go2jsResults : null,
+		// A function type carries what it takes and what it hands back as the
+		// types of each, and whether it takes a trailing run of arguments,
+		// because reflect has to answer for every one of them. The types are
+		// descriptors of their own, so a program that asks about one gets a type
+		// it can go on asking about.
+		ins: Array.isArray(go2jsIns) ? go2jsIns : null,
+		outs: Array.isArray(go2jsOuts) ? go2jsOuts : [],
 		variadic: go2jsVariadic === true
 	};
 
@@ -1542,6 +1545,50 @@ function go2jsReflectTypeIsVariadic(receiver) {
 	return type !== null && type !== undefined && type.variadic === true;
 }
 
+// go2jsReflectFuncParts reports the argument types and the result types a
+// function type was written with, which is what In, Out, NumIn and NumOut all
+// read, and the number of results an older descriptor kept on its own.
+function go2jsReflectFuncParts(type) {
+	if (type === null || type === undefined) {
+		return {ins: [], outs: []};
+	}
+
+	return {
+		ins: Array.isArray(type.ins) ? type.ins : [],
+		outs: Array.isArray(type.outs) ? type.outs : []
+	};
+}
+
+function go2jsReflectTypeNumIn(receiver) {
+	return go2jsReflectFuncParts(go2jsReflectValueType(receiver)).ins.length;
+}
+
+function go2jsReflectTypeIn(receiver, index) {
+	const ins = go2jsReflectFuncParts(go2jsReflectValueType(receiver)).ins;
+	const at = Math.trunc(Number(index));
+
+	if (at < 0 || at >= ins.length) {
+		throw new RangeError("reflect: In index out of range");
+	}
+
+	return ins[at];
+}
+
+function go2jsReflectTypeNumOut(receiver) {
+	return go2jsReflectFuncParts(go2jsReflectValueType(receiver)).outs.length;
+}
+
+function go2jsReflectTypeOut(receiver, index) {
+	const outs = go2jsReflectFuncParts(go2jsReflectValueType(receiver)).outs;
+	const at = Math.trunc(Number(index));
+
+	if (at < 0 || at >= outs.length) {
+		throw new RangeError("reflect: Out index out of range");
+	}
+
+	return outs[at];
+}
+
 // go2jsReflectTypeComparable reports whether values of a type can be compared,
 // which is false for a slice, a map and a function and true for everything
 // else, down through the elements of an array and the fields of a struct.
@@ -1762,7 +1809,7 @@ function go2jsReflectValueCall(receiver, args) {
 
 	if (typeof value === "function") {
 		const type = go2jsReflectValueType(receiver);
-		const results = type !== null && type !== undefined && typeof type.results === "number" ? type.results : null;
+		const results = type !== null && type !== undefined && Array.isArray(type.outs) ? type.outs.length : null;
 
 		return go2jsReflectBoxResults(results, go2jsCallNow(value, null, list));
 	}
@@ -1853,6 +1900,7 @@ const go2jsReflectValueMethods = {
 	Float: go2jsReflectValueFloat,
 	Bool: go2jsReflectValueBool,
 	Len: go2jsReflectValueLen,
+	Cap: go2jsReflectValueCap,
 	FieldByName: go2jsReflectValueFieldByName,
 	FieldByIndex: go2jsReflectValueFieldByIndex,
 	Kind: go2jsReflectKind,
@@ -1957,6 +2005,10 @@ const go2jsReflectTypeMethods = {
 	Comparable: go2jsReflectTypeComparable,
 	AssignableTo: go2jsReflectTypeAssignableTo,
 	ConvertibleTo: go2jsReflectTypeConvertibleTo,
+	NumIn: go2jsReflectTypeNumIn,
+	In: go2jsReflectTypeIn,
+	NumOut: go2jsReflectTypeNumOut,
+	Out: go2jsReflectTypeOut,
 	IsVariadic: go2jsReflectTypeIsVariadic
 };
 
@@ -1989,7 +2041,10 @@ let go2jsReflectRegistered = false;
 // go2jsReflectNew allocates a zero value of the given type and returns an
 // addressable Value for it, which is what a Go pointer to a fresh T provides.
 function go2jsReflectNew(type) {
-	return go2jsReflectValue(go2jsReflectNewBox(go2jsReflectUnwrap(go2jsReflectZeroOf(type))), type);
+	// The value reflect.New hands back is a pointer to the fresh storage, so it
+	// reads as a pointer and Elem of it reads back as the type that was asked
+	// for.
+	return go2jsReflectValue(go2jsReflectNewBox(go2jsReflectUnwrap(go2jsReflectZeroOf(type))), go2jsReflectPtrTo(type));
 }
 
 // go2jsReflectNewBox holds the allocated storage so a later Set on the
@@ -2017,7 +2072,9 @@ function go2jsReflectValueElem(receiver) {
 	// A value produced by New points at fresh storage, so Elem yields that
 	// storage and writes through it are kept.
 	if (go2jsReflectIsNewBox(receiver.v)) {
-		return go2jsReflectAddressable(receiver.v, receiver.t);
+		// The box is pointed at, so the value it holds is the type the pointer
+		// points at rather than the pointer itself.
+		return go2jsReflectAddressable(receiver.v, go2jsReflectElem(receiver.t));
 	}
 
 	if (receiver.t === null || receiver.t === undefined) {
@@ -2138,6 +2195,18 @@ function go2jsReflectValueLen(receiver) {
 	}
 
 	return value.length !== undefined ? value.length : 0;
+}
+
+// go2jsReflectValueCap reports the capacity of a slice, an array or a channel.
+// A slice here is the run of its elements, so its capacity is its length.
+function go2jsReflectValueCap(receiver) {
+	const kind = go2jsReflectKind(receiver);
+
+	if (kind !== "slice" && kind !== "array" && kind !== "chan") {
+		throw new TypeError("reflect: Cap of non-array, non-slice value");
+	}
+
+	return go2jsReflectValueLen(receiver);
 }
 
 function go2jsReflectValueIsNil(receiver) {
@@ -2501,6 +2570,28 @@ func nextReflectTypeUnit() int {
 	return reflectTypeUnits
 }
 
+// reflectTypeTuple writes a tuple of types as a JavaScript array of the
+// descriptors they were each given, which is what a function type records for
+// its arguments and for its results.
+func (e *emitter) reflectTypeTuple(tuple *gotypesstd.Tuple) string {
+	if tuple == nil {
+		return "[]"
+	}
+
+	parts := make([]string, 0, tuple.Len())
+
+	for index := 0; index < tuple.Len(); index++ {
+		described, err := e.reflectTypeDescriptor(tuple.At(index).Type())
+		if err != nil {
+			described = "null"
+		}
+
+		parts = append(parts, described)
+	}
+
+	return "[" + strings.Join(parts, ", ") + "]"
+}
+
 func (e *emitter) reflectTypeDescriptor(t gotypesstd.Type) (string, error) {
 	if t == nil {
 		return "null", nil
@@ -2509,6 +2600,21 @@ func (e *emitter) reflectTypeDescriptor(t gotypesstd.Type) (string, error) {
 	if key, ok := e.reflectTypeKeys[t]; ok {
 		return key, nil
 	}
+
+	// A type that names itself, as a function type whose argument is of its own
+	// type does, would describe itself for ever. The one already being written is
+	// left out rather than followed again.
+	if e.reflectTypePending == nil {
+		e.reflectTypePending = map[gotypesstd.Type]bool{}
+	}
+
+	if e.reflectTypePending[t] {
+		return "null", nil
+	}
+
+	e.reflectTypePending[t] = true
+
+	defer delete(e.reflectTypePending, t)
 
 	kind, err := reflectKindName(t)
 	if err != nil {
@@ -2561,7 +2667,8 @@ func (e *emitter) reflectTypeDescriptor(t gotypesstd.Type) (string, error) {
 		}
 	case *gotypesstd.Signature:
 		kind = "func"
-		funcExtra = fmt.Sprintf(", null, %d, %t", underlying.Results().Len(), underlying.Variadic())
+		funcExtra = fmt.Sprintf(", null, %s, %t, %s",
+			e.reflectTypeTuple(underlying.Results()), underlying.Variadic(), e.reflectTypeTuple(underlying.Params()))
 	case *gotypesstd.Interface:
 		kind = "interface"
 	}

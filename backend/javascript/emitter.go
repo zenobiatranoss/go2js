@@ -38,6 +38,7 @@ type emitter struct {
 	outLine             int
 	needsRuntime        bool
 	reflectTypeKeys     map[gotypesstd.Type]string
+	reflectTypePending  map[gotypesstd.Type]bool
 	reflectTypeConsts   []string
 	reflectTypeUnit     int
 	addressNeeded       map[addressTarget]bool
