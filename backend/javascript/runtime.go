@@ -6920,7 +6920,10 @@ function go2jsGoTypeName(value) {
 	// its own, which is the name without the second one byte and rune have, and
 	// every way the name is worked out below is one that can come out needing
 	// that, so it is settled once at the end rather than in each of them
-	return go2jsNormalizeTypeName(go2jsGoTypeNameRaw(value));
+	// Go writes the empty interface with a space between its keyword and its
+	// braces, and a type name that carries one anywhere in it, as a slice or a
+	// map of them does, keeps that space in every place it appears.
+	return go2jsNormalizeTypeName(go2jsGoTypeNameRaw(value)).replace(/interface\{\}/g, "interface {}");
 }
 
 function go2jsGoTypeNameRaw(value) {
@@ -9704,6 +9707,24 @@ function go2jsNilFormat(typeName, kind, shape) {
 	return "<nil>";
 }
 
+// go2jsFormatAddressLike says whether a nil of the named type reads as an
+// address rather than as nothing at all, which is what a pointer, a channel and
+// a function do: the verbs that count an address read them as zero, and only
+// the rest see a nil.
+function go2jsFormatAddressLike(typeName, shape) {
+	if (shape === "pointer" || shape === "chan" || shape === "func") {
+		return true;
+	}
+
+	if (typeof typeName !== "string") {
+		return false;
+	}
+
+	return typeName.startsWith("*") || typeName.startsWith("chan ") ||
+		typeName.startsWith("chan<- ") || typeName.startsWith("<-chan ") ||
+		typeName.startsWith("func(");
+}
+
 // go2jsFormat writes a value the way %v does, or the way %+v does when plus is
 // set, which is the flag that puts a name in front of every field. The nested
 // flag says the value sits inside another one, and that is what decides whether
@@ -10965,7 +10986,8 @@ function go2jsDeclaredTypeName(name) {
 		return "";
 	}
 
-	if (name === "" || name === "interface {}" || name === "null" ||
+	if (name === "" || name === "interface{}" || name === "interface {}" ||
+		name === "any" || name === "null" ||
 		name === "undefined" || name === "unknown" || name === "Object" || name === "Array") {
 		return "";
 	}
@@ -11265,8 +11287,11 @@ function go2jsFmtState(verb, flags, width, precision, value) {
 
 // go2jsFormatValue writes one operand with a verb. The raw flag says the operand
 // is being shown as the rejected operand of a verb it does not take, and fmt
-// shows such an operand as it is rather than by asking it to write itself.
-function go2jsFormatValue(verb, spec, value, raw) {
+// shows such an operand as it is rather than by asking it to write itself. The
+// nested flag says the operand sits inside another one, where a nil is written
+// as the angle-bracket nil instead of refusing the verb the way a whole operand
+// does.
+function go2jsFormatValue(verb, spec, value, raw, nested) {
 	const parsed = go2jsParseFormatSpec(spec);
 	const flags = parsed.flags;
 	const precision = parsed.precision;
@@ -11305,6 +11330,16 @@ function go2jsFormatValue(verb, spec, value, raw) {
 	const kind = go2jsTypedKind(original);
 	const shape = go2jsTypedShape(original);
 	const tagName = tagged || boxedType;
+
+	// A nil sitting inside a compound is written as the angle-bracket nil for
+	// whatever verb reads it, because Go has no value there to refuse the verb
+	// against, and a nil that is the whole operand is the one case fmt does
+	// refuse it for. A nil slice or map keeps the empty literal its shape names.
+	// A pointer, a channel or a function is left to the cases below, which read
+	// the nil they hold.
+	if (nested === true && (value === null || value === undefined) && !go2jsFormatAddressLike(tagName, shape)) {
+		return go2jsPad(go2jsNilFormat(tagName, kind, shape), parsed, false);
+	}
 
 	// A value of a type that carries a whole number of its own, such as the Int of
 	// math/big, is written as the number it holds rather than as the holder that
@@ -11465,6 +11500,13 @@ function go2jsFormatValue(verb, spec, value, raw) {
 	// address to reach, and Go writes the zero address for it rather than the
 	// word it uses for a value that is not there at all.
 	if (verb === "p") {
+		// A pointer is answered with the address it was handed, which stays the
+		// same for the life of the value and has the shape of a Go address even
+		// though the digits themselves cannot be Go's.
+		if (value !== null && value !== undefined && value.__go2js_pointer === true) {
+			return go2jsPad(go2jsPointerAddress(value), parsed, false);
+		}
+
 		const empty = value === null || value === undefined ||
 			(typeof value === "object" &&
 				(value.__go2js_nil === true || value.__go2js_typed_nil === true));
@@ -11633,13 +11675,13 @@ function go2jsFormatValue(verb, spec, value, raw) {
 			const inner = "%" + flags + (precision === null ? "" : "." + precision) + "q";
 			const quoteElement = (element) => (typeof element === "number" && Number.isInteger(element)
 				? go2jsQuoteRune(element)
-				: go2jsFormatValue("q", inner, element));
+				: go2jsFormatValue("q", inner, element, false, true));
 
 			if (value instanceof go2jsNativeMap) {
 				const parts = [];
 
 				for (const key of value.keys()) {
-					parts.push(go2jsStrconvQuote(go2jsBytesToString(key)) + ":" + go2jsFormatValue("q", inner, value.get(key)));
+					parts.push(go2jsStrconvQuote(go2jsBytesToString(key)) + ":" + go2jsFormatValue("q", inner, value.get(key), false, true));
 				}
 
 				return go2jsPad("map[" + parts.join(" ") + "]", parsed, false);
@@ -11720,10 +11762,30 @@ function go2jsFormatValue(verb, spec, value, raw) {
 		case "c":
 			return go2jsPad(go2jsRuneString(value), parsed, false);
 		case "U": {
-			let digits = Math.trunc(Number(value)).toString(16).toUpperCase();
+			// A whole number is read as the unsigned one of its width, so a
+			// negative number names the code point its bits make rather than a
+			// sign and a digit, and a number too wide for a double keeps every
+			// bit it has.
+			let number = typeof value === "bigint" ? value : BigInt(Math.trunc(Number(value)));
+
+			if (number < 0n) {
+				number = BigInt.asUintN(64, number);
+			}
+
+			let digits = number.toString(16).toUpperCase();
 
 			while (digits.length < 4) {
 				digits = "0" + digits;
+			}
+
+			// The # flag names the character the code point stands for, when it
+			// can be shown, the way Go writes U+0041 'A'.
+			if (flags.includes("#")) {
+				const code = Number(number);
+
+				if (code >= 0 && code <= 0x10FFFF && go2jsRuneIsPrintable(code)) {
+					return go2jsPad("U+" + digits + " " + go2jsQuoteRune(code), parsed, false);
+				}
 			}
 
 			return go2jsPad("U+" + digits, parsed, false);
@@ -12044,7 +12106,7 @@ function go2jsFormatCompound(value, accepted, verb, flags, width, precision, isB
 		const element = go2jsCompoundElementType(accepted);
 
 		for (const item of elements) {
-			parts.push(go2jsFormatValue(verb, inner, element === null ? item : go2jsTyped(item, element)));
+			parts.push(go2jsFormatValue(verb, inner, element === null ? item : go2jsTyped(item, element), false, true));
 		}
 
 		return "[" + parts.join(" ") + "]";
@@ -12058,7 +12120,7 @@ function go2jsFormatCompound(value, accepted, verb, flags, width, precision, isB
 		entries.sort((a, b) => go2jsCompareValues(a[0], b[0]));
 
 		for (const entry of entries) {
-			parts.push(go2jsFormatValue(verb, inner, entry[0]) + ":" + go2jsFormatValue(verb, inner, entry[1]));
+			parts.push(go2jsFormatValue(verb, inner, entry[0], false, true) + ":" + go2jsFormatValue(verb, inner, entry[1], false, true));
 		}
 
 		return "map[" + parts.join(" ") + "]";
@@ -12084,7 +12146,7 @@ function go2jsFormatCompound(value, accepted, verb, flags, width, precision, isB
 				}
 			}
 
-			parts.push(go2jsFormatValue(verb, inner, value[key]));
+			parts.push(go2jsFormatValue(verb, inner, value[key], false, true));
 		}
 
 		return "{" + parts.join(" ") + "}";
