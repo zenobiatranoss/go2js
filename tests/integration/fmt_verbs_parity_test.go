@@ -302,3 +302,28 @@ func main() {
 }
 `)
 }
+
+func TestAnonymousStructFieldElementType(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+func main() {
+	// A slice field of an unnamed struct carries the type it was written as,
+	// so a precision given to the whole struct still reads each float in the
+	// slice as a float rather than as the int read off its first value.
+	s := struct {
+		A float64
+		B []float64
+	}{1.23456, []float64{2.34567, 3.45678}}
+	fmt.Printf("%.3v\n", s)
+	fmt.Printf("%v\n", s)
+	fmt.Printf("%v\n", s.B)
+
+	// A byte and a rune slice report their element under the type Go names,
+	// not the alias they were declared with.
+	fmt.Printf("%e\n", []byte{1, 255})
+	fmt.Printf("%e\n", []rune{1, 255})
+}
+`)
+}
