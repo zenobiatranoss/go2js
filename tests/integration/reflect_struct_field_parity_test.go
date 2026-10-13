@@ -205,3 +205,43 @@ func main() {
 }
 `)
 }
+
+// Whether a type is comparable is asked before a value of it is used as a map
+// key or compared, and the answer comes from the type: a slice, a map and a
+// function are not comparable, and an array or a struct is comparable only when
+// everything it is made of is. A method, meanwhile, is a function, and a type
+// that says otherwise hands a program something it cannot call.
+func TestReflectComparableAndMethodType(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"reflect"
+)
+
+type point struct {
+	X int
+	Y int
+}
+
+type nested struct {
+	P point
+	S []int
+}
+
+func (p point) Sum() int { return p.X + p.Y }
+
+func main() {
+	fmt.Println(reflect.TypeOf(3).Comparable())
+	fmt.Println(reflect.TypeOf("s").Comparable())
+	fmt.Println(reflect.TypeOf([]int{}).Comparable())
+	fmt.Println(reflect.TypeOf(map[string]int{}).Comparable())
+	fmt.Println(reflect.TypeOf(func() {}).Comparable())
+	fmt.Println(reflect.TypeOf(point{}).Comparable())
+	fmt.Println(reflect.TypeOf(nested{}).Comparable())
+	fmt.Println(reflect.TypeOf([2]int{}).Comparable())
+
+	fmt.Println(reflect.TypeOf(point{}).Method(0).Name, reflect.TypeOf(point{}).Method(0).Type.Kind())
+}
+`)
+}
