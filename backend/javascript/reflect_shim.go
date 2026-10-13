@@ -1682,8 +1682,15 @@ function go2jsReflectNumericKind(kind) {
 		kind === "complex64" || kind === "complex128";
 }
 
+// go2jsReflectIntegerKind reports whether a kind is one of the integer kinds,
+// which are the numbers Go turns into a string of the rune they name.
+function go2jsReflectIntegerKind(kind) {
+	return kind === "int" || kind === "int8" || kind === "int16" || kind === "int32" || kind === "int64" ||
+		kind === "uint" || kind === "uint8" || kind === "uint16" || kind === "uint32" || kind === "uint64" ||
+		kind === "uintptr";
+}
+
 // go2jsReflectByteOrRuneSlice reports whether a type is a slice of bytes or a
-// slice of runes, the two slices a string is convertible to and from.
 function go2jsReflectByteOrRuneSlice(type) {
 	if (type === null || type === undefined || type.kind !== "slice") {
 		return false;
@@ -1791,6 +1798,12 @@ function go2jsReflectTypeConvertibleTo(receiver, target) {
 		return true;
 	}
 
+	// An integer becomes the one-rune string that names its code point, which is
+	// the one conversion between a number and a string that Go allows.
+	if (go2jsReflectIntegerKind(value.kind) && want.kind === "string") {
+		return true;
+	}
+
 	return go2jsReflectSameUnderlying(value, want);
 }
 
@@ -1828,6 +1841,16 @@ function go2jsReflectValueConvert(receiver, target) {
 	}
 
 	return go2jsReflectValue(value, want);
+}
+
+// go2jsReflectValueCanConvert reports whether Convert would turn a value into
+// the type asked for, which is whether the two types are convertible.
+function go2jsReflectValueCanConvert(receiver, target) {
+	if (!go2jsReflectValueIsValid(receiver)) {
+		return false;
+	}
+
+	return go2jsReflectTypeConvertibleTo(go2jsReflectValueType(receiver), target);
 }
 
 // go2jsReflectValueMethodByName looks a method up by name, which reports the
@@ -1978,6 +2001,7 @@ const go2jsReflectValueMethods = {
 	CanCompare: go2jsReflectValueCanCompare,
 	Comparable: go2jsReflectValueComparable,
 	Convert: go2jsReflectValueConvert,
+	CanConvert: go2jsReflectValueCanConvert,
 	IsExported: go2jsReflectValueIsExported,
 	Addr: go2jsReflectValueAddr,
 	UnsafeAddr: go2jsReflectValueAddr,
@@ -2743,7 +2767,15 @@ func (e *emitter) reflectTypeDescriptor(t gotypesstd.Type) (string, error) {
 		if err != nil {
 			return "", err
 		}
+
+		// An array is the one type that carries a length of its own, so the
+		// length is written where a descriptor keeps it, beside the element.
+		funcExtra = fmt.Sprintf(", %d", underlying.Len())
 	case *gotypesstd.Chan:
+		elem, err = e.reflectTypeDescriptor(underlying.Elem())
+		if err != nil {
+			return "", err
+		}
 		elem, err = e.reflectTypeDescriptor(underlying.Elem())
 		if err != nil {
 			return "", err

@@ -592,3 +592,39 @@ func main() {
 }
 `)
 }
+
+// A type says how long an array is and whether a value can be converted, an
+// interface reports the methods it asks for and a type implements it, and an
+// integer is convertible to the string of its code point.
+func TestReflectTypeConvertAndLen(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"reflect"
+)
+
+type animal interface{ Sound() string }
+
+type dog struct{}
+
+func (d dog) Sound() string { return "woof" }
+
+type myint int
+
+func main() {
+	fmt.Println(reflect.TypeOf([4]int{}).Len(), reflect.TypeOf([4]int{}).Elem().Kind())
+
+	at := reflect.TypeOf((*animal)(nil)).Elem()
+	fmt.Println(at.Kind(), at.NumMethod(), at.Method(0).Name)
+	fmt.Println(reflect.TypeOf(dog{}).Implements(at))
+
+	var m myint = 5
+	fmt.Println(reflect.TypeOf(m).Name(), reflect.TypeOf(m).Kind())
+	fmt.Println(reflect.TypeOf(m).ConvertibleTo(reflect.TypeOf(0)))
+
+	fmt.Println(reflect.ValueOf(5).CanConvert(reflect.TypeOf("x")))
+	fmt.Println(reflect.ValueOf(5).Convert(reflect.TypeOf("x")).String())
+}
+`)
+}
