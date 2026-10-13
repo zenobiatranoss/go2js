@@ -6854,6 +6854,7 @@ function go2jsRunSync(body) {
 }
 
 const go2jsMethodTable = Object.create(null);
+const go2jsMethodResults = Object.create(null);
 
 // A set of query values is a map, so what it holds is read and written as one,
 // and what the language asks of it is answered from there.
@@ -7193,8 +7194,15 @@ function go2jsFirstValue(value) {
 	return null;
 }
 
-function go2jsRegisterMethod(name, fn) {
+function go2jsRegisterMethod(name, fn, results) {
 	go2jsMethodTable[name] = fn;
+
+	// A method reached through reflect has to know how many values it hands
+	// back, because a call hands them over as that many, and a method reached by
+	// a plain call never asks.
+	if (typeof results === "number") {
+		go2jsMethodResults[name] = results;
+	}
 }
 
 function go2jsRegisterStructFormat(name, fields) {
