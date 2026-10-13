@@ -55,12 +55,16 @@ corners. Read these before you promise a deadline around it.
 - **Quoted runes beyond the BMP.** `strconv.QuoteRune` on an astral rune
   reports what the rune is and prints a literal escape; the lone-surrogate
   form of a string is not round-tripped.
-- **A nil pointer, channel or function inside a compound.** Such a nil reads
-  as `<nil>` in a slice, a map or a struct, which is what `%v` shows. Go also
-  writes the zero address `0` for the verbs that count an address (`%d`, `%x`)
-  and names the type in a refusal (`%!s(*int=<nil>)`); go2js keeps the
-  angle-bracket nil for those instead. A nil *interface* at the same depth is
-  written as `<nil>` for every verb, as Go writes it.
+- **An address is a thing Go knows and JavaScript does not.** `%p`, and the
+  verbs that read a pointer, channel or function as a number or refuse it, all
+  show where the value sits. go2js hands each such value a stable address of
+  its own with the shape of a Go address, so the form is right while the digits
+  are not, and the address in a `%p` line or in a refusal such as
+  `%!s(*int=0x...)` can never match a `go run`. A nil pointer, channel or
+  function is the one case that does match: it is the zero address `0`.
+- **A function type is written `func()`.** Every function type prints as
+  `func()` under `%T`, under `%#v` and inside a refusal, rather than as its
+  full signature the way Go writes `func(int) int`.
 
 ## Things that simply are not there yet
 

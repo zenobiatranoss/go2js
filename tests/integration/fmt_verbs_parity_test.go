@@ -345,3 +345,64 @@ func main() {
 }
 `)
 }
+
+func TestAnonymousStructFillsItsZeroFields(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+func main() {
+	// A field the literal leaves out is the zero of its type, and the fields
+	// are written in the order they were declared, not the order they were
+	// named in the literal.
+	empty := struct{ A, B int }{}
+	fmt.Printf("%v|%+v|%#v\n", empty, empty, empty)
+
+	// Keyed fields out of order are written in declaration order, and a field
+	// left out is the zero of its type.
+	keyed := struct{ A, B int }{B: 2, A: 1}
+	fmt.Printf("%v|%+v|%#v\n", keyed, keyed, keyed)
+
+	one := struct{ A, B int }{A: 5}
+	fmt.Printf("%v|%+v|%#v\n", one, one, one)
+
+	// A zero field of a compound type keeps the type it was declared as, so a
+	// nil slice reads [] and %#v writes []int(nil).
+	var c struct {
+		S string
+		P *int
+		N []int
+		M map[string]int
+		F float64
+	}
+	c.F = 1e15
+	fmt.Printf("%v|%+v|%#v\n", c, c, c)
+}
+`)
+}
+
+func TestNilValuesOfEveryAddressableKind(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+type T struct{ X, Y int }
+
+func main() {
+	var p *T
+	var c chan int
+	var f func()
+	var fp *int
+
+	fmt.Printf("%d|%x|%s|%q|%t|%O|%v|%p\n", p, p, p, p, p, p, p, p)
+	fmt.Printf("%d|%x|%s\n", c, c, c)
+	fmt.Printf("%d|%x|%s\n", f, f, f)
+	fmt.Printf("%#v|%#v|%#v|%#v\n", p, c, f, fp)
+
+	// A nil pointer inside a slice, a map and a struct reads the same way.
+	fmt.Printf("%d|%s|%v\n", []*T{nil, p}, []*T{nil, p}, []*T{nil, p})
+	fmt.Printf("%v|%#v\n", map[string]*T{"a": nil}, map[string]*T{"a": nil})
+	fmt.Printf("%v|%+v|%#v\n", struct{ P *T }{}, struct{ P *T }{}, struct{ P *T }{})
+}
+`)
+}
