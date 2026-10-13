@@ -1571,6 +1571,163 @@ function go2jsReflectComparable(type) {
 	return true;
 }
 
+// go2jsReflectNumericKind reports whether a kind is one of the numeric kinds,
+// which are the ones two of are always convertible to one another.
+function go2jsReflectNumericKind(kind) {
+	return kind === "int" || kind === "int8" || kind === "int16" || kind === "int32" || kind === "int64" ||
+		kind === "uint" || kind === "uint8" || kind === "uint16" || kind === "uint32" || kind === "uint64" ||
+		kind === "uintptr" || kind === "float32" || kind === "float64" ||
+		kind === "complex64" || kind === "complex128";
+}
+
+// go2jsReflectByteOrRuneSlice reports whether a type is a slice of bytes or a
+// slice of runes, the two slices a string is convertible to and from.
+function go2jsReflectByteOrRuneSlice(type) {
+	if (type === null || type === undefined || type.kind !== "slice") {
+		return false;
+	}
+
+	const elem = type.elem;
+
+	return elem !== null && elem !== undefined && (elem.kind === "uint8" || elem.kind === "int32");
+}
+
+// go2jsReflectSameUnderlying reports whether two types are made of the same
+// thing, which is what makes a named type and its bare form hold one another.
+function go2jsReflectSameUnderlying(left, right) {
+	if (left === null || left === undefined || right === null || right === undefined || left.kind !== right.kind) {
+		return false;
+	}
+
+	if (left.kind === "slice" || left.kind === "ptr") {
+		return go2jsReflectSameUnderlying(left.elem, right.elem);
+	}
+
+	if (left.kind === "array") {
+		return left.len === right.len && go2jsReflectSameUnderlying(left.elem, right.elem);
+	}
+
+	if (left.kind === "map") {
+		return go2jsReflectSameUnderlying(left.key, right.key) && go2jsReflectSameUnderlying(left.elem, right.elem);
+	}
+
+	if (left.kind === "struct") {
+		const leftFields = go2jsReflectTypeFieldsOf(left);
+		const rightFields = go2jsReflectTypeFieldsOf(right);
+
+		if (leftFields.length !== rightFields.length) {
+			return false;
+		}
+
+		for (let index = 0; index < leftFields.length; index++) {
+			if (leftFields[index].Name !== rightFields[index].Name) {
+				return false;
+			}
+
+			if (!go2jsReflectSameUnderlying(leftFields[index].Type, rightFields[index].Type)) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	if (left.kind === "func") {
+		return go2jsReflectTypeString(left) === go2jsReflectTypeString(right);
+	}
+
+	return true;
+}
+
+// go2jsReflectTypeAssignableTo reports whether a value of one type may be put
+// where the other is wanted: the same type, a type that carries every method of
+// an interface, or a type sharing an underlying form with one that is not named.
+function go2jsReflectTypeAssignableTo(receiver, target) {
+	const value = go2jsReflectValueType(receiver);
+	const want = go2jsReflectValueType(target);
+
+	if (go2jsReflectTypeString(value) === go2jsReflectTypeString(want)) {
+		return true;
+	}
+
+	if (want.kind === "interface") {
+		return go2jsReflectTypeImplements(value, want);
+	}
+
+	if ((value.name === "" || want.name === "") && go2jsReflectSameUnderlying(value, want)) {
+		return true;
+	}
+
+	return false;
+}
+
+// go2jsReflectTypeConvertibleTo reports whether a type can be turned into
+// another, which every assignable pair can and so can the pairs Go names:
+// numeric to numeric, string to string, and string to and from a slice of
+// bytes or runes.
+function go2jsReflectTypeConvertibleTo(receiver, target) {
+	const value = go2jsReflectValueType(receiver);
+	const want = go2jsReflectValueType(target);
+
+	if (go2jsReflectTypeAssignableTo(value, want)) {
+		return true;
+	}
+
+	if (go2jsReflectNumericKind(value.kind) && go2jsReflectNumericKind(want.kind)) {
+		return true;
+	}
+
+	if (value.kind === "string" && want.kind === "string") {
+		return true;
+	}
+
+	if (value.kind === "string" && go2jsReflectByteOrRuneSlice(want)) {
+		return true;
+	}
+
+	if (go2jsReflectByteOrRuneSlice(value) && want.kind === "string") {
+		return true;
+	}
+
+	return go2jsReflectSameUnderlying(value, want);
+}
+
+// go2jsReflectValueConvert turns a value into another type, which the pairs Go
+// calls convertible are turned between. A number keeps its value under the new
+// kind, a string comes and goes as a slice of bytes or runes, and everything
+// else moves across unchanged.
+function go2jsReflectValueConvert(receiver, target) {
+	const want = go2jsReflectValueType(target);
+	const source = go2jsReflectValueType(receiver);
+	const value = go2jsReflectRead(receiver);
+
+	if (want.kind === "string") {
+		if (source.kind === "slice") {
+			const items = go2jsReflectUnwrap(value);
+
+			if (source.elem !== null && source.elem !== undefined && source.elem.kind === "int32") {
+				return go2jsReflectValue(String.fromCodePoint.apply(null, Array.from(items, (rune) => Number(rune))), want);
+			}
+
+			return go2jsReflectValue(go2jsBytesToString(go2jsReflectUnwrap(value)), want);
+		}
+
+		if (go2jsReflectNumericKind(source.kind)) {
+			return go2jsReflectValue(String.fromCodePoint(Number(value)), want);
+		}
+	}
+
+	if (want.kind === "slice" && source.kind === "string" && go2jsReflectByteOrRuneSlice(want)) {
+		if (want.elem.kind === "int32") {
+			return go2jsReflectValue(Array.from(String(value), (ch) => ch.codePointAt(0)), want);
+		}
+
+		return go2jsReflectValue(go2jsStringToBytes(String(value)), want);
+	}
+
+	return go2jsReflectValue(value, want);
+}
+
 // go2jsReflectValueMethodByName looks a method up by name, which reports the
 // same shape as Method does so a caller cannot tell the two apart.
 function go2jsReflectValueMethodByName(receiver, name) {
@@ -1712,6 +1869,8 @@ const go2jsReflectValueMethods = {
 	CanInterface: go2jsReflectValueCanInterface,
 	CanAddr: go2jsReflectValueCanAddr,
 	CanCompare: go2jsReflectValueCanCompare,
+	Comparable: go2jsReflectValueComparable,
+	Convert: go2jsReflectValueConvert,
 	IsExported: go2jsReflectValueIsExported,
 	Addr: go2jsReflectValueAddr,
 	UnsafeAddr: go2jsReflectValueAddr,
@@ -1790,6 +1949,8 @@ const go2jsReflectTypeMethods = {
 	NumMethod: go2jsReflectTypeNumMethod,
 	Method: go2jsReflectTypeMethod,
 	Comparable: go2jsReflectTypeComparable,
+	AssignableTo: go2jsReflectTypeAssignableTo,
+	ConvertibleTo: go2jsReflectTypeConvertibleTo,
 	IsVariadic: go2jsReflectTypeIsVariadic
 };
 
@@ -2084,6 +2245,16 @@ function go2jsReflectValueCanCompare(receiver) {
 	const kind = go2jsReflectKind(receiver);
 
 	return kind !== "slice" && kind !== "map" && kind !== "func";
+}
+
+// A value is comparable when its type is, which a struct with a field that is
+// not comparable is not, however plainly comparable the rest of it looks.
+function go2jsReflectValueComparable(receiver) {
+	if (!go2jsReflectValueIsValid(receiver)) {
+		return false;
+	}
+
+	return go2jsReflectComparable(go2jsReflectValueType(receiver));
 }
 
 // A field of a struct built by the emitter is written under its own name, and
