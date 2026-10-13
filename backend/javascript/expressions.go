@@ -478,6 +478,25 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			e.write(value)
 
 		default:
+			// A whole number written where a float is expected is a float, and
+			// Go rounds the constant on its way into the type. A number wider
+			// than a double would otherwise be written as the whole number it
+			// is, which is not the float the program means.
+			if x.Kind == token.INT && isFloatType(e.analyzedType(x)) {
+				if text, err := floatLiteralJavaScript(x); err == nil {
+					if isFloat32Type(e.analyzedType(x)) {
+						e.needsRuntime = true
+						e.write("go2jsFloat32(")
+						e.write(text)
+						e.write(")")
+					} else {
+						e.write(text)
+					}
+
+					return nil
+				}
+			}
+
 			converted, err := integerLiteralJavaScript(x)
 			if err != nil {
 				return err

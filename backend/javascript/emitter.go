@@ -2908,6 +2908,32 @@ func (e *emitter) emitConversion(call *ast.CallExpr) error {
 		return e.emitInterfaceValue(call.Args[0], target)
 	}
 
+	// A constant brought to a float is the float Go rounds it to on its way in,
+	// which the constant value already holds exactly. A whole number constant
+	// wider than a double is written down as the wide whole number it is, so the
+	// rounding has to be done here rather than left to the conversion at run
+	// time, which would read the wide number as the whole number it still is.
+	if basic := basicOf(target); basic != nil && (basic.Kind() == gotypesstd.Float32 || basic.Kind() == gotypesstd.Float64) && e.analysis != nil {
+		if info, ok := e.analysis.Types[call.Args[0]]; ok && info.Value != nil {
+			if text, ok := floatConstantJavaScript(info.Value); ok {
+				is32 := basic.Kind() == gotypesstd.Float32
+
+				if is32 {
+					e.needsRuntime = true
+					e.write("go2jsFloat32(")
+				}
+
+				e.write(text)
+
+				if is32 {
+					e.write(")")
+				}
+
+				return nil
+			}
+		}
+	}
+
 	// A mark of a file is asked of by its marks, so a number turned into one is
 	// a mark of a file rather than the number it was written as.
 	if isFileModeType(target) {
