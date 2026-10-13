@@ -852,6 +852,20 @@ function go2jsReflectValueField(receiver, index) {
 	};
 }
 
+// go2jsReflectValueFieldByName looks a struct field up by name on a value,
+// which is the field as a value, and the zero Value when the struct carried
+// none of that name, which is what reflect hands back.
+function go2jsReflectValueFieldByName(receiver, name) {
+	const names = go2jsReflectStructFieldNames(go2jsStripWrappers(go2jsReflectUnwrap(receiver)));
+	const index = names.indexOf(name);
+
+	if (index < 0) {
+		return go2jsReflectValue(undefined, go2jsReflectType("invalid", "", null, null, []));
+	}
+
+	return go2jsReflectValueField(receiver, index);
+}
+
 function go2jsReflectValueIndex(receiver, index) {
 	const target = go2jsReflectRead(receiver);
 	const at = Math.trunc(Number(index));
@@ -1234,6 +1248,39 @@ function go2jsReflectTypeField(receiver, index) {
 	return go2jsReflectStructField({Name: field.name, Tag: "", PkgPath: "", Anonymous: false});
 }
 
+// go2jsReflectTypeFieldByName looks a struct field up by name, which is the
+// field and whether the type carried one of that name.
+function go2jsReflectTypeFieldByName(receiver, name) {
+	if (go2jsReflectTypeKindOf(receiver) !== "struct") {
+		throw new TypeError("reflect: FieldByName of non-struct type " + go2jsReflectTypeString(receiver));
+	}
+
+	const count = go2jsReflectTypeNumField(receiver);
+
+	for (let index = 0; index < count; index++) {
+		const field = go2jsReflectTypeField(receiver, index);
+
+		if (field.Name === name) {
+			return [field, true];
+		}
+	}
+
+	return [go2jsReflectStructField({Name: ""}), false];
+}
+
+// go2jsReflectTypeMethodByName looks a method up by name, which is the method
+// and whether the type carried one of that name.
+function go2jsReflectTypeMethodByName(receiver, name) {
+	const methods = go2jsReflectMethodsOf(go2jsReflectValueType(receiver));
+	const index = methods.indexOf(name);
+
+	if (index < 0) {
+		return [{Name: "", Type: null, Index: 0}, false];
+	}
+
+	return [go2jsReflectTypeMethod(receiver, index), true];
+}
+
 function go2jsReflectTypeElemOf(receiver) {
 	return go2jsReflectElem(go2jsReflectValueType(receiver));
 }
@@ -1387,6 +1434,7 @@ const go2jsReflectValueMethods = {
 	Float: go2jsReflectValueFloat,
 	Bool: go2jsReflectValueBool,
 	Len: go2jsReflectValueLen,
+	FieldByName: go2jsReflectValueFieldByName,
 	Kind: go2jsReflectKind,
 	Type: go2jsReflectValueType,
 	Set: go2jsReflectValueSet,
@@ -1473,6 +1521,8 @@ const go2jsReflectTypeMethods = {
 	Kind: go2jsReflectTypeKindOf,
 	NumField: go2jsReflectTypeNumField,
 	Field: go2jsReflectTypeField,
+	FieldByName: go2jsReflectTypeFieldByName,
+	MethodByName: go2jsReflectTypeMethodByName,
 	Elem: go2jsReflectTypeElemOf,
 	String: go2jsReflectTypeString,
 	Size: go2jsReflectTypeSize,
