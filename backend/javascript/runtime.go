@@ -7522,6 +7522,13 @@ function go2jsEqual(a, b, deep) {
 	// number of them, and each value in one is equal to the value the same key
 	// holds in the other.
 	if (a instanceof go2jsNativeMap || b instanceof go2jsNativeMap) {
+		// A nil map and an empty map hold no entries either way, and Go still
+		// tells them apart, so one being nil where the other is not is a
+		// difference rather than a match.
+		if ((a.__go2js_nil === true) !== (b.__go2js_nil === true)) {
+			return false;
+		}
+
 		if (!(a instanceof go2jsNativeMap) || !(b instanceof go2jsNativeMap) || a.size !== b.size) {
 			return false;
 		}
