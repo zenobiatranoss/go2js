@@ -663,3 +663,28 @@ func main() {
 }
 `)
 }
+
+// DeepEqual tells a nil map from an empty one, and a nil slice from an empty
+// one, the way Go does, while two nil collections are equal to each other.
+func TestReflectDeepEqualNilCollections(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"reflect"
+)
+
+func main() {
+	fmt.Println(reflect.DeepEqual(map[string]int(nil), map[string]int{}))
+	fmt.Println(reflect.DeepEqual(map[string]int(nil), map[string]int(nil)))
+	fmt.Println(reflect.DeepEqual([]int(nil), []int{}))
+	fmt.Println(reflect.DeepEqual([]int(nil), []int(nil)))
+
+	a := map[string][]int{"a": {1, 2}}
+	b := map[string][]int{"a": {1, 2}}
+	fmt.Println(reflect.DeepEqual(a, b))
+	b["a"] = append(b["a"], 3)
+	fmt.Println(reflect.DeepEqual(a, b))
+}
+`)
+}
