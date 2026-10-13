@@ -84,10 +84,26 @@ function go2jsReflectMakeSlice(type, length, capacity) {
 	// A byte slice is the one a program keeps writing bytes into, and the array
 	// it is written as has to stay one that can hold them.
 	if (go2jsReflectIsByteType(go2jsReflectElem(type))) {
-		return go2jsReflectValue(new Uint8Array(items), type);
+		return go2jsReflectValue(go2jsReflectKeepCap(new Uint8Array(items), capacity), type);
 	}
 
-	return go2jsReflectValue(items, type);
+	return go2jsReflectValue(go2jsReflectKeepCap(items, capacity), type);
+}
+
+// go2jsReflectKeepCap records the capacity a slice was made with. A slice is a
+// plain list, whose length is all it can say for itself, so a capacity past the
+// length is kept beside it for Cap to report.
+function go2jsReflectKeepCap(list, capacity) {
+	const wanted = typeof capacity === "number" && capacity > list.length ? capacity : list.length;
+
+	Object.defineProperty(list, "__go2js_cap", {
+		value: wanted,
+		writable: true,
+		configurable: true,
+		enumerable: false
+	});
+
+	return list;
 }
 
 // go2jsReflectIsByteType reports whether a type is a byte or a uint8, which are
@@ -1906,6 +1922,7 @@ const go2jsReflectValueMethods = {
 	Kind: go2jsReflectKind,
 	Type: go2jsReflectValueType,
 	Set: go2jsReflectValueSet,
+	SetZero: go2jsReflectValueSetZero,
 	SetString: go2jsReflectValueSet,
 	SetInt: go2jsReflectValueSetInt,
 	SetUint: go2jsReflectValueSetUint,
@@ -2082,8 +2099,21 @@ function go2jsReflectValueElem(receiver) {
 	}
 
 	if (receiver.t.kind === "interface") {
-		const inner = receiver.v !== null && receiver.v !== undefined ? receiver.v.v : receiver.v;
-		return go2jsReflectValue(inner, go2jsReflectTypeOf(inner));
+		// An interface value keeps what it holds and the name of the type it
+		// holds it as, so Elem gives that value back under the type it was
+		// wrapped with rather than the type of the interface variable.
+		const cell = receiver.v;
+		let inner = cell;
+		let named = null;
+
+		if (cell !== null && cell !== undefined && cell.__go2js_interface === true) {
+			inner = cell.value;
+			named = typeof cell.type === "string" ? go2jsReflectTypeFromName(cell.type) : null;
+		} else if (cell !== null && cell !== undefined && typeof cell === "object" && cell.v !== undefined) {
+			inner = cell.v;
+		}
+
+		return go2jsReflectValue(inner, named !== null ? named : go2jsReflectTypeOf(inner));
 	}
 
 	// A pointer that was described without saying what it points at takes the
@@ -2116,6 +2146,14 @@ function go2jsReflectValueElem(receiver) {
 	}
 
 	return go2jsReflectValue(receiver.v, elemType);
+}
+
+// go2jsReflectValueSetZero writes the zero value of a value's own type into it,
+// which is what SetZero does.
+function go2jsReflectValueSetZero(receiver) {
+	const type = go2jsReflectValueType(receiver);
+
+	go2jsReflectValueSet(receiver, go2jsReflectValue(go2jsReflectUnwrap(go2jsReflectZeroOf(type)), type));
 }
 
 function go2jsReflectValueSet(receiver, value) {
@@ -2204,6 +2242,14 @@ function go2jsReflectValueCap(receiver) {
 
 	if (kind !== "slice" && kind !== "array" && kind !== "chan") {
 		throw new TypeError("reflect: Cap of non-array, non-slice value");
+	}
+
+	// A slice made with a capacity past its length carries that capacity beside
+	// it, because a plain list reports only the length it happens to have.
+	const value = go2jsReflectUnwrap(go2jsReflectRead(receiver));
+
+	if (value !== null && value !== undefined && typeof value === "object" && typeof value.__go2js_cap === "number") {
+		return value.__go2js_cap;
 	}
 
 	return go2jsReflectValueLen(receiver);
@@ -2983,6 +3029,21 @@ func (e *emitter) emitReflectCall(call *ast.CallExpr) (bool, error) {
 	case "TypeOf", "ValueOf":
 		if len(call.Args) != 1 {
 			return false, nil
+		}
+
+		// TypeOf of a nil interface is a nil Type, which is what a program
+		// compares against nil and prints, so it is written as nothing at all
+		// rather than as the invalid type a value without a type would get.
+		if ident, ok := call.Args[0].(*ast.Ident); ok && ident.Name == "nil" {
+			e.needsRuntime = true
+
+			if name == "TypeOf" {
+				e.write("null")
+			} else {
+				e.write("go2jsReflectValueOf(null)")
+			}
+
+			return true, nil
 		}
 
 		argument := e.analyzedType(call.Args[0])
