@@ -1928,44 +1928,87 @@ func (e *emitter) emitAnonymousStructLiteral(x *ast.CompositeLit, structType *go
 	// runtime answers with the name the value carries, so the name of the
 	// declared shape is attached to the value as it is built. It is not a
 	// field, so it does not join the walk of the value that %v makes.
-	e.write("(() => { const __v = {")
+	// A field the literal leaves out is the zero of its type, the way Go fills
+	// it, and every field is written in the order it was declared, so %v reads
+	// the fields the way Go reads them rather than in the order the literal
+	// happened to name them.
+	provided := make(map[string]ast.Expr, len(x.Elts))
+	positional := make([]ast.Expr, 0, len(x.Elts))
 
-	for i, elt := range x.Elts {
-		if i > 0 {
-			e.write(", ")
-		}
-
+	for _, elt := range x.Elts {
 		if kv, ok := elt.(*ast.KeyValueExpr); ok {
-			if ident, ok := kv.Key.(*ast.Ident); ok {
-				e.write(ident.Name)
-			} else if err := e.emitExpr(kv.Key); err != nil {
-				return true, err
+			ident, ok := kv.Key.(*ast.Ident)
+			if !ok {
+				return false, nil
 			}
 
-			e.write(": ")
-
-			if err := e.emitStructFieldValue(kv.Value, structFieldType(structType, kv.Key)); err != nil {
-				return true, err
-			}
+			provided[ident.Name] = kv.Value
 
 			continue
 		}
 
-		if i >= structType.NumFields() {
-			return true, fmt.Errorf("too many values in anonymous struct literal")
+		positional = append(positional, elt)
+	}
+
+	if len(positional) > structType.NumFields() {
+		return true, fmt.Errorf("too many values in anonymous struct literal")
+	}
+
+	e.write("(() => { const __v = {")
+
+	for i := 0; i < structType.NumFields(); i++ {
+		field := structType.Field(i)
+
+		if i > 0 {
+			e.write(", ")
 		}
 
-		e.write(structType.Field(i).Name())
+		e.write(strconv.Quote(field.Name()))
 		e.write(": ")
 
-		if err := e.emitStructFieldValue(elt, structType.Field(i).Type()); err != nil {
+		var value ast.Expr
+
+		if i < len(positional) {
+			value = positional[i]
+		} else {
+			value = provided[field.Name()]
+		}
+
+		if value == nil {
+			e.write(e.zeroValue(field.Type()))
+
+			continue
+		}
+
+		if err := e.emitStructFieldValue(value, field.Type()); err != nil {
 			return true, err
 		}
 	}
 
 	e.write("}; Object.defineProperty(__v, \"__go2js_type_name\", {value: ")
 	e.write(strconv.Quote(goStructTypeName(structType)))
-	e.write("}); return __v; })()")
+	// The name of each field and the type it was declared as travel with the
+	// value, because an anonymous struct has no constructor to carry them and
+	// the runtime needs them to print a field the way its own type asks.
+	e.write("}); Object.defineProperty(__v, \"__go2js_struct_fields\", {value: [")
+
+	for i := 0; i < structType.NumFields(); i++ {
+		if i > 0 {
+			e.write(", ")
+		}
+
+		field := structType.Field(i)
+
+		e.write("{Name: ")
+		e.write(strconv.Quote(field.Name()))
+		e.write(", Type: ")
+		e.write(strconv.Quote(goTypeName(field.Type())))
+		e.write(", Anonymous: ")
+		e.write(strconv.FormatBool(field.Embedded()))
+		e.write("}")
+	}
+
+	e.write("]}); return __v; })()")
 
 	return true, nil
 }

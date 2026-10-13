@@ -7231,6 +7231,42 @@ function go2jsPointerAddress(pointer) {
 	return "0x" + text.padStart(12, "0");
 }
 
+// go2jsValueAddress is the address fmt would print for a pointer, a channel or
+// a function. None of the three is a value a JavaScript program can name an
+// address for, so each is handed a stable number of its own the way a pointer
+// is. A nil pointer, channel or function has no place to name and is written as
+// the angle-bracket nil for the caller to turn into the zero address.
+function go2jsValueAddress(value) {
+	if (value !== null && value !== undefined && value.__go2js_pointer === true) {
+		return go2jsPointerAddress(value);
+	}
+
+	if (typeof value === "function" ||
+		(typeof value === "object" && value !== null && value.__go2js_channel === true)) {
+		let address = go2jsPointerAddresses.get(value);
+
+		if (address === undefined) {
+			go2jsPointerAddressCount++;
+			address = go2jsPointerAddressCount;
+			go2jsPointerAddresses.set(value, address);
+		}
+
+		return "0x" + (0xc000000000 + address * 8).toString(16).padStart(12, "0");
+	}
+
+	return "<nil>";
+}
+
+// go2jsIsAddressOnlyValue reports whether a value is a channel or a function,
+// which Go writes as an address rather than as the value behind it.
+function go2jsIsAddressOnlyValue(value) {
+	if (typeof value === "function") {
+		return true;
+	}
+
+	return typeof value === "object" && value !== null && value.__go2js_channel === true;
+}
+
 // go2jsPointerTargets reports whether a pointer names a struct, an array, a
 // slice or a map, which are the ones fmt writes with a leading & rather than as
 // a bare address.
@@ -9931,6 +9967,27 @@ function go2jsFormat(value, typeName, kind, shape, plus, nested, raw) {
 	const ctor = value.constructor;
 	const fields = ctor && typeof ctor.name === "string" ? go2jsStructFormats[ctor.name] : null;
 
+	// The declared type of each field travels with the value, so a nil slice
+	// reads as [] and a float keeps its exponent, the way fmt reads a field by
+	// the type it was declared with rather than by what it holds. A struct
+	// written out in place carries the types on itself, having no class to.
+	const goName = ctor && typeof ctor.name === "string" ? go2jsTypeNamesByConstructor.get(ctor) : undefined;
+	let descriptors = goName !== undefined ? go2jsStructFields[goName] : undefined;
+
+	if (descriptors === undefined && Array.isArray(value.__go2js_struct_fields)) {
+		descriptors = value.__go2js_struct_fields;
+	}
+
+	const fieldTypes = Object.create(null);
+
+	if (descriptors !== undefined) {
+		for (const descriptor of descriptors) {
+			if (descriptor && typeof descriptor.Name === "string") {
+				fieldTypes[descriptor.Name] = descriptor.Type || "";
+			}
+		}
+	}
+
 	for (const key of Object.keys(value)) {
 		if (fields && typeof fields[key] === "string") {
 			const formatter = go2jsMethodTable[fields[key]];
@@ -9941,7 +9998,9 @@ function go2jsFormat(value, typeName, kind, shape, plus, nested, raw) {
 			}
 		}
 
-		const text = go2jsFormat(value[key], null, null, null, plus, true);
+		const fieldType = fieldTypes[key] || "";
+		const held = fieldType !== "" && value[key] === null ? go2jsTyped(null, fieldType) : value[key];
+		const text = go2jsFormat(held, fieldType !== "" ? fieldType : null, null, null, plus, true);
 
 		parts.push(plus === true ? key + ":" + text : text);
 	}
@@ -10825,6 +10884,15 @@ function go2jsIsBasicScalarName(typeName) {
 	}
 }
 
+// go2jsTypeNeedsParens reports whether a type name is a composite type that Go
+// wraps in parentheses when it names the nothing of the type, as in (*T)(nil)
+// or (chan int)(nil). A plain name needs none: T(nil) is written as it stands.
+function go2jsTypeNeedsParens(name) {
+	const prefixes = ["*", "chan ", "chan<- ", "<-chan ", "func("];
+
+	return prefixes.some((prefix) => name.startsWith(prefix));
+}
+
 function go2jsGoSyntax(value, typeName) {
 	// A value held in an interface is written out as the value it holds, named
 	// by the type it was held as, since the wrapper itself is not written.
@@ -10856,11 +10924,36 @@ function go2jsGoSyntax(value, typeName) {
 			return "interface {}(nil)";
 		}
 
-		return declared === "" ? "<nil>" : declared + "(nil)";
+		if (declared === "") {
+			return "<nil>";
+		}
+
+		// Go wraps the type of a pointer or another compound type in
+		// parentheses when it writes the nothing it points at, so a nil *T
+		// reads (*T)(nil) and a nil channel reads (chan int)(nil).
+		return go2jsTypeNeedsParens(declared) ? "(" + declared + ")(nil)" : declared + "(nil)";
 	}
 
 	if (value.__go2js_pointer === true) {
+		// A pointer to a record is written as the record it aims at with the
+		// ampersand in front, since the type is named there; a pointer to
+		// anything else has nowhere but the parentheses to show its type, so
+		// its address stands where the value would.
+		if (go2jsPointerTargets(value)) {
+			const targetType = go2jsDeclaredTypeName(typeName) !== "" ? typeName.replace(/^\*/, "") : "";
+
+			return "&" + go2jsGoSyntax(go2jsDeref(value), targetType);
+		}
+
 		return "(" + go2jsGoTypeName(value) + ")(" + go2jsPointerAddress(value) + ")";
+	}
+
+	if (go2jsIsAddressOnlyValue(value)) {
+		// A channel or a function has no fields to write, so Go shows the type
+		// and the address the value sits at.
+		const addressName = go2jsDeclaredTypeName(typeName) !== "" ? typeName : go2jsGoTypeName(value);
+
+		return "(" + addressName + ")(" + go2jsValueAddress(value) + ")";
 	}
 
 	if (value instanceof Error) {
@@ -10908,7 +11001,14 @@ function go2jsGoSyntax(value, typeName) {
 
 	const ctor = value.constructor;
 	const goName = ctor && go2jsTypeNamesByConstructor.get(ctor);
-	const descriptors = goName !== undefined ? go2jsStructFields[goName] : undefined;
+	let descriptors = goName !== undefined ? go2jsStructFields[goName] : undefined;
+
+	// A struct written out in place has no class of its own, so the name and
+	// the type of each field travel on the value itself.
+	if (descriptors === undefined && Array.isArray(value.__go2js_struct_fields)) {
+		descriptors = value.__go2js_struct_fields;
+	}
+
 	const parts = [];
 
 	for (const key of Object.keys(value)) {
@@ -11290,6 +11390,34 @@ function go2jsFmtState(verb, flags, width, precision, value) {
 	return state;
 }
 
+// go2jsFormatPointerValue writes a pointer that has no method of its own. The
+// verbs that read a whole number write the address itself, with a pointer to
+// nothing written as the zero address, and the quoted verb reaches through a
+// pointer to a record the way the other verbs' walk already does, with the
+// ampersand in front. Every other verb refuses the pointer, naming its type
+// beside the address, which is what fmt writes for an operand a verb cannot
+// read.
+function go2jsFormatPointerValue(verb, parsed, value, name, flags, precision) {
+	const address = go2jsValueAddress(value);
+	const nil = address === "<nil>";
+
+	if (go2jsVerbInSet(verb, "dboxX")) {
+		const number = nil ? 0 : parseInt(address.slice(2), 16);
+		const spec = "%" + flags + (precision === null ? "" : "." + precision) + verb;
+
+		return go2jsFormatValue(verb, spec, number);
+	}
+
+	if (verb === "q" && !nil && go2jsPointerTargets(value)) {
+		const spec = "%" + flags + (parsed.width > 0 ? String(parsed.width) : "") +
+			(precision === null ? "" : "." + precision) + "q";
+
+		return "&" + go2jsFormatValue("q", spec, go2jsDeref(value));
+	}
+
+	return "%!" + verb + "(" + name + "=" + address + ")";
+}
+
 // go2jsFormatValue writes one operand with a verb. The raw flag says the operand
 // is being shown as the rejected operand of a verb it does not take, and fmt
 // shows such an operand as it is rather than by asking it to write itself. The
@@ -11489,8 +11617,35 @@ function go2jsFormatValue(verb, spec, value, raw, nested) {
 
 	const intValue = Math.trunc(go2jsNumericValue(value));
 
+	// A channel or a function is an address to Go rather than a value with
+	// parts, so it is answered here, before the verbs that walk a compound,
+	// which would otherwise read the fields a channel happens to hold in
+	// JavaScript. A nil channel or function reads as the zero address, and a
+	// function or channel with no address counts one too. A pointer is left
+	// below, where a pointer to a record is written as the record it aims at.
+	if (go2jsIsAddressOnlyValue(value) && verb !== "T") {
+		const chanOrFuncName = typeof accepted === "string" &&
+			(accepted[0] === "*" || accepted.startsWith("chan ") || accepted.startsWith("<-chan ") ||
+				accepted.startsWith("chan<- ") || accepted.startsWith("func("));
+		const addressName = chanOrFuncName && go2jsDeclaredTypeName(accepted) !== ""
+			? accepted
+			: go2jsGoTypeName(value);
+
+		if (verb === "v" || verb === "w") {
+			if (!flags.includes("#")) {
+				return go2jsPad(go2jsValueAddress(value), parsed, false);
+			}
+		} else if (verb === "p") {
+			return go2jsPad(go2jsValueAddress(value), parsed, false);
+		} else {
+			return go2jsFormatPointerValue(verb, parsed, value, addressName, flags, precision);
+		}
+	}
+
 	// A slice or an array applies the verb to each element and joins the results,
 	// so it is answered before the verb's own case sees the whole value. A byte
+	// slice is the exception: the quoted verbs and the hex verbs read it as a
+	// string rather than as a list of numbers.
 	// slice is the exception: the quoted verbs and the hex verbs read it as a
 	// string rather than as a list of numbers.
 	const isBytes = go2jsIsByteCompound(accepted);
@@ -11515,8 +11670,9 @@ function go2jsFormatValue(verb, spec, value, raw, nested) {
 		// A pointer is answered with the address it was handed, which stays the
 		// same for the life of the value and has the shape of a Go address even
 		// though the digits themselves cannot be Go's.
-		if (value !== null && value !== undefined && value.__go2js_pointer === true) {
-			return go2jsPad(go2jsPointerAddress(value), parsed, false);
+		if (go2jsIsAddressOnlyValue(value) ||
+			(value !== null && value !== undefined && value.__go2js_pointer === true)) {
+			return go2jsPad(go2jsValueAddress(value), parsed, false);
 		}
 
 		const empty = value === null || value === undefined ||
@@ -11526,6 +11682,30 @@ function go2jsFormatValue(verb, spec, value, raw, nested) {
 		if (empty) {
 			return go2jsPad("0x0", parsed, false);
 		}
+	}
+
+	// A pointer with no method of its own is written by fmt as an address: the
+	// verbs that read a whole number write the address itself, and every other
+	// verb refuses the pointer naming its type. A pointer to nothing is the
+	// zero address, and a pointer to a record is reached through the record it
+	// aims at, which the walk above has already done. The plain, the signed,
+	// the address and the type verbs keep their own paths.
+	// A pointer, a channel and a function all carry no value of their own, so a
+	// nil one of any of them is named by its type and read by the verb the way
+	// fmt reads it: an address under the verbs that count one, a refusal under
+	// the rest.
+	const chanOrFuncName = typeof accepted === "string" &&
+		(accepted[0] === "*" || accepted.startsWith("chan ") || accepted.startsWith("<-chan ") ||
+			accepted.startsWith("chan<- ") || accepted.startsWith("func("));
+
+	const addressable = value !== null && value !== undefined && value.__go2js_pointer === true
+		? (go2jsDeclaredTypeName(accepted) !== "" ? accepted : go2jsGoTypeName(value))
+		: (value === null || value === undefined) && chanOrFuncName
+			? accepted
+			: null;
+
+	if (addressable !== null && verb !== "v" && verb !== "w" && verb !== "p" && verb !== "T") {
+		return go2jsFormatPointerValue(verb, parsed, value, addressable, flags, precision);
 	}
 
 	switch (verb) {
@@ -12199,11 +12379,21 @@ function go2jsFormatCompound(value, accepted, verb, flags, width, precision, isB
 	// the verb on their own, so a width or a precision reads on each part and
 	// a verb a part refuses says so at that part.
 	if (value instanceof go2jsNativeMap) {
+		// The type a map was written as names the type of each key and each
+		// value, so a value the map holds keeps the type it was declared with
+		// and a verb reads it the way fmt reads the map's own element type.
+		const mapType = go2jsDeclaredTypeName(accepted) !== "" ? accepted : (value.__go2js_type || go2jsGoTypeName(value));
+		const types = go2jsMapTypes(mapType);
+		const keyType = go2jsDeclaredTypeName(types.key) !== "" ? types.key : "";
+		const valueType = go2jsDeclaredTypeName(types.value) !== "" ? types.value : "";
 		const entries = Array.from(value.entries());
 		entries.sort((a, b) => go2jsCompareValues(a[0], b[0]));
 
 		for (const entry of entries) {
-			parts.push(go2jsFormatValue(verb, inner, entry[0], false, true) + ":" + go2jsFormatValue(verb, inner, entry[1], false, true));
+			const key = keyType === "" ? entry[0] : go2jsTyped(entry[0], keyType);
+			const held = valueType === "" ? entry[1] : go2jsTyped(entry[1], valueType);
+
+			parts.push(go2jsFormatValue(verb, inner, key, false, true) + ":" + go2jsFormatValue(verb, inner, held, false, true));
 		}
 
 		return "map[" + parts.join(" ") + "]";
@@ -12224,7 +12414,14 @@ function go2jsFormatCompound(value, accepted, verb, flags, width, precision, isB
 		// type: a float inside a slice inside a struct is a float, and rounds
 		// under the precision rather than printing in full.
 		const goName = ctor && typeof ctor.name === "string" ? go2jsTypeNamesByConstructor.get(ctor) : undefined;
-		const descriptors = goName !== undefined ? go2jsStructFields[goName] : undefined;
+		let descriptors = goName !== undefined ? go2jsStructFields[goName] : undefined;
+
+		// A struct written out in place has no class of its own, so the name and
+		// the type of each field travel on the value itself.
+		if (descriptors === undefined && Array.isArray(value.__go2js_struct_fields)) {
+			descriptors = value.__go2js_struct_fields;
+		}
+
 		const fieldTypes = Object.create(null);
 
 		if (descriptors !== undefined) {
