@@ -564,3 +564,31 @@ func main() {
 }
 `)
 }
+
+// A string is counted and indexed in bytes the way Go counts it, an element of
+// one is an unsigned byte, and only a value standing over storage can have its
+// address taken or its contents written.
+func TestReflectStringBytesAndAddressability(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"reflect"
+)
+
+type point struct{ X, Y int }
+
+func main() {
+	s := reflect.ValueOf("héllo")
+	fmt.Println(s.Len(), s.Index(0).Uint(), s.Index(1).Uint(), s.Index(1).Type().Kind())
+
+	fmt.Println(reflect.ValueOf(point{1, 2}).CanAddr(), reflect.ValueOf(point{1, 2}).CanSet())
+
+	pt := point{3, 4}
+	addr := reflect.ValueOf(&pt).Elem().Addr()
+	fmt.Println(addr.Kind(), addr.Elem().CanAddr(), addr.Elem().CanSet())
+	addr.Elem().Field(0).SetInt(9)
+	fmt.Println(pt.X)
+}
+`)
+}
