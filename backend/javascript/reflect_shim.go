@@ -1379,6 +1379,26 @@ function go2jsReflectValueSetUint(receiver, value) {
 	go2jsReflectValueSet(receiver, go2jsReflectNarrowInt(go2jsReflectKind(receiver), value));
 }
 
+// go2jsReflectValueBytes reads the bytes a slice of bytes stands for, which is
+// how a program reaches the storage behind a byte slice.
+function go2jsReflectValueBytes(receiver) {
+	if (go2jsReflectKind(receiver) !== "slice") {
+		go2jsPanic("reflect.Value.Bytes of non-slice type");
+	}
+
+	const value = go2jsReflectUnwrap(go2jsReflectRead(receiver));
+
+	if (value instanceof Uint8Array) {
+		return value;
+	}
+
+	if (Array.isArray(value)) {
+		return Uint8Array.from(value);
+	}
+
+	return new Uint8Array(0);
+}
+
 function go2jsReflectValueSetLen(receiver, length) {
 	const target = go2jsReflectUnwrap(receiver);
 
@@ -1948,6 +1968,7 @@ const go2jsReflectValueMethods = {
 	Pointer: go2jsReflectValuePointer,
 	MethodByName: go2jsReflectValueMethodByName,
 	Call: go2jsReflectValueCall,
+	Bytes: go2jsReflectValueBytes,
 	SetLen: go2jsReflectValueSetLen,
 	MapIndex: go2jsReflectValueMapIndex,
 	MapKeys: go2jsReflectValueMapKeys,
