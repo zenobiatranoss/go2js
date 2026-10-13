@@ -759,6 +759,12 @@ function go2jsReflectKind(receiver) {
 	return go2jsReflectTypeKind(receiver.v);
 }
 
+// go2jsReflectKindName is reflect.Kind's own String, which is the kind's name.
+// A kind is kept as that name, so the method has only to hand it back.
+function go2jsReflectKindName(kind) {
+	return String(kind);
+}
+
 function go2jsReflectValueType(receiver) {
 	// A type descriptor is already a type, so deriving one from it would only
 	// describe the descriptor object itself.
@@ -1969,6 +1975,10 @@ function go2jsReflectRegisterMethods() {
 	// a type of its own and a program calls Get on it.
 	go2jsMethodTable["reflect.StructTag.Get"] = go2jsReflectStructTagGet;
 
+	// A kind is a value of a named type of its own, so its String is reached the
+	// way any other method is even though the value behind it is a plain name.
+	go2jsMethodTable["reflect.Kind.String"] = go2jsReflectKindName;
+
 	for (const [name, fn] of Object.entries(go2jsReflectTypeMethods)) {
 		go2jsMethodTable["reflect.Type." + name] = fn;
 	}
@@ -3075,9 +3085,10 @@ func (e *emitter) emitReflectCall(call *ast.CallExpr) (bool, error) {
 // is a type of its own in the reflect package and its Get reads the tag the
 // program wrote rather than anything a value carries.
 var reflectMethodOwners = map[string]bool{
-	"reflect.Value":     true,
 	"reflect.Type":      true,
+	"reflect.Value":     true,
 	"reflect.StructTag": true,
+	"reflect.Kind":      true,
 }
 
 // emitReflectTypeOperand writes an operand that is already known to be a

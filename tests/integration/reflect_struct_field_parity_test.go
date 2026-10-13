@@ -433,3 +433,26 @@ func main() {
 }
 `)
 }
+
+// A kind is a value of a named type of its own, so its String reads as the
+// kind's name and it still compares equal to the kind constant.
+func TestReflectKindString(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"reflect"
+)
+
+type num struct{ N int }
+
+func main() {
+	fmt.Println(reflect.ValueOf(65).Convert(reflect.TypeOf("x")).Kind().String())
+	fmt.Println(reflect.TypeOf(num{}).Kind().String())
+	fmt.Println(reflect.ValueOf(num{}).Field(0).Kind().String())
+	fmt.Println(reflect.TypeOf([]int{}).Elem().Kind().String())
+	k := reflect.ValueOf(3.5).Kind()
+	fmt.Println(k.String(), k == reflect.Float64, k == reflect.Int)
+}
+`)
+}
