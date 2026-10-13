@@ -103,6 +103,36 @@ func goStructTypeName(t *gotypes.Struct) string {
 	return builder.String()
 }
 
+// goStructFieldDescriptors writes the field descriptors an anonymous struct
+// carries on the value itself: the name of each field and the type it was
+// declared as, which the runtime needs to print each field as its own type,
+// since such a struct has no class of its own to carry them.
+func goStructFieldDescriptors(structure *gotypes.Struct) string {
+	var builder strings.Builder
+
+	builder.WriteString("[")
+
+	for i := 0; i < structure.NumFields(); i++ {
+		if i > 0 {
+			builder.WriteString(", ")
+		}
+
+		field := structure.Field(i)
+
+		builder.WriteString("{Name: ")
+		builder.WriteString(strconv.Quote(field.Name()))
+		builder.WriteString(", Type: ")
+		builder.WriteString(strconv.Quote(goTypeName(field.Type())))
+		builder.WriteString(", Anonymous: ")
+		builder.WriteString(strconv.FormatBool(field.Embedded()))
+		builder.WriteString("}")
+	}
+
+	builder.WriteString("]")
+
+	return builder.String()
+}
+
 // goTypeNameOfExpr returns the %T spelling of an expression, and whether the
 // compiler can rely on it.
 func (e *emitter) goTypeNameOfExpr(expr ast.Expr) (string, bool) {

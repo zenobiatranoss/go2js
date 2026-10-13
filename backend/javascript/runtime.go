@@ -11529,9 +11529,12 @@ function go2jsFormatValue(verb, spec, value, raw, nested) {
 		// fmt shows the rejected operand with %v while keeping the width and the
 		// precision the verb was written with, and without asking it to write
 		// itself, because an operand reporting a fault is not the place to look
-		// for it. A rune is named int32, because that is the type fmt reflects
-		// on.
-		return "%!" + verb + "(" + (accepted === "rune" ? "int32" : accepted) + "=" +
+		// for it. The type named is the one the value was declared as, so a
+		// named kind reads as its own name rather than as the kind under it. A
+		// rune is named int32, because that is the type fmt reflects on.
+		const refusalName = go2jsDeclaredTypeName(tagName) !== "" ? go2jsDeclaredTypeName(tagName) : accepted;
+
+		return "%!" + verb + "(" + (refusalName === "rune" ? "int32" : refusalName) + "=" +
 			go2jsFormatValue("v", spec.replace(verb + "$", "v"), value, true) + ")";
 	}
 
