@@ -908,18 +908,35 @@ function go2jsReflectValueField(receiver, index) {
 	};
 }
 
-// go2jsReflectValueFieldByName looks a struct field up by name on a value,
-// which is the field as a value, and the zero Value when the struct carried
-// none of that name, which is what reflect hands back.
-function go2jsReflectValueFieldByName(receiver, name) {
-	const names = go2jsReflectStructFieldNames(go2jsStripWrappers(go2jsReflectUnwrap(receiver)));
-	const index = names.indexOf(name);
+// go2jsReflectValueFieldByIndex follows a path of field indexes down through
+// nested structs, which is how a field promoted from an embedded struct is
+// reached. Each step keeps the getter and setter of the one before it, so a
+// write to the field at the end reaches the storage the caller owns.
+function go2jsReflectValueFieldByIndex(receiver, index) {
+	if (!Array.isArray(index)) {
+		throw new TypeError("reflect: FieldByIndex of non-slice index");
+	}
 
-	if (index < 0) {
+	let current = receiver;
+
+	for (const at of index) {
+		current = go2jsReflectValueField(current, at);
+	}
+
+	return current;
+}
+
+// go2jsReflectValueFieldByName looks a struct field up by name on a value,
+// reaching the fields of an embedded struct as Go does, which is the field as a
+// value, and the zero Value when the struct carried none of that name.
+function go2jsReflectValueFieldByName(receiver, name) {
+	const found = go2jsReflectTypeFieldByName(go2jsReflectValueType(receiver), name);
+
+	if (found[1] !== true) {
 		return go2jsReflectValue(undefined, go2jsReflectType("invalid", "", null, null, []));
 	}
 
-	return go2jsReflectValueField(receiver, index);
+	return go2jsReflectValueFieldByIndex(receiver, found[0].Index);
 }
 
 function go2jsReflectValueIndex(receiver, index) {
@@ -1367,37 +1384,93 @@ function go2jsReflectTypeNumField(receiver) {
 	return go2jsReflectStructFieldNames(go2jsReflectZeroOf(receiver).v).length;
 }
 
-function go2jsReflectTypeField(receiver, index) {
-	// A descriptor that names its own fields answers from that list, because a
-	// zero value of the type would be built without them.
-	if (Array.isArray(receiver.fields)) {
-		if (index < 0 || index >= receiver.fields.length) {
-			throw new RangeError("reflect: Field index out of range");
-		}
+// go2jsReflectFieldWithIndex is the field at a position, carrying the index
+// path reflect reports for it, which for a field of a struct is the position
+// itself and for one reached through an embedded struct is the path down to it.
+function go2jsReflectFieldWithIndex(field, index) {
+	const described = typeof field === "string" ? {Name: field} : field;
+	const described2 = Object.assign({}, described, {Index: index});
 
-		return go2jsReflectStructField(receiver.fields[index]);
-	}
-
-	const field = go2jsReflectFieldAt(go2jsReflectUnwrap(go2jsReflectZeroOf(receiver)), index);
-
-	return go2jsReflectStructField({Name: field.name, Tag: "", PkgPath: "", Anonymous: false});
+	return go2jsReflectStructField(described2);
 }
 
-// go2jsReflectTypeFieldByName looks a struct field up by name, which is the
-// field and whether the type carried one of that name.
+// go2jsReflectTypeFieldsOf lays out a struct type's fields in the order reflect
+// reports them, each with the one-element index that reaches it.
+function go2jsReflectTypeFieldsOf(type) {
+	// A descriptor that names its own fields answers from that list, because a
+	// zero value of the type would be built without them.
+	const raw = Array.isArray(type.fields)
+		? type.fields
+		: go2jsReflectStructFieldNames(go2jsReflectUnwrap(go2jsReflectZeroOf(type)));
+
+	const fields = [];
+
+	for (let index = 0; index < raw.length; index++) {
+		fields.push(go2jsReflectFieldWithIndex(raw[index], [index]));
+	}
+
+	return fields;
+}
+
+function go2jsReflectTypeField(receiver, index) {
+	const fields = go2jsReflectTypeFieldsOf(receiver);
+
+	if (index < 0 || index >= fields.length) {
+		throw new RangeError("reflect: Field index out of range");
+	}
+
+	return fields[index];
+}
+
+// go2jsReflectTypeFieldByName looks a struct field up by name, reaching the
+// fields of an embedded struct as Go does and stopping at the shallowest depth
+// that names one. A name carried more than once at that depth is ambiguous, and
+// a name carried by none of them is not there, both of which answer the same
+// way: the field is not one the type has.
 function go2jsReflectTypeFieldByName(receiver, name) {
 	if (go2jsReflectTypeKindOf(receiver) !== "struct") {
 		throw new TypeError("reflect: FieldByName of non-struct type " + go2jsReflectTypeString(receiver));
 	}
 
-	const count = go2jsReflectTypeNumField(receiver);
+	let level = [{type: receiver, prefix: []}];
 
-	for (let index = 0; index < count; index++) {
-		const field = go2jsReflectTypeField(receiver, index);
+	while (level.length > 0) {
+		const next = [];
+		let found = null;
+		let count = 0;
 
-		if (field.Name === name) {
-			return [field, true];
+		for (const entry of level) {
+			const fields = go2jsReflectTypeFieldsOf(entry.type);
+
+			for (let index = 0; index < fields.length; index++) {
+				const field = fields[index];
+				const path = entry.prefix.concat([index]);
+
+				if (field.Name === name) {
+					count++;
+
+					if (count === 1) {
+						found = Object.assign({}, field, {Index: path});
+					}
+				}
+
+				// The fields of an embedded struct are searched a level down, so
+				// a name promoted from it reads as the embedded struct's own.
+				if (field.Anonymous && go2jsReflectKind(field.Type) === "struct") {
+					next.push({type: field.Type, prefix: path});
+				}
+			}
 		}
+
+		if (count === 1) {
+			return [found, true];
+		}
+
+		if (count > 1) {
+			return [go2jsReflectStructField({Name: ""}), false];
+		}
+
+		level = next;
 	}
 
 	return [go2jsReflectStructField({Name: ""}), false];
@@ -1618,6 +1691,7 @@ const go2jsReflectValueMethods = {
 	Bool: go2jsReflectValueBool,
 	Len: go2jsReflectValueLen,
 	FieldByName: go2jsReflectValueFieldByName,
+	FieldByIndex: go2jsReflectValueFieldByIndex,
 	Kind: go2jsReflectKind,
 	Type: go2jsReflectValueType,
 	Set: go2jsReflectValueSet,

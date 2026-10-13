@@ -348,3 +348,48 @@ func main() {
 }
 `)
 }
+
+// A field promoted from an embedded struct is reached by the name it is
+// promoted under, carries the path of indexes that reaches it through the
+// embedded struct, and can be written through that path the way Go writes to
+// the storage the outer value owns.
+func TestReflectPromotedFieldsAreFound(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"reflect"
+)
+
+type base struct {
+	ID   int
+	Name string
+}
+
+type inner struct{ base }
+
+type outer struct {
+	inner
+	Extra bool
+}
+
+func main() {
+	t := reflect.TypeOf(outer{})
+	f, ok := t.FieldByName("ID")
+	fmt.Println(f.Name, f.Index, ok)
+	f2, ok2 := t.FieldByName("Extra")
+	fmt.Println(f2.Name, f2.Index, ok2)
+	_, miss := t.FieldByName("Nope")
+	fmt.Println(miss)
+
+	v := reflect.ValueOf(&outer{}).Elem()
+	v.FieldByName("ID").SetInt(9)
+	v.FieldByName("Name").SetString("x")
+	fmt.Println(v.FieldByIndex(f.Index).Int())
+	fmt.Println(v.FieldByName("Name").String())
+	fmt.Println(v.FieldByName("Extra").Bool())
+
+	fmt.Println(t.NumField(), t.Field(0).Anonymous, t.Field(0).Name)
+}
+`)
+}
