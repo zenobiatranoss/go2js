@@ -167,7 +167,22 @@ func (e *emitter) structZeroLiteral(t types.Type, depth int) (string, bool) {
 		parts = append(parts, strconv.Quote(field.Name())+": "+e.zeroValueAt(field.Type(), depth+1))
 	}
 
-	return "{" + strings.Join(parts, ", ") + "}", true
+	object := "{" + strings.Join(parts, ", ") + "}"
+
+	// A struct written out in place has no class of its own, so the name and
+	// the type of each field travel on the value the way they do for a struct
+	// written as a literal, which is what lets a nil slice field read [] and a
+	// %#v field read []int(nil).
+	if _, isNamed := t.(*types.Named); !isNamed {
+		e.needsRuntime = true
+
+		return "(() => { const __v = " + object +
+			"; Object.defineProperty(__v, \"__go2js_type_name\", {value: " + strconv.Quote(goStructTypeName(structure)) +
+			"}); Object.defineProperty(__v, \"__go2js_struct_fields\", {value: " + goStructFieldDescriptors(structure) +
+			"}); return __v; })()", true
+	}
+
+	return object, true
 }
 
 func zeroValueForGoType(t types.Type) string {

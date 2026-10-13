@@ -1990,25 +1990,9 @@ func (e *emitter) emitAnonymousStructLiteral(x *ast.CompositeLit, structType *go
 	// The name of each field and the type it was declared as travel with the
 	// value, because an anonymous struct has no constructor to carry them and
 	// the runtime needs them to print a field the way its own type asks.
-	e.write("}); Object.defineProperty(__v, \"__go2js_struct_fields\", {value: [")
-
-	for i := 0; i < structType.NumFields(); i++ {
-		if i > 0 {
-			e.write(", ")
-		}
-
-		field := structType.Field(i)
-
-		e.write("{Name: ")
-		e.write(strconv.Quote(field.Name()))
-		e.write(", Type: ")
-		e.write(strconv.Quote(goTypeName(field.Type())))
-		e.write(", Anonymous: ")
-		e.write(strconv.FormatBool(field.Embedded()))
-		e.write("}")
-	}
-
-	e.write("]}); return __v; })()")
+	e.write("}); Object.defineProperty(__v, \"__go2js_struct_fields\", {value: ")
+	e.write(goStructFieldDescriptors(structType))
+	e.write("}); return __v; })()")
 
 	return true, nil
 }

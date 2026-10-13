@@ -406,3 +406,30 @@ func main() {
 }
 `)
 }
+
+func TestNamedTypesAreRefusedByName(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+type Temp int
+type Name string
+type Flag bool
+type Frac float64
+
+func main() {
+	// A verb a value does not take names the type the value was declared as
+	// rather than the kind underneath it.
+	fmt.Printf("[%s][%q][%t][%f]\n", Temp(3), Temp(3), Temp(3), Temp(3))
+	fmt.Printf("[%d][%x][%t][%v]\n", Name("x"), Name("x"), Name("x"), Name("x"))
+	fmt.Printf("[%d][%s][%q][%f]\n", Flag(true), Flag(true), Flag(true), Flag(true))
+	fmt.Printf("[%d][%s][%q][%t]\n", Frac(1.5), Frac(1.5), Frac(1.5), Frac(1.5))
+
+	// The kinds byte and rune are still named as the types fmt reflects on.
+	var b byte = 5
+	var r rune = 'x'
+	fmt.Printf("[%s][%t]\n", b, b)
+	fmt.Printf("[%s][%f]\n", r, r)
+}
+`)
+}
