@@ -165,3 +165,43 @@ func main() {
 }
 `)
 }
+
+// A field or a method reached by name is the same one reached by index: the
+// lookup answers with the field or method and whether the type carried one of
+// that name, and a name it does not carry answers with a false rather than a
+// fault. A lookup that faults instead takes the whole program down with it.
+func TestReflectFieldAndMethodByName(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"reflect"
+)
+
+type point struct {
+	X    int    `+"`"+`yaml:"x"`+"`"+`
+	Name string
+}
+
+func (p point) String() string { return "point" }
+func (p point) Sum() int       { return p.X }
+
+func main() {
+	t := reflect.TypeOf(point{})
+
+	f, ok := t.FieldByName("X")
+	fmt.Println(f.Name, f.Type.Kind(), f.Tag.Get("yaml"), ok)
+	_, missing := t.FieldByName("Nope")
+	fmt.Println(missing)
+
+	m, has := t.MethodByName("Sum")
+	fmt.Println(m.Name, has)
+	_, none := t.MethodByName("Gone")
+	fmt.Println(none)
+
+	v := reflect.ValueOf(point{X: 7, Name: "n"})
+	fmt.Println(v.FieldByName("X").Int(), v.FieldByName("Name").String())
+	fmt.Println(v.FieldByName("Nope").IsValid())
+}
+`)
+}
