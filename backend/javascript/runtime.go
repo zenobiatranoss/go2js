@@ -11808,7 +11808,7 @@ function go2jsFormatValue(verb, spec, value, raw, nested) {
 		case "s": {
 			let text;
 
-			if (go2jsIsByteCompound(tagged) || (tagged === null && go2jsIsByteArray(value))) {
+			if (go2jsIsByteCompound(tagged) || go2jsIsByteCompound(kind) || (tagged === null && go2jsIsByteArray(value))) {
 				text = go2jsBytesToString(value);
 			} else {
 				text = go2jsFormat(value, tagged, kind, shape);
@@ -12008,8 +12008,17 @@ function go2jsFormatValue(verb, spec, value, raw, nested) {
 
 			return go2jsPad("U+" + digits, parsed, false);
 		}
-		case "T":
+		case "T": {
+			// A named slice of bytes or runes carries the slice it is built on
+			// on the value itself, but %T reports the name it was declared with.
+			if (typeof kind === "string" &&
+				(go2jsIsByteCompound(kind) || kind === "[]rune" || kind === "[]int32") &&
+				go2jsDeclaredTypeName(tagged) !== "") {
+				return go2jsPad(tagged, parsed, false);
+			}
+
 			return go2jsPad(go2jsGoTypeName(original), parsed, false);
+		}
 		default:
 			return go2jsStringify(value);
 	}

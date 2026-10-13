@@ -175,8 +175,10 @@ func goTypeNameNeedsTagging(name string) bool {
 	return true
 }
 
-// goTypeUnderlyingKind names the basic type a named type is based on, so verbs
-// such as %d keep working on a named integer type.
+// goTypeUnderlyingKind names the type a named type is based on, so verbs such
+// as %d keep working on a named integer type, and the byte and rune verbs keep
+// working on a named slice of bytes or runes, which are read as text whatever
+// the slice is called.
 func goTypeUnderlyingKind(t gotypes.Type) string {
 	if t == nil {
 		return ""
@@ -187,16 +189,44 @@ func goTypeUnderlyingKind(t gotypes.Type) string {
 		return ""
 	}
 
-	basic, ok := named.Underlying().(*gotypes.Basic)
-	if !ok {
+	// A json.RawMessage is built on a slice of bytes but holds the text of a
+	// value rather than the bytes themselves, so it is not read as one.
+	if _, text := jsonTextValueType(named); text {
 		return ""
 	}
 
-	if basic.Name() == "byte" {
-		return "uint8"
+	switch underlying := named.Underlying().(type) {
+	case *gotypes.Basic:
+		if underlying.Name() == "byte" {
+			return "uint8"
+		}
+
+		return underlying.Name()
+
+	case *gotypes.Slice, *gotypes.Array:
+		// Only a slice of bytes or runes changes how a verb reads it, so only
+		// those carry the type underneath the name.
+		elem := underlyingElem(named.Underlying())
+
+		if basic, ok := elem.(*gotypes.Basic); ok && (basic.Kind() == gotypes.Uint8 || basic.Kind() == gotypes.Int32) {
+			return goTypeName(named.Underlying())
+		}
 	}
 
-	return basic.Name()
+	return ""
+}
+
+// underlyingElem returns the element type of a slice or an array, and nothing
+// for any other type.
+func underlyingElem(t gotypes.Type) gotypes.Type {
+	switch value := t.(type) {
+	case *gotypes.Slice:
+		return value.Elem()
+	case *gotypes.Array:
+		return value.Elem()
+	}
+
+	return nil
 }
 
 // emitTypedValue writes expr wrapped with its static type when the runtime
