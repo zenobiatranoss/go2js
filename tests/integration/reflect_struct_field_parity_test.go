@@ -293,3 +293,58 @@ func main() {
 }
 `)
 }
+
+// A function value is called through reflect the way it is called directly, and
+// the results come back as the slice of Values Go hands over: as many as the
+// function returns, and one for a slice rather than the slice spread out. A
+// method reached by name is bound to the value it was reached on and called the
+// same way.
+func TestReflectValueCallAndBoundMethods(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"reflect"
+)
+
+type box struct{ N int }
+
+func (b box) Pair() (string, int) { return "n", b.N }
+func (b box) Say()                { fmt.Println("said") }
+
+func sum(nums ...int) int {
+	total := 0
+	for _, n := range nums {
+		total += n
+	}
+	return total
+}
+
+func slice0() []int { return []int{4, 5, 6} }
+func quiet()        {}
+
+func main() {
+	fmt.Println(reflect.TypeOf(sum).IsVariadic())
+
+	res := reflect.ValueOf(sum).Call([]reflect.Value{reflect.ValueOf(1), reflect.ValueOf(2), reflect.ValueOf(3)})
+	fmt.Println(len(res), res[0].Int())
+
+	sl := reflect.ValueOf(slice0).Call(nil)
+	fmt.Println(len(sl), sl[0].Len(), sl[0].Index(1).Int())
+
+	fmt.Println(len(reflect.ValueOf(quiet).Call(nil)))
+
+	v := reflect.ValueOf(box{N: 5})
+	fmt.Println(v.NumMethod(), reflect.TypeOf(box{}).NumMethod())
+
+	pr := v.MethodByName("Pair").Call(nil)
+	fmt.Println(len(pr), pr[0].String(), pr[1].Int())
+	fmt.Println(v.NumMethod(), v.Method(0).Kind())
+
+	void := v.MethodByName("Say").Call(nil)
+	fmt.Println(len(void))
+	_, missing := v.Type().MethodByName("Nope")
+	fmt.Println(missing)
+}
+`)
+}

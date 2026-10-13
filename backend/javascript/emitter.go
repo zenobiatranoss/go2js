@@ -3424,6 +3424,8 @@ func (e *emitter) emitStructMethodBody(fn *ast.FuncDecl, receiverType string) er
 			e.write(".apply(this, args); }")
 		}
 
+		e.write(", ")
+		e.write(strconv.Itoa(methodResultCount(fn)))
 		e.write(");")
 		e.newline()
 	} else {
@@ -3434,12 +3436,24 @@ func (e *emitter) emitStructMethodBody(fn *ast.FuncDecl, receiverType string) er
 		e.write(receiverType)
 		e.write(".prototype.")
 		e.write(fn.Name.Name)
-		e.write(".call(receiver, ...args); })")
+		e.write(".call(receiver, ...args); }, ")
+		e.write(strconv.Itoa(methodResultCount(fn)))
+		e.write(")")
 		e.write(";")
 		e.newline()
 	}
 
 	return nil
+}
+
+// methodResultCount reports how many results a method hands back, which reflect
+// needs to box a reflect.Value.Call off a method the same way Go does.
+func methodResultCount(fn *ast.FuncDecl) int {
+	if fn == nil || fn.Type == nil || fn.Type.Results == nil {
+		return 0
+	}
+
+	return fn.Type.Results.NumFields()
 }
 
 func bodyHasFuncLit(body *ast.BlockStmt) bool {

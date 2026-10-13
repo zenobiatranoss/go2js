@@ -183,7 +183,7 @@ function go2jsReflectLazyList(target, name, lookup) {
 	});
 }
 
-function go2jsReflectType(go2jsKind, go2jsName, go2jsElem, go2jsKey, go2jsMethods, go2jsLen) {
+function go2jsReflectType(go2jsKind, go2jsName, go2jsElem, go2jsKey, go2jsMethods, go2jsLen, go2jsResults, go2jsVariadic) {
 	const type = {
 		__go2js_reflectType: true,
 		kind: go2jsKind,
@@ -191,7 +191,12 @@ function go2jsReflectType(go2jsKind, go2jsName, go2jsElem, go2jsKey, go2jsMethod
 		elem: go2jsElem || null,
 		key: go2jsKey || null,
 		methods: go2jsMethods || [],
-		len: typeof go2jsLen === "number" ? go2jsLen : null
+		len: typeof go2jsLen === "number" ? go2jsLen : null,
+		// A function type carries how many results it hands back and whether it
+		// takes a trailing run of arguments, because reflect.Call has to box that
+		// many results and IsVariadic has to answer with it.
+		results: typeof go2jsResults === "number" ? go2jsResults : null,
+		variadic: go2jsVariadic === true
 	};
 
 	// A descriptor is usually written out at the top of the generated program,
@@ -975,8 +980,87 @@ function go2jsReflectValueIndex(receiver, index) {
 	};
 }
 
-function go2jsReflectValueNumMethod() {
-	return 0;
+// go2jsReflectValueNumMethod reports how many methods a value can call, which
+// is the whole set for a pointer and the value set for everything else, because
+// a value cannot call a method declared with a pointer receiver.
+function go2jsReflectValueNumMethod(receiver) {
+	return go2jsReflectMethodsOf(go2jsReflectValueType(receiver)).length;
+}
+
+// go2jsReflectValueMethod reports one method of a value by index, as a bound
+// method value that can be called, which is what Go hands back rather than a
+// bare name.
+function go2jsReflectValueMethod(receiver, index) {
+	const methods = go2jsReflectMethodsOf(go2jsReflectValueType(receiver));
+	const at = Math.trunc(Number(index));
+
+	if (at < 0 || at >= methods.length) {
+		throw new RangeError("reflect: Method index out of range");
+	}
+
+	return go2jsReflectBoundMethod(receiver, methods[at]);
+}
+
+// go2jsReflectMethodKeys lists the keys a method of a value could be recorded
+// under. A method declared with a pointer receiver rides under a star, and a
+// pointer reaches value methods too, so both spellings are tried.
+function go2jsReflectMethodKeys(type, name) {
+	const owner = type !== null && type !== undefined && type.kind === "ptr" && type.elem !== null ? type.elem : type;
+	const bare = owner !== null && owner !== undefined ? owner.name : "";
+
+	if (typeof bare !== "string" || bare === "") {
+		return [];
+	}
+
+	return ["*" + bare + "." + name, bare + "." + name];
+}
+
+// go2jsReflectBoundMethod binds a method to the value it was reached on, which
+// is the value a program then calls. A method the table never recorded cannot
+// be called, and comes back as a value that reads as invalid.
+function go2jsReflectBoundMethod(receiver, name) {
+	const value = go2jsReflectRead(receiver);
+	const keys = go2jsReflectMethodKeys(go2jsReflectValueType(receiver), name);
+
+	for (const key of keys) {
+		const fn = go2jsMethodTable[key];
+
+		if (typeof fn === "function") {
+			const results = typeof go2jsMethodResults[key] === "number" ? go2jsMethodResults[key] : null;
+
+			return {
+				__go2js_reflectValue: true,
+				v: {
+					__go2js_callable: true,
+					__go2js_callable_results: results,
+					__go2js_callable_value: (...args) => go2jsCallNow(fn, null, [value, ...args])
+				},
+				// A method is a function, and its type carries how many results it
+				// hands back so a call boxes the right number of them.
+				t: go2jsReflectType("func", "", null, null, [], null, results === null ? 1 : results, false)
+			};
+		}
+	}
+
+	return go2jsReflectValue(undefined, go2jsReflectType("invalid", "", null, null, []));
+}
+
+// go2jsReflectBoxResults wraps what a call handed back into the slice of Values
+// Go returns. A call with no results boxes nothing, a call with one result boxes
+// it whole, and a call with more than one has to take them apart, because the
+// runtime hands several results over as a run rather than as one value.
+function go2jsReflectBoxResults(results, raw) {
+	if (results === 0) {
+		return [];
+	}
+
+	if (results === null || results === 1) {
+		return [go2jsReflectValue(raw, go2jsReflectTypeOf(raw))];
+	}
+
+	const tuple = Array.isArray(raw) ? raw : [];
+
+	return tuple.map((item) => go2jsReflectValue(item, go2jsReflectTypeOf(item)));
 }
 
 function go2jsReflectValueIsValid(receiver) {
@@ -1371,6 +1455,14 @@ function go2jsReflectTypeMethod(receiver, index) {
 	return {Name: methods[index], Type: go2jsReflectType("func", "", null, null, []), Index: index};
 }
 
+// go2jsReflectTypeIsVariadic reports whether a function type takes a trailing
+// run of arguments, which the emitter recorded when it wrote the type.
+function go2jsReflectTypeIsVariadic(receiver) {
+	const type = go2jsReflectValueType(receiver);
+
+	return type !== null && type !== undefined && type.variadic === true;
+}
+
 // go2jsReflectTypeComparable reports whether values of a type can be compared,
 // which is false for a slice, a map and a function and true for everything
 // else, down through the elements of an array and the fields of a struct.
@@ -1410,33 +1502,36 @@ function go2jsReflectComparable(type) {
 // same shape as Method does so a caller cannot tell the two apart.
 function go2jsReflectValueMethodByName(receiver, name) {
 	const methods = go2jsReflectMethodsOf(go2jsReflectValueType(receiver));
-	const index = methods.indexOf(name);
 
-	if (index < 0) {
-		return {__go2js_reflectValue: true, v: {}, t: go2jsReflectType("invalid", "", null, null, [])};
+	if (methods.indexOf(name) < 0) {
+		return go2jsReflectValue(undefined, go2jsReflectType("invalid", "", null, null, []));
 	}
 
-	return {Name: name, Type: null, Index: index};
+	return go2jsReflectBoundMethod(receiver, name);
 }
 
-// go2jsReflectValueCall calls a method or function value. A method reached by
-// name is looked up in the table the emitter filled in, and a function value is
-// called through the cell that holds it, so both go the way they were declared.
-function go2jsReflectValueCall(receiver, ...args) {
+// go2jsReflectValueCall calls a function or bound method value, handing back
+// the results as the slice of Values Go returns. The arguments arrive as the
+// slice Call was given, so a nil slice is no arguments at all.
+function go2jsReflectValueCall(receiver, args) {
 	const value = go2jsReflectRead(receiver);
+	const given = args === null || args === undefined ? [] : args;
+	// Call is handed a slice of Values and passes what they hold, so each one is
+	// read back out before the call is made.
+	const list = Array.isArray(given) ? given.map(go2jsReflectRead) : [go2jsReflectRead(given)];
 
 	if (value !== null && value !== undefined && value.__go2js_callable === true) {
-		return value.__go2js_callable_value(...args);
+		return go2jsReflectBoxResults(value.__go2js_callable_results, value.__go2js_callable_value(...list));
 	}
 
-	const name = receiver && receiver.__go2js_methodName;
-	const fn = typeof name === "string" ? go2jsMethodTable[name] : undefined;
+	if (typeof value === "function") {
+		const type = go2jsReflectValueType(receiver);
+		const results = type !== null && type !== undefined && typeof type.results === "number" ? type.results : null;
 
-	if (typeof fn !== "function") {
-		throw new TypeError("reflect: call of reflect.Value.Call on a value that is not callable");
+		return go2jsReflectBoxResults(results, go2jsCallNow(value, null, list));
 	}
 
-	return go2jsCallNow(fn, null, [value, ...args]);
+	throw new TypeError("reflect: call of reflect.Value.Call on a value that is not callable");
 }
 
 // go2jsReflectValueAddr is the address of a value, which is a pointer to the
@@ -1535,6 +1630,7 @@ const go2jsReflectValueMethods = {
 	Field: go2jsReflectValueField,
 	Index: go2jsReflectValueIndex,
 	NumMethod: go2jsReflectValueNumMethod,
+	Method: go2jsReflectValueMethod,
 	IsValid: go2jsReflectValueIsValid,
 	IsNil: go2jsReflectValueIsNil,
 	IsZero: go2jsReflectValueIsZero,
@@ -1619,7 +1715,8 @@ const go2jsReflectTypeMethods = {
 	Len: go2jsReflectTypeLen,
 	NumMethod: go2jsReflectTypeNumMethod,
 	Method: go2jsReflectTypeMethod,
-	Comparable: go2jsReflectTypeComparable
+	Comparable: go2jsReflectTypeComparable,
+	IsVariadic: go2jsReflectTypeIsVariadic
 };
 
 function go2jsReflectRegisterMethods() {
@@ -2168,6 +2265,10 @@ func (e *emitter) reflectTypeDescriptor(t gotypesstd.Type) (string, error) {
 	name := `""`
 	elem := "null"
 	key := "null"
+	// A function type carries how many results it hands back and whether it is
+	// variadic, because a reflect.Value.Call has to box that many results and
+	// IsVariadic has to answer with it. Every other kind of type carries neither.
+	funcExtra := ""
 
 	if named, ok := t.(*gotypesstd.Named); ok {
 		name = strconv.Quote(named.Obj().Name())
@@ -2205,6 +2306,7 @@ func (e *emitter) reflectTypeDescriptor(t gotypesstd.Type) (string, error) {
 		}
 	case *gotypesstd.Signature:
 		kind = "func"
+		funcExtra = fmt.Sprintf(", null, %d, %t", underlying.Results().Len(), underlying.Variadic())
 	case *gotypesstd.Interface:
 		kind = "interface"
 	}
@@ -2231,7 +2333,7 @@ func (e *emitter) reflectTypeDescriptor(t gotypesstd.Type) (string, error) {
 		methods = "[" + strings.Join(quoted, ", ") + "]"
 	}
 
-	constant := fmt.Sprintf("go2jsReflectType(%s, %s, %s, %s, %s)", kind, name, elem, key, methods)
+	constant := fmt.Sprintf("go2jsReflectType(%s, %s, %s, %s, %s%s)", kind, name, elem, key, methods, funcExtra)
 
 	if e.reflectTypeKeys == nil {
 		e.reflectTypeKeys = map[gotypesstd.Type]string{}
