@@ -693,24 +693,28 @@ function go2jsMonthName(month) {
     ];
 
     // A month outside the year is not a month, and Go writes it out as the
-    // number it was rather than as a name of its own.
+    // number it was rather than as a name of its own. A month is a signed type
+    // written through the unsigned it shares its bits with, so a month below
+    // January reads back as the largest unsigned number it makes.
     if (month >= 1 && month <= 12) {
         return names[month - 1];
     }
 
-    return "%!Month(" + String(month) + ")";
+    return "%!Month(" + String(go2jsWideWrap(month, "uint64")) + ")";
 }
 
 function go2jsWeekdayName(weekday) {
     const names = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
     // A day outside the week is not a day, and Go writes it out as the number it
-    // was rather than as a name of its own.
+    // was rather than as a name of its own. A day is a signed type written
+    // through the unsigned it shares its bits with, so a day before Sunday reads
+    // back as the largest unsigned number it makes.
     if (weekday >= 0 && weekday <= 6) {
         return names[weekday];
     }
 
-    return "%!Weekday(" + String(weekday) + ")";
+    return "%!Weekday(" + String(go2jsWideWrap(weekday, "uint64")) + ")";
 }
 
 // go2jsTimeLocation names where a moment is being read, which is what a location
