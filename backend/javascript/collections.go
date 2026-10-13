@@ -844,6 +844,14 @@ function go2jsStructCopy(value) {
 		return value;
 	}
 
+	// A map or a set is storage reached by reference rather than a record of
+	// fields to write out, so Go copies the reference and hands back the same
+	// one. Copying one field by field would leave a hollow shell that no longer
+	// knows what it holds.
+	if (value instanceof go2jsNativeMap || value instanceof go2jsNativeSet) {
+		return value;
+	}
+
 	const embedded = typeof value.__go2js_embedded === "undefined"
 		? null
 		: value.__go2js_embedded;

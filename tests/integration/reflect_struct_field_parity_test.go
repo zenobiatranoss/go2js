@@ -456,3 +456,46 @@ func main() {
 }
 `)
 }
+
+// A function type says how many arguments and results it has and reads each one
+// back, a value made by New reads as the pointer it is and its element reads as
+// what was asked for, and a slice or a map reports its length the way the value
+// behind it does.
+func TestReflectFuncPartsNewAndCap(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"reflect"
+)
+
+type num struct{ N int }
+
+func add(a, b int) int { return a + b }
+
+func main() {
+	ft := reflect.TypeOf(add)
+	fmt.Println(ft.Kind(), ft.NumIn(), ft.NumOut(), ft.IsVariadic())
+	fmt.Println(ft.In(0).Kind(), ft.Out(0).Kind())
+
+	v := reflect.New(reflect.TypeOf(num{})).Elem()
+	v.Field(0).SetInt(7)
+	fmt.Println(v.Interface(), v.CanAddr(), v.CanSet())
+
+	p := reflect.New(reflect.TypeOf(5))
+	p.Elem().SetInt(42)
+	fmt.Println(p.Elem().Int(), p.Kind())
+
+	s := reflect.ValueOf([]int{1, 2, 3})
+	fmt.Println(s.Len(), s.Cap(), s.Index(2).Int())
+
+	hold := struct{ M map[string]int }{M: map[string]int{"a": 1}}
+	held := hold
+	held.M["b"] = 2
+	fmt.Println(hold.M["b"], len(hold.M))
+
+	m := reflect.ValueOf(map[string]int{"a": 1})
+	fmt.Println(m.Len(), m.MapIndex(reflect.ValueOf("a")).Int())
+}
+`)
+}
