@@ -499,3 +499,42 @@ func main() {
 }
 `)
 }
+
+// The zero of an interface is the absence of a value, so a declared Type is
+// nil, TypeOf of nil is a nil Type, the element of a value holding an interface
+// is what the interface holds, and a value can be put back to the zero of its
+// own type. A slice made with a capacity keeps it.
+func TestReflectNilInterfaceAndSetZero(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"reflect"
+)
+
+type num struct{ N int }
+
+func main() {
+	var missing reflect.Type
+	fmt.Println(missing, missing == nil)
+
+	fmt.Println(reflect.TypeOf(nil), reflect.TypeOf(nil) == nil)
+
+	var held interface{} = 42
+	inner := reflect.ValueOf(&held).Elem()
+	fmt.Println(inner.Kind(), inner.Elem().Int())
+
+	z := reflect.New(reflect.TypeOf(9)).Elem()
+	z.SetInt(5)
+	z.SetZero()
+	fmt.Println(z.Int())
+
+	s := reflect.MakeSlice(reflect.TypeOf([]int{}), 2, 5)
+	fmt.Println(s.Len(), s.Cap())
+
+	m := reflect.MakeMap(reflect.TypeOf(map[string]int{}))
+	m.SetMapIndex(reflect.ValueOf("a"), reflect.ValueOf(1))
+	fmt.Println(m.Len(), m.MapIndex(reflect.ValueOf("a")).Int())
+}
+`)
+}

@@ -106,6 +106,13 @@ func (e *emitter) zeroValueAt(t types.Type, depth int) string {
 		if named, ok := t.(*types.Named); ok {
 			obj := named.Obj()
 
+			// An interface has nothing to build, since the zero of an interface
+			// is the absence of a value rather than a value of some type, and a
+			// shim for one is a constructor that would build a hollow stand-in.
+			if _, isInterface := named.Underlying().(*types.Interface); isInterface {
+				return "null"
+			}
+
 			// A type from the runtime has one constructor, whatever the program
 			// happens to call its own things. The bare name is no good here:
 			// sync.Map is a struct whose name reads like a JavaScript global.
@@ -192,6 +199,12 @@ func zeroValueForGoType(t types.Type) string {
 
 	switch t := t.(type) {
 	case *types.Named:
+		// An interface has no value to build, so a shim for one is never called
+		// to make a zero: the zero of an interface is nil.
+		if _, isInterface := t.Underlying().(*types.Interface); isInterface {
+			return "null"
+		}
+
 		if obj := t.Obj(); obj != nil && obj.Pkg() != nil {
 			if constructor := packageTypeConstructorFor(obj.Pkg().Name(), obj.Name()); constructor != "" {
 				return constructor
