@@ -11674,14 +11674,14 @@ function go2jsFormatValue(verb, spec, value, raw, nested) {
 			// applies the verb to each field rather than to the whole value.
 			const inner = "%" + flags + (precision === null ? "" : "." + precision) + "q";
 			const quoteElement = (element) => (typeof element === "number" && Number.isInteger(element)
-				? go2jsQuoteRune(element)
+				? (flags.includes("+") ? go2jsStrconvQuoteRuneWith(element, true, false) : go2jsQuoteRune(element))
 				: go2jsFormatValue("q", inner, element, false, true));
 
 			if (value instanceof go2jsNativeMap) {
 				const parts = [];
 
 				for (const key of value.keys()) {
-					parts.push(go2jsStrconvQuote(go2jsBytesToString(key)) + ":" + go2jsFormatValue("q", inner, value.get(key), false, true));
+					parts.push(go2jsQuoteText(go2jsBytesToString(key), flags, precision) + ":" + go2jsFormatValue("q", inner, value.get(key), false, true));
 				}
 
 				return go2jsPad("map[" + parts.join(" ") + "]", parsed, false);
@@ -11691,7 +11691,7 @@ function go2jsFormatValue(verb, spec, value, raw, nested) {
 			// that is not part of a valid UTF8 sequence is written as \xNN rather
 			// than being replaced the way a decoded string would be.
 			if (go2jsIsByteCompound(accepted)) {
-				return go2jsPad(go2jsQuoteBytes(value), parsed, false);
+				return go2jsPad(go2jsQuoteBytesWithFlags(value, flags, precision), parsed, false);
 			}
 
 			if (Array.isArray(value)) {
@@ -11722,7 +11722,9 @@ function go2jsFormatValue(verb, spec, value, raw, nested) {
 			}
 
 			if (typeof value === "number" && Number.isInteger(value)) {
-				return go2jsPad(go2jsQuoteRune(value), parsed, false);
+				// The sharp flag is for a string, so a rune keeps its literal
+				// unless the plus flag asks for the ASCII-only escapes.
+				return go2jsPad(flags.includes("+") ? go2jsStrconvQuoteRuneWith(value, true, false) : go2jsQuoteRune(value), parsed, false);
 			}
 
 			// An interface operand is quoted as the dynamic value it holds, the
@@ -11738,7 +11740,7 @@ function go2jsFormatValue(verb, spec, value, raw, nested) {
 				const named = go2jsNamedFormatMethod(value, "String");
 
 				if (named !== null) {
-					return go2jsPad(go2jsStrconvQuote(go2jsBytesToString(named)), parsed, false);
+					return go2jsPad(go2jsQuoteText(go2jsBytesToString(named), flags, precision), parsed, false);
 				}
 			}
 
@@ -11751,11 +11753,11 @@ function go2jsFormatValue(verb, spec, value, raw, nested) {
 				const named = go2jsNamedFormatMethod(receiver, "Error") ?? go2jsNamedFormatMethod(receiver, "String");
 
 				if (named !== null) {
-					return go2jsPad(go2jsStrconvQuote(go2jsBytesToString(named)), parsed, false);
+					return go2jsPad(go2jsQuoteText(go2jsBytesToString(named), flags, precision), parsed, false);
 				}
 			}
 
-			return go2jsPad(go2jsStrconvQuote(go2jsBytesToString(value)), parsed, false);
+			return go2jsPad(go2jsQuoteText(go2jsBytesToString(value), flags, precision), parsed, false);
 		}
 		case "t":
 			return go2jsPad(value ? "true" : "false", parsed, false);
@@ -14671,6 +14673,117 @@ function go2jsStrconvQuote(s) {
 
 function go2jsStrconvQuoteToASCII(s) {
 	return go2jsStrconvQuoteWith(s, true, false);
+}
+
+// go2jsCanBackquote says whether a string can be written as a raw string, the
+// way strconv.CanBackquote decides it: every rune must be printable, a
+// backquote or a carriage return rules it out, and so does a byte that spells
+// no rune.
+function go2jsCanBackquote(text) {
+	for (let i = 0; i < text.length; i++) {
+		const unit = text.charCodeAt(i);
+
+		if (unit === 0xFEFF || unit === 0x60 || unit === 0x0D) {
+			return false;
+		}
+
+		if (unit === 0x09 || (unit >= 0x20 && unit <= 0x7E)) {
+			continue;
+		}
+
+		if (unit >= 0xD800 && unit <= 0xDBFF) {
+			// A leading surrogate is the top of a rune only when a trailing one
+			// follows, and the rune it makes is printable unless it is the byte
+			// order mark.
+			const low = i + 1 < text.length ? text.charCodeAt(i + 1) : 0;
+
+			if (low < 0xDC00 || low > 0xDFFF) {
+				return false;
+			}
+
+			i++;
+			continue;
+		}
+
+		if (unit >= 0xDC00 && unit <= 0xDFFF) {
+			return false;
+		}
+
+		if (unit >= 0x80) {
+			continue;
+		}
+
+		return false;
+	}
+
+	return true;
+}
+
+// go2jsTruncateRunes cuts a string to a number of runes, the way fmt's precision
+// does before a quoted verb writes it, without splitting a rune in two.
+function go2jsTruncateRunes(text, precision) {
+	if (precision === null || precision === undefined || precision < 0) {
+		return text;
+	}
+
+	let seen = 0;
+	let i = 0;
+
+	while (i < text.length && seen < precision) {
+		const unit = text.charCodeAt(i);
+
+		if (unit >= 0xD800 && unit <= 0xDBFF && i + 1 < text.length) {
+			const low = text.charCodeAt(i + 1);
+
+			if (low >= 0xDC00 && low <= 0xDFFF) {
+				i += 2;
+				seen++;
+				continue;
+			}
+		}
+
+		i++;
+		seen++;
+	}
+
+	return text.slice(0, i);
+}
+
+// go2jsQuoteText writes a string under the quoted verb, where the sharp flag
+// asks for a raw string when one can be written and the plus flag asks for the
+// escapes an ASCII-only literal needs. The precision cuts the string to that
+// many runes before it is written.
+function go2jsQuoteText(text, flags, precision) {
+	text = go2jsTruncateRunes(text, precision);
+
+	if (flags.includes("#") && go2jsCanBackquote(text)) {
+		const backquote = String.fromCharCode(96);
+
+		return backquote + text + backquote;
+	}
+
+	return go2jsStrconvQuoteWith(text, flags.includes("+"), false);
+}
+
+// go2jsQuoteBytesWithFlags writes the bytes of a string for the quoted verb,
+// keeping a byte that spells no rune as the escape it needs rather than reading
+// it back as the replacement character.
+function go2jsQuoteBytesWithFlags(value, flags, precision) {
+	// A precision cuts the bytes to that many runes before they are written, so
+	// they are read back as the string they spell and cut there.
+	if (precision !== null && precision !== undefined && precision >= 0) {
+		value = go2jsStringToBytes(go2jsTruncateRunes(go2jsBytesToString(value), precision));
+	}
+
+	const text = go2jsBytesToString(value);
+
+	if (flags.includes("#") && go2jsCanBackquote(text)) {
+		const backquote = String.fromCharCode(96);
+
+		return backquote + text + backquote;
+	}
+
+	return go2jsQuoteBytes(value, flags.includes("+"), false);
 }
 
 function go2jsStrconvQuoteRuneWith(value, asciiOnly, graphicOnly) {

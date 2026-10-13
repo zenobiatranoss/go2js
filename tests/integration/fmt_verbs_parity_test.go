@@ -266,3 +266,39 @@ func main() {
 }
 `)
 }
+
+func TestQuotedVerbFlagsAndPrecision(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+type Labelled string
+
+func (l Labelled) String() string { return "a\tb" }
+
+func main() {
+	// The plus flag escapes the way an ASCII-only literal does, and the sharp
+	// flag asks for a raw string wherever one can be written.
+	fmt.Printf("%q\n", "héllo\t\"x\"")
+	fmt.Printf("%+q\n", "héllo\t\"x\"")
+	fmt.Printf("%#q\n", "héllo\t\"x\"")
+	fmt.Printf("%#q %#q\n", "plain text", "has\x60back")
+	fmt.Printf("%+#q\n", "plain")
+
+	// A byte slice is a string for the quoted verbs, and a rune keeps the
+	// sharp flag to itself.
+	fmt.Printf("%+q %#q\n", []byte("hié"), []byte("hi"))
+	fmt.Printf("%+q %#q %+q\n", 'é', 'é', 'A')
+
+	// The flags reach a map's keys and a value that names itself.
+	fmt.Printf("%q\n", map[string]int{"a\tb": 2})
+	fmt.Printf("%#q\n", map[string]int{"a\tb": 2})
+	fmt.Printf("%+q %#q\n", Labelled("x"), Labelled("x"))
+
+	// A precision cuts the string to that many runes before it is written.
+	fmt.Printf("%.3q %.0q %.2q\n", "héllo wörld", "abc", "héllo")
+	fmt.Printf("%.2q\n", []string{"abcdef"})
+	fmt.Printf("%q\n", []byte("héllo"))
+}
+`)
+}
