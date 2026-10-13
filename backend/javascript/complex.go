@@ -106,6 +106,47 @@ func integerLiteralJavaScript(lit *ast.BasicLit) (string, error) {
 	}
 }
 
+// floatLiteralJavaScript writes a whole number constant as the float Go rounds
+// it to when a float is expected. A number wider than a double keeps is written
+// in the shortest digits that read back as the double it becomes, rather than as
+// the whole number it was.
+func floatLiteralJavaScript(lit *ast.BasicLit) (string, error) {
+	value := constant.MakeFromLiteral(lit.Value, lit.Kind, 0)
+	if value == nil {
+		return "", fmt.Errorf("number constant %s cannot be read", lit.Value)
+	}
+
+	text, ok := floatConstantJavaScript(value)
+	if !ok {
+		return "", fmt.Errorf("number constant %s cannot be represented as a JavaScript number", lit.Value)
+	}
+
+	return text, nil
+}
+
+// floatConstantJavaScript writes a constant as the float it becomes when a float
+// is expected, in the fewest digits that read back as that same number. A whole
+// number too wide for a double is rounded on its way in, the way Go rounds a
+// constant on its way into a float, rather than written as the whole number it
+// still is.
+func floatConstantJavaScript(value constant.Value) (string, bool) {
+	if value == nil {
+		return "", false
+	}
+
+	converted := constant.ToFloat(value)
+	if converted.Kind() != constant.Float {
+		return "", false
+	}
+
+	number, _ := constant.Float64Val(converted)
+	if math.IsInf(number, 0) || math.IsNaN(number) {
+		return "", false
+	}
+
+	return strconv.FormatFloat(number, 'g', -1, 64), true
+}
+
 func normalizedIntegerLiteral(value constant.Value) (string, error) {
 	exact := constant.ToInt(value)
 	if exact.Kind() != constant.Int {

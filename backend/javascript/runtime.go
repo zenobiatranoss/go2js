@@ -9829,7 +9829,10 @@ function go2jsFormat(value, typeName, kind, shape, plus, nested, raw) {
 			}
 		}
 
-		return go2jsFormat(value.value, null, null, null, plus, nested, raw);
+		// The type the box names is the type of what it holds, so it travels
+		// with the value: a float held in an interface is still a float, and
+		// the verbs must write it as one rather than as a whole number.
+		return go2jsFormat(value.value, typeof value.type === "string" && value.type !== "" ? value.type : null, null, null, plus, nested, raw);
 	}
 
 	if (value.__go2js_pointer === true) {
@@ -9858,16 +9861,21 @@ function go2jsFormat(value, typeName, kind, shape, plus, nested, raw) {
 		const entries = Array.from(value.entries());
 		entries.sort((a, b) => go2jsCompareValues(a[0], b[0]));
 
-		const parts = entries.map(([key, item]) => go2jsFormat(key, null, null, null, plus, true) + ":" + go2jsFormat(item, null, null, null, plus, true));
+		// The type a map was written as says what it holds, so a float held in
+		// one is written as a float rather than as the whole number it makes.
+		const mapType = go2jsDeclaredTypeName(typeName) !== "" ? typeName : (value.__go2js_type || go2jsGoTypeName(value));
+		const held = go2jsMapTypes(mapType);
+		const parts = entries.map(([key, item]) => go2jsFormat(key, held.key || null, null, null, plus, true) + ":" + go2jsFormat(item, held.value || null, null, null, plus, true));
 
 		return "map[" + parts.join(" ") + "]";
 	}
 
 	if (Array.isArray(value)) {
+		const elementType = go2jsElementTypeName(go2jsDeclaredTypeName(typeName) !== "" ? typeName : (value.__go2js_type || go2jsGoTypeName(value)));
 		const parts = [];
 
 		for (let i = 0; i < value.length; i++) {
-			parts.push(go2jsFormat(value[i], null, null, null, plus, true));
+			parts.push(go2jsFormat(value[i], elementType || null, null, null, plus, true));
 		}
 
 		return "[" + parts.join(" ") + "]";
@@ -10814,8 +10822,13 @@ function go2jsGoSyntax(value, typeName) {
 	if (value === null || value === undefined) {
 		// A value held in an interface has no value of its own when the value it
 		// holds is nothing, so what is written is the type it was held as rather
-		// than the nothing itself.
+		// than the nothing itself. An empty interface names itself, since it is
+		// the type of the slot the nothing was found in.
 		const declared = go2jsDeclaredTypeName(typeName);
+
+		if (declared === "" && (typeName === "interface{}" || typeName === "interface {}" || typeName === "any")) {
+			return "interface {}(nil)";
+		}
 
 		return declared === "" ? "<nil>" : declared + "(nil)";
 	}
@@ -10832,40 +10845,106 @@ function go2jsGoSyntax(value, typeName) {
 		return JSON.stringify(value);
 	}
 
-	if (typeof value === "number" || typeof value === "boolean") {
+	if (typeof value === "number") {
+		// %#v writes a float the way %v does, so a float held in an interface
+		// is written with the shortest digits that read back as it rather than
+		// as the whole number its digits happen to make.
+		if (go2jsIsFloatTypeName(typeName)) {
+			return go2jsFormatFloatType(value, typeName, typeName);
+		}
+
+		return String(value);
+	}
+
+	if (typeof value === "boolean") {
 		return String(value);
 	}
 
 	if (value instanceof go2jsNativeMap) {
+		const held = go2jsMapTypes(go2jsDeclaredTypeName(typeName) !== "" ? typeName : (value.__go2js_type || go2jsGoTypeName(value)));
 		const entries = Array.from(value.entries());
+
 		entries.sort((a, b) => go2jsCompareValues(a[0], b[0]));
 
 		// The name of a map already says what it holds keys and values of, so it
-		// is written out as it stands rather than wrapped in brackets again.
+		// is written out as it stands rather than wrapped in brackets again, and
+		// each key and value is written as the type the map holds it as.
 		return go2jsCollectionTypeName(value, typeName) +
-			"{" + entries.map(([key, item]) => go2jsGoSyntax(key) + ":" + go2jsGoSyntax(item)).join(", ") + "}";
+			"{" + entries.map(([key, item]) => go2jsGoSyntax(key, held.key) + ":" + go2jsGoSyntax(item, held.value)).join(", ") + "}";
 	}
 
 	if (Array.isArray(value)) {
+		const elementType = go2jsElementTypeName(go2jsDeclaredTypeName(typeName) !== "" ? typeName : (value.__go2js_type || go2jsGoTypeName(value)));
+
 		return go2jsCollectionTypeName(value, typeName) +
-			"{" + value.map(item => go2jsGoSyntax(item)).join(", ") + "}";
+			"{" + value.map(item => go2jsGoSyntax(item, elementType)).join(", ") + "}";
 	}
 
 	const ctor = value.constructor;
-	const name = ctor && typeof ctor.name === "string" ? ctor.name : "";
-	const fields = name !== "" ? go2jsStructFormats[name] : null;
+	const goName = ctor && go2jsTypeNamesByConstructor.get(ctor);
+	const descriptors = goName !== undefined ? go2jsStructFields[goName] : undefined;
 	const parts = [];
 
 	for (const key of Object.keys(value)) {
-		const fieldType = fields && typeof fields[key] === "string" ? fields[key] : "";
-		parts.push(key + ":" + go2jsGoSyntax(value[key]));
+		let fieldType = "";
 
-		if (fieldType === "") {
-			continue;
+		if (descriptors !== undefined) {
+			for (const field of descriptors) {
+				if (field.Name === key) {
+					fieldType = field.Type || "";
+
+					break;
+				}
+			}
 		}
+
+		parts.push(key + ":" + go2jsGoSyntax(value[key], fieldType));
 	}
 
 	return go2jsQualifiedTypeName(go2jsGoTypeName(value)) + "{" + parts.join(", ") + "}";
+}
+
+// go2jsMapTypes gives the name of the key and the name of the value a map type
+// holds, so that a number kept inside one is written as the kind its type says
+// rather than as the digits it happens to make.
+function go2jsMapTypes(name) {
+	const declared = go2jsDeclaredTypeName(name);
+
+	if (!declared.startsWith("map[")) {
+		return { key: "", value: "" };
+	}
+
+	let depth = 0;
+	let i = 3;
+
+	for (; i < declared.length; i++) {
+		if (declared[i] === "[") {
+			depth += 1;
+		} else if (declared[i] === "]") {
+			depth -= 1;
+
+			if (depth === 0) {
+				i += 1;
+
+				break;
+			}
+		}
+	}
+
+	return { key: declared.slice(4, i - 1), value: declared.slice(i) };
+}
+
+// go2jsElementTypeName gives the name of the element a slice or an array holds.
+function go2jsElementTypeName(name) {
+	const declared = go2jsDeclaredTypeName(name);
+
+	if (declared[0] !== "[") {
+		return "";
+	}
+
+	const close = declared.indexOf("]");
+
+	return close === -1 ? "" : declared.slice(close + 1);
 }
 
 // go2jsCollectionTypeName is the name a list or a map is written out under. A

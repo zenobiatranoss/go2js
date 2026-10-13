@@ -178,3 +178,45 @@ func main() {
 }
 `)
 }
+
+func TestFloatGoSyntaxAndNilInterfaceComposites(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"strconv"
+)
+
+type E interface{ Error() string }
+
+type S struct {
+	F float64
+	S []float64
+	M map[string]float64
+}
+
+const C = 12345678901234567000
+
+func take(f float64) float64 { return f }
+
+func main() {
+	big := 12345678901234567000.0
+	fmt.Printf("%v %#v\n", []float64{big, 1e6}, []float64{big, 1e6})
+	fmt.Printf("%v %#v\n", map[string]float64{"x": big}, map[string]float64{"x": big})
+	fmt.Printf("%v|%v|%v\n", big, float32(1e6), take(big))
+	fmt.Printf("%v|%#v\n", []interface{}{big}, []interface{}{big})
+
+	fmt.Printf("%#v\n", map[string]interface{}{"c": nil, "d": 3})
+	fmt.Printf("%#v\n", []interface{}{nil, 3})
+	fmt.Printf("%#v\n", []error{nil})
+	fmt.Printf("%#v\n", []E{nil})
+	fmt.Printf("%#v\n", S{big, []float64{big}, map[string]float64{"x": big}})
+
+	n, err := strconv.ParseFloat("1.5", 64)
+	fmt.Printf("%v %v\n", n, err)
+
+	fmt.Println(float64(12345678901234567000), float32(12345678901234567000))
+	fmt.Println(float64(C), float64(C)+1)
+}
+`)
+}
