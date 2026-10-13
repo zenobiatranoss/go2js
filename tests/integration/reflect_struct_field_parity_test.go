@@ -628,3 +628,38 @@ func main() {
 }
 `)
 }
+
+// A type walks a path of field indexes down through embedded structs, and a
+// map range moves from one entry to the next and reads the key and the value
+// it stands on.
+func TestReflectFieldByIndexAndMapRange(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"reflect"
+)
+
+type inner struct{ A int }
+
+type outer struct {
+	inner
+	B int
+}
+
+func main() {
+	t := reflect.TypeOf(outer{})
+	fmt.Println(t.FieldByIndex([]int{0, 0}).Name)
+
+	o := outer{inner{1}, 2}
+	v := reflect.ValueOf(&o).Elem()
+	fmt.Println(v.FieldByIndex([]int{1}).Int(), v.FieldByIndex([]int{0, 0}).Int())
+
+	m := map[string]int{"only": 7}
+	it := reflect.ValueOf(m).MapRange()
+	for it.Next() {
+		fmt.Println(it.Key().String(), it.Value().Int())
+	}
+}
+`)
+}

@@ -1171,6 +1171,35 @@ function go2jsReflectValueMapKeys(receiver) {
 	return keys;
 }
 
+// go2jsReflectValueMapRange walks a map's entries one at a time, which is what
+// MapRange hands back: an iterator whose Next moves to the next entry and whose
+// Key and Value read the entry it stands on.
+function go2jsReflectValueMapRange(receiver) {
+	const keys = go2jsReflectValueMapKeys(receiver);
+	let at = 0;
+
+	return {
+		Next: function() {
+			if (at >= keys.length) {
+				return false;
+			}
+
+			at++;
+
+			return true;
+		},
+		Key: function() {
+			return keys[at - 1];
+		},
+		Value: function() {
+			return go2jsReflectValueMapIndex(receiver, keys[at - 1]);
+		},
+		Reset: function() {
+			at = 0;
+		}
+	};
+}
+
 // go2jsReflectValueSetMapIndex writes an entry of a map, and a value that is
 // not a value at all is the way a program asks for the entry to be removed.
 function go2jsReflectValueSetMapIndex(receiver, key, value) {
@@ -1478,6 +1507,26 @@ function go2jsReflectTypeField(receiver, index) {
 	}
 
 	return fields[index];
+}
+
+// go2jsReflectTypeFieldByIndex walks a path of field indexes down through
+// embedded structs, which is how a type names a field promoted from one.
+function go2jsReflectTypeFieldByIndex(receiver, index) {
+	const path = Array.from(index === null || index === undefined ? [] : index, (step) => Math.trunc(Number(step)));
+	let type = receiver;
+	let field = null;
+
+	for (const step of path) {
+		field = go2jsReflectTypeField(type, step);
+
+		if (field === null || field === undefined) {
+			return go2jsReflectStructField({Name: ""});
+		}
+
+		type = field.Type;
+	}
+
+	return field === null ? go2jsReflectStructField({Name: ""}) : Object.assign({}, field, {Index: path});
 }
 
 // go2jsReflectTypeFieldByName looks a struct field up by name, reaching the
@@ -2012,7 +2061,7 @@ const go2jsReflectValueMethods = {
 	SetLen: go2jsReflectValueSetLen,
 	MapIndex: go2jsReflectValueMapIndex,
 	MapKeys: go2jsReflectValueMapKeys,
-	MapRange: go2jsReflectValueMapKeys,
+	MapRange: go2jsReflectValueMapRange,
 	SetMapIndex: go2jsReflectValueSetMapIndex,
 	Slice: go2jsReflectValueSlice,
 	Append: go2jsReflectValueAppend,
@@ -2070,6 +2119,7 @@ const go2jsReflectTypeMethods = {
 	Kind: go2jsReflectTypeKindOf,
 	NumField: go2jsReflectTypeNumField,
 	Field: go2jsReflectTypeField,
+	FieldByIndex: go2jsReflectTypeFieldByIndex,
 	FieldByName: go2jsReflectTypeFieldByName,
 	MethodByName: go2jsReflectTypeMethodByName,
 	Elem: go2jsReflectTypeElemOf,
