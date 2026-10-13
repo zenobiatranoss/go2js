@@ -303,6 +303,24 @@ func main() {
 `)
 }
 
+func TestWidthCountsRunes(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+func main() {
+	// A width counts runes, so an astral character fills one cell of the width
+	// even though it is two code units wide in the host string.
+	fmt.Printf("[%5s][%-5s]\n", "😀", "😀")
+	fmt.Printf("[%2s][%3c]\n", "😀", '😀')
+	fmt.Printf("[%7q]\n", "a😀b")
+	fmt.Printf("[%10s]\n", "日本語")
+	fmt.Printf("[%7.3s]\n", "😀😀😀😀")
+	fmt.Printf("[%6v]\n", struct{ S string }{"😀"})
+}
+`)
+}
+
 func TestAnonymousStructFieldElementType(t *testing.T) {
 	runParityTest(t, `package main
 

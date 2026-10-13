@@ -22,7 +22,7 @@ the parity test is the one rule everything lives by.
   [stdlib-support.md](stdlib-support.md).
 - [x] **The parity loop.** `tests/integration` runs every example twice —
   `go run` and go2js + `node` — and fails on any output difference
-  (448 parity tests today).
+  (535 parity tests today).
 
 ## Phase 2 — deepen the standard library (in progress)
 
@@ -100,7 +100,7 @@ when the tests and the generated report say so, never by intent.
 - [ ] **Nothing outside the set lies.** A name the runtime does not answer
   fails to compile with a clear "not available" error; no name silently returns
   a wrong answer.
-- [ ] **The gates are green.** `./scripts/check.sh` and `./tests/goroot/run.sh`
+- [x] **The gates are green.** `./scripts/check.sh` and `./tests/goroot/run.sh`
   both pass.
 - [ ] **The docs match the code.** README, `limitations.md`, this roadmap and
   `stdlib-support.md` describe what the runtime actually does.

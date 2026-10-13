@@ -11952,12 +11952,35 @@ function go2jsBigintFormat(value, parsed, typeName, kind) {
 	return go2jsPad(body, {width: spec.width || 0, flags: flags.includes("+") || flags.includes(" ") || flags.includes("#") ? flags + "+" : flags, precision: precision}, true);
 }
 
+// go2jsTextWidth counts the runes of a text, since a Go width counts runes and
+// an astral character is two code units but one rune.
+function go2jsTextWidth(text) {
+	let width = 0;
+
+	for (let i = 0; i < text.length; i++) {
+		const code = text.charCodeAt(i);
+		width++;
+
+		if (code >= 0xd800 && code <= 0xdbff && i + 1 < text.length) {
+			const next = text.charCodeAt(i + 1);
+
+			if (next >= 0xdc00 && next <= 0xdfff) {
+				i++;
+			}
+		}
+	}
+
+	return width;
+}
+
 function go2jsPad(text, parsed, integer) {
-	if (parsed.width <= text.length) {
+	const width = go2jsTextWidth(text);
+
+	if (parsed.width <= width) {
 		return text;
 	}
 
-	const fill = parsed.width - text.length;
+	const fill = parsed.width - width;
 
 	if (parsed.flags.includes("-")) {
 		return text + " ".repeat(fill);

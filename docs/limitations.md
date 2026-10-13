@@ -33,10 +33,6 @@ corners. Read these before you promise a deadline around it.
 
 ## Where the runtime bends
 
-- **Formatting width counts UTF-16 units.** `fmt` pads a string by its number
-  of UTF-16 code units, so an astral character may pad one cell short. Go
-  counts runes. Parity tests avoid combining astral width checks with
-  padding below a known threshold.
 - **`math` is exact where Go's own code is portable.** Go writes `Exp`, `Exp2`
   and `Log` as platform assembly on amd64 and arm64, with a portable source
   fallback that rounds differently, so no JavaScript can match a `go run` on
