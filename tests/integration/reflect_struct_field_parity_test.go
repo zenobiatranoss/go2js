@@ -393,3 +393,43 @@ func main() {
 }
 `)
 }
+
+// A type says whether another can stand in its place and whether one can be
+// turned into the other, and a value is comparable when its type is, however
+// comparable the values happen to look. Convert moves a value across the pairs
+// Go allows, keeping a number's value and turning a string into the bytes or
+// runes it is made of.
+func TestReflectAssignConvertAndComparable(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"reflect"
+)
+
+type num struct{ N int }
+
+func main() {
+	fmt.Println(reflect.TypeOf(0).Comparable(), reflect.TypeOf([]int{}).Comparable())
+	fmt.Println(reflect.ValueOf(5).Comparable(), reflect.ValueOf([]int{}).Comparable())
+
+	fmt.Println(reflect.TypeOf(1).AssignableTo(reflect.TypeOf(2)))
+	fmt.Println(reflect.TypeOf(1).ConvertibleTo(reflect.TypeOf(1.5)))
+	fmt.Println(reflect.TypeOf("x").ConvertibleTo(reflect.TypeOf([]byte{})))
+	fmt.Println(reflect.TypeOf([]int{}).AssignableTo(reflect.TypeOf([]int{})))
+
+	c := reflect.ValueOf(65).Convert(reflect.TypeOf("x"))
+	fmt.Println(c.String(), c.Kind())
+
+	b := reflect.ValueOf("hi").Convert(reflect.TypeOf([]byte{}))
+	fmt.Println(b.Kind(), b.Len(), b.Index(0).Uint())
+
+	r := reflect.ValueOf([]rune{72, 105}).Convert(reflect.TypeOf(""))
+	fmt.Println(r.String())
+
+	t := reflect.TypeOf(num{})
+	fmt.Println(t.Kind(), t.NumField(), t.Field(0).Type.Kind(), t.Field(0).Type.String())
+	fmt.Println(reflect.ValueOf(num{N: 3}).Interface())
+}
+`)
+}
