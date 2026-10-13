@@ -22,7 +22,7 @@ the parity test is the one rule everything lives by.
   [stdlib-support.md](stdlib-support.md).
 - [x] **The parity loop.** `tests/integration` runs every example twice —
   `go run` and go2js + `node` — and fails on any output difference
-  (550 parity tests today).
+  (551 parity tests today).
 
 ## Phase 2 — deepen the standard library (in progress)
 
