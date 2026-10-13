@@ -1307,7 +1307,9 @@ function go2jsReflectTypeNumMethod(receiver) {
 }
 
 // go2jsReflectTypeMethod reports one method by the order Go sorted the method
-// set in, which is alphabetical by name.
+// set in, which is alphabetical by name. A method is a function, so its type
+// is reported as one; the signature is not spelled out, because the only thing
+// a program asks of a method type is that it is a function.
 function go2jsReflectTypeMethod(receiver, index) {
 	const methods = go2jsReflectMethodsOf(go2jsReflectValueType(receiver));
 
@@ -1315,7 +1317,42 @@ function go2jsReflectTypeMethod(receiver, index) {
 		throw new RangeError("reflect: Method index out of range");
 	}
 
-	return {Name: methods[index], Type: null, Index: index};
+	return {Name: methods[index], Type: go2jsReflectType("func", "", null, null, []), Index: index};
+}
+
+// go2jsReflectTypeComparable reports whether values of a type can be compared,
+// which is false for a slice, a map and a function and true for everything
+// else, down through the elements of an array and the fields of a struct.
+function go2jsReflectTypeComparable(receiver) {
+	return go2jsReflectComparable(go2jsReflectValueType(receiver));
+}
+
+function go2jsReflectComparable(type) {
+	const kind = go2jsReflectKind(type);
+
+	if (kind === "slice" || kind === "map" || kind === "func") {
+		return false;
+	}
+
+	if (kind === "array") {
+		const elem = go2jsReflectElem(type);
+
+		return elem !== null && elem !== undefined && go2jsReflectComparable(elem);
+	}
+
+	if (kind === "struct") {
+		const fields = Array.isArray(type.fields) ? type.fields : [];
+
+		for (const field of fields) {
+			const fieldType = go2jsReflectFieldTypeOf(field);
+
+			if (fieldType !== null && fieldType !== undefined && !go2jsReflectComparable(fieldType)) {
+				return false;
+			}
+		}
+	}
+
+	return true;
 }
 
 // go2jsReflectValueMethodByName looks a method up by name, which reports the
@@ -1530,7 +1567,8 @@ const go2jsReflectTypeMethods = {
 	Key: go2jsReflectTypeKey,
 	Len: go2jsReflectTypeLen,
 	NumMethod: go2jsReflectTypeNumMethod,
-	Method: go2jsReflectTypeMethod
+	Method: go2jsReflectTypeMethod,
+	Comparable: go2jsReflectTypeComparable
 };
 
 function go2jsReflectRegisterMethods() {
