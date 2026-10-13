@@ -138,3 +138,33 @@ func main() {
 }
 `)
 }
+
+// A month and a day outside their own ranges are written through the unsigned
+// number their bits make, so a month before January reads back as a very large
+// number rather than as a small negative one, the way Go writes it. The pieces
+// that name a day of the year and the ones that read a moment back out are
+// written the way Go writes them too.
+func TestTimeMonthWeekdayOutOfRange(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"time"
+)
+
+func main() {
+	for i := -2; i < 15; i++ {
+		fmt.Printf("%v|%v\n", time.Month(i), time.Weekday(i-2))
+	}
+
+	t := time.Date(2020, 3, 5, 13, 4, 5, 123456789, time.UTC)
+	for _, l := range []string{"002", "__2", "_2", "2", "2006-002", "15:04:05.999", "Z0700", "MST"} {
+		fmt.Printf("%q => %q\n", l, t.Format(l))
+	}
+
+	y, m, d := t.Date()
+	h, mi, s := t.Clock()
+	fmt.Println("Date", y, m, d, "Clock", h, mi, s)
+}
+`)
+}
