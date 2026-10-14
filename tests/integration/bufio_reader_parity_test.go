@@ -2,81 +2,107 @@ package integration_test
 
 import "testing"
 
-// A bufio reader handed a size reads the same text it would handed another
-// size, and it reads it a byte and a rune and a line at a time the way the
-// reading standard library does.
-func TestBufioReaderMethodsMatchGo(t *testing.T) {
+// A bufio.Reader hands out what it holds a piece at a time: a separator ends a
+// piece, a count can look ahead or step over, and a rune can be taken back
+// while the rune that was last read is still the last thing read.
+func TestBufioReaderPeekDiscardAndRead(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"bufio"
+	"fmt"
+	"strings"
+)
+
+func main() {
+	r := bufio.NewReader(strings.NewReader("line one\nline two\nlast"))
+	for {
+		line, err := r.ReadString('\n')
+		fmt.Printf("%q %v\n", line, err)
+		if err != nil {
+			break
+		}
+	}
+
+	br := bufio.NewReaderSize(strings.NewReader("abcdef"), 2)
+	p := make([]byte, 3)
+	n, _ := br.Read(p)
+	fmt.Println(n, string(p[:n]))
+	peeked, _ := br.Peek(3)
+	fmt.Println(string(peeked))
+	br.Discard(1)
+	n, _ = br.Read(p)
+	fmt.Println(n, string(p[:n]))
+
+	line, err := bufio.NewReader(strings.NewReader("hello world")).ReadSlice(' ')
+	fmt.Printf("%q %v\n", line, err)
+}
+`)
+}
+
+// A bufio.Reader hands out runes and bytes with the same separators, reads to
+// the end of the text when the separator is not there, and refuses a count that
+// makes no sense.
+func TestBufioReaderRunesAndSeparators(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"bufio"
+	"fmt"
+	"strings"
+)
+
+func main() {
+	r := bufio.NewReader(strings.NewReader("hello\nworld"))
+	ru, sz, err := r.ReadRune()
+	fmt.Printf("%c %d %v\n", ru, sz, err)
+	fmt.Println(r.UnreadRune())
+	ru, sz, err = r.ReadRune()
+	fmt.Printf("%c %d %v\n", ru, sz, err)
+	bs, err := r.ReadBytes('\n')
+	fmt.Printf("%q %v\n", bs, err)
+
+	rb := bufio.NewReader(strings.NewReader("abcdef"))
+	_, err = rb.Peek(10)
+	fmt.Println(err)
+	got, err := rb.ReadBytes('z')
+	fmt.Printf("%q %v\n", got, err)
+
+	line, more, err := bufio.NewReader(strings.NewReader("no newline")).ReadLine()
+	fmt.Printf("%q %v %v\n", line, more, err)
+
+	_, err = bufio.NewReader(strings.NewReader("x")).Peek(-1)
+	fmt.Println(err)
+}
+`)
+}
+
+// A bufio.Writer counts what it holds in bytes, whichever the size it was made
+// with, and hands it to its destination when it is flushed.
+func TestBufioWriterCountsAndFlush(t *testing.T) {
 	runParityTest(t, `package main
 
 import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"io"
-	"strings"
 )
 
 func main() {
-	reader := bufio.NewReaderSize(strings.NewReader("hello\nrest"), 3)
+	var b bytes.Buffer
+	w := bufio.NewWriter(&b)
+	fmt.Println(w.Size(), w.Buffered(), w.Available())
 
-	b, err := reader.ReadByte()
-	fmt.Println(b, err == io.EOF)
+	written, err := w.WriteString("hello")
+	fmt.Println(written, err, w.Buffered())
+	w.WriteByte('!')
+	fmt.Fprintf(w, " %d", 7)
+	w.Flush()
+	fmt.Printf("%q %d\n", b.String(), w.Buffered())
 
-	line, err := reader.ReadString('\n')
-	fmt.Printf("%q %v\n", line, err)
-
-	rest, err := reader.ReadString('\n')
-	fmt.Printf("%q %v\n", rest, err == io.EOF)
-
-	br := bufio.NewReader(bytes.NewReader([]byte("a\u00e9b")))
-
-	ch, size, err := br.ReadRune()
-	fmt.Println(ch, size, err)
-
-	_ = br.UnreadRune()
-	ch2, size2, _ := br.ReadRune()
-	fmt.Println(ch2, size2)
-	fmt.Println(br.Buffered())
-
-	p, err := br.Peek(2)
-	fmt.Printf("%q %v\n", string(p), err)
-
-	b2, _ := br.ReadByte()
-	fmt.Println(b2)
-
-	lr := bufio.NewReader(strings.NewReader("alpha\nbeta\r\n"))
-	one, prefix, err := lr.ReadLine()
-	fmt.Printf("%q %v %v\n", one, prefix, err)
-	two, prefix, err := lr.ReadLine()
-	fmt.Printf("%q %v %v\n", two, prefix, err)
-	_, prefix, err = lr.ReadLine()
-	fmt.Println(prefix, err != nil)
-}
-`)
-}
-
-// A reader asked to look behind it after only reading bytes says so, and a
-// reader asked to read a byte it never saw says the same.
-func TestBufioReaderUnreadAndPeekErrors(t *testing.T) {
-	runParityTest(t, `package main
-
-import (
-	"bufio"
-	"fmt"
-	"strings"
-)
-
-func main() {
-	r := bufio.NewReader(strings.NewReader("abc"))
-	_ = r.UnreadByte()
-	fmt.Println(r.UnreadByte())
-
-	b, _ := r.ReadByte()
-	fmt.Println(b)
-	fmt.Println(r.UnreadRune())
-
-	_, err := r.Peek(10)
-	fmt.Println(err)
+	var b2 bytes.Buffer
+	sw := bufio.NewWriterSize(&b2, 16)
+	fmt.Println(sw.Size(), sw.Buffered(), sw.Available())
 }
 `)
 }

@@ -344,6 +344,44 @@ function go2jsBufioNewReader(source) {
 			unreadRuneAllowed = false;
 			return [line, false, null];
 		},
+		Discard(count) {
+			count = Math.trunc(Number(count));
+
+			if (count < 0) {
+				return [0, go2jsErrorsNew("bufio: negative count")];
+			}
+
+			const skipped = Math.min(count, bytes.length - position);
+
+			position += skipped;
+			unreadByteAllowed = false;
+			unreadRuneAllowed = false;
+
+			return [skipped, skipped < count ? go2jsIOEOF() : null];
+		},
+		ReadSlice(separator) {
+			const stop = findSeparator(separator, true);
+
+			if (stop === -1) {
+				const chunk = bytes.slice(position);
+				position = bytes.length;
+				unreadByteAllowed = true;
+				unreadRuneAllowed = false;
+				return [chunk, go2jsIOEOF()];
+			}
+
+			const needle = go2jsStringToBytes(go2jsBufioSeparator(separator));
+			const end = stop + needle.length;
+			const chunk = bytes.slice(position, end);
+
+			position = end;
+			unreadByteAllowed = true;
+			unreadRuneAllowed = false;
+			return [chunk, null];
+		},
+		ReadBytes(separator) {
+			return this.ReadSlice(separator);
+		},
 	};
 }
 
@@ -352,30 +390,46 @@ function go2jsBufioNewReader(source) {
 // the writer it makes is the same writer, the way Go's writer of a given size
 // writes the same things a writer of any other size does.
 function go2jsBufioNewWriterSize(destination, size) {
-	return go2jsBufioNewWriter(destination);
+	const wanted = Math.trunc(Number(size));
+
+	return go2jsBufioNewWriterWithSize(destination, wanted > 0 ? wanted : 4096);
 }
 
 function go2jsBufioNewWriter(destination) {
+	return go2jsBufioNewWriterWithSize(destination, 4096);
+}
+
+function go2jsBufioNewWriterWithSize(destination, size) {
 	const target = go2jsUnwrap(destination);
 
 	let pending = "";
 
+	function held() {
+		return go2jsStringToBytes(pending).length;
+	}
+
 	return {
 		Write: function (chunk) {
-			const text = go2jsBytesToString(chunk);
-			pending += text;
-			return [text.length, null];
+			pending += go2jsBytesToString(chunk);
+			return [go2jsToArray(chunk).length, null];
 		},
 		WriteString: function (chunk) {
 			const text = go2jsStringify(chunk);
 			pending += text;
-			return [text.length, null];
+			return [go2jsStringToBytes(text).length, null];
 		},
 		WriteRune: function (value) {
 			return this.WriteString(String.fromCodePoint(Number(value)));
 		},
 		WriteByte: function (value) {
 			return this.WriteString(String.fromCharCode(Number(value) & 255));
+		},
+		Buffered: held,
+		Available: function () {
+			return Math.max(0, size - held());
+		},
+		Size: function () {
+			return size;
 		},
 		// Flushing says whether what was held got out, which is the one thing
 		// about the writing that can go wrong.
