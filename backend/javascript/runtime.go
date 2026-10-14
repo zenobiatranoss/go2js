@@ -13787,18 +13787,17 @@ const go2jsCaseLower = {
 
 function go2jsStringsToUpper(s) {
 	let out = "";
-	for (const ch of s) {
-		const cp = ch.codePointAt(0);
-		const mapped = go2jsCaseUpper[cp];
-		out += String.fromCodePoint(mapped === undefined ? cp : mapped);
+	for (const part of go2jsStringRuneParts(s)) {
+		const mapped = go2jsCaseUpper[part.rune];
+		out += String.fromCodePoint(mapped === undefined ? part.rune : mapped);
 	}
 	return out;
 }
 
 function go2jsStringsToLower(s) {
 	let out = "";
-	for (const ch of s) {
-		const cp = ch.codePointAt(0);
+	for (const part of go2jsStringRuneParts(s)) {
+		const cp = part.rune;
 		const mapped = go2jsCaseLower[cp];
 		out += String.fromCodePoint(mapped === undefined ? cp : mapped);
 	}
@@ -13953,11 +13952,18 @@ function go2jsStringsToValidUTF8(s, replacement) {
 		const width = go2jsUtf8Width(bytes, i);
 
 		if (width === 0) {
+			// A run of bytes that are not each the start of a valid sequence is
+			// one gap, so the replacement stands once for the whole run.
 			for (const item of fill) {
 				out.push(item);
 			}
 
 			i += 1;
+
+			while (i < bytes.length && bytes[i] >= 0x80 && go2jsUtf8Width(bytes, i) === 0) {
+				i += 1;
+			}
+
 			continue;
 		}
 

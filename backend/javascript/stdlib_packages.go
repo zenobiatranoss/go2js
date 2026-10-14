@@ -957,10 +957,11 @@ const go2jsTitleDigraphs = {
 };
 
 function go2jsStringsToTitle(value) {
-	return go2jsStringify(value).replace(/[\s\S]/g, char => {
-		const digraph = go2jsTitleDigraphs[char];
-		return digraph === undefined ? char.toUpperCase() : digraph;
-	});
+	return go2jsStringRuneParts(value).map(part => {
+		const titled = go2jsCaseTitle[part.rune];
+
+		return String.fromCodePoint(titled === undefined ? part.rune : titled);
+	}).join("");
 }
 
 function go2jsUTF8Length(char) {
@@ -978,18 +979,17 @@ function go2jsUTF8Length(char) {
 }
 
 function go2jsStringsLastIndexFunc(value, fn) {
-	const text = go2jsStringify(value);
-	const graphemes = Array.from(text);
-	let offset = 0;
+	const parts = go2jsStringRuneParts(value);
 	const starts = [];
+	let offset = 0;
 
-	for (const grapheme of graphemes) {
+	for (const part of parts) {
 		starts.push(offset);
-		offset += go2jsUTF8Length(grapheme);
+		offset += go2jsStringByteLength(part.text);
 	}
 
-	for (let index = graphemes.length - 1; index >= 0; index--) {
-		if (go2jsCallNow(fn, null, [graphemes[index].codePointAt(0)])) {
+	for (let index = parts.length - 1; index >= 0; index--) {
+		if (go2jsCallNow(fn, null, [parts[index].rune])) {
 			return starts[index];
 		}
 	}
