@@ -1079,6 +1079,18 @@ function go2jsTimeValue(date) {
         Weekday: function() {
             return fields(this).getUTCDay();
         },
+        ISOWeek: function() {
+            // The ISO year and week are read from the Thursday of the week the
+            // moment falls in, since the year that Thursday falls in is the year
+            // the whole week belongs to.
+            const local = fields(this);
+            const day = (local.getUTCDay() + 6) % 7;
+            const thursday = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate() + (3 - day)));
+            const year = thursday.getUTCFullYear();
+            const dayOfYear = Math.floor((thursday.getTime() - Date.UTC(year, 0, 1)) / 86400000) + 1;
+
+            return [year, Math.floor((dayOfYear - 1) / 7) + 1];
+        },
         UTC: function() {
             const next = go2jsTimeNanosCarry(this, go2jsTimeValue(this.value));
 
@@ -1185,6 +1197,33 @@ function go2jsTimeValue(date) {
         },
         Format: function(layout) {
             return go2jsTimeFormat(this.value, String(layout), this);
+        },
+        AppendFormat: function(b, layout) {
+            return go2jsAppend(b, ...go2jsStringToBytes(go2jsTimeFormat(this.value, String(layout), this)));
+        },
+        MarshalText: function() {
+            const text = go2jsTimeRFC3339Nano(this);
+
+            if (text === null) {
+                return [null, go2jsTimeYearRangeError("MarshalText")];
+            }
+
+            return [go2jsStringToBytes(text), null];
+        },
+        MarshalJSON: function() {
+            const text = go2jsTimeRFC3339Nano(this);
+
+            if (text === null) {
+                return [null, go2jsTimeYearRangeError("MarshalJSON")];
+            }
+
+            return [go2jsStringToBytes("\"" + text + "\""), null];
+        },
+        UnmarshalText: function(data) {
+            return go2jsTimeUnmarshal(this, go2jsRawText(data), false);
+        },
+        UnmarshalJSON: function(data) {
+            return go2jsTimeUnmarshal(this, go2jsRawText(data), true);
         },
         String: function() {
             return go2jsTimeString(this);
@@ -1402,6 +1441,55 @@ function go2jsTimeString(t) {
     suffix += String(seconds).padStart(width, "0") + "." + String(nanos).padStart(9, "0");
 
     return text + suffix;
+}
+
+// go2jsTimeRFC3339Nano is a moment written the way the JSON and text encoders
+// write it, which is the layout with the fractional seconds written only as far
+// as they go. A year that cannot be written in four digits has no text at all,
+// which those encoders report rather than writing.
+function go2jsTimeRFC3339Nano(t) {
+    const year = t.Year();
+
+    if (year < 0 || year > 9999) {
+        return null;
+    }
+
+    return go2jsTimeFormat(t.value, "2006-01-02T15:04:05.999999999Z07:00", t);
+}
+
+function go2jsTimeYearRangeError(method) {
+    return go2jsNameError(new Error("Time." + method + ": year outside of range [0,9999]"), "*errors.errorString");
+}
+
+// go2jsTimeUnmarshal reads a moment back out of its written form and gives the
+// fields of the receiver the moment that was read. The JSON form arrives with
+// the quotes a string value is written with and accepts the null that stands
+// for a value that was not there, which leaves the receiver as it was.
+function go2jsTimeUnmarshal(receiver, text, json) {
+    if (json) {
+        if (text === "null") {
+            return null;
+        }
+
+        if (text.length < 2 || text[0] !== "\"" || text[text.length - 1] !== "\"") {
+            return go2jsNameError(new Error("Time.UnmarshalJSON: input is not a JSON string"), "*errors.errorString");
+        }
+
+        text = text.slice(1, -1);
+    }
+
+    const [parsed, err] = go2jsTimeParse("2006-01-02T15:04:05.999999999Z07:00", text);
+
+    if (err !== null) {
+        return err;
+    }
+
+    receiver.value = parsed.value;
+    receiver.__go2js_nsec = parsed.__go2js_nsec;
+    receiver.__go2js_location = parsed.__go2js_location;
+    receiver.__go2js_zone = parsed.__go2js_zone;
+
+    return null;
 }
 
 // go2jsTimeFormat writes a time the way a layout asks for it. A layout is read
@@ -3229,6 +3317,20 @@ function go2jsJSONEncode(value, fields, omitEmpty, stringFields, textFields, pre
 
     if (value === null || value === undefined) {
         return null;
+    }
+
+    // A value that answers for itself as JSON is asked to, and the text it
+    // writes is put back as that text rather than read as a value, which is the
+    // way a time is written as the string it says it is.
+    if (typeof value === "object" && typeof value.MarshalJSON === "function") {
+        const answer = go2jsCallNow(value.MarshalJSON, value, []);
+        const written = Array.isArray(answer) ? answer : [answer, null];
+
+        if (written.length > 1 && written[1] !== null && written[1] !== undefined) {
+            throw written[1];
+        }
+
+        return go2jsJSONTextValue(go2jsBytesToString(written[0]), "json.RawMessage", prefix, indent);
     }
 
     // A number JSON cannot write is refused rather than written as nothing,
@@ -6873,6 +6975,13 @@ go2jsRegisterMethod("time.Month.String", function(value) {
 });
 go2jsRegisterMethod("time.Weekday.String", function(value) {
 	return go2jsWeekdayName(Number(go2jsUnwrap(value)));
+});
+
+// A span of time that was boxed as the type it was declared with holds a whole
+// number rather than the shape that carries the method, so the way it writes
+// itself is registered under the name of its type as well.
+go2jsRegisterMethod("time.Duration.String", function(value) {
+	return DurationString(value);
 });
 const go2jsInterfaces = Object.create(null);
 const go2jsStructFormats = Object.create(null);

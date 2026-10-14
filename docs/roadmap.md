@@ -22,7 +22,7 @@ the parity test is the one rule everything lives by.
   [stdlib-support.md](stdlib-support.md).
 - [x] **The parity loop.** `tests/integration` runs every example twice —
   `go run` and go2js + `node` — and fails on any output difference
-  (555 parity tests today).
+  (558 parity tests today).
 
 ## Phase 2 — deepen the standard library (in progress)
 
@@ -37,7 +37,7 @@ The work is one function at a time, each landing with its parity test.
 | `fmt` | the printing verbs are what most programs reach for | `%v %+v %#v`, `%q/%c/%g/%e/%f`, width and precision done; `Scan*` family, `Append*` remain |
 | `math` | pure functions, no I/O, ideal parity tests | **92%**: constants and core functions; the special functions (`J0`, `Lgamma`, …) remain. `Cbrt`, `Sin`, `Cos`, `Sincos`, `Tan`, `Asin`, `Acos`, `Atan`, `Atan2`, `Log1p`, `Expm1` and `Atanh` are ported from Go's portable source and match bit-for-bit; the rest answer to within a few units in the last place because Go's own `Exp`/`Exp2`/`Log` are platform assembly (see `limitations.md`) |
 | `math/big` | `Int`, `Float`, `Rat` — no JS equivalent exists | at the start (wrapper `Int` only) |
-| `time` | everyone formats dates | **83%**: layouts, months, durations, formatting + monotonic clock done; `Parse` now reads RFC3339, named and numeric zones, 12-hour markers, abbreviations and fractions — the `MST`-name dialect and `LoadLocation` zone databases are the gap left |
+| `time` | everyone formats dates | **83%**: layouts, months, durations, formatting + monotonic clock done; `Parse` reads RFC3339, named and numeric zones, 12-hour markers, abbreviations and optional fractions; a time writes and reads itself back as JSON and text and reports its ISO week — the `MST`-name dialect and `LoadLocation` zone databases are the gap left |
 | `net/http` | the flagship package | handler/routing/`ResponseRecorder` work; full request surface remains |
 | `strings`, `bytes` | daily drivers | high coverage; `Reader`/`Replacer`/`FieldsSeq` family remain |
 | `reflect` | type machinery is deep but self-contained | the identity of Types/Values is the hard part |
