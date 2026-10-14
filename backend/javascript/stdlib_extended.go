@@ -5301,7 +5301,12 @@ function go2jsErrorsAs(err, target, wanted) {
 		return true;
 	}
 
-	if (go2jsSameTypeName(go2jsErrorNameOf(err), wanted)) {
+	// An error made by the runtime names itself with the pointer Go shows under
+	// %T, while a target names the type the pointer points at, so the two agree
+	// once neither is read as a pointer.
+	const actual = String(go2jsErrorNameOf(err)).replace(/^\*/, "");
+
+	if (go2jsSameTypeName(actual, wanted)) {
 		go2jsStoreErrorTarget(target, err);
 
 		return true;

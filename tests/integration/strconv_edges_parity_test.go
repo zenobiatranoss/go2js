@@ -249,3 +249,33 @@ func main() {
 }
 `)
 }
+
+// A strconv error is a *strconv.NumError, so errors.As fills a target of that
+// type in and errors.Is names the condition through it, the way Go does.
+func TestStrconvNumErrorIsWrapped(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"errors"
+	"fmt"
+	"strconv"
+)
+
+func main() {
+	_, err := strconv.Atoi("x")
+
+	var ne *strconv.NumError
+	fmt.Println(errors.As(err, &ne))
+	fmt.Println(ne.Func, ne.Num, ne.Err)
+	fmt.Printf("%T %v\n", err, err)
+	fmt.Println(errors.Is(err, strconv.ErrSyntax))
+	fmt.Println(errors.Unwrap(err) == strconv.ErrSyntax)
+
+	_, rerr := strconv.Atoi("99999999999999999999")
+	var rne *strconv.NumError
+	fmt.Println(errors.As(rerr, &rne), rne.Func, rne.Num)
+	fmt.Println(errors.Is(rerr, strconv.ErrRange), errors.Is(err, strconv.ErrRange))
+	fmt.Println(rerr)
+}
+`)
+}

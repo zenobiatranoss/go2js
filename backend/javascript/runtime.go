@@ -14201,16 +14201,33 @@ function go2jsStrconvItoa(value, base) {
 // go2jsStrconvSyntaxError, go2jsStrconvRangeError and go2jsStrconvBaseError build
 // the errors Go raises while reading a value, worded as Go words them so a program
 // that prints an error prints what Go prints.
+// go2jsStrconvNumError builds the *strconv.NumError Go raises while reading a
+// value: it carries the function, the word that was read and the condition
+// that stopped it, so errors.As can hand the parts back and errors.Is can
+// reach the condition the way Go does.
+function go2jsStrconvNumError(name, text, err) {
+	const value = new Error("strconv." + name + ": parsing " + JSON.stringify(go2jsStringify(text)) + ": " + go2jsErrorMessage(err));
+
+	value.Func = name;
+	value.Num = go2jsStringify(text);
+	value.Err = err;
+	value.Unwrap = function go2jsStrconvNumErrorUnwrap() {
+		return err;
+	};
+
+	return go2jsNameError(value, "*strconv.NumError");
+}
+
 function go2jsStrconvSyntaxError(name, text) {
-	return new Error("strconv." + name + ": parsing " + JSON.stringify(go2jsStringify(text)) + ": invalid syntax");
+	return go2jsStrconvNumError(name, text, go2jsSentinelError("invalid syntax")());
 }
 
 function go2jsStrconvRangeError(name, text) {
-	return new Error("strconv." + name + ": parsing " + JSON.stringify(go2jsStringify(text)) + ": value out of range");
+	return go2jsStrconvNumError(name, text, go2jsSentinelError("value out of range")());
 }
 
 function go2jsStrconvBaseError(name, text, base) {
-	return new Error("strconv." + name + ": parsing " + JSON.stringify(go2jsStringify(text)) + ": invalid base " + base);
+	return go2jsStrconvNumError(name, text, go2jsSentinelError("invalid base " + base)());
 }
 
 // go2jsStrconvIsRangeError reports whether an error is the one Go raises for a
