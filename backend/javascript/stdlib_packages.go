@@ -428,22 +428,22 @@ function go2jsSortSliceIsSorted(a, less) {
 }
 
 function go2jsIOReadAtLeast(reader, buffer, min) {
-	const slice = go2jsSliceState(buffer);
-	const target = slice === null ? go2jsBytesReadSlot(buffer) || go2jsToArray(buffer) : new Array(slice.length).fill(0);
+	const length = go2jsLen(buffer);
 	const want = Math.max(0, Math.trunc(Number(min)));
+
+	if (length < want) {
+		return [0, go2jsIOErrShortBuffer()];
+	}
+
 	let total = 0;
 
-	while (total < target.length) {
-		const chunk = new Array(target.length - total).fill(0);
+	while (total < want) {
+		const chunk = new Array(length - total).fill(0);
 		const result = go2jsCallMethod(reader, "Read", chunk);
 		const read = Array.isArray(result) ? result[0] : Number(result);
 
 		if (!read || read <= 0) {
-			if (total >= want) {
-				return [total, null];
-			}
-
-			return [total, go2jsIOUnexpectedEOFErorror()];
+			return [total, total > 0 ? go2jsIOUnexpectedEOFErorror() : go2jsIOEOF()];
 		}
 
 		for (let index = 0; index < read; index++) {
@@ -503,85 +503,94 @@ function go2jsIOCopyBuffer(writer, reader, buffer) {
 }
 
 function go2jsNewSectionReader(reader, off, n) {
-	const start = Math.max(0, Math.trunc(Number(off)));
+	const base = Math.max(0, Math.trunc(Number(off)));
 	const length = Math.max(0, Math.trunc(Number(n)));
-	let position = 0;
-	let discarded = false;
+	const limit = base + length;
+	let position = base;
 
-	function readInto(target, base) {
+	function readChunk(target, absolute) {
 		const slot = go2jsBytesReadSlot(target);
 
-		if (position >= length || !slot) {
+		if (absolute < base || absolute >= limit || !slot) {
 			return [0, go2jsIOEOF()];
 		}
 
-		const want = Math.min(slot.length, length - position);
-		let chunk = new Array(want).fill(0);
-		let read;
+		const want = Math.min(slot.length, limit - absolute);
+		const chunk = new Array(want).fill(0);
+		const result = go2jsCallMethod(reader, "ReadAt", chunk, absolute);
+		const read = Array.isArray(result) ? result[0] : Number(result);
 
-		if (base === undefined) {
-			if (!discarded) {
-				discarded = true;
-				const skip = new Array(Math.min(start, 1 << 24)).fill(0);
-				const skipped = go2jsCallMethod(reader, "Read", skip);
-				const got = Array.isArray(skipped) ? skipped[0] : Number(skipped);
-
-				if (!got || got < start) {
-					return [0, go2jsIOEOF()];
-				}
-			}
-
-			const result = go2jsCallMethod(reader, "Read", chunk);
-			read = Array.isArray(result) ? result[0] : Number(result);
-		} else {
-			const result = go2jsCallMethod(reader, "ReadAt", chunk, start + base);
-			read = Array.isArray(result) ? result[0] : Number(result);
-		}
-
-		if (!read || read <= 0) {
-			return [0, go2jsIOEOF()];
-		}
-
-		const used = Math.min(read, want);
-
-		for (let index = 0; index < used; index++) {
+		for (let index = 0; index < read; index++) {
 			go2jsBytesStoreByte(target, index, chunk[index]);
 		}
 
-		position += used;
+		if (read < want) {
+			return [read, go2jsIOEOF()];
+		}
 
-		return [used, null];
+		return [read, null];
 	}
 
 	const section = {
 		__go2js_text: null,
-		Read: target => readInto(target),
-		ReadAt: (target, off) => readInto(target, Math.trunc(Number(off))),
+		Read(target) {
+			if (position >= limit) {
+				return [0, go2jsIOEOF()];
+			}
+
+			const result = readChunk(target, position);
+			position += result[0];
+
+			return result;
+		},
+		ReadAt(target, relative) {
+			return readChunk(target, base + Math.trunc(Number(relative)));
+		},
 		Seek(offset, whence) {
 			const delta = Math.trunc(Number(offset));
-			const base = whence === 1 ? position : whence === 2 ? length : 0;
-			const next = base + delta;
+			let next;
 
-			if (next < 0) {
-				return go2jsStdlibError("bytes.Reader.Seek: negative position");
+			if (whence === 0) {
+				next = base + delta;
+			} else if (whence === 1) {
+				next = position + delta;
+			} else if (whence === 2) {
+				next = limit + delta;
+			} else {
+				return [0, go2jsIOSeekWhenceError()];
+			}
+
+			if (next < base) {
+				return [0, go2jsIOSeekOffsetError()];
 			}
 
 			position = next;
 
-			return position;
+			return [position - base, null];
 		},
 		ReadByte() {
-			const one = new Array(1).fill(0);
-			const result = readInto(one);
+			if (position >= limit) {
+				return [0, go2jsIOEOF()];
+			}
 
-			return result[0] <= 0 ? 0 : Number(one[0]);
+			const one = new Array(1).fill(0);
+			const result = readChunk(one, position);
+
+			if (result[0] <= 0) {
+				return [0, go2jsIOEOF()];
+			}
+
+			position += 1;
+
+			return [one[0], null];
 		},
 		Size() {
 			return length;
 		},
+		Len() {
+			return Math.max(0, limit - position);
+		},
 	};
-
-	section.Len = section.Size;
 
 	return section;
 }
@@ -590,28 +599,54 @@ function go2jsNewOffsetWriter(writer, off) {
 	const base = Math.trunc(Number(off));
 	let position = base;
 
+	function writeAt(target, absolute) {
+		const chunk = go2jsToArray(target);
+		const slot = go2jsBytesReadSlot(chunk);
+		const view = slot === chunk ? chunk : new Array(chunk.length).fill(0);
+
+		for (let index = 0; index < chunk.length; index++) {
+			view[index] = chunk[index];
+		}
+
+		return go2jsCallMethod(writer, "WriteAt", view, absolute);
+	}
+
 	return {
 		__go2js_text: null,
-		Write(p) {
-			const chunk = go2jsToArray(p);
-			const slot = go2jsBytesReadSlot(chunk);
-			const view = slot === chunk ? chunk : new Array(chunk.length).fill(0);
+		Write(target) {
+			const result = writeAt(target, position);
+			position += Array.isArray(result) ? result[0] : Number(result);
 
-			for (let index = 0; index < chunk.length; index++) {
-				view[index] = chunk[index];
+			return result;
+		},
+		WriteAt(target, relative) {
+			const at = Math.trunc(Number(relative));
+
+			if (at < 0) {
+				return [0, go2jsIOSeekOffsetError()];
 			}
 
-			go2jsCallMethod(writer, "WriteAt", view, position);
-			position += view.length;
-
-			return view.length;
+			return writeAt(target, base + at);
 		},
 		Seek(offset, whence) {
 			const delta = Math.trunc(Number(offset));
-			const anchor = whence === 1 ? position : whence === 2 ? base : 0;
-			position = anchor + delta;
+			let next;
 
-			return position;
+			if (whence === 0) {
+				next = base + delta;
+			} else if (whence === 1) {
+				next = position + delta;
+			} else {
+				return [0, go2jsIOSeekWhenceError()];
+			}
+
+			if (next < base) {
+				return [0, go2jsIOSeekOffsetError()];
+			}
+
+			position = next;
+
+			return [position - base, null];
 		},
 	};
 }

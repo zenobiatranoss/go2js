@@ -135,6 +135,10 @@ var packageVarValues = map[string]string{
 	"context.DeadlineExceeded": "go2jsContextDeadlineExceeded",
 	"io.EOF":                   "go2jsIOEOFError",
 	"io.ErrUnexpectedEOF":      `go2jsSentinelError("unexpected EOF")`,
+	"io.ErrShortBuffer":        `go2jsSentinelError("short buffer")`,
+	"io.ErrShortWrite":         `go2jsSentinelError("short write")`,
+	"io.ErrClosedPipe":         `go2jsSentinelError("io: read/write on closed pipe")`,
+	"io.ErrNoProgress":         `go2jsSentinelError("multiple Read calls return no data or error")`,
 
 	"os.ErrNotExist":         `go2jsSentinelError("file does not exist")`,
 	"os.ErrExist":            `go2jsSentinelError("file already exists")`,
@@ -1628,6 +1632,10 @@ var packageVarTypes = map[string]string{
 	"context.DeadlineExceeded": "error",
 	"io.EOF":                   "error",
 	"io.ErrUnexpectedEOF":      "error",
+	"io.ErrShortBuffer":        "error",
+	"io.ErrShortWrite":         "error",
+	"io.ErrClosedPipe":         "error",
+	"io.ErrNoProgress":         "error",
 
 	"os.Args": "[]string",
 
@@ -5260,10 +5268,22 @@ function go2jsIOEOF() {
 	return go2jsSentinelError("EOF")();
 }
 
+function go2jsIOSeekWhenceError() {
+	return go2jsSentinelError("Seek: invalid whence")();
+}
+
+function go2jsIOSeekOffsetError() {
+	return go2jsSentinelError("Seek: invalid offset")();
+}
+
+function go2jsIOErrShortBuffer() {
+	return go2jsSentinelError("short buffer")();
+}
+
 function go2jsIODiscard() {
 	const writer = go2jsInterface({
 		Write(buffer) {
-			return go2jsToArray(buffer).length;
+			return [go2jsToArray(buffer).length, null];
 		},
 	}, "io.Writer");
 
@@ -5283,7 +5303,7 @@ function go2jsIOReadFull(reader, buffer) {
 		const read = Array.isArray(result) ? result[0] : Number(result);
 
 		if (!read || read <= 0) {
-			return [total, go2jsIOUnexpectedEOFErorror()];
+			return [total, total > 0 ? go2jsIOUnexpectedEOFErorror() : go2jsIOEOF()];
 		}
 
 		total += read;
@@ -5302,7 +5322,7 @@ function go2jsSliceFrom(value, start) {
 }
 
 function go2jsIOUnexpectedEOFErorror() {
-	return new Error("unexpected EOF");
+	return go2jsSentinelError("unexpected EOF")();
 }
 
 // go2jsNameError records the Go type an error value really has, because a
