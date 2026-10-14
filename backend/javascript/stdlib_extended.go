@@ -6636,6 +6636,10 @@ function go2jsRegexpMatchString(pattern, value) {
 // by a rune itself, and a match of no width at the place the last match ended is
 // left out, which is what Go does so the same empty place is not counted twice.
 function go2jsRegexpMatchWalk(regex, source, limit, visit) {
+	if (limit === 0) {
+		return;
+	}
+
 	let pos = 0;
 	let previousEnd = -1;
 	let count = 0;
@@ -6932,6 +6936,18 @@ function go2jsRegexpFindAllIndex(pattern, value, limit) {
 	return out;
 }
 
+// go2jsRegexpFindAllByte backs FindAll, which reports the whole match of each
+// step as bytes, without the capture groups FindAllSubmatch keeps.
+function go2jsRegexpFindAllByte(pattern, value, limit) {
+	const source = go2jsBytesToString(value);
+	const regex = go2jsRegexpNewRegExp(pattern, "g");
+	const out = [];
+
+	go2jsRegexpMatchWalk(regex, source, limit, (match) => out.push(go2jsStringToBytes(match[0])));
+
+	return out;
+}
+
 function go2jsRegexpFindAllByteSubmatch(pattern, value, limit) {
 	return go2jsRegexpFindAllSubmatch(pattern, value, limit).map((groups) =>
 		groups.map((group) => go2jsStringToBytes(group)));
@@ -6963,6 +6979,83 @@ function go2jsRegexpExpand(replacement, pattern) {
 	}
 
 	return text;
+}
+
+// go2jsRegexpExpandBytes backs Expand and ExpandString, which append the
+// template, with its $ references filled from a match, to the bytes given.
+function go2jsRegexpExpandBytes(dst, template, src, match, pattern) {
+	return go2jsStringToBytes(dst + go2jsRegexpExpandMatch(pattern, template, src, match));
+}
+
+// go2jsRegexpExpandMatch fills a template from one match. The match holds Go
+// byte offsets, so the text is taken through the map from byte to UTF-16 place.
+function go2jsRegexpExpandMatch(pattern, template, src, match) {
+	const names = go2jsRegexpSubmatchNames(pattern);
+	const map = go2jsStringIndexMap(src);
+	const groups = match === null || match === undefined ? [] : match;
+	let out = "";
+	let i = 0;
+
+	while (i < template.length) {
+		if (template[i] !== "$" || i + 1 >= template.length) {
+			out += template[i];
+			i++;
+			continue;
+		}
+
+		if (template[i + 1] === "$") {
+			out += "$";
+			i += 2;
+			continue;
+		}
+
+		let name;
+		let next;
+
+		if (template[i + 1] === "{") {
+			const close = template.indexOf("}", i + 2);
+
+			if (close < 0) {
+				out += "$";
+				i++;
+				continue;
+			}
+
+			name = template.slice(i + 2, close);
+			next = close + 1;
+		} else {
+			let end = i + 1;
+
+			while (end < template.length && /[A-Za-z0-9_]/.test(template[end])) {
+				end++;
+			}
+
+			name = template.slice(i + 1, end);
+			next = end;
+		}
+
+		if (name === "") {
+			out += "$";
+			i++;
+			continue;
+		}
+
+		let index = -1;
+
+		if (/^[0-9]+$/.test(name)) {
+			index = parseInt(name, 10);
+		} else {
+			index = names.indexOf(name);
+		}
+
+		if (index >= 0 && 2 * index + 1 < groups.length && groups[2 * index] >= 0) {
+			out += src.slice(map.index(groups[2 * index]), map.index(groups[2 * index + 1]));
+		}
+
+		i = next;
+	}
+
+	return out;
 }
 
 function go2jsRegexpSplit(pattern, value, limit) {

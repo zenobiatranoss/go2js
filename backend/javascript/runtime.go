@@ -1691,8 +1691,12 @@ function go2jsRegexpNew(pattern) {
         MatchString(value) {
             return go2jsRegexpNewRegExp(source).test(String(value));
         },
+        Match(value) {
+            return go2jsRegexpNewRegExp(source).test(go2jsBytesToString(value));
+        },
         Find(value) {
-            return go2jsRegexpByteSubmatch(exec(value).match);
+            const match = exec(value).match;
+            return match === null ? null : go2jsStringToBytes(match[0]);
         },
         FindString(value) {
             const match = exec(value).match;
@@ -1741,11 +1745,26 @@ function go2jsRegexpNew(pattern) {
         FindAllIndex(value, limit) {
             return go2jsRegexpFindAllIndex(source, value, limit);
         },
+        FindAll(value, limit) {
+            return go2jsRegexpFindAllByte(source, value, limit);
+        },
         ReplaceAllString(value, replacement) {
             return go2jsRegexpReplaceAllString(source, value, replacement);
         },
+        ReplaceAllLiteralString(value, replacement) {
+            return go2jsStringify(value).replace(go2jsRegexpNewRegExp(source, "g"), () => go2jsStringify(replacement));
+        },
+        Expand(dst, template, src, match) {
+            return go2jsRegexpExpandBytes(go2jsBytesToString(dst), go2jsBytesToString(template), go2jsBytesToString(src), match, source);
+        },
+        ExpandString(dst, template, src, match) {
+            return go2jsRegexpExpandBytes(go2jsBytesToString(dst), go2jsStringify(template), go2jsStringify(src), match, source);
+        },
+        Copy() {
+            return go2jsRegexpNew(source);
+        },
         ReplaceAll(value, replacement) {
-            return go2jsBytesToString(value).replace(go2jsRegexpNewRegExp(source, "g"), go2jsRegexpExpand(replacement, source));
+            return go2jsStringToBytes(go2jsBytesToString(value).replace(go2jsRegexpNewRegExp(source, "g"), go2jsRegexpExpand(go2jsBytesToString(replacement), source)));
         },
         Replace(value, replacement) {
             return go2jsStringify(value).replace(go2jsRegexpNewRegExp(source), go2jsRegexpExpand(replacement, source));
@@ -1754,13 +1773,13 @@ function go2jsRegexpNew(pattern) {
             return go2jsStringify(value).replace(go2jsRegexpNewRegExp(source), () => go2jsStringify(replacement));
         },
         ReplaceAllLiteral(value, replacement) {
-            return go2jsStringify(value).replace(go2jsRegexpNewRegExp(source, "g"), () => go2jsStringify(replacement));
+            return go2jsStringToBytes(go2jsBytesToString(value).replace(go2jsRegexpNewRegExp(source, "g"), () => go2jsBytesToString(replacement)));
         },
         ReplaceAllStringFunc(value, replacer) {
             return String(value).replace(go2jsRegexpNewRegExp(source, "g"), match => go2jsCallNow(replacer, null, [match]));
         },
         ReplaceAllFunc(value, replacer) {
-            return go2jsBytesToString(value).replace(go2jsRegexpNewRegExp(source, "g"), match => go2jsCallNow(replacer, null, [match]));
+            return go2jsStringToBytes(go2jsBytesToString(value).replace(go2jsRegexpNewRegExp(source, "g"), match => go2jsBytesToString(go2jsCallNow(replacer, null, [go2jsStringToBytes(match)]))));
         },
         ReplaceStringFunc(value, replacer) {
             return String(value).replace(go2jsRegexpNewRegExp(source), match => go2jsCallNow(replacer, null, [match]));
