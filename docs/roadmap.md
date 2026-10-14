@@ -22,7 +22,7 @@ the parity test is the one rule everything lives by.
   [stdlib-support.md](stdlib-support.md).
 - [x] **The parity loop.** `tests/integration` runs every example twice —
   `go run` and go2js + `node` — and fails on any output difference
-  (553 parity tests today).
+  (554 parity tests today).
 
 ## Phase 2 — deepen the standard library (in progress)
 
@@ -33,7 +33,7 @@ The work is one function at a time, each landing with its parity test.
 
 | target | why it's next | status |
 | ------ | ------------- | ------ |
-| `strconv` | formatting edge cases are the highest-leverage parity | **97%**: formatting, quote family, `ParseFloat`-family rounding and the error sentinels done; `NumError` wrapping is the honest gap left |
+| `strconv` | formatting edge cases are the highest-leverage parity | **97%**: formatting, quote family, `ParseFloat`-family rounding, the error sentinels and `NumError` wrapping done |
 | `fmt` | the printing verbs are what most programs reach for | `%v %+v %#v`, `%q/%c/%g/%e/%f`, width and precision done; `Scan*` family, `Append*` remain |
 | `math` | pure functions, no I/O, ideal parity tests | **92%**: constants and core functions; the special functions (`J0`, `Lgamma`, …) remain. `Cbrt`, `Sin`, `Cos`, `Sincos`, `Tan`, `Asin`, `Acos`, `Atan`, `Atan2`, `Log1p`, `Expm1` and `Atanh` are ported from Go's portable source and match bit-for-bit; the rest answer to within a few units in the last place because Go's own `Exp`/`Exp2`/`Log` are platform assembly (see `limitations.md`) |
 | `math/big` | `Int`, `Float`, `Rat` — no JS equivalent exists | at the start (wrapper `Int` only) |
