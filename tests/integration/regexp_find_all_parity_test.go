@@ -70,3 +70,56 @@ func main() {
 }
 `)
 }
+
+// The byte methods return bytes rather than strings, so a whole-match find-all
+// is flat while a submatch find-all keeps the groups, and the replace methods
+// answer in bytes. Expand fills a template from a match, and a limit of zero
+// asks for no matches at all.
+func TestRegexpByteMethodsAndExpandMatchGo(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"fmt"
+	"regexp"
+)
+
+func main() {
+	re := regexp.MustCompile(`+"`(\\d+)-(\\d+)`"+`)
+	s := "12-34 56-78"
+	b := []byte(s)
+
+	fmt.Println(re.FindAllString(s, 0), re.FindAllStringIndex(s, 0))
+	fmt.Printf("%q\n", re.Find(b))
+	fmt.Println(re.FindIndex(b))
+	fmt.Printf("%q\n", re.FindSubmatch(b))
+	fmt.Println(re.FindSubmatchIndex(b))
+	fmt.Printf("%q\n", re.FindAll(b, -1))
+	fmt.Printf("%q\n", re.FindAllSubmatch(b, -1))
+	fmt.Println(re.FindAllSubmatchIndex(b, -1))
+	fmt.Println(re.Match(b), re.Match([]byte("nope")))
+
+	fmt.Printf("%q\n", re.ReplaceAll(b, []byte("[$2/$1]")))
+	fmt.Printf("%q\n", re.ReplaceAllLiteral(b, []byte("$1")))
+	fmt.Printf("%q\n", re.ReplaceAllFunc(b, func(m []byte) []byte { return []byte("<" + string(m) + ">") }))
+	fmt.Printf("%q\n", re.ReplaceAllLiteralString(s, "$1"))
+	fmt.Println(re.ReplaceAllString(s, "${2}x${1}"))
+
+	named := regexp.MustCompile("(?P<y>[0-9]+)-(?P<m>[0-9]+)")
+	idx := named.FindStringSubmatchIndex("2023-06")
+	fmt.Printf("%q\n", named.ExpandString(nil, "${y}/${m}", "2023-06", idx))
+	fmt.Printf("%q\n", named.Expand(nil, []byte("$m.$y"), []byte("2023-06"), idx))
+	fmt.Printf("%q\n", regexp.MustCompile("(a)(b)?").ExpandString(nil, "-$1-$2-", "a", regexp.MustCompile("(a)(b)?").FindStringSubmatchIndex("a")))
+
+	copied := named.Copy()
+	fmt.Println(copied.String(), copied.FindString("1999-12"), copied.NumSubexp())
+
+	// A subject outside the BMP, so the byte offsets and the text differ.
+	uni := regexp.MustCompile("(.)(.)")
+	for _, sub := range []string{"éa", "😀b"} {
+		fmt.Println(uni.FindAllStringIndex(sub, -1))
+		fmt.Printf("%q\n", uni.FindAllStringSubmatch(sub, -1))
+		fmt.Printf("%q\n", uni.ReplaceAllString(sub, "$2$1"))
+	}
+}
+`)
+}
