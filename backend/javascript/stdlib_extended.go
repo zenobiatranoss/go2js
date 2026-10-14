@@ -1708,14 +1708,14 @@ function go2jsCodePoints(value) {
 	}
 
 	if (typeof value === "string") {
-		return Array.from(value).map(char => char.codePointAt(0));
+		return go2jsStringToRunes(value);
 	}
 
 	if (value === null || value === undefined) {
 		return [];
 	}
 
-	return Array.from(go2jsRawText(value)).map(char => char.codePointAt(0));
+	return go2jsStringToRunes(value);
 }
 
 function go2jsRawText(value) {
@@ -1756,7 +1756,45 @@ function go2jsRawText(value) {
 }
 
 function go2jsStringToRunes(value) {
-	return Array.from(go2jsRawText(value)).map(char => char.codePointAt(0));
+	return go2jsStringRuneParts(value).map(part => part.rune);
+}
+
+// go2jsStringRuneParts walks a Go string one rune at a time the way a range
+// does, pairing each rune with the piece of the string it was written as. A
+// byte that is not the UTF-8 of a rune reads as the replacement rune and keeps
+// its one byte, which is what Go reads there and what keeps the byte when a
+// text is built back up from the parts.
+function go2jsStringRuneParts(value) {
+	const text = go2jsRawText(value);
+	const parts = [];
+	let i = 0;
+
+	while (i < text.length) {
+		const unit = text.charCodeAt(i);
+
+		if (unit >= 0xdc00 && unit <= 0xdfff && (i === 0 || text.charCodeAt(i - 1) < 0xd800 || text.charCodeAt(i - 1) > 0xdbff)) {
+			parts.push({ rune: 0xfffd, text: text[i] });
+			i += 1;
+			continue;
+		}
+
+		let code = unit;
+		let width = 1;
+
+		if (unit >= 0xd800 && unit <= 0xdbff && i + 1 < text.length) {
+			const low = text.charCodeAt(i + 1);
+
+			if (low >= 0xdc00 && low <= 0xdfff) {
+				code = (unit - 0xd800) * 0x400 + (low - 0xdc00) + 0x10000;
+				width = 2;
+			}
+		}
+
+		parts.push({ rune: code, text: text.slice(i, i + width) });
+		i += width;
+	}
+
+	return parts;
 }
 
 // A slice converted from nothing is nil, and nil answers to the question, so
@@ -2134,24 +2172,34 @@ function go2jsStringsLastIndexByte(value, b) {
 }
 
 function go2jsStringsIndexRune(value, r) {
-	const target = String.fromCodePoint(Number(r));
-	const { chars, starts } = go2jsStringsByteOffsets(go2jsStringify(value));
+	const target = Number(r);
+	const parts = go2jsStringRuneParts(value);
+	let offset = 0;
 
-	for (let index = 0; index < chars.length; index++) {
-		if (chars[index] === target) {
-			return starts[index];
+	for (const part of parts) {
+		if (part.rune === target) {
+			return offset;
 		}
+
+		offset += go2jsStringByteLength(part.text);
 	}
 
 	return -1;
 }
 
 function go2jsStringsLastIndexRune(value, r) {
-	const target = String.fromCodePoint(Number(r));
-	const { chars, starts } = go2jsStringsByteOffsets(go2jsStringify(value));
+	const target = Number(r);
+	const parts = go2jsStringRuneParts(value);
+	const starts = [];
+	let offset = 0;
 
-	for (let index = chars.length - 1; index >= 0; index--) {
-		if (chars[index] === target) {
+	for (const part of parts) {
+		starts.push(offset);
+		offset += go2jsStringByteLength(part.text);
+	}
+
+	for (let index = parts.length - 1; index >= 0; index--) {
+		if (parts[index].rune === target) {
 			return starts[index];
 		}
 	}
@@ -2160,32 +2208,24 @@ function go2jsStringsLastIndexRune(value, r) {
 }
 
 function go2jsStringsByteOffsets(text) {
-	const chars = Array.from(text);
+	const parts = go2jsStringRuneParts(text);
+	const chars = parts.map(part => part.text);
 	const starts = [];
 	let offset = 0;
 
 	for (const char of chars) {
 		starts.push(offset);
-
-		const code = char.codePointAt(0);
-
-		if (code < 0x80) {
-			offset += 1;
-		} else if (code < 0x800) {
-			offset += 2;
-		} else {
-			offset += code < 0x10000 ? 3 : 4;
-		}
+		offset += go2jsStringByteLength(char);
 	}
 
-	return { chars, starts };
+	return { chars, starts, runes: parts.map(part => part.rune) };
 }
 
 function go2jsStringsIndexFunc(value, predicate) {
-	const { chars, starts } = go2jsStringsByteOffsets(go2jsStringify(value));
+	const { starts, runes } = go2jsStringsByteOffsets(go2jsStringify(value));
 
-	for (let index = 0; index < chars.length; index++) {
-		if (go2jsCallNow(predicate, null, [chars[index].codePointAt(0)])) {
+	for (let index = 0; index < runes.length; index++) {
+		if (go2jsCallNow(predicate, null, [runes[index]])) {
 			return starts[index];
 		}
 	}
@@ -2198,12 +2238,12 @@ function go2jsStringsContainsFunc(value, predicate) {
 }
 
 function go2jsStringsFieldsFunc(value, predicate) {
-	const chars = Array.from(go2jsStringify(value));
+	const parts = go2jsStringRuneParts(value);
 	const out = [];
 	let current = "";
 
-	for (const char of chars) {
-		if (go2jsCallNow(predicate, null, [char.codePointAt(0)])) {
+	for (const char of parts) {
+		if (go2jsCallNow(predicate, null, [char.rune])) {
 			if (current !== "") {
 				out.push(current);
 				current = "";
@@ -2212,7 +2252,7 @@ function go2jsStringsFieldsFunc(value, predicate) {
 			continue;
 		}
 
-		current += char;
+		current += char.text;
 	}
 
 	if (current !== "") {
@@ -2245,41 +2285,41 @@ function go2jsStringsSplitAfterN(value, sep, n) {
 }
 
 function go2jsStringsTrimFunc(value, predicate) {
-	const chars = Array.from(go2jsStringify(value));
+	const parts = go2jsStringRuneParts(value);
 	let start = 0;
-	let end = chars.length;
+	let end = parts.length;
 
-	while (start < end && go2jsCallNow(predicate, null, [chars[start].codePointAt(0)])) {
+	while (start < end && go2jsCallNow(predicate, null, [parts[start].rune])) {
 		start++;
 	}
 
-	while (end > start && go2jsCallNow(predicate, null, [chars[end - 1].codePointAt(0)])) {
+	while (end > start && go2jsCallNow(predicate, null, [parts[end - 1].rune])) {
 		end--;
 	}
 
-	return chars.slice(start, end).join("");
+	return parts.slice(start, end).map(part => part.text).join("");
 }
 
 function go2jsStringsTrimLeftFunc(value, predicate) {
-	const chars = Array.from(go2jsStringify(value));
+	const parts = go2jsStringRuneParts(value);
 	let start = 0;
 
-	while (start < chars.length && go2jsCallNow(predicate, null, [chars[start].codePointAt(0)])) {
+	while (start < parts.length && go2jsCallNow(predicate, null, [parts[start].rune])) {
 		start++;
 	}
 
-	return chars.slice(start).join("");
+	return parts.slice(start).map(part => part.text).join("");
 }
 
 function go2jsStringsTrimRightFunc(value, predicate) {
-	const chars = Array.from(go2jsStringify(value));
-	let end = chars.length;
+	const parts = go2jsStringRuneParts(value);
+	let end = parts.length;
 
-	while (end > 0 && go2jsCallNow(predicate, null, [chars[end - 1].codePointAt(0)])) {
+	while (end > 0 && go2jsCallNow(predicate, null, [parts[end - 1].rune])) {
 		end--;
 	}
 
-	return chars.slice(0, end).join("");
+	return parts.slice(0, end).map(part => part.text).join("");
 }
 
 function go2jsStringsTrimLeft(value, cutset) {
@@ -2294,14 +2334,18 @@ function go2jsStringsTitle(value) {
 	let out = "";
 	let prev = 0x20;
 
-	for (const char of go2jsStringify(value)) {
-		const r = char.codePointAt(0);
+	for (const char of go2jsStringRuneParts(value)) {
+		const r = char.rune;
 
 		if (go2jsStringsTitleSeparator(prev)) {
 			const t = go2jsCaseTitle[r];
 			out += String.fromCodePoint(t === undefined ? r : t);
+		} else if (r === 0xfffd) {
+			// A byte that is not the UTF-8 of a rune reads as RuneError, and
+			// what is written back is that rune rather than the raw byte.
+			out += "\ufffd";
 		} else {
-			out += char;
+			out += char.text;
 		}
 
 		prev = r;
@@ -2327,15 +2371,15 @@ function go2jsStringsTitleSeparator(r) {
 }
 
 function go2jsStringsMap(mapping, value) {
-	return Array.from(go2jsRawText(value))
-		.map(char => go2jsCallNow(mapping, null, [char.codePointAt(0)]))
+	return go2jsStringRuneParts(value)
+		.map(part => go2jsCallNow(mapping, null, [part.rune]))
 		.filter(code => code >= 0)
 		.map(code => String.fromCodePoint(code))
 		.join("");
 }
 
 function go2jsStringsContainsRune(value, r) {
-	return go2jsStringify(value).includes(String.fromCodePoint(Number(r)));
+	return go2jsStringsIndexRune(value, r) >= 0;
 }
 
 function go2jsStringsNewReplacer(...args) {
@@ -4602,11 +4646,11 @@ function go2jsBytesTitle(a) {
 
 
 function go2jsBytesToLower(a) {
-	return go2jsStringToBytes(go2jsRawText(a).toLowerCase());
+	return go2jsStringToBytes(go2jsStringsToLower(go2jsRawText(a)));
 }
 
 function go2jsBytesToUpper(a) {
-	return go2jsStringToBytes(go2jsRawText(a).toUpperCase());
+	return go2jsStringToBytes(go2jsStringsToUpper(go2jsRawText(a)));
 }
 
 function go2jsBytesTrim(a, cutset) {
