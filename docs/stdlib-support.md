@@ -47,7 +47,7 @@ of the package is a compile-time error yet.
 | html         | 2       | 2     | 100  % | none |
 | html/template | 9       | 37    | 24   % | ErrAmbigContext, ErrBadHTML, ErrBranchEnd, ErrEndContext, ErrJSTemplate, ErrNoSuchTemplate, ErrOutputContext, ErrPartialCharset, ErrPartialEscape, ErrPredefinedEscaper, ErrRangeLoopReentry, ErrSlashAmbig, … |
 | http (`net/http`) | 109     | 184   | 59   % | AllowQuerySemicolons, CanonicalHeaderKey, CloseNotifier, ConnState, CookieJar, DefaultTransport, DetectContentType, Dir, ErrAbortHandler, ErrBodyNotAllowed, ErrBodyReadAfterClose, ErrContentLength, … |
-| io           | 20      | 52    | 38   % | ByteReader, ByteScanner, ByteWriter, Closer, ErrClosedPipe, ErrNoProgress, ErrShortBuffer, ErrShortWrite, LimitedReader, OffsetWriter, Pipe, PipeReader, … |
+| io           | 24      | 52    | 46   % | ByteReader, ByteScanner, ByteWriter, Closer, LimitedReader, OffsetWriter, Pipe, PipeReader, PipeWriter, ReadCloser, ReadSeekCloser, ReadSeeker, … |
 | io/fs        | 17      | 45    | 37   % | DirEntry, ErrClosed, ErrExist, ErrInvalid, ErrNotExist, ErrPermission, FS, File, FileInfo, FileInfoToDirEntry, FileMode, FormatDirEntry, … |
 | json (`encoding/json`) | 9       | 25    | 36   % | Decoder, Delim, Encoder, InvalidUTF8Error, InvalidUnmarshalError, Marshaler, MarshalerError, Number, RawMessage, SyntaxError, Token, UnmarshalFieldError, … |
 | log          | 26      | 27    | 96   % | Logger |
@@ -84,4 +84,4 @@ of the package is a compile-time error yet.
 | url (`net/url`) | 11      | 16    | 68   % | Error, EscapeError, InvalidHostError, Userinfo, Values |
 | utf8 (`unicode/utf8`) | 19      | 19    | 100  % | none |
 
-**Total: 1145 of 2086 package-level exported names (54%) covered across 73 packages.**
+**Total: 1149 of 2086 package-level exported names (55%) covered across 73 packages.**
