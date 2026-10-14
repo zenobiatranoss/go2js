@@ -3208,10 +3208,10 @@ function go2jsJSONMarshal(value, fields, omitEmpty, stringFields, textFields, pr
 // all a raw message is: the text of a value, held as that text.
 function go2jsJSONRawMessage(value) {
     if (typeof value === "string") {
-        return value;
+        return go2jsStringToBytes(value);
     }
 
-    return go2jsBytesToString(value);
+    return value;
 }
 
 // go2jsJSONMarshalAsText writes out a value that is itself text rather than a
@@ -3236,6 +3236,14 @@ function go2jsJSONMarshalAsText(value, typeName, prefix, indent, escapeHTML) {
 
             if (held === "") {
                 return ["null", null];
+            }
+
+            // A message whose text is not a whole value is refused the way Go
+            // refuses it, naming the character that made the text no value.
+            const scanError = go2jsJSONScanErrorOf(held);
+
+            if (scanError !== "") {
+                return [null, new Error("json: error calling MarshalJSON for type json.RawMessage: " + scanError)];
             }
 
             const compact = go2jsJSONCompact(held);
@@ -3263,6 +3271,19 @@ function go2jsJSONMarshalAsText(value, typeName, prefix, indent, escapeHTML) {
     } catch (err) {
         return [null, new Error("json: error calling MarshalJSON for type " + typeName + ": invalid character")];
     }
+}
+
+// go2jsJSONMarshalText writes out a value that is itself text as the bytes
+// Marshal hands back, since the first thing Marshal returns is a slice of bytes
+// whatever the value was, and a byte slice is read differently from a string.
+function go2jsJSONMarshalText(value, typeName, prefix, indent, escapeHTML) {
+    const written = go2jsJSONMarshalAsText(value, typeName, prefix, indent, escapeHTML);
+
+    if (written[1] !== null && written[1] !== undefined) {
+        return written;
+    }
+
+    return [go2jsStringToBytes(written[0]), null];
 }
 
 // go2jsJSONEncoderEncodeAsText is an encoder handed a value that is itself text
@@ -5546,8 +5567,15 @@ function go2jsJSONNewDecoder(reader) {
         position: 0,
         eof: false,
         useNumber: false,
+        disallowUnknown: false,
         stack: []
     };
+}
+
+// go2jsJSONDecoderDisallowUnknownFields asks a decoder to refuse a field the
+// value being read into has no home for, rather than passing it over.
+function go2jsJSONDecoderDisallowUnknownFields(decoder) {
+    decoder.disallowUnknown = true;
 }
 
 // go2jsJSONDecoderUseNumber asks a decoder to keep the text of every number it
@@ -5680,14 +5708,18 @@ function go2jsJSONDecoderDecode(decoder, target, fields, destination, stringFiel
     decoder.position += text.length;
 
     // A decoder that was asked for the text of numbers has it while the read
-    // runs, and one that was not leaves the flag as it found it.
+    // runs, and one that was not leaves the flag as it found it. The flag that
+    // refuses an unknown field is held the same way.
     const previous = go2jsJSONNumberAsText;
+    const previousUnknown = go2jsJSONDisallowUnknown;
     go2jsJSONNumberAsText = decoder.useNumber === true;
+    go2jsJSONDisallowUnknown = decoder.disallowUnknown === true;
 
     try {
         return go2jsJSONUnmarshal(text, target, fields, destination, stringFields, fieldTypes);
     } finally {
         go2jsJSONNumberAsText = previous;
+        go2jsJSONDisallowUnknown = previousUnknown;
     }
 }
 
@@ -5792,6 +5824,10 @@ let go2jsJSONFirstError = null;
 // A read a decoder asked for the text of numbers keeps every number as the text
 // it was written with rather than as the double that text stands for.
 let go2jsJSONNumberAsText = false;
+
+// A read a decoder asked to refuse fields it does not know reports the first
+// field the destination declares no home for rather than passing over it.
+let go2jsJSONDisallowUnknown = false;
 
 function go2jsJSONSaveError(err) {
     if (go2jsJSONFirstError === null) {
@@ -6116,6 +6152,27 @@ function go2jsJSONDecode(value, target, fields, stringFields, fieldTypes, text, 
 
             if (!matched && key in target) {
                 name = key;
+            }
+        }
+
+        // A decoder asked to refuse the fields it does not know reports the
+        // first key the destination declares no home for, the way Go names it,
+        // and goes on reading so the fields that do fit are still there beside
+        // the failure. A field a tag wrote off is no home for the key either.
+        if (go2jsJSONDisallowUnknown && fields) {
+            let known = Object.prototype.hasOwnProperty.call(fields, key);
+
+            if (!known) {
+                for (const field of Object.keys(fields)) {
+                    if (fields[field] === key || go2jsJSONFold(fields[field]) === go2jsJSONFold(key)) {
+                        known = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!known) {
+                go2jsJSONSaveError(go2jsJSONError("json: unknown field " + JSON.stringify(key)));
             }
         }
 

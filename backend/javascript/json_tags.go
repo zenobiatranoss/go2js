@@ -280,7 +280,7 @@ func (e *emitter) emitJSONCall(call *ast.CallExpr, selector *ast.SelectorExpr) (
 		// the text in quotes and make of it something else
 		if name, ok := jsonTextValueType(e.analyzedType(call.Args[0])); ok {
 			e.needsRuntime = true
-			e.write("go2jsJSONMarshalAsText(")
+			e.write("go2jsJSONMarshalText(")
 
 			if err := e.emitExpr(call.Args[0]); err != nil {
 				return true, err
@@ -381,20 +381,21 @@ func (e *emitter) emitJSONCall(call *ast.CallExpr, selector *ast.SelectorExpr) (
 // the type that has the method and the method itself, which is how the emitter
 // tells a call on an encoder apart from any other call.
 var jsonStreamMethods = map[string]bool{
-	"encoding/json.Encoder.Encode":           true,
-	"encoding/json.Encoder.SetIndent":        true,
-	"encoding/json.Encoder.SetEscapeHTML":    true,
-	"encoding/json.Decoder.Decode":           true,
-	"encoding/json.Decoder.UseNumber":        true,
-	"encoding/json.Decoder.More":             true,
-	"encoding/json.Decoder.Buffered":         true,
-	"encoding/json.Decoder.Token":            true,
-	"encoding/json.Delim.String":             true,
-	"encoding/json.Number.String":            true,
-	"encoding/json.Number.Int64":             true,
-	"encoding/json.Number.Float64":           true,
-	"encoding/json.RawMessage.MarshalJSON":   true,
-	"encoding/json.RawMessage.UnmarshalJSON": true,
+	"encoding/json.Encoder.Encode":                true,
+	"encoding/json.Encoder.SetIndent":             true,
+	"encoding/json.Encoder.SetEscapeHTML":         true,
+	"encoding/json.Decoder.Decode":                true,
+	"encoding/json.Decoder.UseNumber":             true,
+	"encoding/json.Decoder.DisallowUnknownFields": true,
+	"encoding/json.Decoder.More":                  true,
+	"encoding/json.Decoder.Buffered":              true,
+	"encoding/json.Decoder.Token":                 true,
+	"encoding/json.Delim.String":                  true,
+	"encoding/json.Number.String":                 true,
+	"encoding/json.Number.Int64":                  true,
+	"encoding/json.Number.Float64":                true,
+	"encoding/json.RawMessage.MarshalJSON":        true,
+	"encoding/json.RawMessage.UnmarshalJSON":      true,
 }
 
 // emitJSONMethodCall writes a call on an encoder or a decoder. The value that
@@ -497,6 +498,16 @@ func (e *emitter) emitJSONMethodCall(call *ast.CallExpr, selector *ast.SelectorE
 		e.write(", ")
 
 		if err := e.emitExpr(call.Args[0]); err != nil {
+			return true, err
+		}
+
+		e.write(")")
+		return true, nil
+
+	case "encoding/json.Decoder.DisallowUnknownFields":
+		e.write("go2jsJSONDecoderDisallowUnknownFields(")
+
+		if err := e.emitExpr(selector.X); err != nil {
 			return true, err
 		}
 
