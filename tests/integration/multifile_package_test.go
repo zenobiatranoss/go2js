@@ -49,7 +49,7 @@ func main() {
 		t.Fatal(err)
 	}
 
-	result, err := exec.Command("node", output).Output()
+	result, err := exec.Command("node", output).CombinedOutput()
 	if err != nil {
 		t.Fatalf("generated JavaScript failed: %v", err)
 	}
@@ -101,7 +101,7 @@ func main() {
 		t.Fatal(err)
 	}
 
-	result, err := exec.Command("node", output).Output()
+	result, err := exec.Command("node", output).CombinedOutput()
 	if err != nil {
 		t.Fatalf("generated JavaScript failed: %v", err)
 	}

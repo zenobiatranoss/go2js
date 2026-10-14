@@ -64,6 +64,12 @@ func main() {
 	sparseArray := [5]int{2: 7, 4: 9}
 	println("sparse array:", sparseArray[0], sparseArray[2], sparseArray[4])
 
+	shortArray := [5]int{1, 2, 3}
+	println("short array:", len(shortArray), shortArray[0], shortArray[1], shortArray[2], shortArray[3], shortArray[4])
+
+	shortNamed := [3]string{"a"}
+	println("short named:", len(shortNamed), shortNamed[0] == "a", shortNamed[1] == "", shortNamed[2] == "")
+
 	sparseSlice := []int{2: 8, 4: 10}
 	println("sparse slice:", len(sparseSlice), sparseSlice[0], sparseSlice[2], sparseSlice[4])
 

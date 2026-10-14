@@ -174,8 +174,10 @@ func (e *emitter) emitSelectStmt(stmt *ast.SelectStmt) error {
 	} else {
 		// Nothing any of the cases was written over is ready, so the select
 		// waits on all of them at once and looks again when one of them changes.
-		// Whether that leaves anything to run at all is the scheduler's answer,
-		// not this statement's.
+		// The channels a case sends on and the channels a case receives from are
+		// told apart, because a goroutine waiting to give a value is what makes a
+		// receiving case ready and the other way round. Whether that leaves
+		// anything to run at all is the scheduler's answer, not this statement's.
 		e.writeIndent()
 		e.write("yield* go2jsSelectWait([")
 
@@ -183,6 +185,39 @@ func (e *emitter) emitSelectStmt(stmt *ast.SelectStmt) error {
 
 		for _, clause := range clauses {
 			if clause.comm == nil {
+				continue
+			}
+
+			if _, ok := clause.comm.(*ast.SendStmt); !ok {
+				continue
+			}
+
+			channel, err := selectCommChannel(clause.comm)
+			if err != nil {
+				return err
+			}
+
+			if !first {
+				e.write(", ")
+			}
+
+			first = false
+
+			if err := e.emitExpr(channel); err != nil {
+				return err
+			}
+		}
+
+		e.write("], [")
+
+		first = true
+
+		for _, clause := range clauses {
+			if clause.comm == nil {
+				continue
+			}
+
+			if _, ok := clause.comm.(*ast.SendStmt); ok {
 				continue
 			}
 

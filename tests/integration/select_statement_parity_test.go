@@ -215,9 +215,55 @@ func main() {
 `)
 }
 
-// The channel of a case, and the value a case sends, are evaluated once for the
-// select rather than once for each time it looks again for something to do, so
-// a channel made where it was written is the channel the statement waits on.
+// A select can be the answer to another select: the send case of one and the
+// receive case of the other are a handover, and neither of them has to be a
+// plain send or receive for the two to meet.
+func TestSelectHandsOffToAnotherSelect(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+func main() {
+	a := make(chan int)
+	b := make(chan int)
+
+	go func() {
+		select {
+		case v := <-a:
+			b <- v
+		}
+	}()
+
+	select {
+	case a <- 7:
+		fmt.Println("sent 7")
+	case <-b:
+		fmt.Println("got from b")
+	}
+
+	fmt.Println("b", <-b)
+
+	for i := 0; i < 3; i++ {
+		x := make(chan int)
+		y := make(chan int)
+
+		go func() {
+			select {
+			case v := <-x:
+				y <- v
+			}
+		}()
+
+		select {
+		case x <- i:
+		}
+
+		fmt.Println("round", i, <-y)
+	}
+}
+`)
+}
+
 func TestSelectEvaluatesItsChannelsOnce(t *testing.T) {
 	runParityTest(t, `package main
 

@@ -287,6 +287,26 @@ func (e *emitter) foldedIntConstant(expr ast.Expr) (string, bool) {
 	return text.String() + "n", true
 }
 
+// constantInt reads a whole number written in the source, which is what an
+// array's length is written as.
+func (e *emitter) constantInt(expr ast.Expr) (int, bool) {
+	if expr == nil || e.analysis == nil {
+		return 0, false
+	}
+
+	info, ok := e.analysis.Types[expr]
+	if !ok || info.Value == nil {
+		return 0, false
+	}
+
+	value, exact := constant.Int64Val(constant.ToInt(info.Value))
+	if !exact || value < 0 {
+		return 0, false
+	}
+
+	return int(value), true
+}
+
 // hasFloatOperand reports whether any part of an expression is a number with a
 // decimal point in it, which is what makes a worked out answer something the
 // numbers of a JavaScript engine cannot be trusted to find again.
@@ -1686,6 +1706,31 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			return nil
 		}
 
+		// An array written with fewer values than it holds is the whole of the
+		// array all the same, with the elements that were left out at their own
+		// zero values rather than a shorter array wearing the length it was
+		// written with.
+		arrayLength := 0
+
+		if fixedArray {
+			if declared := e.analyzedType(x); declared != nil {
+				if array, ok := declared.Underlying().(*gotypes.Array); ok {
+					arrayLength = int(array.Len())
+				}
+			} else if arrayType, ok := x.Type.(*ast.ArrayType); ok {
+				if length, ok := e.constantInt(arrayType.Len); ok {
+					arrayLength = length
+				}
+			}
+
+			for _, elt := range x.Elts {
+				if _, keyed := elt.(*ast.KeyValueExpr); keyed {
+					arrayLength = 0
+					break
+				}
+			}
+		}
+
 		// A slice of a type of its own says what it holds when it is asked, the
 		// same way a map literal is marked with the type it was written as, so
 		// that a printed slice is written out with the type Go gives it.
@@ -1760,6 +1805,11 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		if sliceTypeName != "" {
 			e.write("])")
 		} else if fixedArray {
+			for i := len(x.Elts); i < arrayLength; i++ {
+				e.write(", ")
+				e.write(e.zeroValue(elementType))
+			}
+
 			e.write("])")
 		} else if x.Type != nil {
 			if _, ok := x.Type.(*ast.ArrayType); ok {

@@ -60,3 +60,26 @@ func main() {
 		t.Fatalf("unexpected output:\n%s\nwant:\n%s", got, want)
 	}
 }
+
+// Print and Println hand no format down to the runtime, so a complex number
+// written with them is shown with no width and no flags rather than read off a
+// format that was never given.
+func TestComplexNumbersPrintedWithoutFormat(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+func main() {
+	a := complex(1, 2)
+	b := 3 + 4i
+	c := a * b
+
+	fmt.Println(c)
+	fmt.Println(c + b)
+	fmt.Println(c == c)
+	fmt.Println(3 + 4i)
+	fmt.Println(complex(0, 0))
+	fmt.Print(a, " ", b, "\n")
+}
+`)
+}
