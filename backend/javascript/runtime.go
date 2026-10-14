@@ -3230,8 +3230,15 @@ function go2jsJSONMarshalAsText(value, typeName, prefix, indent, escapeHTML) {
             // with the room taken out of it, and with the room put back by
             // whatever the caller laid the rest of the value out with. Every
             // token is written as it was written, so the digits of a number
-            // inside it are the digits it was written with.
-            const compact = go2jsJSONCompact(text);
+            // inside it are the digits it was written with. The message is a
+            // slice of bytes, so what it holds is read back as text first.
+            const held = go2jsBytesToString(value);
+
+            if (held === "") {
+                return ["null", null];
+            }
+
+            const compact = go2jsJSONCompact(held);
 
             if (prefix === "" && indent === "") {
                 return [escapeHTML === false ? compact : go2jsJSONEscapeHTML(compact), null];
@@ -3240,14 +3247,19 @@ function go2jsJSONMarshalAsText(value, typeName, prefix, indent, escapeHTML) {
             return [go2jsJSONEscapeHTML(go2jsJSONIndent(compact, prefix, indent)), null];
         }
 
-        if (!go2jsJSONNumberLiteral(text)) {
-            return [null, new Error("json: invalid number literal " + go2jsJSONWritten(text))];
+        // A number with no digits at all is the zero number, which is written
+        // as 0; any other text has to be a number, and text that is not one is
+        // what the writer says is wrong rather than what it writes.
+        const literal = text === "" ? "0" : text;
+
+        if (!go2jsJSONNumberLiteral(literal)) {
+            return [null, new Error("json: invalid number literal " + go2jsJSONWritten(literal))];
         }
 
         // A number is written as the digits it holds, since a number a double
         // holds is written as the double and a number with more digits than a
         // double keeps would lose them.
-        return [escapeHTML === false ? text : go2jsJSONEscapeHTML(text), null];
+        return [escapeHTML === false ? literal : go2jsJSONEscapeHTML(literal), null];
     } catch (err) {
         return [null, new Error("json: error calling MarshalJSON for type " + typeName + ": invalid character")];
     }
@@ -3884,8 +3896,13 @@ function go2jsJSONTextValue(value, typeName, prefix, indent) {
     const text = go2jsJSONNumberText(value);
 
     if (typeName === "json.Number") {
-        // A number that holds no digits is not a number at all, and writing one
-        // is what the writer says is wrong rather than what it writes.
+        // A number with no digits at all is the zero number, which is written
+        // as 0; any other text has to be a number, and text that is not one is
+        // what the writer says is wrong rather than what it writes.
+        if (text === "") {
+            return go2jsJSONLiteral("0", prefix, indent);
+        }
+
         if (!go2jsJSONNumberLiteral(text)) {
             throw new Error("json: invalid number literal " + go2jsJSONWritten(text));
         }
@@ -3893,16 +3910,20 @@ function go2jsJSONTextValue(value, typeName, prefix, indent) {
         return go2jsJSONLiteral(text, prefix, indent);
     }
 
+    // A raw message is a slice of bytes carrying the text of a value, so that
+    // text is read back out before it is written again.
+    const raw = go2jsBytesToString(value);
+
     // a raw message holding nothing is nothing, which is what the writer writes
     // for a value it has nothing of
-    if (text === "") {
+    if (raw === "") {
         return null;
     }
 
     try {
-        return go2jsJSONLiteral(go2jsJSONCompact(text), prefix, indent);
+        return go2jsJSONLiteral(go2jsJSONCompact(raw), prefix, indent);
     } catch (err) {
-        return text;
+        return raw;
     }
 }
 
@@ -4801,6 +4822,18 @@ function go2jsJSONCompactTo(text) {
 // go2jsJSONByteText is the text the bytes of a value stand for, read the way
 // json.Unmarshal reads the bytes it is handed.
 function go2jsJSONByteText(data) {
+    if (data === null || data === undefined) {
+        return "";
+    }
+
+    if (typeof data === "object" && (data.__go2js_typed === true || data.__go2js_interface === true)) {
+        data = data.value;
+    }
+
+    if (data === null || data === undefined || (typeof data === "object" && data.__go2js_nil === true)) {
+        return "";
+    }
+
     if (typeof data === "string") {
         return data;
     }
@@ -4851,19 +4884,53 @@ function go2jsJSONNumberLiteral(text) {
         return false;
     }
 
-    let index = 0;
+    let i = 0;
 
     if (text[0] === "-") {
-        index++;
+        i = 1;
     }
 
-    const first = text[index];
-
-    if (first !== undefined && first >= "0" && first <= "9") {
-        return true;
+    if (i >= text.length) {
+        return false;
     }
 
-    return false;
+    if (text[i] === "0") {
+        i++;
+    } else if (text[i] >= "1" && text[i] <= "9") {
+        i++;
+
+        while (i < text.length && text[i] >= "0" && text[i] <= "9") {
+            i++;
+        }
+    } else {
+        return false;
+    }
+
+    if (i < text.length && text[i] === ".") {
+        i++;
+
+        while (i < text.length && text[i] >= "0" && text[i] <= "9") {
+            i++;
+        }
+    }
+
+    if (i < text.length && (text[i] === "e" || text[i] === "E")) {
+        i++;
+
+        if (i < text.length && (text[i] === "+" || text[i] === "-")) {
+            i++;
+        }
+
+        if (i >= text.length || text[i] < "0" || text[i] > "9") {
+            return false;
+        }
+
+        while (i < text.length && text[i] >= "0" && text[i] <= "9") {
+            i++;
+        }
+    }
+
+    return i === text.length;
 }
 
 // go2jsJSONNumberText is the digits of a number as they are written, which for a
@@ -5189,6 +5256,12 @@ function go2jsJSONZeroValue(descriptor) {
         return "";
     case "bool":
         return false;
+    case "raw":
+        // a raw message with nothing read into it is a nil slice of bytes, and
+        // a number with nothing read into it is the number of no digits
+        return go2jsNilBytes();
+    case "num":
+        return "";
     default:
         return null;
     }
@@ -5285,11 +5358,11 @@ function go2jsJSONStore(value, target, descriptor, text, path) {
             const written = go2jsJSONRawText(text, path);
 
             if (written !== null) {
-                return written;
+                return go2jsStringToBytes(written);
             }
         }
 
-        return go2jsJSONWritten(value);
+        return go2jsStringToBytes(go2jsJSONWritten(value));
 
     case "num": {
         // A number is held as the digits it was written with, because a number
@@ -10141,11 +10214,13 @@ function go2jsFormat(value, typeName, kind, shape, plus, nested, raw) {
 	}
 
 	const fieldTypes = Object.create(null);
+	const fieldKinds = Object.create(null);
 
 	if (descriptors !== undefined) {
 		for (const descriptor of descriptors) {
 			if (descriptor && typeof descriptor.Name === "string") {
 				fieldTypes[descriptor.Name] = descriptor.Type || "";
+				fieldKinds[descriptor.Name] = descriptor.Kind || "";
 			}
 		}
 	}
@@ -10161,8 +10236,9 @@ function go2jsFormat(value, typeName, kind, shape, plus, nested, raw) {
 		}
 
 		const fieldType = fieldTypes[key] || "";
-		const held = fieldType !== "" && value[key] === null ? go2jsTyped(null, fieldType) : value[key];
-		const text = go2jsFormat(held, fieldType !== "" ? fieldType : null, null, null, plus, true);
+		const fieldKind = fieldKinds[key] || "";
+		const held = fieldType !== "" && value[key] === null ? go2jsTyped(null, fieldType, fieldKind, fieldKind) : value[key];
+		const text = go2jsFormat(held, fieldType !== "" ? fieldType : null, fieldKind !== "" ? fieldKind : null, fieldKind !== "" ? fieldKind : null, plus, true);
 
 		parts.push(plus === true ? key + ":" + text : text);
 	}
@@ -12418,6 +12494,10 @@ function go2jsIsComplexOperand(value, accepted) {
 // go2jsIsByteCompound reports whether a type name is a slice or an array of
 // bytes, which Go treats as a string for the quoted verbs and the hex verbs.
 function go2jsIsByteCompound(accepted) {
+	if (accepted === "json.RawMessage") {
+		return true;
+	}
+
 	return accepted === "[]byte" || accepted === "[]uint8" ||
 		accepted !== null && accepted !== undefined && /^\[\d+\](byte|uint8)$/.test(accepted);
 }
@@ -12603,10 +12683,12 @@ function go2jsFormatCompound(value, accepted, verb, flags, width, precision, isB
 		}
 
 		const fieldTypes = Object.create(null);
+		const fieldKinds = Object.create(null);
 
 		if (descriptors !== undefined) {
 			for (const descriptor of descriptors) {
 				fieldTypes[descriptor.Name] = descriptor.Type || "";
+				fieldKinds[descriptor.Name] = descriptor.Kind || "";
 			}
 		}
 
@@ -12622,7 +12704,8 @@ function go2jsFormatCompound(value, accepted, verb, flags, width, precision, isB
 
 			const fieldType = fieldTypes[key] || "";
 
-			parts.push(go2jsFormatValue(verb, inner, fieldType === "" ? value[key] : go2jsTyped(value[key], fieldType), false, true));
+			const fieldKind = fieldKinds[key] || "";
+			parts.push(go2jsFormatValue(verb, inner, fieldType === "" ? value[key] : go2jsTyped(value[key], fieldType, fieldKind, fieldKind), false, true));
 		}
 
 		return "{" + parts.join(" ") + "}";
