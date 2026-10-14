@@ -50,8 +50,17 @@ corners. Read these before you promise a deadline around it.
   `Add`, `Pointer` and `Uintptr` exist as compile-time constants; anything
   else is a compile error rather than a lie.
 - **`regexp` accepts RE2 only.** A pattern the Go regexp engine would reject
-  is refused with the same error, and ECMAScript-only syntax never makes it
-  into the compiled program.
+  is refused rather than quietly mis-compiled, and ECMAScript-only syntax never
+  makes it into the compiled program. The refusal is not always worded the way
+  Go words it, and two edges of Go's grammar are left as JavaScript leaves
+  them: a `{` that opens no quantifier is a literal in Go but a JavaScript
+  error, and a repeat count above Go's limit of 1000 is refused by Go but taken
+  here.
+- **`Regexp.Longest` is recorded but not honoured.** A program that asks for
+  leftmost-longest matching runs, but a choice between two matches of the same
+  start still goes the shorter way, which is what Go does before `Longest` is
+  asked for. A pattern that names what it wants with its own operators is
+  unaffected.
 - **Quoted runes beyond the BMP.** `strconv.QuoteRune` on an astral rune
   reports what the rune is and prints a literal escape; the lone-surrogate
   form of a string is not round-tripped.
