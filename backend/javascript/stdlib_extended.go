@@ -6631,24 +6631,61 @@ function go2jsRegexpMatchString(pattern, value) {
 
 
 
-function go2jsRegexpFindAllString(pattern, value, limit) {
-	const source = go2jsStringify(value);
-	const regex = go2jsRegexpNewRegExp(pattern, "g");
-	const out = [];
+// go2jsRegexpMatchWalk visits each match a FindAll would report. A JavaScript
+// regexp does not move on from a match of no width, so the walk moves past one
+// by a rune itself, and a match of no width at the place the last match ended is
+// left out, which is what Go does so the same empty place is not counted twice.
+function go2jsRegexpMatchWalk(regex, source, limit, visit) {
+	let pos = 0;
+	let previousEnd = -1;
+	let count = 0;
+	const end = source.length;
 
-	for (;;) {
+	while (pos <= end) {
+		regex.lastIndex = pos;
+
 		const match = regex.exec(source);
 
 		if (match === null) {
 			break;
 		}
 
-		out.push(match[0]);
+		const start = match.index;
+		const stop = start + match[0].length;
+		let accept = true;
 
-		if (limit !== undefined && limit >= 0 && out.length >= limit) {
-			break;
+		if (stop === start) {
+			if (start === previousEnd) {
+				accept = false;
+			}
+
+			const codePoint = source.codePointAt(start);
+			const width = start >= end ? 1 : (codePoint > 0xffff ? 2 : 1);
+
+			pos = start + width;
+		} else {
+			pos = stop;
+		}
+
+		previousEnd = stop;
+
+		if (accept) {
+			visit(match);
+			count++;
+
+			if (limit !== undefined && limit >= 0 && count >= limit) {
+				break;
+			}
 		}
 	}
+}
+
+function go2jsRegexpFindAllString(pattern, value, limit) {
+	const source = go2jsStringify(value);
+	const regex = go2jsRegexpNewRegExp(pattern, "g");
+	const out = [];
+
+	go2jsRegexpMatchWalk(regex, source, limit, (match) => out.push(match[0]));
 
 	return out;
 }
@@ -6867,19 +6904,7 @@ function go2jsRegexpFindAllSubmatch(pattern, value, limit) {
 	const regex = go2jsRegexpNewRegExp(pattern, "g");
 	const out = [];
 
-	for (;;) {
-		const match = regex.exec(source);
-
-		if (match === null) {
-			break;
-		}
-
-		out.push(go2jsRegexpSubmatch(match));
-
-		if (limit !== undefined && limit >= 0 && out.length >= limit) {
-			break;
-		}
-	}
+	go2jsRegexpMatchWalk(regex, source, limit, (match) => out.push(go2jsRegexpSubmatch(match)));
 
 	return out;
 }
@@ -6890,19 +6915,7 @@ function go2jsRegexpFindAllSubmatchIndex(pattern, value, limit) {
 	const regex = go2jsRegexpNewRegExp(pattern, "gd");
 	const out = [];
 
-	for (;;) {
-		const match = regex.exec(source);
-
-		if (match === null) {
-			break;
-		}
-
-		out.push(go2jsRegexpSubmatchIndex(match, offset));
-
-		if (limit !== undefined && limit >= 0 && out.length >= limit) {
-			break;
-		}
-	}
+	go2jsRegexpMatchWalk(regex, source, limit, (match) => out.push(go2jsRegexpSubmatchIndex(match, offset)));
 
 	return out;
 }
@@ -6914,19 +6927,7 @@ function go2jsRegexpFindAllIndex(pattern, value, limit) {
 	const regex = go2jsRegexpNewRegExp(pattern, "g");
 	const out = [];
 
-	for (;;) {
-		const match = regex.exec(source);
-
-		if (match === null) {
-			break;
-		}
-
-		out.push(go2jsRegexpIndex(match, offset));
-
-		if (limit !== undefined && limit >= 0 && out.length >= limit) {
-			break;
-		}
-	}
+	go2jsRegexpMatchWalk(regex, source, limit, (match) => out.push(go2jsRegexpIndex(match, offset)));
 
 	return out;
 }
@@ -6971,30 +6972,35 @@ function go2jsRegexpSplit(pattern, value, limit) {
 		return [];
 	}
 
-	// A positive limit keeps the trailing remainder in one piece, so the split
-	// is done by hand instead of with String.prototype.split.
+	// The splits are the pieces between the matches, so the matches are walked
+	// the way FindAll walks them and the text between them is taken each time.
+	// A positive limit keeps the trailing remainder in one piece.
 	const regex = go2jsRegexpNewRegExp(pattern, "gd");
+	const matches = [];
+
+	go2jsRegexpMatchWalk(regex, text, limit, (match) => matches.push([match.index, match.index + match[0].length]));
+
 	const parts = [];
-
 	let last = 0;
-	let match = regex.exec(text);
+	let end = 0;
 
-	while (match !== null) {
-		const start = match.indices[0][0];
-		const end = match.indices[0][1];
-
-		parts.push(text.slice(last, start));
-
-		if (limit > 0 && parts.length === limit - 1) {
-			parts.push(text.slice(end));
-			return parts;
+	for (const match of matches) {
+		if (limit > 0 && parts.length >= limit - 1) {
+			break;
 		}
 
-		last = end;
-		match = regex.exec(text);
+		end = match[0];
+
+		if (match[1] !== 0) {
+			parts.push(text.slice(last, end));
+		}
+
+		last = match[1];
 	}
 
-	parts.push(text.slice(last));
+	if (end !== text.length) {
+		parts.push(text.slice(last));
+	}
 
 	return parts;
 }

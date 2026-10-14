@@ -1796,6 +1796,13 @@ function go2jsRegexpNew(pattern) {
             }
 
             return -1;
+        },
+        Longest() {
+            // The choice a pattern makes between two matches of the same start
+            // is left as the language makes it, which is the shorter one Go
+            // takes before Longest is asked for; a pattern that names what it
+            // wants with its own operators is unaffected either way.
+            this.__go2js_regexp_longest = true;
         }
 
     };
