@@ -3358,7 +3358,18 @@ function go2jsJSONText(encoded, prefix, indent, escapeHTML) {
 
 function go2jsJSONEncode(value, fields, omitEmpty, stringFields, textFields, prefix, indent, types) {
     // A nil slice or a nil map travels as a value of its own that still says
-    // which it is, and JSON writes every nil as nothing at all.
+    // which it is, and JSON writes every nil as nothing at all. A value boxed
+    // as an interface is written as what it holds, since the box is a way of
+    // carrying a value rather than a value JSON describes.
+    if (value !== null && value !== undefined && typeof value === "object" && value.__go2js_nil === true) {
+        return null;
+    }
+
+    while (value !== null && value !== undefined && typeof value === "object" &&
+        (value.__go2js_interface === true || value.__go2js_typed === true) && value.value !== value) {
+        value = value.value;
+    }
+
     if (value !== null && value !== undefined && typeof value === "object" && value.__go2js_nil === true) {
         return null;
     }
@@ -10307,6 +10318,16 @@ function go2jsPrintln(...values) {
 	go2jsWriteOut(process.stdout, go2jsJoinOperands(values, true) + "\n");
 }
 
+// The builtin println and print are the language's own writing, which Go sends
+// to the standard error rather than to the standard output where fmt writes.
+function go2jsBuiltinPrintln(...values) {
+	go2jsWriteOut(process.stderr, go2jsJoinOperands(values, true) + "\n");
+}
+
+function go2jsBuiltinPrint(...values) {
+	go2jsWriteOut(process.stderr, go2jsJoinOperands(values, false));
+}
+
 function go2jsJoinOperands(values, alwaysSpace) {
 	let text = "";
 
@@ -12512,6 +12533,12 @@ function go2jsFormatComplex(verb, parsed, value, accepted, flags, precision) {
 // numbers. The imaginary part always shows a sign of its own, and the plus flag
 // under %v is the struct-field flag rather than a sign, so it is dropped.
 function go2jsFormatComplexText(verb, parsed, re, im, flags, precision) {
+	// Print and Println hand no format down, so the pair is written with no
+	// width and no flags rather than read off something that was never passed.
+	if (parsed === null || parsed === undefined) {
+		parsed = {flags: "", width: 0, precision: null};
+	}
+
 	// %v renders a float the way %g does, with whatever precision was asked.
 	const part = verb === "v" ? "g" : verb;
 	const shown = (value, partFlags) => {

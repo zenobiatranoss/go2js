@@ -49,7 +49,7 @@ func main() {
 		t.Fatalf("missing main function:\n%s", result)
 	}
 
-	if !strings.Contains(result, "console.log") {
+	if !strings.Contains(result, "go2jsBuiltinPrintln") {
 		t.Fatalf("missing console output:\n%s", result)
 	}
 }

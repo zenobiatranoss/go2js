@@ -44,7 +44,7 @@ func main() {
 		"let result = (yield* add(10, 20));",
 		"if (result > 20)",
 		"for (let i = 0; i < 3; i++)",
-		"console.log(result);",
+		"go2jsBuiltinPrintln(result);",
 		"main();",
 	}
 
@@ -152,7 +152,7 @@ func main() {
 		"case 1:",
 		"case 2:",
 		"default:",
-		`console.log("two");`,
+		`go2jsBuiltinPrintln("two");`,
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("generated JavaScript missing %q:\n%s", want, output)
@@ -186,7 +186,7 @@ func main() {
 		`let values = go2jsMapTyped("map[string]int", go2jsMap([`,
 		`["alice", 10]`,
 		`["bob", 20]`,
-		`console.log(go2jsMapGet(values, "alice", 0));`,
+		`go2jsBuiltinPrintln(go2jsMapGet(values, "alice", 0));`,
 		`go2jsMapSet(values, "bob", 30);`,
 		"go2jsLen(values)",
 		"function go2jsMap(entries)",
@@ -255,8 +255,8 @@ func main() {
 
 	for _, want := range []string{
 		"for (const [key, value] of go2jsRangeSequence(values).entries())",
-		"console.log(key);",
-		"console.log(value);",
+		"go2jsBuiltinPrintln(key);",
+		"go2jsBuiltinPrintln(value);",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("generated JavaScript missing %q:\n%s", want, output)

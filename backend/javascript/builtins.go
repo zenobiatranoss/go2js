@@ -14,9 +14,9 @@ func (e *emitter) builtinName(call *ast.CallExpr) (string, bool) {
 
 		switch fn.Name {
 		case "println":
-			return "console.log", true
+			return "go2jsBuiltinPrintln", true
 		case "print":
-			return "process.stdout.write", true
+			return "go2jsBuiltinPrint", true
 		case "len":
 			return "go2jsLen", true
 		case "cap":
@@ -80,23 +80,25 @@ func (e *emitter) builtinName(call *ast.CallExpr) (string, bool) {
 // The builtins whose work is done by the runtime, rather than by anything the
 // language of the output already has.
 var runtimeBuiltins = map[string]bool{
-	"go2jsLen":       true,
-	"go2jsCap":       true,
-	"go2jsAppend":    true,
-	"go2jsMake":      true,
-	"go2jsMakeMap":   true,
-	"go2jsMapDelete": true,
-	"go2jsSprintf":   true,
-	"go2jsPrintln":   true,
-	"go2jsPrint":     true,
-	"go2jsPanic":     true,
-	"go2jsRecover":   true,
-	"go2jsComplex":   true,
-	"go2jsReal":      true,
-	"go2jsImag":      true,
-	"go2jsMin":       true,
-	"go2jsClear":     true,
-	"go2jsMax":       true,
+	"go2jsLen":            true,
+	"go2jsCap":            true,
+	"go2jsAppend":         true,
+	"go2jsMake":           true,
+	"go2jsMakeMap":        true,
+	"go2jsMapDelete":      true,
+	"go2jsSprintf":        true,
+	"go2jsPrintln":        true,
+	"go2jsPrint":          true,
+	"go2jsBuiltinPrintln": true,
+	"go2jsBuiltinPrint":   true,
+	"go2jsPanic":          true,
+	"go2jsRecover":        true,
+	"go2jsComplex":        true,
+	"go2jsReal":           true,
+	"go2jsImag":           true,
+	"go2jsMin":            true,
+	"go2jsClear":          true,
+	"go2jsMax":            true,
 }
 
 func isFmtPrintBuiltin(call *ast.CallExpr) bool {

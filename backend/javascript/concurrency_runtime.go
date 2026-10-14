@@ -142,27 +142,94 @@ function go2jsPark(channels, kind, value) {
 	task.parkedValue = value;
 
 	// A goroutine that parks to send or to receive makes a case of a select
-	// that is waiting on the same channel ready, so any select parked there is
-	// woken to look again. Go hands a value straight from one goroutine to
-	// another without either of them waiting again, and a select is a
-	// goroutine that is waiting to be given one.
+	// that is waiting on the same channel ready, so the select waiting for what
+	// this one is now offering is woken to look again. A goroutine parked in a
+	// receive is what a select's send case was waiting for, and a goroutine
+	// parked in a send is what a select's receive case was waiting for.
 	if (kind === "receiver" || kind === "sender") {
-		const selects = [];
+		go2jsWakeSelects(channels, kind === "receiver" ? "sender" : "receiver");
+	}
 
-		for (const channel of channels) {
-			for (const entry of channel.blocked) {
-				if (entry.parked === "select") {
+	return go2jsParked;
+}
+
+// go2jsParkSelect suspends the goroutine that is running on every channel a
+// select was written over, remembering which of them its cases send on and
+// which they receive from. A goroutine waiting in a select can be the answer to
+// another select: the channels it will send on are what a receiving case there
+// waits for, and the channels it will receive from are what a sending case
+// there waits for.
+function go2jsParkSelect(sendChannels, recvChannels) {
+	const task = go2jsRunning;
+
+	if (task === null || task === undefined) {
+		throw new Error("go2js: blocking operation outside a goroutine");
+	}
+
+	const channels = [];
+
+	for (const channel of sendChannels) {
+		if (channels.indexOf(channel) < 0) {
+			channels.push(channel);
+		}
+	}
+
+	for (const channel of recvChannels) {
+		if (channels.indexOf(channel) < 0) {
+			channels.push(channel);
+		}
+	}
+
+	for (const channel of channels) {
+		channel.blocked.push(task);
+		task.waiting.push(channel);
+	}
+
+	task.parked = "select";
+
+	task.parkedValue = undefined;
+
+	task.selectSends = sendChannels;
+	task.selectRecvs = recvChannels;
+
+	go2jsWakeSelects(recvChannels, "sender");
+	go2jsWakeSelects(sendChannels, "receiver");
+
+	return go2jsParked;
+}
+
+// go2jsSelectWaits reports whether the parked select task is waiting with a case
+// that sends on the channel (kind "sender") or receives from it (kind
+// "receiver").
+function go2jsSelectWaits(task, channel, kind) {
+	const cases = kind === "sender" ? task.selectSends : task.selectRecvs;
+
+	return cases !== undefined && cases.indexOf(channel) >= 0;
+}
+
+// go2jsWakeSelects makes runnable every select parked with a case of the kind
+// named on one of the channels. A select whose other cases were already ready
+// is not picked here: it looks again when it runs, and chooses then.
+function go2jsWakeSelects(channels, kind) {
+	const selects = [];
+
+	for (const channel of channels) {
+		if (channel === null || channel === undefined) {
+			continue;
+		}
+
+		for (const entry of channel.blocked) {
+			if (entry.parked === "select" && go2jsSelectWaits(entry, channel, kind)) {
+				if (selects.indexOf(entry) < 0) {
 					selects.push(entry);
 				}
 			}
 		}
-
-		for (const entry of selects) {
-			go2jsRunnable(entry);
-		}
 	}
 
-	return go2jsParked;
+	for (const entry of selects) {
+		go2jsRunnable(entry);
+	}
 }
 
 // go2jsNeverReady parks a goroutine on nothing at all, which is what an
@@ -203,6 +270,8 @@ function go2jsRunnable(task) {
 
 	task.waiting = [];
 	task.parked = null;
+	task.selectSends = undefined;
+	task.selectRecvs = undefined;
 	go2jsReady.push(task);
 }
 
@@ -226,6 +295,18 @@ function go2jsTakeBlocked(channel, kind) {
 function go2jsHasBlocked(channel, kind) {
 	for (const task of channel.blocked) {
 		if (task.parked === kind) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+// go2jsHasSelectWaits reports whether a select is parked on the channel with a
+// case of the kind named, which is what a select of its own can be answered by.
+function go2jsHasSelectWaits(channel, kind) {
+	for (const task of channel.blocked) {
+		if (task.parked === "select" && go2jsSelectWaits(task, channel, kind)) {
 			return true;
 		}
 	}
@@ -436,8 +517,8 @@ function go2jsChanRecvReady(channel) {
 
 	// A receive from a channel of no room is answered by whoever is holding a
 	// value for it, so a send already waiting on this channel is what makes it
-	// ready.
-	return go2jsHasBlocked(channel, "sender");
+	// ready, whether that send is a plain one or a send case of another select.
+	return go2jsHasBlocked(channel, "sender") || go2jsHasSelectWaits(channel, "sender");
 }
 
 function go2jsChanSendReady(channel) {
@@ -446,11 +527,12 @@ function go2jsChanSendReady(channel) {
 	}
 
 	// A channel of no room is a handover rather than a store, so a send to one
-	// is ready only while a goroutine is standing there to take it. Answering
-	// yes for one nobody is reading from is what lets a loop of sends fill a
-	// channel that can never hold anything.
+	// is ready only while a goroutine is standing there to take it, whether that
+	// goroutine is a plain receive or the receive case of another select.
+	// Answering yes for one nobody is reading from is what lets a loop of sends
+	// fill a channel that can never hold anything.
 	if (channel.capacity === 0) {
-		return go2jsHasBlocked(channel, "receiver");
+		return go2jsHasBlocked(channel, "receiver") || go2jsHasSelectWaits(channel, "receiver");
 	}
 
 	return channel.buffer.length < channel.capacity;
@@ -470,13 +552,12 @@ function* go2jsChanSend(channel, value) {
 
 		// A channel of no room is a handover: the value is not sent until the
 		// goroutine that was waiting for it has taken it, so the value goes
-		// straight into the hands of a receiver that is already waiting.
+		// straight into the hands of a receiver that is already waiting. A
+		// select waiting on this channel is not handed the value here, because
+		// it may yet choose a different case; the send parks instead, and the
+		// select that does receive takes the value out of its hands.
 		if (channel.capacity === 0) {
-			// A goroutine that was parked in a select is waiting for a value as
-			// surely as one parked in a receive, so it is handed the value the
-			// same way and looks at the channel again when it runs.
-			const receiver = go2jsTakeBlocked(channel, "receiver") ||
-				go2jsTakeBlocked(channel, "select");
+			const receiver = go2jsTakeBlocked(channel, "receiver");
 
 			if (receiver !== null) {
 				go2jsChanHandoff(channel, value);
@@ -542,13 +623,22 @@ function go2jsChannelClose(channel) {
 // go2jsSelectWait waits for one of the channels a select was written over to
 // become ready. It is what a select that had nothing to choose from waits on,
 // and it parks on every channel the select mentioned, so whichever one changes
-// first brings the select back to look at all of them again.
-function* go2jsSelectWait(channels) {
-	yield go2jsPark(channels.filter((channel) => !go2jsChannelIsNil(channel)), "select", undefined);
+// first brings the select back to look at all of them again. The channels its
+// sending and receiving cases are written over are told apart, since each is
+// the answer to a select waiting the other way round.
+function* go2jsSelectWait(sendChannels, recvChannels) {
+	const channels = sendChannels.concat(recvChannels);
 
 	if (channels.length === 0) {
 		yield go2jsNeverReady();
+
+		return;
 	}
+
+	yield go2jsParkSelect(
+		sendChannels.filter((channel) => !go2jsChannelIsNil(channel)),
+		recvChannels.filter((channel) => !go2jsChannelIsNil(channel))
+	);
 }
 
 function go2jsWaitGroup() {

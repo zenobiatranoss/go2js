@@ -22,16 +22,18 @@ func runCommand(t *testing.T, dir string, name string, args ...string) string {
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
 
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	// The builtins print and println write to standard error, as they do in Go,
+	// so both streams are captured the same way Go's own output is, and a
+	// program that writes to either one is compared whole.
+	var output bytes.Buffer
+	cmd.Stdout = &output
+	cmd.Stderr = &output
 
 	if err := cmd.Run(); err != nil {
-		t.Fatalf("%s failed: %v\nstdout:\n%s\nstderr:\n%s", name, err, stdout.String(), stderr.String())
+		t.Fatalf("%s failed: %v\noutput:\n%s", name, err, output.String())
 	}
 
-	return stdout.String()
+	return output.String()
 }
 
 func runGoProgram(t *testing.T, dir, file string) string {
@@ -466,5 +468,54 @@ func main() {
 
 	if !strings.Contains(js, "main();") {
 		t.Fatalf("generated JavaScript does not invoke main:\n%s", js)
+	}
+}
+
+// The builtins print and println write to standard error, as they do in Go,
+// while the fmt package writes to standard output, so a program that uses both
+// keeps them apart the way Go does.
+func TestBuiltinPrintWritesToStandardError(t *testing.T) {
+	dir := t.TempDir()
+	input := filepath.Join(dir, "main.go")
+	output := filepath.Join(dir, "main.js")
+
+	source := `package main
+
+import "fmt"
+
+func main() {
+	print("builtin print")
+	println("builtin println")
+	fmt.Println("fmt println")
+}
+`
+
+	if err := os.WriteFile(input, []byte(source), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	js := compileSource(t, dir, source)
+
+	if err := os.WriteFile(output, []byte(js), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command("node", output)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("node failed: %v\n%s", err, stderr.String())
+	}
+
+	if got, want := stdout.String(), "fmt println\n"; got != want {
+		t.Fatalf("unexpected standard output: %q, want %q", got, want)
+	}
+
+	if got, want := stderr.String(), "builtin printbuiltin println\n"; got != want {
+		t.Fatalf("unexpected standard error: %q, want %q", got, want)
 	}
 }
