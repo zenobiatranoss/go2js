@@ -5702,13 +5702,24 @@ function go2jsTimeParse(layout, value) {
 
 				currentElement = "." + fraction[1];
 
-				position += 1;
+				// A fraction is only in the text when the text writes the dot
+				// that begins it, so a dot the text does not have leaves a piece
+				// of nines with no digits to read.
+				const found = text[position] === "." ? /^[0-9]+/.exec(text.slice(position + 1)) : null;
 
-				const found = /^[0-9]+/.exec(text.slice(position));
-
+				// A piece of nines asks for as many digits of a second as happen
+				// to be written, so a text that writes none of them is read as a
+				// whole second rather than refused.
 				if (found === null) {
+					if (optional) {
+						layoutAt += 1 + fraction[1].length;
+						continue;
+					}
+
 					return refuse();
 				}
+
+				position += 1;
 
 				// A piece of nines takes as many of the digits of a second as were
 				// written down and no more, while a piece of zeros asks for the
