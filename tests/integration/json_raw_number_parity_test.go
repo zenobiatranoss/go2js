@@ -73,3 +73,66 @@ func main() {
 }
 `)
 }
+
+// A raw message is a slice of bytes: a literal made from text holds those bytes,
+// printing it shows them, and Marshal writes the value its text describes back
+// with the room taken out, refusing text that is not a whole value.
+func TestJSONRawMessageLiteralsAndMarshalErrors(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"encoding/json"
+	"fmt"
+)
+
+func main() {
+	msg := json.RawMessage("  {  \"a\" : [1, 2]  } ")
+	fmt.Printf("%v|%q|%s\n", msg, msg, msg)
+	fmt.Println(len(msg), msg[2])
+
+	out, err := json.Marshal(json.RawMessage("1 2"))
+	fmt.Printf("%q %v\n", out, err)
+
+	out, err = json.Marshal(json.RawMessage("[1, 2]"))
+	fmt.Printf("%q %v\n", out, err)
+
+	out, err = json.MarshalIndent(json.RawMessage("{\"x\":[1,2]}"), "|", "\t")
+	fmt.Printf("%q %v\n", out, err)
+}
+`)
+}
+
+// A decoder asked to refuse a field it does not know reports the first such
+// field under its JSON name, while a decoder that was not asked passes it over.
+func TestJSONDecoderDisallowUnknownFields(t *testing.T) {
+	runParityTest(t, `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+)
+
+type Point struct {
+	Name string
+	age  int
+}
+
+func main() {
+	var known Point
+	json.Unmarshal([]byte("{\"Name\":\"a\",\"extra\":1}"), &known)
+	fmt.Printf("%+v\n", known)
+
+	var strict Point
+	dec := json.NewDecoder(strings.NewReader("{\"Name\":\"a\",\"extra\":1,\"more\":2}"))
+	dec.DisallowUnknownFields()
+	err := dec.Decode(&strict)
+	fmt.Printf("%+v %v\n", strict, err)
+
+	var other Point
+	dec2 := json.NewDecoder(strings.NewReader("{\"name\":\"b\"}"))
+	dec2.DisallowUnknownFields()
+	fmt.Println(dec2.Decode(&other), other.Name)
+}
+`)
+}
