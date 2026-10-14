@@ -75,6 +75,13 @@ corners. Read these before you promise a deadline around it.
   `func()` under `%T`, under `%#v` and inside a refusal, rather than as its
   full signature the way Go writes `func(int) int`.
 
+- **A nil slice or map a runtime helper hands straight to a call is `<nil>`.**
+  `fmt.Println(os.ReadFile(path))` writes `<nil>` for the nil bytes where Go
+  writes `[]`, because the results are spread into the printer's arguments
+  before a value of the declared kind is made. Storing the results first —
+  `data, err := os.ReadFile(path)` — writes `[]`, and a function written in the
+  program itself is unaffected.
+
 ## Things that simply are not there yet
 
 The gap report — `go run ./tools/stdlib-gaps` — lists every package-level

@@ -920,13 +920,24 @@ function go2jsOSDirectoriesUnder(path) {
 }
 
 function go2jsOSRemove(path) {
-	try {
-		require("fs").unlinkSync(String(path));
-	} catch (err) {
-		return go2jsOSHostError(err, "remove", String(path));
-	}
+	// A name may be a file or a directory, and only a system call knows which,
+	// so the file is tried first and the directory after it, as Go does, and
+	// the report of the second attempt is the one that is kept.
+	const target = String(path);
 
-	return null;
+	try {
+		require("fs").unlinkSync(target);
+
+		return null;
+	} catch (fileErr) {
+		try {
+			require("fs").rmdirSync(target);
+
+			return null;
+		} catch (dirErr) {
+			return go2jsOSHostError(dirErr, "remove", target);
+		}
+	}
 }
 
 function go2jsOSRemoveAll(path) {
