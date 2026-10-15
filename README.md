@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="go2jslog.png" alt="go2js" width="220">
+</p>
+
 # go2js
 
 A Go-to-JavaScript transpiler, written in Go. You point it at a Go file or a

@@ -41,11 +41,20 @@ body {
 }
 
 header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
   padding: 22px 24px 8px;
 }
 
+header .logo {
+  height: 52px;
+  width: auto;
+  display: block;
+}
+
 header h1 {
-  margin: 0 0 4px;
+  margin: 0;
   font-size: 21px;
   letter-spacing: -0.01em;
   font-weight: 600;
