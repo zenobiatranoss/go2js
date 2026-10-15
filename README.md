@@ -7,6 +7,13 @@ load in a browser, or hand functions over to from plain JavaScript.
 
 So the short version is: **write Go, ship JavaScript, sleep easy.**
 
+> **This is an experimental first release (`v0.1.0`).** It works, and it tests
+> itself harder than most software you'll meet — but it is young and it has real
+> rough edges. Read [Honest limitations](#honest-limitations) before you lean on
+> it for anything that matters, and expect the shape of the generated output to
+> move between releases. Treat it as something to try, to file bugs against, and
+> to prove out — not yet as something to bet a launch on.
+
 This README is the long version: how to build it, how to use it, what it
 understands, where it cheats, and how it's tested. It's written long on purpose.
 If you want the short version, [jump to the quick start](#quick-start).
@@ -19,6 +26,7 @@ If you want the short version, [jump to the quick start](#quick-start).
 - [Quick start](#quick-start)
 - [The command line](#the-command-line)
   - [Compiling](#compiling)
+  - [Version](#version)
   - [Running tests](#running-tests)
 - [Handing functions over to JavaScript](#handing-functions-over-to-javascript)
 - [How it works under the hood](#how-it-works-under-the-hood)
@@ -31,6 +39,7 @@ If you want the short version, [jump to the quick start](#quick-start).
 - [Project layout](#project-layout)
 - [FAQ](#faq)
 - [Contributing](#contributing)
+- [Changelog](CHANGELOG.md)
 - [License](#license)
 
 ## What it does
@@ -161,6 +170,15 @@ go2js . -minify -sourcemap -o app.mjs
 # an IIFE you can paste into a <script> tag
 go2js main.go -module iife -o bundle.js
 ```
+
+### Version
+
+```sh
+go2js version
+```
+
+Prints the version this build is, such as `v0.1.0`. The same answer is there as
+`-version` or `--version`.
 
 ### Running tests
 

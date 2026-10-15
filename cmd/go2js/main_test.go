@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/zenobiatranoss/go2js/compiler"
 )
 
 func TestRunWritesOutput(t *testing.T) {
@@ -669,5 +671,22 @@ func writeTestFile(t *testing.T, dir, name, source string) {
 
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(source), 0644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// The version a build reports is the one the compiler carries, so a released
+// binary says which release it is rather than making a caller guess.
+func TestRunReportsTheVersion(t *testing.T) {
+	for _, arg := range []string{"version", "-version", "--version"} {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+
+		if err := run([]string{arg}, &stdout, &stderr); err != nil {
+			t.Fatalf("%s: %v", arg, err)
+		}
+
+		if got, want := strings.TrimSpace(stdout.String()), compiler.Version; got != want {
+			t.Fatalf("%s: got %q, want %q", arg, got, want)
+		}
 	}
 }
