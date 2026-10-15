@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zenobiatranoss/go2js/compiler"
 )
@@ -592,12 +593,16 @@ func BenchmarkFails(b *testing.B) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
+	const benchtime = 50 * time.Millisecond
+
 	// A benchmark is run for as long as it was asked to be run for, which is
 	// short here so that the run is quick: what is being held to is that a
-	// benchmark of something cheap is run enough times over for the clock to mean
-	// something, rather than the handful of times that would leave the clock with
-	// nothing to say.
-	err := run([]string{"test", "-bench", ".", "-benchtime", "50ms", "-run", "Nothing", dir}, &stdout, &stderr)
+	// benchmark of something cheap fills the time it was given, so that the clock
+	// has something to say. The time it came to, rather than a count of runs, is
+	// what is measured, since a slower machine reaches the same time in fewer
+	// runs and a count a fast machine meets would be one a slow machine never
+	// could.
+	err := run([]string{"test", "-bench", ".", "-benchtime", benchtime.String(), "-run", "Nothing", dir}, &stdout, &stderr)
 
 	var failure *testFailure
 
@@ -607,10 +612,8 @@ func BenchmarkFails(b *testing.B) {
 
 	output := stdout.String()
 
-	rounds := benchmarkRounds(t, output, "BenchmarkWork")
-
-	if rounds < 10000 {
-		t.Fatalf("a benchmark run for 50ms should have been run many times over, got %d:\n%s", rounds, output)
+	if measured := benchmarkMeasured(t, output, "BenchmarkWork"); measured < float64(benchtime)*0.8 {
+		t.Fatalf("a benchmark run for %s was measured over only %s:\n%s", benchtime, time.Duration(measured), output)
 	}
 
 	// A benchmark told a size is told how fast it moved it, which is what the
@@ -621,8 +624,8 @@ func BenchmarkFails(b *testing.B) {
 
 	// A benchmark written the newer way is run until it says it has been run
 	// enough, which is what b.Loop is for.
-	if loops := benchmarkRounds(t, output, "BenchmarkLoop"); loops < 10000 {
-		t.Fatalf("a benchmark looping over b.Loop should have been run many times over, got %d:\n%s", loops, output)
+	if measured := benchmarkMeasured(t, output, "BenchmarkLoop"); measured < float64(benchtime)*0.8 {
+		t.Fatalf("a benchmark looping over b.Loop was measured over only %s:\n%s", time.Duration(measured), output)
 	}
 
 	// A benchmark that failed is told what it found wrong, and the run ends as a
@@ -636,9 +639,12 @@ func BenchmarkFails(b *testing.B) {
 	}
 }
 
-// benchmarkRounds is how many times a benchmark was run, read from the line it was
-// reported on.
-func benchmarkRounds(t *testing.T, output, name string) int {
+// benchmarkMeasured is how long a benchmark says it was measured over, which is
+// how many times it was run over how long each of those runs came to. Unlike the
+// number of runs, it says the same of a fast machine and a slow one: however few
+// or many runs fit in the time, it is the time the clock had something to say
+// over.
+func benchmarkMeasured(t *testing.T, output, name string) float64 {
 	t.Helper()
 
 	for _, line := range strings.Split(output, "\n") {
@@ -648,17 +654,23 @@ func benchmarkRounds(t *testing.T, output, name string) int {
 
 		fields := strings.Fields(line)
 
-		if len(fields) < 3 {
-			t.Fatalf("cannot read how many times %s was run from %q", name, line)
+		if len(fields) < 4 || fields[3] != "ns/op" {
+			t.Fatalf("cannot read how long %s was measured over from %q", name, line)
 		}
 
 		rounds, err := strconv.Atoi(fields[1])
 
 		if err != nil {
-			t.Fatalf("cannot read how many times %s was run from %q: %v", name, line, err)
+			t.Fatalf("cannot read how many times %s ran from %q: %v", name, line, err)
 		}
 
-		return rounds
+		perOp, err := strconv.ParseFloat(fields[2], 64)
+
+		if err != nil {
+			t.Fatalf("cannot read how long %s took from %q: %v", name, line, err)
+		}
+
+		return float64(rounds) * perOp
 	}
 
 	t.Fatalf("output is missing what %s came to:\n%s", name, output)
