@@ -9265,6 +9265,17 @@ function go2jsIndexSet(value, index, next) {
 		throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "index out of range [" + position + "]");
 	}
 
+	const state = go2jsSliceMeta.get(value);
+
+	if (state !== undefined) {
+		if (position >= state.length) {
+			throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "index out of range [" + position + "] with length " + state.length);
+		}
+
+		state.data[state.offset + position] = next;
+		return;
+	}
+
 	if (position >= go2jsLen(value)) {
 		throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "index out of range [" + position + "] with length " + go2jsLen(value));
 	}
@@ -9278,6 +9289,22 @@ function go2jsIndexSet(value, index, next) {
 }
 
 function go2jsIndex(value, index) {
+	const state = go2jsSliceMeta.get(value);
+
+	if (state !== undefined) {
+		const position = Math.trunc(Number(index));
+
+		if (position < 0) {
+			throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "index out of range [" + position + "]");
+		}
+
+		if (position >= state.length) {
+			throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "index out of range [" + position + "] with length " + state.length);
+		}
+
+		return state.data[state.offset + position];
+	}
+
 	const position = Math.trunc(Number(index));
 
 	if (position < 0) {
@@ -9404,8 +9431,55 @@ function go2jsWrapSigned64(value) {
 const go2jsUint64One = 1n << 64n;
 const go2jsSignBit64 = 1n << 63n;
 
+// The operations a wide number is worked out with are named once here rather
+// than written where they are used, so that adding two numbers does not make a
+// new function to add them with each time.
+function go2jsWidePlus(a, b) {
+	return a + b;
+}
+
+function go2jsWideMinus(a, b) {
+	return a - b;
+}
+
+function go2jsWideTimes(a, b) {
+	return a * b;
+}
+
+function go2jsWideDivideWhole(a, b) {
+	if (b === 0) {
+		throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "integer divide by zero");
+	}
+
+	return Math.trunc(a / b);
+}
+
+function go2jsWideDivideBig(a, b) {
+	if (b === 0n) {
+		throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "integer divide by zero");
+	}
+
+	return a / b;
+}
+
+function go2jsWideRemainderWhole(a, b) {
+	if (b === 0) {
+		throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "integer divide by zero");
+	}
+
+	return a - Math.trunc(a / b) * b;
+}
+
+function go2jsWideRemainderBig(a, b) {
+	if (b === 0n) {
+		throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "integer divide by zero");
+	}
+
+	return a % b;
+}
+
 function go2jsWideAdd(left, right, typeName) {
-	return go2jsWideBinary(left, right, (a, b) => a + b, (a, b) => a + b, typeName);
+	return go2jsWideBinary(left, right, go2jsWidePlus, go2jsWidePlus, typeName);
 }
 
 // go2jsWideBinary keeps a whole number operation exact all the way out, which
@@ -9431,43 +9505,35 @@ function go2jsWideBinary(left, right, whole, big, typeName) {
 }
 
 function go2jsWideSub(left, right, typeName) {
-	return go2jsWideBinary(left, right, (a, b) => a - b, (a, b) => a - b, typeName);
+	return go2jsWideBinary(left, right, go2jsWideMinus, go2jsWideMinus, typeName);
 }
 
 function go2jsWideMul(left, right, typeName) {
-	return go2jsWideBinary(left, right, (a, b) => a * b, (a, b) => a * b, typeName);
+	return go2jsWideBinary(left, right, go2jsWideTimes, go2jsWideTimes, typeName);
 }
 
 function go2jsWideQuo(left, right, typeName) {
-	return go2jsWideBinary(left, right, (a, b) => {
-		if (b === 0) {
-			throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "integer divide by zero");
-		}
-
-		return Math.trunc(a / b);
-	}, (a, b) => {
-		if (b === 0n) {
-			throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "integer divide by zero");
-		}
-
-		return a / b;
-	}, typeName);
+	return go2jsWideBinary(left, right, go2jsWideDivideWhole, go2jsWideDivideBig, typeName);
 }
 
 function go2jsWideRem(left, right, typeName) {
-	return go2jsWideBinary(left, right, (a, b) => {
-		if (b === 0) {
-			throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "integer divide by zero");
-		}
+	return go2jsWideBinary(left, right, go2jsWideRemainderWhole, go2jsWideRemainderBig, typeName);
+}
 
-		return a - Math.trunc(a / b) * b;
-	}, (a, b) => {
-		if (b === 0n) {
-			throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "integer divide by zero");
-		}
+function go2jsWideAndBits(a, b) {
+	return a & b;
+}
 
-		return a % b;
-	}, typeName);
+function go2jsWideOrBits(a, b) {
+	return a | b;
+}
+
+function go2jsWideXorBits(a, b) {
+	return a ^ b;
+}
+
+function go2jsWideAndNotBits(a, b) {
+	return a & ~b;
 }
 
 // go2jsWideBitwise runs a marks operation over two whole numbers as digits,
@@ -9481,19 +9547,19 @@ function go2jsWideBitwise(left, right, whole, typeName) {
 }
 
 function go2jsWideAnd(left, right, typeName) {
-	return go2jsWideBitwise(left, right, (a, b) => a & b, typeName);
+	return go2jsWideBitwise(left, right, go2jsWideAndBits, typeName);
 }
 
 function go2jsWideOr(left, right, typeName) {
-	return go2jsWideBitwise(left, right, (a, b) => a | b, typeName);
+	return go2jsWideBitwise(left, right, go2jsWideOrBits, typeName);
 }
 
 function go2jsWideXor(left, right, typeName) {
-	return go2jsWideBitwise(left, right, (a, b) => a ^ b, typeName);
+	return go2jsWideBitwise(left, right, go2jsWideXorBits, typeName);
 }
 
 function go2jsWideAndNot(left, right, typeName) {
-	return go2jsWideBitwise(left, right, (a, b) => a & ~b, typeName);
+	return go2jsWideBitwise(left, right, go2jsWideAndNotBits, typeName);
 }
 
 function go2jsImul(left, right) {
