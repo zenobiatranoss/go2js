@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>go2js playground</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>go2js playground</h1>
+</header>
+
+<main>
+  <section class="editor">
+    <div class="bar">
+      <select id="examples" aria-label="examples"></select>
+      <button id="run" disabled>Run</button>
+      <span id="status" class="status">loading the compiler…</span>
+    </div>
+    <div class="codewrap">
+      <pre class="highlight" aria-hidden="true"><code id="highlight"></code></pre>
+      <textarea id="source" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"></textarea>
+    </div>
+  </section>
+
+  <section class="panes">
+    <div class="pane">
+      <h2>Output</h2>
+      <pre id="output" class="output"></pre>
+    </div>
+    <div class="pane js">
+      <h2>JavaScript</h2>
+      <pre id="js" class="output"></pre>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <p class="notice">
+    Demo, not the full compiler: the Go language core only, no imports
+    (use <code>println</code> and <code>print</code>). Whole programs and
+    packages need the full
+    <a href="https://github.com/zenobiatranoss/go2js">go2js</a> tool.
+  </p>
+</footer>
+
+<script src="wasm_exec.js"></script>
+<script src="highlight.js"></script>
+<script src="examples.js"></script>
+<script src="playground.js"></script>
+</body>
+</html>

@@ -6,6 +6,15 @@ built in the open, faithful where it can be and honest where it cannot. Read
 [docs/limitations.md](docs/limitations.md) alongside any entry here — the things
 the tool does not do yet are as much a part of a release as the things it does.
 
+## [Unreleased]
+
+- **A browser playground.** The compiler, built as WebAssembly, runs entirely in
+  a web page: type Go, watch it become JavaScript, and run it, with no server
+  involved. It runs the language core without imports, so its programs use the
+  builtin `println` and `print`; the full tool compiles whole programs and
+  packages. See [playground/](playground) and
+  [the README](README.md#playground).
+
 ## [v0.1.0] — the first experimental release
 
 The first release, and a trial one. The tool compiles real Go to real, readable

@@ -24,6 +24,7 @@ If you want the short version, [jump to the quick start](#quick-start).
 - [Requirements](#requirements)
 - [Build & install](#build--install)
 - [Quick start](#quick-start)
+- [Playground](#playground)
 - [The command line](#the-command-line)
   - [Compiling](#compiling)
   - [Version](#version)
@@ -134,6 +135,23 @@ go2js . -o project.mjs
 See [the command line](#the-command-line) for the full set of options, and
 [handing functions over](#handing-functions-over-to-javascript) for how to call
 into the compiled program from JavaScript.
+
+## Playground
+
+There is a playground: a page you open in a browser, type Go into, and watch run
+as JavaScript — the compiler itself is compiled to WebAssembly and does the work
+in the page, with no server involved.
+
+```sh
+./scripts/playground.sh           # builds playground/playground.wasm
+cd playground && python3 -m http.server 8130
+# then open http://localhost:8130/
+```
+
+The playground runs the Go language on its own, without packages, so its programs
+use the builtin `println` and `print`. The full tool compiles whole programs and
+packages; the playground is a small, honest window onto the same compiler. The
+files are in [`playground/`](playground).
 
 ## The command line
 
@@ -450,6 +468,8 @@ That matters to anyone reading this, human or AI:
 
 ```
 cmd/go2js/          the command line tool
+cmd/playground/     the compiler built as WebAssembly for the browser playground
+playground/         the playground page (built by scripts/playground.sh)
 compiler/           the compiler as a library: options, parsing, checking, emitting
 backend/javascript/ the runtime: the JavaScript that generated programs run against
                     (runtime.go, stdlib_packages.go, and friends hold that JS)

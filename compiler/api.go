@@ -42,6 +42,14 @@ func (c *Compiler) CompileFile(path string) (string, error) {
 		return "", err
 	}
 
+	return c.compileParsed(parsed)
+}
+
+// compileParsed writes a file that has already been read out as the JavaScript
+// program it stands for. It is the half of compiling that does not read the file
+// from disk, so the same work is done whether the source came from a path or
+// from a string.
+func (c *Compiler) compileParsed(parsed *ParsedFile) (string, error) {
 	analysis, err := Analyze(parsed)
 	if err != nil {
 		return "", err
@@ -63,14 +71,9 @@ func (c *Compiler) CompileFile(path string) (string, error) {
 
 	var sources []javascript.SourceMapSource
 	if c.Options.SourceMap {
-		data, readErr := os.ReadFile(path)
-		if readErr != nil {
-			return "", readErr
-		}
-
 		sources = []javascript.SourceMapSource{{
-			Name:    filepath.Base(path),
-			Content: string(data),
+			Name:    filepath.Base(parsed.Path),
+			Content: string(parsed.Source),
 		}}
 	}
 
@@ -197,23 +200,20 @@ func (c *Compiler) CompileSourceFile(filename, source string) (string, error) {
 		filename = "main.go"
 	}
 
-	dir, err := os.MkdirTemp("", "go2js-*")
-	if err != nil {
-		return "", err
-	}
-	defer os.RemoveAll(dir)
-
 	filename = filepath.Base(filename)
 	if filepath.Ext(filename) != ".go" {
 		return "", fmt.Errorf("source filename must have .go extension")
 	}
 
-	path := filepath.Join(dir, filename)
-	if err := os.WriteFile(path, []byte(source), 0644); err != nil {
+	// The source is read from the string rather than written to a file and read
+	// back, so a program is compiled the same way wherever the compiler runs,
+	// including where there is no filesystem to write a file to.
+	parsed, err := ParseSourceWithOptions(filename, []byte(source), ParseOptions{ParseComments: true})
+	if err != nil {
 		return "", err
 	}
 
-	return c.CompileFile(path)
+	return c.compileParsed(parsed)
 }
 
 func (c *Compiler) CompileProject(dir string) (string, error) {

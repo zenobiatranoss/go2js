@@ -7,6 +7,8 @@
 
 # build artifacts
 /bin/
+/playground/playground.wasm
+/playground/wasm_exec.js
 /dist/
 /go2js
 /go2js.exe

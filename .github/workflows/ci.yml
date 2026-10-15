@@ -22,6 +22,8 @@ jobs:
         run: go vet ./...
       - name: build
         run: go build ./cmd/go2js
+      - name: build the playground compiler
+        run: GOOS=js GOARCH=wasm go build -o /dev/null ./cmd/playground
       - name: test
         run: go test ./...
 
