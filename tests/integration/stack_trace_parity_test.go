@@ -91,6 +91,10 @@ func traceFrames(t *testing.T, trace string) []string {
 			continue
 		}
 
+		if strings.HasPrefix(match[1], "runtime.") || strings.HasPrefix(match[1], "runtime/") {
+			continue
+		}
+
 		place := goFramePlace.FindStringSubmatch(lines[index+1])
 
 		if place == nil {
