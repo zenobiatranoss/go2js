@@ -132,6 +132,19 @@ func collectionElementType(t gotypes.Type) gotypes.Type {
 	}
 }
 
+// collectionZeroIsShared reports whether a zero value written as the string
+// given can be used for every element of a slice, rather than needing a new one
+// made for each. A number, a string, a boolean and a null are values of
+// themselves; a struct, an array and anything built where it is written are not.
+func collectionZeroIsShared(zero string) bool {
+	switch zero {
+	case "0", `""`, "false", "null", "undefined":
+		return true
+	default:
+		return false
+	}
+}
+
 func (e *emitter) collectionZeroValue(t gotypes.Type) string {
 	if t == nil {
 		return "null"
@@ -368,9 +381,20 @@ func (e *emitter) emitCollectionBuiltinCall(call *ast.CallExpr) (bool, error) {
 			}
 		}
 
-		e.write(", () => ")
-		e.write(zero)
-		e.write(")")
+		e.write(", ")
+
+		// An element whose zero value is a constant is filled in with that one
+		// value, while one that is an object of its own is asked for anew for
+		// every place, so that no two places are the same object.
+		if collectionZeroIsShared(zero) {
+			e.write(zero)
+			e.write(", true)")
+		} else {
+			e.write("() => ")
+			e.write(zero)
+			e.write(", false)")
+		}
+
 		return true, nil
 
 	case "cap":
@@ -458,6 +482,45 @@ function go2jsMarkArray(value) {
 	return value;
 }
 
+// go2jsSliceIndex answers the whole number a property name stands for when it
+// names one of a slice's elements, and null when it names anything else. Only
+// a canonical index is taken, so "length", "1x" and "01" name properties
+// rather than elements, and the name is read digit by digit rather than
+// turned into a number and back again.
+function go2jsSliceIndex(property) {
+	if (typeof property !== "string" || property.length === 0) {
+		return null;
+	}
+
+	let start = 0;
+
+	if (property.charCodeAt(0) === 45) {
+		if (property.length === 1) {
+			return null;
+		}
+
+		start = 1;
+	}
+
+	if (property.charCodeAt(start) === 48 && property.length > start + 1) {
+		return null;
+	}
+
+	let index = 0;
+
+	for (let i = start; i < property.length; i++) {
+		const code = property.charCodeAt(i);
+
+		if (code < 48 || code > 57) {
+			return null;
+		}
+
+		index = index * 10 + (code - 48);
+	}
+
+	return property.charCodeAt(0) === 45 ? -index : index;
+}
+
 function go2jsSliceView(data, offset, length, capacity) {
 	if (data === null || data === undefined) {
 		return null;
@@ -502,8 +565,8 @@ function go2jsSliceView(data, offset, length, capacity) {
 				};
 			}
 
-			const index = Number(property);
-			if (Number.isInteger(index) && String(index) === String(property)) {
+			const index = go2jsSliceIndex(property);
+			if (index !== null) {
 				if (index < 0 || index >= state.length) {
 					return undefined;
 				}
@@ -514,9 +577,9 @@ function go2jsSliceView(data, offset, length, capacity) {
 		},
 
 		has(target, property) {
-			const index = Number(property);
+			const index = go2jsSliceIndex(property);
 
-			if (Number.isInteger(index) && String(index) === String(property)) {
+			if (index !== null) {
 				return index >= 0 && index < state.length;
 			}
 
@@ -534,9 +597,9 @@ function go2jsSliceView(data, offset, length, capacity) {
 		},
 
 		getOwnPropertyDescriptor(target, property) {
-			const index = Number(property);
+			const index = go2jsSliceIndex(property);
 
-			if (Number.isInteger(index) && String(index) === String(property)) {
+			if (index !== null) {
 				if (index < 0 || index >= state.length) {
 					return undefined;
 				}
@@ -553,8 +616,8 @@ function go2jsSliceView(data, offset, length, capacity) {
 		},
 
 		set(target, property, value) {
-			const index = Number(property);
-			if (Number.isInteger(index) && String(index) === String(property)) {
+			const index = go2jsSliceIndex(property);
+			if (index !== null) {
 				if (index < 0) {
 					throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "index out of range [" + index + "]");
 				}
@@ -628,7 +691,7 @@ function go2jsSliceCap(value) {
 	return state ? state.capacity : 0;
 }
 
-function go2jsSliceMake(length, capacity, zeroFactory) {
+function go2jsSliceMake(length, capacity, zero, sharedZero) {
 	length = Math.trunc(length);
 	capacity = Math.trunc(capacity);
 
@@ -642,10 +705,19 @@ function go2jsSliceMake(length, capacity, zeroFactory) {
 		throw new RangeError(go2jsRuntimeErrorPrefix + "makeslice: cap out of range");
 	}
 
-	const data = Array.from(
-		{length: capacity},
-		() => zeroFactory()
-	);
+	const data = new Array(capacity);
+
+	// A zero value that stands for itself fills the whole room at once, which
+	// keeps a slice of numbers from making a function call for every element.
+	// One that has to be made fresh, like a struct or an array, is asked for
+	// once for each place it fills.
+	if (sharedZero) {
+		data.fill(zero);
+	} else {
+		for (let i = 0; i < capacity; i++) {
+			data[i] = zero();
+		}
+	}
 
 	return go2jsSliceView(data, 0, length, capacity);
 }
