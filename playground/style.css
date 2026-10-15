@@ -48,17 +48,9 @@ header {
 }
 
 header .logo {
-  height: 52px;
+  height: 64px;
   width: auto;
   display: block;
-}
-
-header h1 {
-  margin: 0;
-  font-size: 21px;
-  letter-spacing: -0.01em;
-  font-weight: 600;
-  color: var(--accent-2);
 }
 
 header p {
