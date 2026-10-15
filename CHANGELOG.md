@@ -8,12 +8,13 @@ the tool does not do yet are as much a part of a release as the things it does.
 
 ## [Unreleased]
 
-- **A browser playground.** The compiler, built as WebAssembly, runs entirely in
-  a web page: type Go, watch it become JavaScript, and run it, with no server
-  involved. It runs the language core without imports, so its programs use the
-  builtin `println` and `print`; the full tool compiles whole programs and
-  packages. See [playground/](playground) and
-  [the README](README.md#playground).
+- **A browser playground,** live at
+  <https://zenobiatranoss.github.io/go2js/>. The compiler, built as WebAssembly,
+  runs entirely in a web page: type Go, watch it become JavaScript, and run it,
+  with no server involved. It is the same compiler but not its full strength — it
+  runs the language core without imports, so its programs use the builtin
+  `println` and `print`; the full tool compiles whole programs and packages. See
+  [playground/](playground) and [the README](README.md#playground).
 
 ## [v0.1.0] — the first experimental release
 
