@@ -27,6 +27,7 @@ If you want the short version, [jump to the quick start](#quick-start).
 - [The compiler as a library](#the-compiler-as-a-library)
 - [Honest limitations](#honest-limitations)
 - [Testing](#testing-how-go2js-tests-go2js)
+- [How this was written](#how-this-was-written)
 - [Project layout](#project-layout)
 - [FAQ](#faq)
 - [Contributing](#contributing)
@@ -401,6 +402,31 @@ test fails and shows both outputs and the offending source.
 That's the discipline of this project — parity is the definition of done. A new
 feature isn't "implemented" until a Go program using it prints the exact same
 thing from `go run` and from `node`.
+
+## How this was written
+
+Stated plainly, because it's easy to guess and better to be told: **most of the
+test files here were produced with AI, under light human editing, and the
+explanatory comments — in the Go, in the runtime JavaScript, and in these docs —
+were written by AI as well.** The human hand is in the design, the decisions,
+and the final say; the volume of prose and the long tail of cases came from an
+AI assistant working through the codebase.
+
+That matters to anyone reading this, human or AI:
+
+- **The comments are the project's memory.** They say *why* a thing is the way it
+  is, and they are written to be enough for a reader — or a fresh AI assistant
+  with no history of this repository — to pick the work up and carry it on. Read
+  them as the stated intent; read the parity tests as the proof.
+- **The tests are the definition of done.** Most were produced with AI, so read
+  one before you lean on it: the integration tests run a program as Go and as
+  JavaScript and compare the two, and that comparison — not the comment above it
+  — is what actually holds.
+- **A few parts are small and not important.** Some corners were written
+  quickly, with AI help, to get a feature or a bug over the line, and the finer
+  detail of how a particular problem was solved is only partly remembered. Where
+  a section looks short or thinly explained, that is usually why. It is not a
+  claim of depth; it is an honest label on a small thing.
 
 ## Project layout
 
