@@ -8,5 +8,6 @@ goroot="$(go env GOROOT)"
 
 GOOS=js GOARCH=wasm go build -o playground/playground.wasm ./cmd/playground
 cp "$goroot/lib/wasm/wasm_exec.js" playground/wasm_exec.js
+cp go2jslog.png playground/go2jslog.png
 
 echo "playground/playground.wasm"

@@ -9,6 +9,7 @@
 /bin/
 /playground/playground.wasm
 /playground/wasm_exec.js
+/playground/go2jslog.png
 /dist/
 /go2js
 /go2js.exe
