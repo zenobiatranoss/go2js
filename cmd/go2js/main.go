@@ -30,6 +30,13 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer) error {
+	// The one thing that is not asked of the compiler is which build this is,
+	// which is a question about the tool rather than about any program.
+	if len(args) > 0 && (args[0] == "version" || args[0] == "-version" || args[0] == "--version") {
+		fmt.Fprintln(stdout, compiler.Version)
+		return nil
+	}
+
 	// A program is written out and run by hand, and a set of tests is compiled,
 	// run and said what it came to, which are two different things to ask of the
 	// same compiler.

@@ -11,6 +11,24 @@ test suite is green.**
 The project reads plain semantic versions. A tag is `v1.2.3`; the script and
 the CI workflow agree on that shape and refuse anything else.
 
+Before `1.0.0`, a release is an **experimental pre-release**: a `v0.x.y` tag is
+published as a GitHub pre-release rather than a full one, the tool reports the
+same `v0.x.y` from `go2js version`, and the release is announced with the warning
+that it is a trial build with known limitations (see
+[docs/limitations.md](limitations.md)). `1.0.0` is the point at which that
+warning comes off.
+
+## The changelog and the version
+
+[CHANGELOG.md](../CHANGELOG.md) is updated as part of cutting a release, before
+the tag is pushed: a new entry names the version, says what changed, and — for a
+pre-1.0 release — restates what the tool still does not do. The tag is pushed
+only once the entry is in place.
+
+The same version is written into `compiler/version.go`, which `go2js version`
+reads back. The two are bumped together, so a released binary always reports the
+version it was tagged with.
+
 ## Cutting a release
 
 From a working tree that is clean and whose tests pass:
