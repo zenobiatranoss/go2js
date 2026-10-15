@@ -138,20 +138,30 @@ into the compiled program from JavaScript.
 
 ## Playground
 
-There is a playground: a page you open in a browser, type Go into, and watch run
-as JavaScript — the compiler itself is compiled to WebAssembly and does the work
-in the page, with no server involved.
+There is a playground you can open and use right now:
+
+**https://zenobiatranoss.github.io/go2js/**
+
+Type Go into it, watch it become JavaScript, and run it — all in the page. The
+compiler itself is Go, compiled to WebAssembly, so the translation happens in
+your browser and nothing is sent anywhere.
+
+Be clear about what it is, though. It is **the same compiler, but not its full
+strength**: it runs the Go **language core** on its own, with **no imports**, so
+its programs use the builtin `println` and `print` rather than the standard
+library. There is no package set in a browser, and no terminal, so the demo
+cannot compile `import "fmt"` (or any package) and cannot run programs that read
+input, spawn processes, or otherwise reach for the machine. For whole Go
+programs and packages, use the command line tool. The playground is a small,
+honest window onto the compiler, not the whole workshop.
+
+To run it yourself, serve the [`playground/`](playground) directory:
 
 ```sh
 ./scripts/playground.sh           # builds playground/playground.wasm
 cd playground && python3 -m http.server 8130
 # then open http://localhost:8130/
 ```
-
-The playground runs the Go language on its own, without packages, so its programs
-use the builtin `println` and `print`. The full tool compiles whole programs and
-packages; the playground is a small, honest window onto the same compiler. The
-files are in [`playground/`](playground).
 
 ## The command line
 
