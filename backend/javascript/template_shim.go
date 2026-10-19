@@ -27,15 +27,11 @@ func init() {
 	}
 	supported := funcSet(functions)
 	stdlibFuncMaps["text/template"] = functions
-	stdlibFuncMaps["html/template"] = functions
 	supportedStdlibPackages["text/template"] = supported
-	supportedStdlibPackages["html/template"] = supported
 	for name, value := range templateTypes {
 		packageTypes["template."+name] = value
 	}
-	for _, alias := range []string{"htmltemplate", "texttemplate"} {
-		supportedStdlibPackages[alias] = supported
-	}
+	supportedStdlibPackages["texttemplate"] = supported
 }
 
 func templateRuntimeSource() string {

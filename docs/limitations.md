@@ -86,6 +86,12 @@ name the runtime does **not** answer for. A name in its "missing" column is
 currently a compile-time error, not a silent wrong answer, so the honest
 limit is: whatever the report still lists.
 
+- **`html/template` is refused rather than answered.** The package exists to
+  escape each value for the context it lands in, and the JavaScript runtime
+  does no contextual auto-escaping. Answering it would write unescaped HTML —
+  an XSS hole Go never had. A program that imports it does not compile, and
+  says so; escape the values yourself, or use `text/template`.
+
 ## When parity can't be exact
 
 Sometimes the two runtimes can't agree on a detail, and we're okay with that:

@@ -45,7 +45,6 @@ of the package is a compile-time error yet.
 | hash/crc64   | 8       | 8     | 100  % | none |
 | hash/fnv     | 6       | 6     | 100  % | none |
 | html         | 2       | 2     | 100  % | none |
-| html/template | 9       | 37    | 24   % | ErrAmbigContext, ErrBadHTML, ErrBranchEnd, ErrEndContext, ErrJSTemplate, ErrNoSuchTemplate, ErrOutputContext, ErrPartialCharset, ErrPartialEscape, ErrPredefinedEscaper, ErrRangeLoopReentry, ErrSlashAmbig, … |
 | http (`net/http`) | 109     | 184   | 59   % | AllowQuerySemicolons, CanonicalHeaderKey, CloseNotifier, ConnState, CookieJar, DefaultTransport, DetectContentType, Dir, ErrAbortHandler, ErrBodyNotAllowed, ErrBodyReadAfterClose, ErrContentLength, … |
 | io           | 24      | 52    | 46   % | ByteReader, ByteScanner, ByteWriter, Closer, LimitedReader, OffsetWriter, Pipe, PipeReader, PipeWriter, ReadCloser, ReadSeekCloser, ReadSeeker, … |
 | io/fs        | 17      | 45    | 37   % | DirEntry, ErrClosed, ErrExist, ErrInvalid, ErrNotExist, ErrPermission, FS, File, FileInfo, FileInfoToDirEntry, FileMode, FormatDirEntry, … |
@@ -84,4 +83,4 @@ of the package is a compile-time error yet.
 | url (`net/url`) | 11      | 16    | 68   % | Error, EscapeError, InvalidHostError, Userinfo, Values |
 | utf8 (`unicode/utf8`) | 19      | 19    | 100  % | none |
 
-**Total: 1149 of 2086 package-level exported names (55%) covered across 73 packages.**
+**Total: 1140 of 2049 package-level exported names (55%) covered across 72 packages.**

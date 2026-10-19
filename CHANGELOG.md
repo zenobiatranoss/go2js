@@ -21,6 +21,13 @@ the tool does not do yet are as much a part of a release as the things it does.
   `func(...int)` — instead of collapsing every function type to `func()`,
   which was a limitation that is now gone.
 
+- **`html/template` no longer compiles.** It used to compile and answer like
+  `text/template`, which meant a program that trusted it to escape values
+  wrote raw HTML instead — a cross-site scripting hole. The runtime does no
+  contextual auto-escaping, so the compiler now refuses the package outright
+  and says why, rather than answering it and lying about escaping. Use
+  `text/template` with values escaped explicitly.
+
 ## [v0.1.0] — the first experimental release
 
 The first release, and a trial one. The tool compiles real Go to real, readable
