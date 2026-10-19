@@ -16,6 +16,11 @@ the tool does not do yet are as much a part of a release as the things it does.
   `println` and `print`; the full tool compiles whole programs and packages. See
   [playground/](playground) and [the README](README.md#playground).
 
+- **A function type is printed the way Go prints it.** `%T`, `%#v` and the
+  refusals name the whole signature — `func(int, string) (bool, error)`,
+  `func(...int)` — instead of collapsing every function type to `func()`,
+  which was a limitation that is now gone.
+
 ## [v0.1.0] — the first experimental release
 
 The first release, and a trial one. The tool compiles real Go to real, readable
