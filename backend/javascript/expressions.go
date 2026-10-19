@@ -2402,7 +2402,6 @@ func (e *emitter) selectorReceiverType(selector *ast.SelectorExpr) gotypes.Type 
 }
 
 var shimReceiverTypes = map[string]gotypes.Type{
-	"html/template.New": mustNamedType("html/template", "Template"),
 	"text/template.New": mustNamedType("text/template", "Template"),
 }
 
@@ -2480,8 +2479,6 @@ var stdlibMethodMultiReturn = map[string]bool{
 	"bytes.Buffer.ReadFrom":        true,
 	"bytes.Buffer.Read":            true,
 	"bytes.Buffer.ReadByte":        true,
-	"html/template.Template.Parse": true,
-	"html/template.Template.New":   true,
 	"text/template.Template.Parse": true,
 	"text/template.Template.New":   true,
 }

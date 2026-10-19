@@ -148,6 +148,16 @@ func (e *emitter) checkSupportedPackageSelector(selector *ast.SelectorExpr) erro
 		return nil
 	}
 
+	// html/template is refused on purpose rather than answered. It exists to
+	// escape each value for the context it lands in, and the JavaScript runtime
+	// does no contextual auto-escaping, so answering it would write unescaped
+	// HTML — a silent cross-site scripting hole that Go never had. Failing to
+	// compile is the honest answer; the program is told to escape explicitly.
+	if path, resolved := e.packageImportPath(selector); resolved && path == "html/template" {
+		return e.unsupportedStdlibError(e.positionOf(selector),
+			"html/template is not available in the JavaScript standard library: the runtime does no contextual auto-escaping, so a compiled html/template program would emit unescaped HTML; escape the values yourself or use text/template")
+	}
+
 	position := e.positionOf(selector)
 
 	key := pkg

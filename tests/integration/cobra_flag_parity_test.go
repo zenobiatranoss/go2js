@@ -210,7 +210,7 @@ func TestWriterInterfaces(t *testing.T) {
 import (
 	"bytes"
 	"fmt"
-	"html/template"
+	"text/template"
 	"io"
 	"os"
 	"strings"

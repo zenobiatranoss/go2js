@@ -30,7 +30,6 @@ var identPath = map[string]string{
 	"heap":         "container/heap",
 	"hex":          "encoding/hex",
 	"hmac":         "crypto/hmac",
-	"htmltemplate": "html/template",
 	"http":         "net/http",
 	"json":         "encoding/json",
 	"list":         "container/list",
