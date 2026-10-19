@@ -52,12 +52,69 @@ func goTypeName(t gotypes.Type) string {
 	case *gotypes.Interface:
 		return "interface {}"
 	case *gotypes.Signature:
-		return "func()"
+		return goFuncTypeName(value)
 	case *gotypes.TypeParam:
 		return value.Obj().Name()
 	default:
 		return t.String()
 	}
+}
+
+// goFuncTypeName renders a function type the way fmt's %T verb does, which is
+// the signature with its parameter and result types but never their names:
+// func(int, string) (bool, error). A single unnamed result carries no
+// parentheses, a variadic parameter is spelled with an ellipsis, and each type
+// is rendered the way goTypeName renders it anywhere else.
+func goFuncTypeName(sig *gotypes.Signature) string {
+	var builder strings.Builder
+
+	builder.WriteString("func(")
+
+	params := sig.Params()
+
+	for i := 0; i < params.Len(); i++ {
+		if i > 0 {
+			builder.WriteString(", ")
+		}
+
+		param := params.At(i).Type()
+
+		if sig.Variadic() && i == params.Len()-1 {
+			if slice, ok := param.(*gotypes.Slice); ok {
+				builder.WriteString("...")
+				builder.WriteString(goTypeName(slice.Elem()))
+
+				continue
+			}
+		}
+
+		builder.WriteString(goTypeName(param))
+	}
+
+	builder.WriteString(")")
+
+	results := sig.Results()
+
+	switch results.Len() {
+	case 0:
+	case 1:
+		builder.WriteString(" ")
+		builder.WriteString(goTypeName(results.At(0).Type()))
+	default:
+		builder.WriteString(" (")
+
+		for i := 0; i < results.Len(); i++ {
+			if i > 0 {
+				builder.WriteString(", ")
+			}
+
+			builder.WriteString(goTypeName(results.At(i).Type()))
+		}
+
+		builder.WriteString(")")
+	}
+
+	return builder.String()
 }
 
 func goTypeObjectName(obj *gotypes.TypeName) string {

@@ -71,9 +71,6 @@ corners. Read these before you promise a deadline around it.
   are not, and the address in a `%p` line or in a refusal such as
   `%!s(*int=0x...)` can never match a `go run`. A nil pointer, channel or
   function is the one case that does match: it is the zero address `0`.
-- **A function type is written `func()`.** Every function type prints as
-  `func()` under `%T`, under `%#v` and inside a refusal, rather than as its
-  full signature the way Go writes `func(int) int`.
 
 - **A nil slice or map a runtime helper hands straight to a call is `<nil>`.**
   `fmt.Println(os.ReadFile(path))` writes `<nil>` for the nil bytes where Go
