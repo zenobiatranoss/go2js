@@ -91,3 +91,55 @@ func main() {
 }
 `)
 }
+
+// The post statement of a for loop is still an assignment, so a narrow integer
+// there has to keep its width and a wide one has to stay exact. A loop that
+// steps past the end of int8 or uint8 wraps the way Go wraps it rather than
+// running past the type and never meeting its own condition.
+func TestNarrowIntegerForPostWrapsLikeGo(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+func main() {
+	stepped := 0
+	for i := int8(120); i < 127; i++ {
+		stepped++
+	}
+	fmt.Println("step", stepped)
+
+	added := 0
+	for i := int8(120); i < 127; i += 5 {
+		added++
+	}
+	fmt.Println("add", added)
+
+	unsigned := 0
+	for u := uint8(250); u > 1 && u < 255; u += 10 {
+		unsigned++
+	}
+	fmt.Println("uint", unsigned)
+
+	cycled := 0
+	for i := int8(120); cycled < 300; i++ {
+		cycled++
+		if i == 120 && cycled > 1 {
+			break
+		}
+	}
+	fmt.Println("cycle", cycled)
+
+	var total int64
+	for i := int64(9007199254740990); i < 9007199254740994; i++ {
+		total += i
+	}
+	fmt.Println("wide", total)
+
+	var paired int64
+	for i := int64(9007199254740990); i < 9007199254740994; i += 2 {
+		paired += i
+	}
+	fmt.Println("wide add", paired)
+}
+`)
+}

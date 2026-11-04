@@ -43,7 +43,9 @@ func main() {
 		`return go2jsWideAdd(a, b, "int");`,
 		"let result = (yield* add(10, 20));",
 		"if (result > 20)",
-		"for (let i = 0; i < 3; i++)",
+		// a step on an int is worked out by the runtime too, even in a for
+		// header, since a double cannot be trusted with every int
+		`for (let i = 0; i < 3; i = go2jsWideAdd(i, 1, "int"))`,
 		"go2jsBuiltinPrintln(result);",
 		"main();",
 	}

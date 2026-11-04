@@ -142,7 +142,8 @@ func narrowIntTarget(expr ast.Expr) bool {
 // its type is not an error in Go, it is the number that fits, so an int8 one
 // past its largest is the smallest int8 and a uint8 one below its smallest is
 // the largest uint8. JavaScript has no width of its own to give, so the width is
-// asked for by name.
+// asked for by name. In an inline context, such as the post statement of a for
+// loop, the result is an expression rather than a statement of its own.
 func (e *emitter) emitNarrowIntAssign(target ast.Expr, operator string, rhs ast.Expr) bool {
 	name, ok := narrowIntTypeName(e.analyzedType(target))
 	if !ok || !narrowIntTarget(target) {
@@ -150,7 +151,10 @@ func (e *emitter) emitNarrowIntAssign(target ast.Expr, operator string, rhs ast.
 	}
 
 	e.needsRuntime = true
-	e.writeIndent()
+
+	if !e.inlineMode {
+		e.writeIndent()
+	}
 
 	if err := e.emitTargetExpr(target); err != nil {
 		return true
@@ -194,8 +198,12 @@ func (e *emitter) emitNarrowIntAssign(target ast.Expr, operator string, rhs ast.
 
 	e.write(", ")
 	e.write(strconv.Quote(name))
-	e.write(");")
-	e.newline()
+	e.write(")")
+
+	if !e.inlineMode {
+		e.write(";")
+		e.newline()
+	}
 
 	return true
 }
@@ -299,7 +307,9 @@ func (e *emitter) emitStep(stmt *ast.IncDecStmt) bool {
 	// a step through a pointer is a read of what it points at, the step, and a
 	// write back, because JavaScript will not step a call on its own
 	if deref, ok := stmt.X.(*ast.StarExpr); ok {
-		e.writeIndent()
+		if !e.inlineMode {
+			e.writeIndent()
+		}
 		e.write("go2jsStorePtr(")
 
 		if err := e.emitPointerOperand(deref.X); err != nil {
@@ -332,13 +342,19 @@ func (e *emitter) emitStep(stmt *ast.IncDecStmt) bool {
 			e.write(")")
 		}
 
-		e.write(");")
-		e.newline()
+		e.write(")")
+
+		if !e.inlineMode {
+			e.write(";")
+			e.newline()
+		}
 
 		return true
 	}
 
-	e.writeIndent()
+	if !e.inlineMode {
+		e.writeIndent()
+	}
 
 	if err := e.emitTargetExpr(stmt.X); err != nil {
 		return true
@@ -370,8 +386,10 @@ func (e *emitter) emitStep(stmt *ast.IncDecStmt) bool {
 		e.write(")")
 	}
 
-	e.write(";")
-	e.newline()
+	if !e.inlineMode {
+		e.write(";")
+		e.newline()
+	}
 
 	return true
 }
@@ -394,7 +412,9 @@ func (e *emitter) emitMapCompoundAssign(index *ast.IndexExpr, rhs ast.Expr, tok 
 
 	elem := e.analyzedType(index)
 
-	e.writeIndent()
+	if !e.inlineMode {
+		e.writeIndent()
+	}
 	e.needsRuntime = true
 	e.write("go2jsMapUpdate(")
 
@@ -471,8 +491,12 @@ func (e *emitter) emitMapCompoundAssign(index *ast.IndexExpr, rhs ast.Expr, tok 
 		e.write(")")
 	}
 
-	e.write(");")
-	e.newline()
+	e.write(")")
+
+	if !e.inlineMode {
+		e.write(";")
+		e.newline()
+	}
 
 	return true
 }
@@ -513,7 +537,10 @@ func (e *emitter) emitWideCompoundAssign(stmt *ast.AssignStmt) (bool, error) {
 	}
 
 	e.needsRuntime = true
-	e.writeIndent()
+
+	if !e.inlineMode {
+		e.writeIndent()
+	}
 
 	if err := e.emitTargetExpr(stmt.Lhs[0]); err != nil {
 		return true, err
@@ -552,8 +579,12 @@ func (e *emitter) emitWideCompoundAssign(stmt *ast.AssignStmt) (bool, error) {
 
 	// the statement is written out whole here rather than left for the path it
 	// was taken from, so it ends the same way every other statement does
-	e.write(");")
-	e.newline()
+	e.write(")")
+
+	if !e.inlineMode {
+		e.write(";")
+		e.newline()
+	}
 
 	return true, nil
 }
@@ -2115,6 +2146,26 @@ func (e *emitter) emitInlineStmt(stmt ast.Stmt) error {
 			return e.emitBlankAssignment(s)
 		}
 
+		// A compound assignment in a for header is an expression there, but it
+		// still has to narrow or widen the way the same assignment does as a
+		// statement of its own.
+		if s.Tok != token.DEFINE && s.Tok != token.ASSIGN && len(s.Lhs) == 1 && len(s.Rhs) == 1 {
+			previous := e.inlineMode
+			e.inlineMode = true
+
+			if e.emitNarrowIntAssign(s.Lhs[0], compoundAssignOperator(s.Tok), s.Rhs[0]) {
+				e.inlineMode = previous
+				return nil
+			}
+
+			handled, err := e.emitWideCompoundAssign(s)
+			e.inlineMode = previous
+
+			if handled {
+				return err
+			}
+		}
+
 		if len(s.Lhs) > 1 && len(s.Rhs) == 1 && e.isMultiReturnCall(s.Rhs[0]) {
 			if e.multiReturnReusesTargets(s) {
 				return e.emitMultiReturnWithTemps(s)
@@ -2172,6 +2223,28 @@ func (e *emitter) emitInlineStmt(stmt ast.Stmt) error {
 		}
 
 	case *ast.IncDecStmt:
+		// A step of one in a for header is an expression there, but it still
+		// has to keep a narrow integer in its width and a wide one exact.
+		previous := e.inlineMode
+		e.inlineMode = true
+
+		handled := false
+		if s.Tok == token.INC {
+			handled = e.emitNarrowIntAssign(s.X, "+", nil)
+		} else {
+			handled = e.emitNarrowIntAssign(s.X, "-", nil)
+		}
+
+		if !handled {
+			handled = e.emitStep(s)
+		}
+
+		e.inlineMode = previous
+
+		if handled {
+			return nil
+		}
+
 		if err := e.emitExpr(s.X); err != nil {
 			return err
 		}
