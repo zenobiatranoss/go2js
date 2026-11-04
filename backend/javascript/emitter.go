@@ -92,7 +92,7 @@ type emitter struct {
 // statement of its own.
 func (e *emitter) emitTargetIndexChecks(targets []ast.Expr) error {
 	for _, target := range targets {
-		index, ok := target.(*ast.IndexExpr)
+		index, ok := unparen(target).(*ast.IndexExpr)
 
 		if !ok || !e.isArrayOrSliceExpr(index.X) {
 			continue
@@ -119,13 +119,156 @@ func (e *emitter) emitTargetIndexChecks(targets []ast.Expr) error {
 	return nil
 }
 
-// emitTargetExpr writes an expression that is about to be assigned to, where a
-// runtime check in the middle of it would not be JavaScript at all.
+// targetRunsSomething reports whether reading an assignment target a second
+// time would run part of it a second time as well. A name, a field of a name,
+// and a plain index into one read the same place every time; a call, a receive,
+// or a type assertion does not.
+func targetRunsSomething(expr ast.Expr) bool {
+	switch target := expr.(type) {
+	case *ast.CallExpr, *ast.TypeAssertExpr:
+		return true
+	case *ast.UnaryExpr:
+		return target.Op == token.ARROW || targetRunsSomething(target.X)
+	case *ast.BinaryExpr:
+		return targetRunsSomething(target.X) || targetRunsSomething(target.Y)
+	case *ast.ParenExpr:
+		return targetRunsSomething(target.X)
+	case *ast.SelectorExpr:
+		return targetRunsSomething(target.X)
+	case *ast.IndexExpr:
+		return targetRunsSomething(target.X) || targetRunsSomething(target.Index)
+	case *ast.SliceExpr:
+		return targetRunsSomething(target.X) || targetRunsSomething(target.Low) ||
+			targetRunsSomething(target.High) || targetRunsSomething(target.Max)
+	case *ast.StarExpr:
+		return targetRunsSomething(target.X)
+	default:
+		return false
+	}
+}
+
+// hoistTargetPart gives a part of an assignment target a name of its own, so
+// the target can be written over more than once without running that part more
+// than once. Go evaluates the left-hand side of an assignment once, whichever
+// way the assignment goes on to use it.
+func (e *emitter) hoistTargetPart(expr ast.Expr, overrides map[ast.Expr]string) error {
+	name := e.nextTemp("lhs")
+
+	e.writeIndent()
+	e.write("const ")
+	e.write(name)
+	e.write(" = ")
+
+	if err := e.emitExpr(expr); err != nil {
+		return err
+	}
+
+	e.write(";")
+	e.newline()
+
+	overrides[expr] = name
+
+	return nil
+}
+
+// prepareTarget evaluates the parts of an assignment target that would
+// otherwise run twice: the base and index of an element, the base of a field,
+// and the pointer of a dereference. It reports whether anything was hoisted and
+// returns the function that puts the previous names back.
+func (e *emitter) prepareTarget(target ast.Expr, overrides map[ast.Expr]string) (bool, error) {
+	switch place := target.(type) {
+	case *ast.IndexExpr:
+		hoisted := false
+
+		if targetRunsSomething(place.X) {
+			if err := e.hoistTargetPart(place.X, overrides); err != nil {
+				return false, err
+			}
+
+			hoisted = true
+		}
+
+		if targetRunsSomething(place.Index) {
+			if err := e.hoistTargetPart(place.Index, overrides); err != nil {
+				return false, err
+			}
+
+			hoisted = true
+		}
+
+		return hoisted, nil
+
+	case *ast.SelectorExpr:
+		if !targetRunsSomething(place.X) {
+			return false, nil
+		}
+
+		return true, e.hoistTargetPart(place.X, overrides)
+
+	case *ast.StarExpr:
+		if !targetRunsSomething(place.X) {
+			return false, nil
+		}
+
+		return true, e.hoistTargetPart(place.X, overrides)
+
+	case *ast.ParenExpr:
+		return e.prepareTarget(place.X, overrides)
+	}
+
+	return false, nil
+}
+
+// prepareTargets sets aside the parts of every target that would run more than
+// once if the assignment wrote them out more than once. It reports whether
+// anything changed and returns the function that restores the previous state.
+func (e *emitter) prepareTargets(targets []ast.Expr) (bool, func(), error) {
+	previous := e.exprOverride
+	overrides := make(map[ast.Expr]string, len(previous)+2)
+
+	for expr, name := range previous {
+		overrides[expr] = name
+	}
+
+	changed := false
+
+	for _, target := range targets {
+		hoisted, err := e.prepareTarget(target, overrides)
+
+		if err != nil {
+			return false, func() {}, err
+		}
+
+		changed = changed || hoisted
+	}
+
+	if !changed {
+		return false, func() {}, nil
+	}
+
+	e.exprOverride = overrides
+
+	return true, func() { e.exprOverride = previous }, nil
+}
+
+// unparen returns an expression with the parentheses around it taken away,
+// since they say how it is read and not what it names.
+func unparen(expr ast.Expr) ast.Expr {
+	for {
+		paren, ok := expr.(*ast.ParenExpr)
+		if !ok {
+			return expr
+		}
+
+		expr = paren.X
+	}
+}
+
 // narrowIntTarget reports whether a place is simple enough to be read and
 // written twice in a row without running anything twice, which is what lets a
 // narrowed result be put back into it.
 func narrowIntTarget(expr ast.Expr) bool {
-	switch target := expr.(type) {
+	switch target := unparen(expr).(type) {
 	case *ast.Ident, *ast.SelectorExpr:
 		return true
 	case *ast.IndexExpr:
@@ -150,6 +293,12 @@ func (e *emitter) emitNarrowIntAssign(target ast.Expr, operator string, rhs ast.
 		return false
 	}
 
+	// an entry of a map is a read and a write back, not a place JavaScript can
+	// assign through, so it is left to the map path
+	if index, isIndex := unparen(target).(*ast.IndexExpr); isIndex && e.isMapExpr(index.X) {
+		return false
+	}
+
 	e.needsRuntime = true
 
 	if !e.inlineMode {
@@ -164,9 +313,19 @@ func (e *emitter) emitNarrowIntAssign(target ast.Expr, operator string, rhs ast.
 	// low thirty-two bits of it are worked out by a multiply held exactly
 	imul := operator == "*" && isInt32MulType(e.analyzedType(target))
 
+	// a JavaScript shift is thirty-two bits wide whatever the count says, so a
+	// shift is read through the runtime that asks for the count Go was given
+	shifts := operator == "<<" || operator == ">>"
+
 	e.write(" = go2jsIntWrap(")
 
-	if imul {
+	if shifts {
+		if operator == "<<" {
+			e.write("go2jsShl(")
+		} else {
+			e.write("go2jsShr(")
+		}
+	} else if imul {
 		e.write("go2jsImul(")
 	}
 
@@ -176,7 +335,9 @@ func (e *emitter) emitNarrowIntAssign(target ast.Expr, operator string, rhs ast.
 
 	// Go clears bits with an operator of its own, which JavaScript writes as
 	// the marks left over once what is to be cleared has been turned inside out.
-	if operator == "&^" {
+	if shifts {
+		e.write(", ")
+	} else if operator == "&^" {
 		e.write(" & ~")
 	} else if !imul {
 		e.write(" ")
@@ -188,11 +349,15 @@ func (e *emitter) emitNarrowIntAssign(target ast.Expr, operator string, rhs ast.
 
 	if rhs == nil {
 		e.write("1")
+	} else if shifts {
+		if err := e.emitExpr(rhs); err != nil {
+			return true
+		}
 	} else if err := e.emitBinaryOperand(rhs, token.ADD, true); err != nil {
 		return true
 	}
 
-	if imul {
+	if imul || shifts {
 		e.write(")")
 	}
 
@@ -230,7 +395,7 @@ func compoundDerefTarget(stmt *ast.AssignStmt) (*ast.StarExpr, bool) {
 		return nil, false
 	}
 
-	star, ok := stmt.Lhs[0].(*ast.StarExpr)
+	star, ok := unparen(stmt.Lhs[0]).(*ast.StarExpr)
 
 	return star, ok
 }
@@ -289,7 +454,7 @@ func (e *emitter) emitStep(stmt *ast.IncDecStmt) bool {
 
 	// a step on an entry of a map is a read of that entry, the step, and a
 	// write back, for any element type at all
-	if index, ok := stmt.X.(*ast.IndexExpr); ok && e.isMapExpr(index.X) {
+	if index, ok := unparen(stmt.X).(*ast.IndexExpr); ok && e.isMapExpr(index.X) {
 		return e.emitMapCompoundAssign(index, nil, tok)
 	}
 
@@ -306,7 +471,7 @@ func (e *emitter) emitStep(stmt *ast.IncDecStmt) bool {
 
 	// a step through a pointer is a read of what it points at, the step, and a
 	// write back, because JavaScript will not step a call on its own
-	if deref, ok := stmt.X.(*ast.StarExpr); ok {
+	if deref, ok := unparen(stmt.X).(*ast.StarExpr); ok {
 		if !e.inlineMode {
 			e.writeIndent()
 		}
@@ -453,17 +618,47 @@ func (e *emitter) emitMapCompoundAssign(index *ast.IndexExpr, rhs ast.Expr, tok 
 		wide = true
 	}
 
-	if wide {
+	// a JavaScript shift is thirty-two bits wide whatever the count says, so a
+	// shift of a narrow element is read through the runtime before the result
+	// is given back its width
+	shiftName := ""
+
+	if !wide && (op == token.SHL || op == token.SHR) {
+		if op == token.SHL {
+			shiftName = "go2jsShl"
+		} else {
+			shiftName = "go2jsShr"
+		}
+	}
+
+	// the result is read back through the width of the element, not just the
+	// amount added to it, because the sum is what can run past the width
+	wrapName, wraps := narrowIntTypeName(elem)
+
+	// a thirty-two bit multiply can answer past what a double keeps, so the
+	// low thirty-two bits of it are worked out by a multiply held exactly
+	imul := op == token.MUL && isInt32MulType(elem)
+
+	if wraps {
+		e.write("go2jsIntWrap(")
+	}
+
+	if imul {
+		e.write("go2jsImul(current, ")
+	} else if wide {
 		e.write(wideName)
 		e.write("(current, ")
+	} else if shiftName != "" {
+		e.write(shiftName)
+		e.write("(current, ")
+	} else if op == token.AND_NOT {
+		// Go clears bits with an operator of its own, which JavaScript writes
+		// as the marks left over once what is to be cleared is turned inside out.
+		e.write("current & ~")
 	} else {
 		e.write("current ")
 		e.write(op.String())
 		e.write(" ")
-	}
-
-	if _, wraps := narrowIntTypeName(elem); wraps {
-		e.write("go2jsIntWrap(")
 	}
 
 	if step {
@@ -472,9 +667,7 @@ func (e *emitter) emitMapCompoundAssign(index *ast.IndexExpr, rhs ast.Expr, tok 
 		return false
 	}
 
-	if wrapName, wraps := narrowIntTypeName(elem); wraps {
-		e.write(", ")
-		e.write(strconv.Quote(wrapName))
+	if imul || shiftName != "" {
 		e.write(")")
 	}
 
@@ -484,6 +677,12 @@ func (e *emitter) emitMapCompoundAssign(index *ast.IndexExpr, rhs ast.Expr, tok 
 			e.write(strconv.Quote(basic.Name()))
 		}
 
+		e.write(")")
+	}
+
+	if wraps {
+		e.write(", ")
+		e.write(strconv.Quote(wrapName))
 		e.write(")")
 	}
 
@@ -513,6 +712,12 @@ func (e *emitter) emitWideCompoundAssign(stmt *ast.AssignStmt) (bool, error) {
 	op, compound := compoundAssignBinaryOp(stmt.Tok)
 
 	if !compound {
+		return false, nil
+	}
+
+	// an entry of a map is written by the map path, not as a place JavaScript
+	// can assign through
+	if index, isIndex := unparen(stmt.Lhs[0]).(*ast.IndexExpr); isIndex && e.isMapExpr(index.X) {
 		return false, nil
 	}
 
@@ -589,6 +794,8 @@ func (e *emitter) emitWideCompoundAssign(stmt *ast.AssignStmt) (bool, error) {
 	return true, nil
 }
 
+// emitTargetExpr writes an expression that is about to be assigned to, where a
+// runtime check in the middle of it would not be JavaScript at all.
 func (e *emitter) emitTargetExpr(expr ast.Expr) error {
 	previous := e.inTarget
 	e.inTarget = true
@@ -1419,6 +1626,19 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 		return e.emitGoStmt(s)
 
 	case *ast.AssignStmt:
+		// The left-hand side is read once, even when the assignment writes it
+		// out more than once, so the parts that would run again are given a
+		// name of their own first.
+		hoisted, restore, err := e.prepareTargets(s.Lhs)
+
+		if err != nil {
+			return err
+		}
+
+		if hoisted {
+			defer restore()
+		}
+
 		// The check comes first, because an assignment target cannot hold it.
 		if err := e.emitTargetIndexChecks(s.Lhs); err != nil {
 			return err
@@ -1559,7 +1779,7 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 		}
 
 		if s.Tok == token.ASSIGN && len(s.Lhs) == 1 && len(s.Rhs) == 1 {
-			if star, ok := s.Lhs[0].(*ast.StarExpr); ok {
+			if star, ok := unparen(s.Lhs[0]).(*ast.StarExpr); ok {
 				e.writeIndent()
 				e.needsRuntime = true
 				e.write("go2jsStorePtr(")
@@ -1574,7 +1794,7 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 				e.newline()
 				return nil
 			}
-			if index, ok := s.Lhs[0].(*ast.IndexExpr); ok && e.isMapExpr(index.X) {
+			if index, ok := unparen(s.Lhs[0]).(*ast.IndexExpr); ok && e.isMapExpr(index.X) {
 				e.writeIndent()
 				e.write("go2jsMapSet(")
 				if err := e.emitExpr(index.X); err != nil {
@@ -1626,7 +1846,7 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 			// A compound assignment on an entry of a map is a read of that
 			// entry, the operation, and a write back, because a lookup is a
 			// value JavaScript will not let an assignment stand on the left of.
-			if index, ok := s.Lhs[0].(*ast.IndexExpr); ok && e.isMapExpr(index.X) {
+			if index, ok := unparen(s.Lhs[0]).(*ast.IndexExpr); ok && e.isMapExpr(index.X) {
 				if e.emitMapCompoundAssign(index, s.Rhs[0], s.Tok) {
 					return nil
 				}
@@ -1728,6 +1948,16 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 		return e.emitRangeStmt(s)
 
 	case *ast.IncDecStmt:
+		hoisted, restore, err := e.prepareTargets([]ast.Expr{s.X})
+
+		if err != nil {
+			return err
+		}
+
+		if hoisted {
+			defer restore()
+		}
+
 		if err := e.emitTargetIndexChecks([]ast.Expr{s.X}); err != nil {
 			return err
 		}
@@ -1737,7 +1967,7 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 		// A step through a pointer is a read of what it points at, the step, and
 		// a write back to it, because JavaScript will not step a call on its own
 		// and a dereference is written as one.
-		if deref, ok := s.X.(*ast.StarExpr); ok {
+		if deref, ok := unparen(s.X).(*ast.StarExpr); ok {
 			e.needsRuntime = true
 			e.write("go2jsStorePtr(")
 
@@ -2137,9 +2367,59 @@ func (e *emitter) emitInlineMultiReturn(stmt *ast.AssignStmt) error {
 	return nil
 }
 
+// inlineTargetRunsSomething reports whether an assignment in a for header has
+// a target that would run part of itself more than once when the assignment is
+// written as an expression.
+func inlineTargetRunsSomething(targets []ast.Expr) bool {
+	for _, target := range targets {
+		if targetRunsSomething(target) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// emitInlineAsStatement writes a for header statement as a small generator of
+// its own. The assignment there is still an assignment, with a left-hand side
+// read once and a bounds check of its own, and a statement is the only place
+// those have room to stand.
+func (e *emitter) emitInlineAsStatement(stmt ast.Stmt) error {
+	previous := e.inlineMode
+	e.inlineMode = false
+
+	e.write("(yield* (function*() {")
+	e.newline()
+	e.indent++
+
+	if err := e.emitStmt(stmt); err != nil {
+		e.indent--
+		e.inlineMode = previous
+		return err
+	}
+
+	e.indent--
+	e.writeIndent()
+	e.write("}).call(this))")
+
+	// a for header writes this as the expression it asks for, while an if or a
+	// switch init writes it as a statement, which ends in a semicolon
+	if e.statementContext {
+		e.write(";")
+	}
+
+	e.inlineMode = previous
+
+	return nil
+}
+
 func (e *emitter) emitInlineStmt(stmt ast.Stmt) error {
 	switch s := stmt.(type) {
 	case *ast.AssignStmt:
+		if inlineTargetRunsSomething(s.Lhs) {
+			return e.emitInlineAsStatement(s)
+		}
+
 		if e.hasBlankTarget(s.Lhs) {
 			e.inlineMode = true
 			defer func() { e.inlineMode = false }()
@@ -2152,6 +2432,13 @@ func (e *emitter) emitInlineStmt(stmt ast.Stmt) error {
 		if s.Tok != token.DEFINE && s.Tok != token.ASSIGN && len(s.Lhs) == 1 && len(s.Rhs) == 1 {
 			previous := e.inlineMode
 			e.inlineMode = true
+
+			if index, isIndex := unparen(s.Lhs[0]).(*ast.IndexExpr); isIndex && e.isMapExpr(index.X) {
+				if e.emitMapCompoundAssign(index, s.Rhs[0], s.Tok) {
+					e.inlineMode = previous
+					return nil
+				}
+			}
 
 			if e.emitNarrowIntAssign(s.Lhs[0], compoundAssignOperator(s.Tok), s.Rhs[0]) {
 				e.inlineMode = previous
@@ -2223,6 +2510,10 @@ func (e *emitter) emitInlineStmt(stmt ast.Stmt) error {
 		}
 
 	case *ast.IncDecStmt:
+		if targetRunsSomething(s.X) {
+			return e.emitInlineAsStatement(s)
+		}
+
 		// A step of one in a for header is an expression there, but it still
 		// has to keep a narrow integer in its width and a wide one exact.
 		previous := e.inlineMode
