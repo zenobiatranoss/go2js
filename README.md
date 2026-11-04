@@ -464,10 +464,13 @@ AI assistant working through the codebase.
 
 That matters to anyone reading this, human or AI:
 
-- **The comments are the project's memory.** They say *why* a thing is the way it
-  is, and they are written to be enough for a reader — or a fresh AI assistant
-  with no history of this repository — to pick the work up and carry it on. Read
-  them as the stated intent; read the parity tests as the proof.
+- **The name and the length of a function do most of the explaining.** A name
+  says what the function does, and a body short enough to read in one sitting
+  shows how; a comment that only repeats them is noise. Prefer a longer, more
+  specific name or a smaller function to a comment that says the same thing.
+  Comments are kept for the *why* — the Go behaviour being matched, the
+  decision behind a shape, the trap the code cannot show — and for a reader, or
+  a fresh AI assistant, with no history of this repository.
 - **The tests are the definition of done.** Most were produced with AI, so read
   one before you lean on it: the integration tests run a program as Go and as
   JavaScript and compare the two, and that comparison — not the comment above it
