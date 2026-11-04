@@ -42,6 +42,63 @@ func main() {
 `)
 }
 
+// An address into a slice is an address in that slice's storage, so it reaches
+// the elements a make or an append built, and it goes on reaching them after
+// the slice is resliced or replaced by a longer one. Two addresses of one
+// element are the same address, while an element of a copy is a different one.
+func TestAddressOfSliceElementKeepsTheStorage(t *testing.T) {
+	runParityTest(t, `package main
+
+import "fmt"
+
+type cell struct {
+	value int
+}
+
+func main() {
+	made := make([]int, 3)
+	madeFirst := &made[0]
+	*madeFirst = 20
+	fmt.Println(made, *madeFirst)
+
+	grown := append([]int(nil), 1, 2, 3)
+	grownFirst := &grown[0]
+	*grownFirst = 30
+	fmt.Println(grown, *grownFirst)
+
+	values := []int{1, 2, 3}
+	first := &values[0]
+	longer := append(values, 4)
+	*first = 40
+	fmt.Println(values, longer, *first)
+
+	storage := []int{1, 2, 3, 4}
+	third := &storage[2]
+	tail := storage[1:2]
+	*third = 33
+	fmt.Println(storage, tail, *third)
+
+	same := []int{9, 2, 3}
+	p := &same[0]
+	q := &same[0]
+	other := []int{9}
+	fmt.Println(p == q, p == &same[0], &other[0] == p)
+
+	numbers := [3]int{7, 8, 9}
+	middle := &numbers[1]
+	through := numbers[:]
+	sameMiddle := &through[1]
+	*middle = 80
+	fmt.Println(numbers, *sameMiddle, middle == sameMiddle)
+
+	cells := make([]cell, 1)
+	cellPtr := &cells[0]
+	cellPtr.value = 5
+	fmt.Println(cells[0].value, *cellPtr)
+}
+`)
+}
+
 // A struct is a value, and a struct field holding a struct is a value too, so
 // putting a struct into a field copies it. Two structs built from the same one
 // are then two structs, and a write to one leaves the other as it was, which is

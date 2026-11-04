@@ -9234,26 +9234,68 @@ function go2jsRange(value) {
 	return Object.entries(value || {});
 }
 
+// go2jsElementPtrs keeps one pointer for each element whose address has been
+// taken. The backing store is the key, so two slices over the same storage
+// agree about the address of an element and a store that a grow replaced is a
+// different key.
+const go2jsElementPtrs = new WeakMap();
+
 // go2jsIndex reads one element of a slice or an array the way Go does, which
 // means refusing an index that is not there rather than answering undefined.
 // go2jsIndexPtr is the address of one element of a slice or an array. The
-// element and the index it was reached by are both read where the address is
-// taken, because that is where Go reads them, and a program that holds the
-// address afterwards reads and writes that element rather than whichever one
-// sits at the index later on.
+// address keeps the storage and the position it was taken at, because that is
+// what Go keeps: growing a slice afterwards does not move the element, and a
+// pointer taken before the grow still writes the old store.
 function go2jsIndexPtr(owner, index, typeName) {
-	const array = go2jsMaterializeValue(go2jsUnwrap(owner));
+	let target = go2jsUnwrap(owner);
 	const at = Math.trunc(Number(index));
 
-	return go2jsPtr(
-		function() {
-			return go2jsIndex(array, at);
-		},
-		function(next) {
-			go2jsIndexSet(array, at, next);
-		},
-		typeName
-	);
+	// Indexing a pointer to an array reads the array it points at, and the
+	// address of an element is then an address in that same array.
+	if (target !== null && target !== undefined && target.__go2js_pointer === true) {
+		target = go2jsDeref(target);
+	}
+
+	const state = go2jsSliceState(target);
+	const data = state ? state.data : target;
+	const position = state ? state.offset + at : at;
+	const length = state ? state.length : go2jsLen(target);
+
+	// The index is checked where the address is taken, and against the current
+	// length rather than the capacity, because Go refuses an element that the
+	// slice does not hold yet.
+	if (at < 0) {
+		throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "index out of range [" + at + "]");
+	}
+
+	if (at >= length) {
+		throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "index out of range [" + at + "] with length " + length);
+	}
+
+	let pointers = go2jsElementPtrs.get(data);
+
+	if (pointers === undefined) {
+		pointers = new Map();
+		go2jsElementPtrs.set(data, pointers);
+	}
+
+	let pointer = pointers.get(position);
+
+	if (pointer === undefined) {
+		pointer = go2jsPtr(
+			function() {
+				return data[position];
+			},
+			function(next) {
+				data[position] = next;
+			},
+			typeName
+		);
+
+		pointers.set(position, pointer);
+	}
+
+	return pointer;
 }
 
 // go2jsIndexSet writes one element of a slice or an array, which is the other
