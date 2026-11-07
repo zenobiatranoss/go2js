@@ -41,7 +41,7 @@ func main() {
 		// the sum of two numbers a double cannot be trusted with is worked out
 		// by the runtime, which keeps every digit of it
 		`return go2jsWideAdd(a, b, "int");`,
-		"let result = (yield* add(10, 20));",
+		"let result = add$(10, 20);",
 		"if (result > 20)",
 		// a step on an int is worked out by the runtime too, even in a for
 		// header, since a double cannot be trusted with every int
@@ -489,8 +489,8 @@ func main() {
 		"return this.Name;",
 		"this.Age = age;",
 		// a call of a method the program declares hands the turn to it
-		"(yield* user.Greet());",
-		"(yield* user.SetAge(30));",
+		"user.Greet$();",
+		"user.SetAge$(30);",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("generated JavaScript missing %q:\n%s", want, output)

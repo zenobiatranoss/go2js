@@ -50,6 +50,12 @@ func (e *emitter) emitNilSafeMethodCall(call *ast.CallExpr, sel *ast.SelectorExp
 		return false, nil
 	}
 
+	name := sel.Sel.Name
+
+	if method, _, _, ok := e.selectorMethod(sel); ok && singleDirect(e.selectionOf(sel)) && e.plainFunction(method) {
+		name += "$"
+	}
+
 	e.needsRuntime = true
 	e.write("go2jsMethodOn(")
 
@@ -60,7 +66,7 @@ func (e *emitter) emitNilSafeMethodCall(call *ast.CallExpr, sel *ast.SelectorExp
 	e.write(", ")
 	e.write(e.typeReference(named))
 	e.write(", ")
-	e.write(strconv.Quote(sel.Sel.Name))
+	e.write(strconv.Quote(name))
 	e.write(", [")
 
 	for i, arg := range call.Args {

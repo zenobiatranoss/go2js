@@ -468,6 +468,14 @@ func (p *project) emitFiles(pkg *projectPackage, exposed bool) (string, error) {
 
 	ordered := moveMainFileLast(orderPackageFiles(pkg.pkg))
 
+	blockingFiles := make([]*ast.File, 0, len(ordered))
+
+	for _, file := range ordered {
+		blockingFiles = append(blockingFiles, file.File)
+	}
+
+	javascript.PrepareBlocking(blockingFiles, pkg.analysis.Types, pkg.analysis.Semantic, p.options.Target, pkg.path, qualifiers)
+
 	passes := []func(*ast.File, *gotypes.Result, *semantic.Context, bool, string, string, map[string]string, ...javascript.Export) (string, bool, error){
 		javascript.EmitFileTypes,
 		javascript.EmitFileBody,

@@ -9,7 +9,11 @@ func (e *emitter) emitGoStmt(stmt *ast.GoStmt) error {
 	e.needsRuntime = true
 	e.write("go2jsGo(function* () { ")
 
-	if err := e.emitExpr(stmt.Call); err != nil {
+	e.enterBody()
+	err := e.emitExpr(stmt.Call)
+	e.leaveBody()
+
+	if err != nil {
 		return err
 	}
 

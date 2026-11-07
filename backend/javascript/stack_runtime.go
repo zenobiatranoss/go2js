@@ -103,6 +103,10 @@ function go2jsGoFrameName(name) {
 		return "";
 	}
 
+	if (name.endsWith("$")) {
+		name = name.slice(0, -1);
+	}
+
 	if (go2jsPackageName !== "" && name.indexOf(".") < 0) {
 		return go2jsPackageName + "." + name;
 	}

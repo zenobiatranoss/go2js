@@ -18,6 +18,9 @@ import (
 type emitter struct {
 	receiver            string
 	funcLitDepth        int
+	plain               map[*gotypesstd.Func]bool
+	observed            map[*gotypesstd.Func]bool
+	bodies              []*bodyScope
 	receiverBinding     string
 	receiverMutable     bool
 	channelPairTarget   bool
@@ -905,6 +908,8 @@ func EmitWithContextOptionsTargetQualified(file *ast.File, analysis *gotypes.Res
 // EmitFile emits one file and reports whether the emitted code depends on the
 // shared runtime bundle, so callers can emit that bundle exactly once.
 func EmitFile(file *ast.File, analysis *gotypes.Result, context *semantic.Context, includeRuntime bool, target string, selfPackagePath string, qualifiers map[string]string, exports ...Export) (string, bool, error) {
+	PrepareBlocking([]*ast.File{file}, analysis, context, target, selfPackagePath, qualifiers)
+
 	return emitFilePass(file, analysis, context, includeRuntime, target, selfPackagePath, qualifiers, emitAll, exports)
 }
 
@@ -929,6 +934,10 @@ const (
 )
 
 func emitFilePass(file *ast.File, analysis *gotypes.Result, context *semantic.Context, includeRuntime bool, target string, selfPackagePath string, qualifiers map[string]string, pass emitPass, exports []Export) (string, bool, error) {
+	return emitFilePassWith(file, analysis, context, includeRuntime, target, selfPackagePath, qualifiers, pass, exports, nil, nil)
+}
+
+func emitFilePassWith(file *ast.File, analysis *gotypes.Result, context *semantic.Context, includeRuntime bool, target string, selfPackagePath string, qualifiers map[string]string, pass emitPass, exports []Export, trial map[*gotypesstd.Func]bool, observed map[*gotypesstd.Func]bool) (string, bool, error) {
 	if context == nil && analysis != nil {
 		context = semantic.NewResultContext(analysis, nil)
 	}
@@ -940,9 +949,19 @@ func emitFilePass(file *ast.File, analysis *gotypes.Result, context *semantic.Co
 		localStructTypes: localStructTypeNames(file),
 		selfPackagePath:  selfPackagePath,
 		qualifiers:       qualifiers,
-		reflectTypeUnit:  nextReflectTypeUnit(),
 		sourceLines:      make(map[int]string),
 		sourcePackage:    file.Name.Name,
+	}
+
+	if trial != nil {
+		e.plain = trial
+		e.observed = observed
+	} else {
+		e.reflectTypeUnit = nextReflectTypeUnit()
+
+		if analysis != nil {
+			e.plain = analysis.Plain
+		}
 	}
 	for _, decl := range file.Decls {
 		switch d := decl.(type) {
@@ -1295,26 +1314,62 @@ func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 			e.receiver = receiver.Names[0].Name
 		}
 
+		plain := e.plainDeclaration(fn)
+
 		e.write(receiverType)
 		e.write(".prototype.")
 		e.write(fn.Name.Name)
-		e.write(" = function*(")
 
-		if err := e.emitStructMethodBody(fn, receiverType); err != nil {
+		if plain != nil {
+			e.write("$ = function(")
+		} else {
+			e.write(" = function*(")
+		}
+
+		if err := e.emitStructMethodBody(fn, receiverType, plain); err != nil {
 			return err
 		}
 
 		return nil
-	} else {
-		e.write("function* ")
-		e.write(e.resolveName(fn.Name.Name))
-		e.write("(")
 	}
+
+	if plain := e.plainDeclaration(fn); plain != nil {
+		name := e.resolveName(fn.Name.Name)
+
+		e.write("function ")
+		e.write(name)
+		e.write("$(")
+
+		params := e.parametersText(fn)
+		e.write(params)
+		e.write(") ")
+
+		scope := e.enterBody()
+		err := e.emitFuncBody(fn.Body)
+		e.leaveBody()
+
+		if err != nil {
+			return err
+		}
+
+		e.noteBody(plain, scope)
+		e.newline()
+		e.write("function* " + name + "(" + params + ") { return " + name + "$(" + params + "); }")
+
+		return nil
+	}
+
+	e.write("function* ")
+	e.write(e.resolveName(fn.Name.Name))
+	e.write("(")
 
 	e.emitFunctionParameters(fn)
 	e.write(") ")
 
 	_ = parameters
+
+	e.enterBody()
+	defer e.leaveBody()
 
 	return e.emitFuncBody(fn.Body)
 }
@@ -3634,6 +3689,10 @@ func (e *emitter) emitConversion(call *ast.CallExpr) error {
 
 func (e *emitter) write(value string) {
 	e.buf.WriteString(value)
+
+	if len(e.bodies) > 0 && strings.Contains(value, "yield*") {
+		e.bodies[len(e.bodies)-1].yielded = true
+	}
 }
 
 func (e *emitter) newline() {
@@ -3735,7 +3794,7 @@ func go2jsByteLiteral(expr ast.Expr) (string, bool) {
 	return out.String(), true
 }
 
-func (e *emitter) emitStructMethodBody(fn *ast.FuncDecl, receiverType string) error {
+func (e *emitter) emitStructMethodBody(fn *ast.FuncDecl, receiverType string, plain *gotypesstd.Func) error {
 	receiver := fn.Recv.List[0]
 	named := len(receiver.Names) > 0
 
@@ -3754,11 +3813,24 @@ func (e *emitter) emitStructMethodBody(fn *ast.FuncDecl, receiverType string) er
 		}
 	}
 
-	e.emitFunctionParameters(fn)
+	params := e.parametersText(fn)
+	e.write(params)
 	e.write(") ")
 
-	if err := e.emitFuncBody(fn.Body); err != nil {
+	scope := e.enterBody()
+	err := e.emitFuncBody(fn.Body)
+	e.leaveBody()
+
+	if err != nil {
 		return err
+	}
+
+	if plain != nil {
+		e.noteBody(plain, scope)
+		e.write(";")
+		e.newline()
+		e.write(receiverType + ".prototype." + fn.Name.Name + " = function*(" + params + ") { return this." + fn.Name.Name + "$(" + params + "); };")
+		e.newline()
 	}
 
 	if pointer, ok := receiver.Type.(*ast.StarExpr); ok {
