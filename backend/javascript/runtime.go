@@ -9521,6 +9521,17 @@ function go2jsWideRemainderBig(a, b) {
 }
 
 function go2jsWideAdd(left, right, typeName) {
+	// Two plain numbers whose answer is a whole number that fits thirty-two bits
+	// need none of what follows, and are by far the commonest case, so they are
+	// answered first.
+	if (typeof left === "number" && typeof right === "number") {
+		const fast = left + right;
+
+		if ((fast | 0) === fast && (fast >= 0 || go2jsWideUnsigned[typeName] !== true)) {
+			return fast;
+		}
+	}
+
 	return go2jsWideBinary(left, right, go2jsWidePlus, go2jsWidePlus, typeName);
 }
 
@@ -9547,18 +9558,56 @@ function go2jsWideBinary(left, right, whole, big, typeName) {
 }
 
 function go2jsWideSub(left, right, typeName) {
+	// Two plain numbers whose answer is a whole number that fits thirty-two bits
+	// need none of what follows, and are by far the commonest case, so they are
+	// answered first.
+	if (typeof left === "number" && typeof right === "number") {
+		const fast = left - right;
+
+		if ((fast | 0) === fast && (fast >= 0 || go2jsWideUnsigned[typeName] !== true)) {
+			return fast;
+		}
+	}
+
 	return go2jsWideBinary(left, right, go2jsWideMinus, go2jsWideMinus, typeName);
 }
 
 function go2jsWideMul(left, right, typeName) {
+	// Two plain numbers whose answer is a whole number that fits thirty-two bits
+	// need none of what follows, and are by far the commonest case, so they are
+	// answered first.
+	if (typeof left === "number" && typeof right === "number") {
+		const fast = left * right;
+
+		if ((fast | 0) === fast && (fast >= 0 || go2jsWideUnsigned[typeName] !== true)) {
+			return fast;
+		}
+	}
+
 	return go2jsWideBinary(left, right, go2jsWideTimes, go2jsWideTimes, typeName);
 }
 
 function go2jsWideQuo(left, right, typeName) {
+	if (typeof left === "number" && typeof right === "number" && right !== 0) {
+		const fast = Math.trunc(left / right);
+
+		if ((fast | 0) === fast && (fast >= 0 || go2jsWideUnsigned[typeName] !== true)) {
+			return fast;
+		}
+	}
+
 	return go2jsWideBinary(left, right, go2jsWideDivideWhole, go2jsWideDivideBig, typeName);
 }
 
 function go2jsWideRem(left, right, typeName) {
+	if (typeof left === "number" && typeof right === "number" && right !== 0) {
+		const fast = left - Math.trunc(left / right) * right;
+
+		if ((fast | 0) === fast && (fast >= 0 || go2jsWideUnsigned[typeName] !== true)) {
+			return fast;
+		}
+	}
+
 	return go2jsWideBinary(left, right, go2jsWideRemainderWhole, go2jsWideRemainderBig, typeName);
 }
 
