@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"fmt"
+	"go/ast"
 	"os"
 	"path/filepath"
 	"strings"
@@ -110,6 +111,16 @@ func (c *Compiler) CompilePackage(pkg *Package) (string, error) {
 	packagePath := ""
 
 	exports := ExportedDeclarations(pkg.Files, analysis.Types)
+
+	var blockingFiles []*ast.File
+
+	for _, parsed := range pkg.Files {
+		if parsed != nil && parsed.File != nil {
+			blockingFiles = append(blockingFiles, parsed.File)
+		}
+	}
+
+	javascript.PrepareBlocking(blockingFiles, analysis.Types, analysis.Semantic, c.Options.Target, packagePathOf(analysis.Types), nil)
 
 	for _, parsed := range pkg.Files {
 		if parsed == nil || parsed.File == nil {

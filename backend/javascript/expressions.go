@@ -1212,9 +1212,14 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				// came in with an import is a helper in the runtime, which runs
 				// where it stands.
 				programMethod := false
+				plainMethod := false
 				if selection := e.selectionOf(selector); selection != nil && e.programFunction(selection.Obj()) {
-					programMethod = true
-					e.write("(yield* ")
+					if singleDirect(selection) && e.plainObject(selection.Obj()) {
+						plainMethod = true
+					} else {
+						programMethod = true
+						e.write("(yield* ")
+					}
 				}
 
 				if err := e.emitExpr(selector.X); err != nil {
@@ -1222,6 +1227,11 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				}
 				e.write(".")
 				e.write(selector.Sel.Name)
+
+				if plainMethod {
+					e.write("$")
+				}
+
 				e.write("(")
 				for i, arg := range x.Args {
 					if i > 0 {
@@ -1307,6 +1317,10 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				if err := e.emitExpr(x.Fun); err != nil {
 					return err
 				}
+			}
+
+			if callForm == callPlainProgram {
+				e.write("$")
 			}
 
 			if callForm == callDelegate {
@@ -1864,9 +1878,11 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		e.write(") ")
 
 		e.funcLitDepth++
+		e.enterBody()
 
 		err := e.emitFuncLiteralBody(x)
 
+		e.leaveBody()
 		e.funcLitDepth--
 
 		if err != nil {

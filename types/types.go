@@ -18,6 +18,7 @@ type Result struct {
 	InitOrder    []*gotypes.Initializer
 	FileVersions map[*ast.File]string
 	Package      *gotypes.Package
+	Plain        map[*gotypes.Func]bool
 }
 
 type Info struct {

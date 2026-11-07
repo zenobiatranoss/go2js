@@ -25,6 +25,10 @@ const (
 	// out of a container. The runtime runs it and steps it if it is a generator,
 	// which is right whichever of the two it turns out to be.
 	callDelegate
+
+	// callPlainProgram is a call to a function the compiler wrote that cannot
+	// wait, which is called as the plain function it is also written as.
+	callPlainProgram
 )
 
 // goBuiltinCalls are the names the language itself gives a call. None of them is
@@ -135,7 +139,11 @@ func (e *emitter) callFormFor(fun ast.Expr) callForm {
 		return callYield
 
 	case *ast.ParenExpr:
-		return e.callFormFor(target.X)
+		if form := e.callFormFor(target.X); form != callPlainProgram {
+			return form
+		}
+
+		return callYield
 
 	case *ast.Ident:
 		// A name the program declares is its own function rather than the
@@ -151,6 +159,10 @@ func (e *emitter) callFormFor(fun ast.Expr) callForm {
 		}
 
 		if e.programFunction(object) {
+			if e.plainObject(object) {
+				return callPlainProgram
+			}
+
 			return callYield
 		}
 

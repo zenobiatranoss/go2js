@@ -73,11 +73,11 @@ func main() {
 		t.Fatalf("missing variadic add:\n%s", js)
 	}
 
-	if !strings.Contains(js, "sum(...values)") {
+	if !strings.Contains(js, "sum$(...values)") {
 		t.Fatalf("missing variadic expansion:\n%s", js)
 	}
 
-	if !strings.Contains(js, "add(10, ...values)") {
+	if !strings.Contains(js, "add$(10, ...values)") {
 		t.Fatalf("missing variadic expansion:\n%s", js)
 	}
 
