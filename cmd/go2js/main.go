@@ -56,6 +56,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		sourceMap bool
 		runtime   bool
 		strict    bool
+		stack     int
 	)
 
 	fs.StringVar(&output, "o", "", "write output to file")
@@ -66,6 +67,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	fs.BoolVar(&sourceMap, "sourcemap", false, "append an inline source map")
 	fs.BoolVar(&runtime, "runtime", true, "include runtime helpers")
 	fs.BoolVar(&strict, "strict", true, "emit strict mode")
+	fs.IntVar(&stack, "stack", 0, "stack size in megabytes the program runs on under Node, 0 for Node's own")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -82,7 +84,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		WithMinify(minify).
 		WithSourceMap(sourceMap).
 		WithRuntime(runtime).
-		WithStrict(strict)
+		WithStrict(strict).
+		WithStackMegabytes(stack)
 
 	c, err := compiler.New(options)
 	if err != nil {

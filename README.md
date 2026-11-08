@@ -187,6 +187,7 @@ the module that file names.
 | `-minify` | off | Write the output with as little room between tokens as possible |
 | `-pretty` | on | Write the output with the room it's laid out with |
 | `-sourcemap` | off | Append an inline source map |
+| `-stack` | 0 (off) | Under Node, run the program on a thread with a stack this many megabytes big, for programs that recurse very deeply (`-stack 512` lets a million nested calls through). Off by default, since the program then runs on a thread of its own |
 | `-runtime` | on | Include the runtime the program is written against |
 | `-strict` | on | Write the output in strict mode |
 

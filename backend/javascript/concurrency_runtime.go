@@ -800,9 +800,73 @@ function go2jsGo(body) {
 	go2jsStart(body());
 }
 
+// go2jsStackMegabytes is how big a stack the program asks to run on. It is set
+// by the compiler when it is told to, and is nothing otherwise.
+var go2jsStackMegabytes = 0;
+
+// go2jsRelaunchWithStack runs the program again on a thread with the stack it
+// asked for, and says so, so that this thread does not run main as well. It is
+// only done for the script Node was started on, since that is the one script
+// that can be started again, and a program that was loaded by another one is
+// left to run where it is.
+function go2jsRelaunchWithStack() {
+	if (go2jsStackMegabytes <= 0 || typeof process === "undefined" || typeof process.getBuiltinModule !== "function") {
+		return false;
+	}
+
+	if (process.versions === undefined || process.versions.node === undefined || typeof process.argv[1] !== "string") {
+		return false;
+	}
+
+	const threads = process.getBuiltinModule("node:worker_threads");
+
+	if (threads === undefined || threads === null || !threads.isMainThread) {
+		return false;
+	}
+
+	let entry;
+
+	try {
+		const fs = process.getBuiltinModule("node:fs");
+		const url = process.getBuiltinModule("node:url");
+
+		entry = fs.realpathSync(process.argv[1]);
+
+		const stack = String(new Error().stack);
+
+		if (!stack.includes(entry) && !stack.includes(url.pathToFileURL(entry).href)) {
+			return false;
+		}
+	} catch (error) {
+		return false;
+	}
+
+	const worker = new threads.Worker(entry, {
+		argv: process.argv.slice(2),
+		resourceLimits: { stackSizeMb: go2jsStackMegabytes },
+	});
+
+	worker.on("error", function(error) {
+		process.stderr.write(String(error !== null && error !== undefined && error.stack !== undefined ? error.stack : error) + "\n");
+		process.exitCode = 2;
+	});
+
+	worker.on("exit", function(code) {
+		if (process.exitCode === undefined) {
+			process.exitCode = code;
+		}
+	});
+
+	return true;
+}
+
 // go2jsRunMain runs main as a goroutine too, so that everything else in the
 // program is written the same way and the scheduler has one place it all goes.
 function go2jsRunMain(generator) {
+	if (go2jsRelaunchWithStack()) {
+		return;
+	}
+
 	const main = go2jsStart(generator);
 
 	while (go2jsLiveTasks > 0) {
