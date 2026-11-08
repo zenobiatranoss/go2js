@@ -1878,7 +1878,7 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		e.write(") ")
 
 		e.funcLitDepth++
-		e.enterBody()
+		e.enterFunction(x)
 
 		err := e.emitFuncLiteralBody(x)
 

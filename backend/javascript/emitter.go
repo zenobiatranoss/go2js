@@ -21,6 +21,7 @@ type emitter struct {
 	plain               map[*gotypesstd.Func]bool
 	observed            map[*gotypesstd.Func]bool
 	bodies              []*bodyScope
+	tickBlock           *ast.BlockStmt
 	receiverBinding     string
 	receiverMutable     bool
 	channelPairTarget   bool
@@ -1344,7 +1345,7 @@ func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 		e.write(params)
 		e.write(") ")
 
-		scope := e.enterBody()
+		scope := e.enterFunction(fn)
 		err := e.emitFuncBody(fn.Body)
 		e.leaveBody()
 
@@ -1368,7 +1369,7 @@ func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 
 	_ = parameters
 
-	e.enterBody()
+	e.enterFunction(fn)
 	defer e.leaveBody()
 
 	return e.emitFuncBody(fn.Body)
@@ -1448,6 +1449,14 @@ func (e *emitter) emitBlock(block *ast.BlockStmt) error {
 
 		e.write(e.receiverBinding)
 		e.write(" = this;")
+		e.newline()
+	}
+
+	if e.tickBlock != nil && block == e.tickBlock {
+		e.tickBlock = nil
+		e.needsRuntime = true
+		e.writeIndent()
+		e.write("if (++go2jsTicks > 20000) { yield* go2jsPreempt(); }")
 		e.newline()
 	}
 
@@ -1991,6 +2000,10 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 		}
 
 		e.write(") ")
+
+		if e.loopNeedsPreempt(s) {
+			e.tickBlock = s.Body
+		}
 
 		if err := e.emitBlock(s.Body); err != nil {
 			e.scopes = e.scopes[:len(e.scopes)-1]
@@ -3817,7 +3830,7 @@ func (e *emitter) emitStructMethodBody(fn *ast.FuncDecl, receiverType string, pl
 	e.write(params)
 	e.write(") ")
 
-	scope := e.enterBody()
+	scope := e.enterFunction(fn)
 	err := e.emitFuncBody(fn.Body)
 	e.leaveBody()
 
