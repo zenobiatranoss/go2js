@@ -14,6 +14,12 @@ type Options struct {
 	Pretty      bool
 	Runtime     bool
 	Target      string
+
+	// StackMegabytes, when above zero, has a program that is run by Node run on a
+	// thread with a stack that big, which is what a program that calls itself
+	// very deeply needs. It is left off by default, since the program then runs
+	// on a thread of its own.
+	StackMegabytes int
 }
 
 func DefaultOptions() Options {
@@ -67,6 +73,11 @@ func (o Options) WithRuntime(enabled bool) Options {
 	return o
 }
 
+func (o Options) WithStackMegabytes(megabytes int) Options {
+	o.StackMegabytes = megabytes
+	return o
+}
+
 func (o Options) WithTarget(target string) Options {
 	o.Target = strings.ToLower(strings.TrimSpace(target))
 	return o
@@ -106,6 +117,10 @@ func (o Options) Validate() error {
 	case "es2019", "es2020", "es2021", "es2022", "es2023", "es2024", "esnext":
 	default:
 		return fmt.Errorf("unsupported target %q", o.Target)
+	}
+
+	if o.StackMegabytes < 0 || o.StackMegabytes > 4096 {
+		return fmt.Errorf("stack size %d MB is out of range, use 0 to 4096", o.StackMegabytes)
 	}
 
 	if o.PackageName != "" {

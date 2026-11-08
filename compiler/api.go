@@ -267,6 +267,10 @@ func (c *Compiler) wrapExportsWithSources(source string, sources []javascript.So
 // wrapExports writes a program out as the module it is written for, with what it
 // exports handed over at the end of it.
 func wrapExports(source string, options Options, exports []Export) string {
+	if options.StackMegabytes > 0 {
+		source = strings.Replace(source, "try { go2jsRunMain(", fmt.Sprintf("go2jsStackMegabytes = %d;\ntry { go2jsRunMain(", options.StackMegabytes), 1)
+	}
+
 	module := javascript.ModuleOptions{
 		Format: javascript.ModuleFormat(options.Module),
 		Strict: options.Strict,
@@ -323,6 +327,7 @@ func packageSourceMapSources(pkg *Package) []javascript.SourceMapSource {
 // rather than of a package, and there is nothing to tell apart there, so the
 // emitter is told nothing in that case.
 func packagePathOf(analysis *types.Result) string {
+
 	if analysis == nil || analysis.Package == nil {
 		return ""
 	}
