@@ -31,6 +31,7 @@ import (
 // that is written is held against.
 type bodyScope struct {
 	yielded bool
+	node    ast.Node
 }
 
 func (e *emitter) enterBody() *bodyScope {
@@ -38,6 +39,26 @@ func (e *emitter) enterBody() *bodyScope {
 	e.bodies = append(e.bodies, scope)
 
 	return scope
+}
+
+// enterFunction is enterBody for the body of the function a node declares.
+func (e *emitter) enterFunction(node ast.Node) *bodyScope {
+	scope := e.enterBody()
+	scope.node = node
+
+	return scope
+}
+
+// enclosingFunction is the function whose body is being written, which is the
+// innermost one that was entered with its node.
+func (e *emitter) enclosingFunction() ast.Node {
+	for i := len(e.bodies) - 1; i >= 0; i-- {
+		if e.bodies[i].node != nil {
+			return e.bodies[i].node
+		}
+	}
+
+	return nil
 }
 
 func (e *emitter) leaveBody() {

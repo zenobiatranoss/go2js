@@ -126,6 +126,23 @@ function go2jsWaitForEarliestTimer() {
 // runnable again, and the operation is then tried once more from the top.
 const go2jsParked = {};
 
+// go2jsPreemptMark is what a loop that has run for a while hands up when it gives
+// the turn to the other goroutines. It is told apart from the turn a goroutine
+// gives up by waiting, because a loop that is only being fair has not waited, and
+// so is not a step toward the limit on steps, and is not what a lone goroutine
+// is to be called asleep for.
+const go2jsPreemptMark = {};
+
+var go2jsTicks = 0;
+
+function* go2jsPreempt() {
+	go2jsTicks = 0;
+
+	yield go2jsPreemptMark;
+}
+
+var go2jsMainTask = null;
+
 function go2jsPark(channels, kind, value) {
 	const task = go2jsRunning;
 
@@ -415,6 +432,12 @@ function go2jsRunNow(generator) {
 			return step.value;
 		}
 
+		if (step.value === go2jsPreemptMark) {
+			go2jsWaitForWork();
+
+			continue;
+		}
+
 		if (!go2jsWaitForWork()) {
 			throw go2jsFatalError("all goroutines are asleep - deadlock!");
 		}
@@ -702,6 +725,12 @@ function go2jsStep() {
 			throw new Error("go2js: goroutine task limit exceeded");
 		}
 
+		// A goroutine that is only being kept from taking every turn is no reason
+		// for a timer that has come due to wait, so they are looked at between turns.
+		if (go2jsTimers.size > 0) {
+			go2jsWakeDueTimers();
+		}
+
 		const task = go2jsReady.shift();
 
 		go2jsRunning = task;
@@ -728,11 +757,23 @@ function go2jsStep() {
 		}
 
 		go2jsRunning = null;
-		steps++;
+
+		if (step.value !== go2jsPreemptMark) {
+			steps++;
+		}
 
 		if (step.done) {
 			task.finished = true;
 			go2jsLiveTasks--;
+
+			// A Go program ends when main returns, whatever the other goroutines
+			// are still doing.
+			if (task === go2jsMainTask) {
+				go2jsReady.length = 0;
+
+				return steps + 1;
+			}
+
 			continue;
 		}
 
@@ -869,7 +910,14 @@ function go2jsRunMain(generator) {
 
 	const main = go2jsStart(generator);
 
+	go2jsMainTask = main;
+
 	while (go2jsLiveTasks > 0) {
+		if (main.finished) {
+			go2jsReady.length = 0;
+			break;
+		}
+
 		if (go2jsWaitForWork()) {
 			continue;
 		}
