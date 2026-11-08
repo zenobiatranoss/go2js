@@ -7070,6 +7070,17 @@ function go2jsMethodOn(receiver, ctor, name, args) {
 	return go2jsCallNow(receiver[name], receiver, args);
 }
 
+// go2jsMethodOnYield is go2jsMethodOn for a method that may wait. It is run by
+// the goroutine that called it, so what it waits on is waited on there, rather
+// than being driven to its end from inside a goroutine that is already running.
+function* go2jsMethodOnYield(receiver, ctor, name, args) {
+	if (receiver === null || receiver === undefined) {
+		return yield* go2jsCall(ctor.prototype[name], null, args);
+	}
+
+	return yield* go2jsCall(receiver[name], receiver, args);
+}
+
 function go2jsNew(value, typeName) {
 	return go2jsPtr(
 		function() {
