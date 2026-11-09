@@ -419,7 +419,7 @@ func (e *emitter) emitParallelAssignment(stmt *ast.AssignStmt) (bool, error) {
 		return true, nil
 	}
 
-	if e.parallelAssignReusesTargets(stmt) {
+	if e.parallelAssignReusesTargets(stmt) || hasPointerTarget(stmt.Lhs) {
 		e.statementContext = true
 
 		defer func() { e.statementContext = false }()
@@ -657,6 +657,18 @@ func (e *emitter) emitMultiReturnWithTemps(stmt *ast.AssignStmt) error {
 	return nil
 }
 
+// hasPointerTarget says whether one of the places assigned to is what a pointer
+// points at, which is stored through the pointer rather than named.
+func hasPointerTarget(targets []ast.Expr) bool {
+	for _, target := range targets {
+		if _, ok := target.(*ast.StarExpr); ok {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (e *emitter) parallelAssignReusesTargets(stmt *ast.AssignStmt) bool {
 	if stmt.Tok != token.DEFINE {
 		return false
@@ -728,6 +740,23 @@ func (e *emitter) emitParallelAssignmentWithTemps(stmt *ast.AssignStmt) error {
 		fresh := ok && stmt.Tok == token.DEFINE && !e.isDeclaredHere(ident.Name)
 
 		e.writeIndent()
+
+		if star, isStar := lhs.(*ast.StarExpr); isStar {
+			e.needsRuntime = true
+			e.write("go2jsStorePtr(")
+
+			if err := e.emitPointerOperand(star.X); err != nil {
+				return err
+			}
+
+			e.write(", ")
+			e.write(prefix)
+			e.write(strconv.Itoa(i))
+			e.write(");")
+			e.newline()
+
+			continue
+		}
 
 		if fresh {
 			e.declare(ident.Name)

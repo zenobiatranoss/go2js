@@ -22,6 +22,8 @@ type emitter struct {
 	observed            map[*gotypesstd.Func]bool
 	bodies              []*bodyScope
 	tickBlock           *ast.BlockStmt
+	blankNames          map[*ast.Ident]string
+	blankCount          int
 	receiverBinding     string
 	receiverMutable     bool
 	channelPairTarget   bool
@@ -1251,6 +1253,12 @@ func (e *emitter) emitFunc(fn *ast.FuncDecl) error {
 			return fmt.Errorf("unsupported method receiver")
 		}
 
+		// A method that does not name its receiver is written the same way as one
+		// that does, under a name nothing in the body can reach.
+		if receiver := fn.Recv.List[0]; len(receiver.Names) == 0 {
+			receiver.Names = []*ast.Ident{ast.NewIdent("go2jsUnnamedReceiver")}
+		}
+
 		if handled, err := e.emitScalarNamedFuncDecl(fn); handled {
 			return err
 		}
@@ -1590,6 +1598,8 @@ func (e *emitter) emitTypeAssertAssignment(stmt *ast.AssignStmt) (bool, error) {
 }
 
 func (e *emitter) emitStmt(stmt ast.Stmt) error {
+	defer e.holdOuterNames(stmt)()
+
 	e.markSourceLine(stmt)
 	if e.gotoMode {
 		e.gotoStmtDepth++
@@ -2155,10 +2165,48 @@ func (e *emitter) emitSwitchStmt(stmt *ast.SwitchStmt) error {
 }
 
 func (e *emitter) emitSwitchClauses(s *ast.SwitchStmt) error {
+	// A value of an interface type is compared with each case by what it holds,
+	// since what stands for one is not always the value it holds, and a case
+	// may name a value of any type that satisfies the interface. The value is
+	// taken once, before the clauses.
+	interfaceTag := ""
+
+	if s.Tag != nil && e.analysis != nil {
+		if tagType := e.analysis.TypeOf(s.Tag); tagType != nil {
+			if _, isInterface := tagType.Underlying().(*gotypesstd.Interface); isInterface && !e.switchTagIsErrorOnly(s) {
+				e.tempCounter++
+				interfaceTag = fmt.Sprintf("go2jsTag%d", e.tempCounter)
+
+				e.writeIndent()
+				e.write("{")
+				e.newline()
+				e.indent++
+				e.writeIndent()
+				e.write("const " + interfaceTag + " = ")
+
+				if err := e.emitExpr(s.Tag); err != nil {
+					return err
+				}
+
+				e.write(";")
+				e.newline()
+
+				defer func() {
+					e.indent--
+					e.writeIndent()
+					e.write("}")
+					e.newline()
+				}()
+			}
+		}
+	}
+
 	e.writeIndent()
 	e.write("switch (")
 
-	if s.Tag != nil {
+	if interfaceTag != "" {
+		e.write("true")
+	} else if s.Tag != nil {
 		if err := e.emitExpr(s.Tag); err != nil {
 			return err
 		}
@@ -2186,7 +2234,16 @@ func (e *emitter) emitSwitchClauses(s *ast.SwitchStmt) error {
 				e.writeIndent()
 				e.write("case ")
 
-				if err := e.emitExpr(expr); err != nil {
+				if interfaceTag != "" {
+					e.needsRuntime = true
+					e.write("go2jsEqual(" + interfaceTag + ", ")
+
+					if err := e.emitInterfaceValue(expr, e.analysis.TypeOf(s.Tag)); err != nil {
+						return err
+					}
+
+					e.write(")")
+				} else if err := e.emitExpr(expr); err != nil {
 					return err
 				}
 
@@ -2208,8 +2265,10 @@ func (e *emitter) emitSwitchClauses(s *ast.SwitchStmt) error {
 		}
 
 		// Each clause gets its own block so declarations stay scoped to it,
-		// matching the implicit scope of a Go case clause.
-		needsScope := !didFallthrough
+		// matching the implicit scope of a Go case clause, and one that falls
+		// through to the next is no different: the block is closed before the
+		// next clause begins.
+		needsScope := true
 
 		if needsScope {
 			e.writeIndent()
@@ -2225,15 +2284,15 @@ func (e *emitter) emitSwitchClauses(s *ast.SwitchStmt) error {
 			}
 		}
 
-		if !didFallthrough {
-			if needsScope {
-				e.indent--
-				e.scopes = e.scopes[:len(e.scopes)-1]
-				e.writeIndent()
-				e.write("}")
-				e.newline()
-			}
+		if needsScope {
+			e.indent--
+			e.scopes = e.scopes[:len(e.scopes)-1]
+			e.writeIndent()
+			e.write("}")
+			e.newline()
+		}
 
+		if !didFallthrough {
 			e.writeIndent()
 			e.write("break;")
 			e.newline()
@@ -2248,6 +2307,37 @@ func (e *emitter) emitSwitchClauses(s *ast.SwitchStmt) error {
 	e.newline()
 
 	return nil
+}
+
+// switchTagIsErrorOnly says whether every case of a switch on an interface names
+// a value that is itself held by identity, such as an error variable or nil, for
+// which the comparison the language of the output has is already the right one.
+func (e *emitter) switchTagIsErrorOnly(s *ast.SwitchStmt) bool {
+	for _, item := range s.Body.List {
+		clause, ok := item.(*ast.CaseClause)
+
+		if !ok {
+			return false
+		}
+
+		for _, expr := range clause.List {
+			tv, known := e.analysis.Types[expr]
+
+			if !known || tv.Value != nil {
+				return false
+			}
+
+			if tv.IsNil() {
+				continue
+			}
+
+			if _, isInterface := tv.Type.Underlying().(*gotypesstd.Interface); !isInterface {
+				return false
+			}
+		}
+	}
+
+	return true
 }
 
 func (e *emitter) emitIfStmt(stmt *ast.IfStmt) error {
@@ -2681,7 +2771,7 @@ func (e *emitter) emitTopLevelVarDecl(decl *ast.GenDecl) error {
 		for i, name := range valueSpec.Names {
 			e.writeIndent()
 			e.write(e.emitDeclarationKeyword())
-			e.write(javaScriptIdentifier(name.Name))
+			e.write(e.variableName(name))
 			e.declare(name.Name)
 			e.write(";")
 			e.newline()
@@ -2692,7 +2782,7 @@ func (e *emitter) emitTopLevelVarDecl(decl *ast.GenDecl) error {
 				e.needsRuntime = true
 				e.writeIndent()
 				e.write("go2jsDeferInit(function* () {")
-				e.write(javaScriptIdentifier(name.Name))
+				e.write(e.variableName(name))
 				e.write(" = ")
 				e.write(e.zeroValue(e.variableType(name)))
 				e.write(";")
@@ -2728,7 +2818,7 @@ func (e *emitter) emitTopLevelVarDecl(decl *ast.GenDecl) error {
 			}
 
 			e.writeIndent()
-			e.write(javaScriptIdentifier(name.Name))
+			e.write(e.variableName(name))
 			e.write(" = ")
 
 			target := e.variableType(name)
@@ -2775,8 +2865,8 @@ func (e *emitter) emitValueDecl(decl *ast.GenDecl) error {
 				e.write(", ")
 			}
 
-			e.write(javaScriptIdentifier(name.Name))
 			e.declare(name.Name)
+			e.write(e.variableName(name))
 
 			if i < len(valueSpec.Values) {
 				e.write(" = ")
@@ -3221,6 +3311,30 @@ var javaScriptReservedNames = map[string]bool{
 // has to be written the same way.
 func Identifier(name string) string {
 	return javaScriptIdentifier(name)
+}
+
+// variableName is the name a variable is declared under. A variable that is
+// blank has no name, and a declaration may hold several, so each is given one of
+// its own.
+func (e *emitter) variableName(name *ast.Ident) string {
+	if name.Name != blankIdentifier {
+		return e.resolveName(name.Name)
+	}
+
+	if e.blankNames == nil {
+		e.blankNames = map[*ast.Ident]string{}
+	}
+
+	if existing, ok := e.blankNames[name]; ok {
+		return existing
+	}
+
+	e.blankCount++
+
+	unique := fmt.Sprintf("_$%d", e.blankCount)
+	e.blankNames[name] = unique
+
+	return unique
 }
 
 func javaScriptIdentifier(name string) string {

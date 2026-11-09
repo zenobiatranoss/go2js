@@ -3,6 +3,7 @@ package javascript
 import (
 	"go/ast"
 	"go/token"
+	gotypesstd "go/types"
 )
 
 func (e *emitter) builtinName(call *ast.CallExpr) (string, bool) {
@@ -26,6 +27,10 @@ func (e *emitter) builtinName(call *ast.CallExpr) (string, bool) {
 		case "make":
 			if len(call.Args) > 0 {
 				if _, ok := call.Args[0].(*ast.MapType); ok {
+					return "go2jsMakeMap", true
+				}
+
+				if e.isMapTypeExpr(call.Args[0]) {
 					return "go2jsMakeMap", true
 				}
 			}
@@ -139,4 +144,22 @@ func isBuiltinOperator(op token.Token) bool {
 	}
 
 	return false
+}
+
+// isMapTypeExpr says whether an expression names a map type, which a type
+// declared by the program does when it is written for one.
+func (e *emitter) isMapTypeExpr(expr ast.Expr) bool {
+	if e.analysis == nil {
+		return false
+	}
+
+	typeAndValue, ok := e.analysis.Types[expr]
+
+	if !ok || !typeAndValue.IsType() {
+		return false
+	}
+
+	_, isMap := typeAndValue.Type.Underlying().(*gotypesstd.Map)
+
+	return isMap
 }
