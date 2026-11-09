@@ -30,6 +30,18 @@ func (e *emitter) isChannelExpr(expr ast.Expr) bool {
 	return isChannelType(e.analysis.TypeOf(expr))
 }
 
+// isChannelTypeExpr says whether an expression names a channel type, which a
+// type declared by the program does when it is written for a channel.
+func (e *emitter) isChannelTypeExpr(expr ast.Expr) bool {
+	if e.analysis == nil {
+		return false
+	}
+
+	typeAndValue, ok := e.analysis.Types[expr]
+
+	return ok && typeAndValue.IsType() && isChannelType(typeAndValue.Type)
+}
+
 func (e *emitter) isRecvExpr(expr ast.Expr) bool {
 	if unary, ok := expr.(*ast.UnaryExpr); ok {
 		return unary.Op == token.ARROW
@@ -48,7 +60,7 @@ func (e *emitter) emitMakeChannel(call *ast.CallExpr) (bool, error) {
 		return false, nil
 	}
 
-	if _, ok := call.Args[0].(*ast.ChanType); !ok {
+	if _, ok := call.Args[0].(*ast.ChanType); !ok && !e.isChannelTypeExpr(call.Args[0]) {
 		return false, nil
 	}
 

@@ -8289,6 +8289,7 @@ function go2jsInterfaceKey(name) {
 // is the one that counts.
 const go2jsBuiltinInterfaces = {
 	"error": ["Error"],
+	"Error": ["Error", "RuntimeError"],
 	"rand.Source": ["Int63", "Seed"],
 	"sort.Interface": ["Len", "Less", "Swap"],
 	"Stringer": ["String"],
@@ -9064,11 +9065,11 @@ function go2jsMapGetOK(map, key, zero) {
 
 function go2jsMapSet(map, key, value) {
 	if (map === null || map === undefined) {
-		go2jsPanic("assignment to entry in nil map");
+		go2jsPanic(go2jsRuntimeFault("assignment to entry in nil map", "runtime.plainError"));
 	}
 
 	if (map.__go2js_nil === true) {
-		go2jsPanic("assignment to entry in nil map");
+		go2jsPanic(go2jsRuntimeFault("assignment to entry in nil map", "runtime.plainError"));
 	}
 
 	if (!(map instanceof go2jsNativeMap)) {
@@ -9083,7 +9084,7 @@ function go2jsMapSet(map, key, value) {
 // value, and the result is written back under the same key.
 function go2jsMapUpdate(map, key, zero, operation) {
 	if (map === null || map === undefined || map.__go2js_nil === true) {
-		go2jsPanic("assignment to entry in nil map");
+		go2jsPanic(go2jsRuntimeFault("assignment to entry in nil map", "runtime.plainError"));
 	}
 
 	if (!(map instanceof go2jsNativeMap)) {
@@ -10070,10 +10071,28 @@ function go2jsPanicPayload(value) {
 	const reworded = go2jsRuntimeErrorText(value);
 
 	if (reworded !== null) {
-		return reworded;
+		return go2jsRuntimeFault(reworded);
+	}
+
+	if (value instanceof go2jsNativeTypeError && /^interface conversion: /.test(String(value.message))) {
+		return go2jsRuntimeFault(String(value.message).replace(/interface\{\}/g, "interface {}"), "*runtime.TypeAssertionError");
 	}
 
 	return value;
+}
+
+// go2jsRuntimeFault is what a program that recovers from a fault of the runtime
+// is given: a value that is an error and a runtime.Error both, with the words Go
+// uses for it.
+function go2jsRuntimeFault(text, typeName) {
+	const fault = new Error(text);
+
+	go2jsNameError(fault, typeName !== undefined ? typeName : /^runtime error: (index|slice bounds)/.test(text) ? "runtime.boundsError" : "runtime.errorString");
+
+	fault.RuntimeError = function() {};
+	fault.Error = function() { return text; };
+
+	return fault;
 }
 
 function go2jsRecover() {

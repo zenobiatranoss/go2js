@@ -3,6 +3,18 @@ package javascript
 func concurrencyRuntimeSource() string {
 	return `
 function go2jsChannel(capacity) {
+	if (typeof capacity === "bigint") {
+		if (capacity < 0n || capacity > 281474976710655n) {
+			throw go2jsRuntimeFault("makechan: size out of range", "runtime.plainError");
+		}
+
+		capacity = Number(capacity);
+	}
+
+	if (typeof capacity === "number" && (capacity < 0 || capacity > 281474976710655)) {
+		throw go2jsRuntimeFault("makechan: size out of range", "runtime.plainError");
+	}
+
 	return {
 		__go2js_channel: true,
 		buffer: [],
@@ -35,7 +47,7 @@ function go2jsChannelClosed(channel) {
 }
 
 function go2jsChannelClosedPanic(operation) {
-	throw new Error("send on closed channel");
+	throw go2jsRuntimeFault("send on closed channel", "runtime.plainError");
 }
 
 // go2jsTimers holds the channels a timer is waiting on, so that a select with
@@ -545,8 +557,14 @@ function go2jsChanRecvReady(channel) {
 }
 
 function go2jsChanSendReady(channel) {
-	if (go2jsChannelIsNil(channel) || channel.closed) {
+	if (go2jsChannelIsNil(channel)) {
 		return false;
+	}
+
+	// A send to a closed channel is not one that waits: it goes ahead, and is the
+	// panic Go raises for it.
+	if (channel.closed) {
+		return true;
 	}
 
 	// A channel of no room is a handover rather than a store, so a send to one
@@ -628,11 +646,11 @@ function go2jsChanTrySend(channel, value) {
 
 function go2jsChannelClose(channel) {
 	if (channel === null || channel === undefined) {
-		throw new Error("close of nil channel");
+		throw go2jsRuntimeFault("close of nil channel", "runtime.plainError");
 	}
 
 	if (channel.closed) {
-		throw new Error("close of closed channel");
+		throw go2jsRuntimeFault("close of closed channel", "runtime.plainError");
 	}
 
 	channel.closed = true;

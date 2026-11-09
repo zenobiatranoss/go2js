@@ -433,12 +433,25 @@ func (e *emitter) emitCollectionBuiltinCall(call *ast.CallExpr) (bool, error) {
 				e.write(", ")
 			}
 
-			if call.Ellipsis.IsValid() && i == len(call.Args)-1 {
+			spread := call.Ellipsis.IsValid() && i == len(call.Args)-1
+
+			if spread {
 				e.write("...")
+			}
+
+			// Bytes are appended from a string by what the string holds as bytes.
+			fromString := spread && isStringType(e.analyzedType(arg))
+
+			if fromString {
+				e.write("go2jsStringToBytes(")
 			}
 
 			if err := e.emitExpr(arg); err != nil {
 				return true, err
+			}
+
+			if fromString {
+				e.write(")")
 			}
 		}
 
@@ -1026,6 +1039,12 @@ function go2jsArrayCopy(value) {
 }
 
 function go2jsSliceCopy(dst, src) {
+	// Bytes may be copied out of a string, which has no slice of its own to copy
+	// from, so what it holds is taken as the bytes it is.
+	if (typeof src === "string") {
+		src = go2jsStringToBytes(src);
+	}
+
 	const destination = go2jsSliceState(dst);
 	const source = go2jsSliceState(src);
 
