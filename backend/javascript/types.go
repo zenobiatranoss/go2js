@@ -179,6 +179,7 @@ func isDurationArithmetic(op token.Token) bool {
 }
 
 func (e *emitter) isMapExpr(expr ast.Expr) bool {
+
 	if e.analysis == nil {
 		return false
 	}

@@ -579,7 +579,25 @@ func (e *emitter) syncMethodKey(selector *ast.SelectorExpr) (string, bool) {
 		return "", false
 	}
 
-	named, ok := derefNamed(selection.Recv())
+	recv := selection.Recv()
+
+	// A method a struct has from an embedded sync type belongs to that type, but
+	// a library type's own embedding is judged by the type it is called on.
+	if indexes := selection.Index(); len(indexes) > 1 {
+		known := false
+
+		if named, ok := derefNamed(recv); ok && named.Obj().Pkg() != nil {
+			_, known = packageTypes[named.Obj().Pkg().Name()+"."+named.Obj().Name()]
+		}
+
+		if known {
+			// keep the receiver
+		} else if sig, ok := selection.Obj().Type().(*gotypesstd.Signature); ok && sig.Recv() != nil {
+			recv = sig.Recv().Type()
+		}
+	}
+
+	named, ok := derefNamed(recv)
 	if !ok {
 		return "", false
 	}
@@ -632,6 +650,11 @@ func (e *emitter) emitSyncMethodCall(call *ast.CallExpr, selector *ast.SelectorE
 
 	if err := e.emitExpr(selector.X); err != nil {
 		return true, err
+	}
+
+	for _, embedded := range e.embeddedPath(selector) {
+		e.write(".")
+		e.write(embedded)
 	}
 
 	for _, arg := range call.Args {

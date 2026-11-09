@@ -3026,6 +3026,8 @@ func (e *emitter) emitType(spec *ast.TypeSpec) error {
 								e.write("()")
 							case *ast.StarExpr:
 								e.write("null")
+							default:
+								e.write(e.fieldZeroValue(field.Type))
 							}
 						} else {
 							e.write(e.fieldZeroValue(field.Type))
@@ -3188,9 +3190,15 @@ func embeddedFieldName(fieldType ast.Expr) string {
 	case *ast.Ident:
 		return value.Name
 	case *ast.StarExpr:
-		if ident, ok := value.X.(*ast.Ident); ok {
-			return ident.Name
-		}
+		return embeddedFieldName(value.X)
+	case *ast.SelectorExpr:
+		// A type of another package is named by the name it has there, as in
+		// sync.Mutex, which a struct holds as a field called Mutex.
+		return value.Sel.Name
+	case *ast.IndexExpr:
+		return embeddedFieldName(value.X)
+	case *ast.IndexListExpr:
+		return embeddedFieldName(value.X)
 	}
 
 	return ""
