@@ -1672,25 +1672,16 @@ function go2jsOutputText(value, suffix, separator) {
 		return "";
 	}
 
+	// The operands are written by the same formatter Println and Print use, so
+	// a byte slice, a named type or an error reads the same to whichever writer
+	// it is sent.
 	if (Array.isArray(value)) {
-		if (separator === undefined || separator === null || separator === "") {
-			let out = "";
+		const spaced = separator !== undefined && separator !== null && separator !== "";
 
-			for (let index = 0; index < value.length; index++) {
-				if (index > 0 && !go2jsOperandIsString(value[index - 1]) && !go2jsOperandIsString(value[index])) {
-					out += " ";
-				}
-
-				out += go2jsErrorString(value[index]);
-			}
-
-			return out + suffix;
-		}
-
-		return value.map(item => go2jsErrorString(item)).join(separator) + suffix;
+		return go2jsJoinOperands(value, spaced) + suffix;
 	}
 
-	return go2jsErrorString(value) + suffix;
+	return go2jsJoinOperands([value], false) + suffix;
 }
 
 function go2jsExit(code) {

@@ -3385,6 +3385,14 @@ function go2jsJSONEncode(value, fields, omitEmpty, stringFields, textFields, pre
         }
     }
 
+    // A span of time is the count of nanoseconds it is made of, which is an
+    // int64 to JSON.
+    if (go2jsIsDuration(value)) {
+        const nanos = go2jsDurationNanos(value);
+
+        return nanos >= -9007199254740991n && nanos <= 9007199254740991n ? Number(nanos) : nanos;
+    }
+
     if (value === null || value === undefined) {
         return null;
     }
@@ -5541,17 +5549,22 @@ function go2jsJSONWrite(writer, text) {
         return go2jsJSONError("json: writer is nil");
     }
 
-    if (typeof target.Write !== "function") {
+    // The standard streams, a buffer and a writer of the program's own are all
+    // reached the way every other function that writes finds their Write.
+    const write = go2jsWriterMethod(writer, "Write");
+
+    if (write === null) {
         return go2jsJSONError("json: writer does not implement io.Writer");
     }
 
-    const result = go2jsCallNow(target.Write, target, [go2jsStringToBytes(text)]);
+    const result = write(go2jsStringToBytes(text));
 
     if (Array.isArray(result)) {
         return result[1] === null || result[1] === undefined ? null : result[1];
     }
 
-    return result === undefined ? null : result;
+    // A stream that only counts what it wrote has no error to give back.
+    return typeof result === "number" || typeof result === "bigint" || result === undefined ? null : result;
 }
 
 function go2jsJSONEncoderSetIndent(encoder, prefix, indent) {
@@ -9599,6 +9612,14 @@ function go2jsWideMul(left, right, typeName) {
 	return go2jsWideBinary(left, right, go2jsWideTimes, go2jsWideTimes, typeName);
 }
 
+// go2jsWideNot turns a whole number inside out, which is one less than its
+// negation, and lands the answer inside the width of the type it is for.
+function go2jsWideNot(value, typeName) {
+	value = go2jsDurationOperand(value);
+
+	return go2jsWideWrap(typeof value === "bigint" ? -value - 1n : -value - 1, typeName);
+}
+
 function go2jsWideQuo(left, right, typeName) {
 	if (typeof left === "number" && typeof right === "number" && right !== 0) {
 		const fast = Math.trunc(left / right);
@@ -9773,14 +9794,14 @@ function go2jsDurationOperand(value) {
 	return value;
 }
 
-function go2jsDivide(left, right) {
+function go2jsDivide(left, right, typeName) {
 	// a span of time is asked for the whole number it holds before the two are
 	// divided, since it is that number and not the shape that does the work
 	left = go2jsDurationOperand(left);
 	right = go2jsDurationOperand(right);
 
 	if (go2jsIsWide(left) || go2jsIsWide(right)) {
-		return go2jsWideQuo(left, right);
+		return go2jsWideQuo(left, right, typeName);
 	}
 
 	if (right === 0) {
@@ -9953,12 +9974,12 @@ function go2jsIntWrap(value, typeName) {
 // go2jsMod takes the remainder the way Go does, which is the one left over
 // after a quotient cut off toward zero, rather than the JavaScript remainder
 // that keeps the sign of the dividend.
-function go2jsMod(left, right) {
+function go2jsMod(left, right, typeName) {
 	left = go2jsDurationOperand(left);
 	right = go2jsDurationOperand(right);
 
 	if (go2jsIsWide(left) || go2jsIsWide(right)) {
-		return go2jsWideRem(left, right);
+		return go2jsWideRem(left, right, typeName);
 	}
 
 	if (right === 0) {

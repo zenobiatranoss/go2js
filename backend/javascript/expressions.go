@@ -372,6 +372,18 @@ func wideIntOperator(op token.Token) (string, bool) {
 // isWideIntType reports whether a type can hold whole numbers with more digits
 // in them than a double keeps exactly, which is what makes an operation over it
 // something a double cannot be trusted with.
+// isUnsignedWideIntType is a whole number wider than a double keeps that never
+// goes below zero, which is the kind a signed answer would be wrong for.
+func isUnsignedWideIntType(t gotypes.Type) bool {
+	if t == nil {
+		return false
+	}
+
+	basic, ok := t.Underlying().(*gotypes.Basic)
+
+	return ok && (basic.Kind() == gotypes.Uint || basic.Kind() == gotypes.Uint64 || basic.Kind() == gotypes.Uintptr)
+}
+
 func isWideIntType(t gotypes.Type) bool {
 	if t == nil {
 		return false
@@ -685,6 +697,13 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				return err
 			}
 
+			// A whole number wider than a double keeps is worked out inside the
+			// width of its own type, which is what tells it from a signed one.
+			if isUnsignedWideIntType(e.analyzedType(x)) {
+				e.write(", ")
+				e.write(strconv.Quote(e.analyzedType(x).Underlying().(*gotypes.Basic).Name()))
+			}
+
 			e.write(")")
 
 			if e.isDurationType(x) {
@@ -915,6 +934,21 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		// inside the width it is held in. A plus sign in front of it changes
 		// nothing in Go but makes JavaScript try to read the digits it keeps as
 		// a plain number, which is a fault where the digits are wider than one.
+		if x.Op == token.XOR && isWideIntType(e.analyzedType(x)) && !e.isSmallConstant(x) {
+			basic := e.analyzedType(x).Underlying().(*gotypes.Basic)
+			e.needsRuntime = true
+			e.write("go2jsWideNot(")
+
+			if err := e.emitExpr(x.X); err != nil {
+				return err
+			}
+
+			e.write(", ")
+			e.write(strconv.Quote(basic.Name()))
+			e.write(")")
+			return nil
+		}
+
 		if (x.Op == token.SUB || x.Op == token.ADD) && isWideIntType(e.analyzedType(x)) {
 			if x.Op == token.ADD {
 				return e.emitExpr(x.X)
@@ -2886,4 +2920,23 @@ func (e *emitter) emitDurationComparison(x *ast.BinaryExpr) (bool, error) {
 	}
 
 	return true, nil
+}
+
+// isSmallConstant is whether the compiler worked the value of an expression out
+// before the program runs and it is a number a JavaScript operator turns inside
+// out correctly, which needs it to be one the thirty-two bits it works in hold.
+func (e *emitter) isSmallConstant(expr ast.Expr) bool {
+	if e.analysis == nil {
+		return false
+	}
+
+	info, ok := e.analysis.Types[expr]
+
+	if !ok || info.Value == nil || info.Value.Kind() != constant.Int {
+		return false
+	}
+
+	value, exact := constant.Int64Val(info.Value)
+
+	return exact && value >= -(1<<31) && value < 1<<31 && !isUnsignedWideIntType(e.analyzedType(expr))
 }

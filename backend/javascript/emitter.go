@@ -1156,6 +1156,7 @@ func runtimeSourceParts() []string {
 		osFileRuntimeSource(),
 		runtimeShimRuntimeSource(),
 		syncShimRuntimeSource(),
+		scanShimRuntimeSource(),
 		cryptoHashRuntimeSource(),
 		tabwriterRuntimeSource(),
 		testingShimRuntimeSource(),
