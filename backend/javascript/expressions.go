@@ -1225,6 +1225,14 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				if err := e.emitExpr(selector.X); err != nil {
 					return err
 				}
+
+				// A method the struct has by way of one it embeds is called on the
+				// embedded value itself, found by the fields it is reached through.
+				for _, embedded := range e.embeddedPath(selector) {
+					e.write(".")
+					e.write(embedded)
+				}
+
 				e.write(".")
 				e.write(selector.Sel.Name)
 
