@@ -7192,7 +7192,16 @@ function go2jsOSFileMethods() {
 			const view = Buffer.from(buffer.slice(filled, buffer.length));
 
 			try {
-				chunk = require("fs").readSync(0, view, 0, view.length, start + filled);
+				try {
+					chunk = require("fs").readSync(0, view, 0, view.length, start + filled);
+				} catch (positioned) {
+					// a pipe has no place to read from, so it is read from where it is
+					if (positioned.code !== "ESPIPE") {
+						throw positioned;
+					}
+
+					chunk = require("fs").readSync(0, view, 0, view.length, null);
+				}
 			} catch (err) {
 				// Nothing left to hand over is the end of the text rather than a
 				// failure of the read, which is what a read reports it as.
@@ -7223,20 +7232,7 @@ function go2jsOSFileMethods() {
 	// of it, which is read from the descriptor it stands for.
 	Object.defineProperty(process.stdin, "__go2js_readAll", {
 		value: function () {
-			const chunks = [];
-			const buffer = new Array(4096);
-
-			for (;;) {
-				const result = readStandardInput(buffer);
-
-				if (result[0] <= 0) {
-					break;
-				}
-
-				chunks.push(...buffer.slice(0, result[0]));
-			}
-
-			return String.fromCharCode(...chunks);
+			return go2jsScanStdinRest();
 		},
 		enumerable: false,
 		writable: true,

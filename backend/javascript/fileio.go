@@ -64,7 +64,7 @@ func (e *emitter) emitFormatArgument(arg ast.Expr) error {
 
 		e.write(", ")
 		e.write(strconv.Quote(name))
-		e.write(")")
+		e.write(`, "", "slice")`)
 		return nil
 	}
 
@@ -113,6 +113,10 @@ func (e *emitter) emitFileCall(call *ast.CallExpr, selector *ast.SelectorExpr) (
 
 	switch pkg {
 	case "fmt":
+		if handled, err := e.emitScanCall(call, method); handled {
+			return true, err
+		}
+
 		switch method {
 		case "Fprint":
 			isFmt, format = true, "print"
