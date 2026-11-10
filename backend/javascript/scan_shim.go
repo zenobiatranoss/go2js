@@ -547,3 +547,29 @@ function go2jsScan(name, from, format, targets, kinds) {
 }
 `
 }
+
+// randV2ShimRuntimeSource is what math/rand/v2 names that math/rand has no
+// counterpart for.
+func randV2ShimRuntimeSource() string {
+	return `
+function go2jsRandV2IntN(limit) {
+	if (typeof limit === "bigint") {
+		limit = Number(limit);
+	}
+
+	if (limit <= 0) {
+		throw go2jsRuntimeFault("invalid argument to IntN");
+	}
+
+	return Math.floor(Math.random() * limit);
+}
+
+function go2jsRandV2Int32() {
+	return Math.floor(Math.random() * 4294967296) - 2147483648;
+}
+
+function go2jsRandV2Uint32() {
+	return Math.floor(Math.random() * 4294967296);
+}
+`
+}

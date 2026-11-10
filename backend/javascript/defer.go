@@ -58,7 +58,7 @@ func (e *emitter) emitFuncBody(body *ast.BlockStmt) error {
 		e.addressNames = outerNames
 	}()
 
-	if hasGoto(body) {
+	if hasGoto(body) && !hasDefer(body) {
 		return e.emitGotoBody(body)
 	}
 
@@ -153,11 +153,25 @@ func (e *emitter) emitFuncBody(body *ast.BlockStmt) error {
 	e.newline()
 	e.indent++
 
-	for _, stmt := range body.List {
-		if err := e.emitStmt(stmt); err != nil {
+	// The jumps of a body that has them are made inside the try, so what it
+	// deferred is run however it is left.
+	if hasGoto(body) {
+		e.writeIndent()
+
+		if err := e.emitGotoBody(body); err != nil {
 			e.indent--
 			e.scopes = e.scopes[:len(e.scopes)-1]
 			return err
+		}
+
+		e.newline()
+	} else {
+		for _, stmt := range body.List {
+			if err := e.emitStmt(stmt); err != nil {
+				e.indent--
+				e.scopes = e.scopes[:len(e.scopes)-1]
+				return err
+			}
 		}
 	}
 

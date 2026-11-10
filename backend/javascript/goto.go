@@ -32,10 +32,6 @@ func (e *emitter) emitGotoBody(body *ast.BlockStmt) error {
 	if body == nil {
 		return fmt.Errorf("invalid goto body")
 	}
-	if hasDefer(body) {
-		return fmt.Errorf("goto with defer is not supported by the JavaScript backend")
-	}
-
 	labels := make(map[string]int)
 	topLevelLabels := make(map[*ast.LabeledStmt]bool)
 

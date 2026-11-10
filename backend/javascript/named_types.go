@@ -429,7 +429,7 @@ func (e *emitter) scalarNamedReceiverType(selector *ast.SelectorExpr) (string, b
 		return "", false
 	}
 
-	if selection.Kind() != gotypesstd.MethodVal {
+	if selection.Kind() != gotypesstd.MethodVal && selection.Kind() != gotypesstd.MethodExpr {
 		return "", false
 	}
 
@@ -608,17 +608,17 @@ func (e *emitter) emitScalarNamedMethodValue(selector *ast.SelectorExpr) (bool, 
 		return false, nil
 	}
 
-	e.write("function* (...args) { return yield* ")
-	// The method was written as a generator, so the call hands the turn to it.
-	e.write("yield* ")
+	// The value the method is taken from is the one it is worked on, so it is
+	// settled when the method is taken and not when it is called.
+	e.write("((receiver) => function* (...args) { return yield* ")
 	e.write(scalarNamedMethodName(typeName, method.Name()))
-	e.write("(")
+	e.write("(receiver, ...args); })(")
 
 	if err := e.emitExpr(selector.X); err != nil {
 		return true, err
 	}
 
-	e.write(", ...args); }")
+	e.write(")")
 	return true, nil
 }
 
@@ -1268,4 +1268,25 @@ func isNilLiteral(expr ast.Expr) bool {
 	}
 
 	return ident.Name == "nil" && ident.Obj == nil
+}
+
+// emitScalarNamedMethodExpr writes T.Method, or (*T).Method, of a named type that
+// is not a struct: a function that takes the value, or the pointer to it, as its
+// first argument and hands the rest to the method.
+func (e *emitter) emitScalarNamedMethodExpr(selector *ast.SelectorExpr) (bool, error) {
+	typeName, ok := e.scalarNamedReceiverType(selector)
+	if !ok {
+		return false, nil
+	}
+
+	method, ok := e.analysis.Selections[selector].Obj().(*gotypesstd.Func)
+	if !ok || !e.scalarNamedMethodAnswers(method, typeName, method.Name()) {
+		return false, nil
+	}
+
+	e.write("function* (receiver, ...args) { return yield* ")
+	e.write(scalarNamedMethodName(typeName, method.Name()))
+	e.write("(receiver, ...args); }")
+
+	return true, nil
 }
