@@ -438,6 +438,23 @@ short version:
 - **Exported calls run on the calling thread.** A function handed to JavaScript
   runs with the scheduler handling whatever it waits on. It's not on a goroutine
   of its own, and a fault in it leaves the program's goroutines where they were.
+- **Deep recursion needs `-stack`.** A function that calls itself a hundred
+  thousand levels deep overruns the stack Node starts with. `go2js -stack 1024`
+  runs the program on a larger one; without it the program fails with a stack
+  error instead of Go's growing stack.
+- **A nil pointer is printed as `<nil>` even if its type has a `String`
+  method.** Go calls the method on the nil pointer; the translation can't tell
+  which type a nil was.
+- **A NaN map key is one key.** Go keeps every NaN as a key of its own.
+- **`fmt.Scan` reads a whole chunk of the standard input at a time.** It waits
+  for the chunk, not for the line, so a program that prompts and waits for a
+  reply on a terminal sees the reply when the line is finished, as usual, but
+  one that mixes `fmt.Scan` with its own reads of `os.Stdin` should read through
+  one of them.
+- **Some of the standard library isn't there.** `os/signal`, `encoding/xml`,
+  `html`, `text/scanner`, `math/cmplx`, `container/ring`, `io.Pipe` and
+  `syscall` are refused with a "not available" error rather than compiled
+  wrong; `docs/stdlib-support.md` says what each package answers.
 
 ## Testing: how go2js tests go2js
 

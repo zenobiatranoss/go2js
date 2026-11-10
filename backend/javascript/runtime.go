@@ -6767,26 +6767,36 @@ function go2jsMethodValue(receiver, method, copyReceiver) {
 }
 
 function go2jsMethodExpression(method, copyReceiver) {
-	return (receiver, ...args) => {
+	return function* (receiver, ...args) {
 		if (receiver === null || receiver === undefined) {
 			throw new TypeError("method expression on nil receiver");
 		}
 
 		if (receiver.__go2js_interface === true) {
-			return go2jsMethodValue(receiver, method, copyReceiver)(...args);
+			return yield* go2jsCall(go2jsMethodValue(receiver, method, copyReceiver), null, args);
 		}
 
 		let target = receiver;
 
-		if (copyReceiver && target.__go2js_pointer === true) {
+		if (target.__go2js_pointer === true) {
 			target = target[go2jsPointerGet]();
+
+			if (target === null || target === undefined) {
+				throw new TypeError("method expression on nil pointer");
+			}
 		}
 
 		if (copyReceiver) {
 			target = go2jsCloneValue(target);
 		}
 
-		return go2jsInvokeMethod(target, method, args);
+		const fn = target[method];
+
+		if (typeof fn !== "function") {
+			throw new TypeError("method " + method + " is not implemented");
+		}
+
+		return yield* go2jsCall(fn, target, args);
 	};
 }
 

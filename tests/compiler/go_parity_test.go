@@ -93,6 +93,71 @@ func main() {
 [104 195 169] [104 233]
 [113] [104 195 169] hé 68c3a9
 `},
+	{"method_values_expressions", `package main
+import "fmt"
+type T int
+func (t T) Double() T { return t * 2 }
+func (t *T) Inc() { *t++ }
+type S struct{ n int }
+func (s S) Get() int { return s.n }
+func main() {
+	f := T.Double
+	fmt.Println(f(4))
+	t := T(3)
+	g := t.Double
+	h := (*T).Inc
+	h(&t)
+	fmt.Println(g(), t)
+	s := S{7}
+	k := s.Get
+	s.n = 9
+	fmt.Println(k(), S.Get(s))
+}
+`, `8
+6 4
+7 9
+`},
+	{"goto_with_defer", `package main
+import "fmt"
+func f() (r int) {
+	defer func() { r *= 2; fmt.Println("deferred", r) }()
+	i := 0
+loop:
+	if i < 3 { defer fmt.Println("d", i); fmt.Println(i); i++; goto loop }
+	return i
+}
+func g() {
+	defer func() { fmt.Println("recovered:", recover()) }()
+	n := 0
+retry:
+	n++
+	if n < 3 { goto retry }
+	panic(n)
+}
+func main() { fmt.Println(f()); g() }
+`, `0
+1
+2
+d 2
+d 1
+d 0
+deferred 6
+6
+recovered: 3
+`},
+	{"ioutil_and_runtime", `package main
+import ("fmt"; "io/ioutil"; "os"; "runtime")
+func main() {
+	ioutil.WriteFile("/tmp/zz_x.txt", []byte("hi"), 0644)
+	b, _ := ioutil.ReadFile("/tmp/zz_x.txt")
+	os.Remove("/tmp/zz_x.txt")
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	runtime.GC()
+	fmt.Println(string(b), runtime.NumCPU() > 0, runtime.GOOS)
+}
+`, `hi true linux
+`},
 }
 
 func TestGoVerifiedProgramsPrintTheSame(t *testing.T) {

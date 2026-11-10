@@ -13,11 +13,16 @@ var runtimeFuncs = map[string]string{
 	"Goexit":        "go2jsRuntimeGoexit",
 	"Version":       "go2jsRuntimeVersion",
 	"Gosched":       "go2jsRuntimeGosched",
+	"ReadMemStats":  "go2jsRuntimeReadMemStats",
+	"SetFinalizer":  "go2jsRuntimeSetFinalizer",
+	"GOROOT":        "go2jsRuntimeGOROOT",
+	"NumCgoCall":    "go2jsRuntimeNumCPU",
 }
 
 var runtimeConstants = map[string]string{
-	"GOOS":   `"linux"`,
-	"GOARCH": `"amd64"`,
+	"GOOS":     `"linux"`,
+	"GOARCH":   `"amd64"`,
+	"Compiler": `"gc"`,
 }
 
 var runtimePlainTypes = []string{
@@ -151,6 +156,35 @@ function go2jsRuntimeNumCPU() {
 
 function go2jsRuntimeNumGoroutine() {
 	return 1;
+}
+
+// go2jsRuntimeReadMemStats fills in what the engine can say about its memory, as
+// the fields Go's statistics are named, and leaves the counts it has no way to
+// know at zero.
+function go2jsRuntimeReadMemStats(stats) {
+	const target = go2jsUnwrap(stats);
+	const usage = process.memoryUsage();
+
+	if (target === null || target === undefined || typeof target !== "object") {
+		return null;
+	}
+
+	target.Alloc = usage.heapUsed;
+	target.TotalAlloc = usage.heapUsed;
+	target.Sys = usage.rss;
+	target.HeapAlloc = usage.heapUsed;
+	target.HeapSys = usage.heapTotal;
+	target.HeapInuse = usage.heapUsed;
+
+	return null;
+}
+
+function go2jsRuntimeSetFinalizer(value, finalizer) {
+	return null;
+}
+
+function go2jsRuntimeGOROOT() {
+	return "/usr/local/go";
 }
 
 function go2jsRuntimeGC() {

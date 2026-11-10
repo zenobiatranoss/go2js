@@ -1476,6 +1476,10 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				return nil
 
 			case gotypes.MethodExpr:
+				if handled, err := e.emitScalarNamedMethodExpr(x); handled {
+					return err
+				}
+
 				e.write("go2jsMethodExpression(")
 				e.write(strconv.Quote(method.Name()))
 				e.write(", ")
