@@ -573,3 +573,34 @@ function go2jsRandV2Uint32() {
 }
 `
 }
+
+// onceShimRuntimeSource is the functions of sync that wrap a function so it runs
+// once and hands every caller what the first run came to.
+func onceShimRuntimeSource() string {
+	return `
+function go2jsSyncOnceFunc(f) {
+	let done = false;
+
+	return function* () {
+		if (!done) {
+			done = true;
+			yield* go2jsCall(f, null, []);
+		}
+	};
+}
+
+function go2jsSyncOnceValue(f) {
+	let done = false;
+	let result;
+
+	return function* () {
+		if (!done) {
+			result = yield* go2jsCall(f, null, []);
+			done = true;
+		}
+
+		return result;
+	};
+}
+`
+}

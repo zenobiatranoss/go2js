@@ -3,7 +3,10 @@ package javascript
 // syncFuncs are the functions of the sync package that stand on their own rather
 // than hang off one of its types.
 var syncFuncs = map[string]string{
-	"NewCond": "go2jsSyncNewCond",
+	"NewCond":    "go2jsSyncNewCond",
+	"OnceFunc":   "go2jsSyncOnceFunc",
+	"OnceValue":  "go2jsSyncOnceValue",
+	"OnceValues": "go2jsSyncOnceValue",
 }
 
 // syncTypes are the types of the sync package the runtime answers with a class of
@@ -131,7 +134,7 @@ function go2jsSyncNewCond(locker) {
 }
 
 function go2jsSyncCond(locker) {
-	return {locker: locker, waiting: [], parked: null, standIn: null};
+	return {L: locker, locker: locker, waiting: [], parked: null, standIn: null};
 }
 
 // go2jsCondWait waits to be woken, and comes back holding the lock again, which
