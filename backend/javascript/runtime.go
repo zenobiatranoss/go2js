@@ -7980,7 +7980,36 @@ function* go2jsInterfaceCall(value, method, ...args) {
 		registered = true;
 	}
 
+	// A lock held in an interface (a sync.Locker, the L of a condition) is told
+	// from a read-write one by what it keeps, and is locked the way the call that
+	// names it directly would.
 	if (typeof fn !== "function") {
+		let lock = target;
+
+		if (lock.__go2js_pointer === true) {
+			lock = lock[go2jsPointerGet]();
+		}
+
+		if (lock !== null && typeof lock === "object" && Array.isArray(lock.blocked)) {
+			const readWrite = "readers" in lock;
+
+			if (method === "Lock") {
+				return yield* (readWrite ? go2jsRWMutexLock(lock) : go2jsMutexLock(lock));
+			}
+
+			if (method === "Unlock") {
+				return readWrite ? go2jsRWMutexUnlock(lock) : go2jsMutexUnlock(lock);
+			}
+
+			if (method === "RLock" && readWrite) {
+				return yield* go2jsRWMutexRLock(lock);
+			}
+
+			if (method === "RUnlock" && readWrite) {
+				return go2jsRWMutexRUnlock(lock);
+			}
+		}
+
 		throw new TypeError("interface method " + method + " is not implemented");
 	}
 
@@ -10318,7 +10347,9 @@ function go2jsFormat(value, typeName, kind, shape, plus, nested, raw) {
 		// says it is, so that a level of a package says the name of a level rather
 		// than the number behind one.
 		if (typeof value === "number" && typeof typeName === "string" && typeName !== "") {
-			const named = go2jsMethodTable[typeName + ".String"];
+			// The method is registered under the bare name of its type, and the
+			// type of an element is written with the package it is from.
+			const named = go2jsMethodTable[typeName + ".String"] || go2jsMethodTable[typeName.slice(typeName.lastIndexOf(".") + 1) + ".String"];
 
 			if (typeof named === "function") {
 				return go2jsFormat(go2jsCallNow(named, null, [value]));
@@ -12557,7 +12588,9 @@ function go2jsFormatValue(verb, spec, value, raw, nested) {
 				return go2jsPad(tagged, parsed, false);
 			}
 
-			return go2jsPad(go2jsGoTypeName(original), parsed, false);
+			// reflect names the empty interface the way it was written before any
+			// was an alias of it.
+			return go2jsPad(go2jsGoTypeName(original).replace(/\bany\b/g, "interface {}"), parsed, false);
 		}
 		default:
 			return go2jsStringify(value);
