@@ -8609,6 +8609,20 @@ function go2jsImag(value) {
 }
 
 function go2jsLen(value) {
+	// A slice or an array is the commonest thing asked. A slice keeps its length
+	// in its state, which is a cheaper place to read it than through the proxy
+	// that stands for it.
+	if (typeof value === "object" && value !== null) {
+		const state = go2jsSliceMeta.get(value);
+
+		if (state !== undefined) {
+			return state.length;
+		}
+
+		if (Array.isArray(value)) {
+			return value.length;
+		}
+	}
 	if (value === null || value === undefined) {
 		return 0;
 	}
@@ -9429,6 +9443,13 @@ function go2jsIndex(value, index) {
 // go2jsIndexCheck guards an assignment to a slice or an array element, where
 // the check has to stand beside the assignment rather than inside it.
 function go2jsIndexCheck(value, index) {
+	const state = go2jsSliceMeta.get(value);
+
+	// The bounds of a slice are all that is asked, so it is not read from.
+	if (state !== undefined && typeof index === "number" && index >= 0 && index < state.length) {
+		return;
+	}
+
 	go2jsIndex(value, index);
 }
 
@@ -9703,6 +9724,12 @@ function go2jsWideAndNotBits(a, b) {
 // since a JavaScript operator on numbers touches only the low thirty two of
 // them, and every mark of a wider number lives above where it reaches.
 function go2jsWideBitwise(left, right, whole, typeName) {
+	// Two numbers of thirty-two bits are reached in every one of their marks by
+	// the operator itself.
+	if (typeof left === "number" && typeof right === "number" && (left | 0) === left && (right | 0) === right) {
+		return whole(left, right);
+	}
+
 	left = go2jsDurationOperand(left);
 	right = go2jsDurationOperand(right);
 
@@ -9942,6 +9969,20 @@ function go2jsIntWidthName(typeName) {
 }
 
 function go2jsIntWrap(value, typeName) {
+	// A plain number going into one of the narrow kinds is wrapped by the bit
+	// operators, which do that to every double they are given, so none of what
+	// follows is needed for it.
+	if (typeof value === "number") {
+		switch (typeName) {
+			case "uint32": return value >>> 0;
+			case "int32": return value | 0;
+			case "uint8": return value & 255;
+			case "uint16": return value & 65535;
+			case "int8": return (value << 24) >> 24;
+			case "int16": return (value << 16) >> 16;
+		}
+	}
+
 	// A file mode is a set of marks rather than a number, so marks put on it or
 	// taken off it leave it a mode rather than a plain number.
 	if (typeName === "fs.FileMode" || typeName === "os.FileMode" || typeName === "io/fs.FileMode" || typeName === "fs.FileMode " || typeName === "io/fs.FileMode ") {
