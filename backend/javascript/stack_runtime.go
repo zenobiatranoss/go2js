@@ -211,6 +211,10 @@ function go2jsPanicMessage(value) {
 		return payload.message;
 	}
 
+	if (payload === null || payload === undefined) {
+		return "panic called with nil argument";
+	}
+
 	return go2jsStringify(payload);
 }
 
@@ -232,7 +236,15 @@ function go2jsReportUncaughtPanic(thrown) {
 	// A fault of the runtime itself is written the way Go writes it as well, so a
 	// member reached through a standing-for-nothing value is the nil dereference
 	// Go would have raised rather than the wording of the engine underneath.
-	if (value === undefined && go2jsRuntimeErrorText(thrown) === null) {
+	// A fault the runtime raised by name is one of Go's too, whatever kind of
+	// error the engine made it out of: an out of range slice, a failed
+	// assertion, a channel closed twice.
+	const named = thrown instanceof Error && (
+		thrown.__go2js_error_name !== undefined ||
+		String(thrown.message).startsWith("runtime error: ") ||
+		String(thrown.message).startsWith("interface conversion: "));
+
+	if (value === undefined && !named && go2jsRuntimeErrorText(thrown) === null) {
 		throw thrown;
 	}
 
