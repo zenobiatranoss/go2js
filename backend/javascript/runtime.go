@@ -9906,7 +9906,7 @@ function go2jsShl(left, right, typeName) {
 	const count = Math.trunc(Number(right));
 
 	if (count < 0) {
-		return go2jsShr(left, -count, typeName);
+		throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "negative shift amount");
 	}
 
 	// a shift that lands outside the range a double holds exactly is worked out
@@ -9935,7 +9935,11 @@ function go2jsShr(left, right, typeName) {
 
 	const count = Math.trunc(Number(right));
 
-	if (count <= 0) {
+	if (count < 0) {
+		throw new go2jsNativeRangeError(go2jsRuntimeErrorPrefix + "negative shift amount");
+	}
+
+	if (count === 0) {
 		return go2jsShlWide(go2jsIsWide(left) ? go2jsWide(left) : Math.trunc(Number(left)), typeName);
 	}
 

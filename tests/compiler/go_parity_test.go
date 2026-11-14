@@ -314,6 +314,36 @@ map[a:{8 6}] {-1 6}
 {1 2} [0 0] {12345 2} [1 0]
 [{100 4} {1 2}]
 `},
+	{"negative_shift", `package main
+
+import "fmt"
+
+func try(name string, f func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println(name, "PANIC", r)
+		}
+	}()
+	f()
+}
+
+func main() {
+	s := -1
+	z := 0
+	try("shl", func() { fmt.Println(1 << s) })
+	try("shr", func() { fmt.Println(5 >> s) })
+	try("u8", func() { var x uint8 = 1; fmt.Println(x << s) })
+	try("i64", func() { var x int64 = 1; fmt.Println(x << s) })
+	try("zero", func() { fmt.Println(7<<z, 7>>z) })
+	try("ok", func() { var x uint8 = 1; fmt.Println(x<<3, 5>>1, int64(1)<<40) })
+}
+`, `shl PANIC runtime error: negative shift amount
+shr PANIC runtime error: negative shift amount
+u8 PANIC runtime error: negative shift amount
+i64 PANIC runtime error: negative shift amount
+7 7
+8 2 1099511627776
+`},
 	{"concurrency_patterns", `package main
 import ("fmt"; "sync"; "time"; "context"; "strings"; "bufio")
 type Counter struct { mu sync.Mutex; m map[string]int }
