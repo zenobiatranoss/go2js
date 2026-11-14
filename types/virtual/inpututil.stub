@@ -1,0 +1,10 @@
+package inpututil
+
+import "github.com/hajimehoshi/ebiten/v2"
+
+func IsKeyJustPressed(key ebiten.Key) bool
+func IsKeyJustReleased(key ebiten.Key) bool
+func KeyPressDuration(key ebiten.Key) int
+func IsMouseButtonJustPressed(button ebiten.MouseButton) bool
+func IsMouseButtonJustReleased(button ebiten.MouseButton) bool
+func MouseButtonPressDuration(button ebiten.MouseButton) int
