@@ -6766,9 +6766,13 @@ function go2jsMethodValue(receiver, method, copyReceiver) {
 	return (...args) => go2jsCallNow(fn, captured, args);
 }
 
-function go2jsMethodExpression(method, copyReceiver) {
+function go2jsMethodExpression(method, copyReceiver, klass) {
 	return function* (receiver, ...args) {
 		if (receiver === null || receiver === undefined) {
+			if (typeof klass === "function" && typeof klass.prototype[method] === "function") {
+				return yield* go2jsCall(klass.prototype[method], null, args);
+			}
+
 			throw new TypeError("method expression on nil receiver");
 		}
 
@@ -8558,6 +8562,10 @@ function go2jsComplexConvert(value) {
 	return go2jsComplexValue(value);
 }
 
+function go2jsComplex64(value) {
+	return {re: Math.fround(value.re), im: Math.fround(value.im)};
+}
+
 function go2jsComplexAdd(a, b) {
 	a = go2jsComplexValue(a);
 	b = go2jsComplexValue(b);
@@ -10214,8 +10222,10 @@ function go2jsRuntimeFault(text, typeName) {
 	return fault;
 }
 
+let go2jsRecoverHook = null;
+
 function go2jsRecover() {
-	return undefined;
+	return go2jsRecoverHook === null ? undefined : go2jsRecoverHook();
 }
 
 function go2jsStringify(value) {

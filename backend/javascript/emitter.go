@@ -1729,6 +1729,71 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 			return err
 		}
 
+		// A float32 keeps fewer digits than the double that works it out, so
+		// what an assignment on one gives is rounded back before it is kept.
+		if op, ok := compoundAssignBinaryOp(s.Tok); ok && len(s.Lhs) == 1 && len(s.Rhs) == 1 && isFloat32Type(e.analyzedType(s.Lhs[0])) &&
+			(op == token.ADD || op == token.SUB || op == token.MUL || op == token.QUO) {
+			e.needsRuntime = true
+			e.writeIndent()
+
+			if err := e.emitExpr(s.Lhs[0]); err != nil {
+				return err
+			}
+
+			e.write(" = go2jsFloat32(")
+
+			if err := e.emitExpr(s.Lhs[0]); err != nil {
+				return err
+			}
+
+			e.write(" " + op.String() + " (")
+
+			if err := e.emitExpr(s.Rhs[0]); err != nil {
+				return err
+			}
+
+			e.write("));")
+			e.newline()
+
+			return nil
+		}
+
+		// A complex number is an object, so an assignment that works itself out
+		// on one is written as the plain assignment of what the operation gives.
+		if op, ok := compoundAssignBinaryOp(s.Tok); ok && len(s.Lhs) == 1 && len(s.Rhs) == 1 && e.isComplexExpr(s.Lhs[0]) {
+			helper := map[token.Token]string{token.ADD: "go2jsComplexAdd", token.SUB: "go2jsComplexSub", token.MUL: "go2jsComplexMul", token.QUO: "go2jsComplexDiv"}[op]
+
+			if helper != "" {
+				e.writeIndent()
+
+				if err := e.emitExpr(s.Lhs[0]); err != nil {
+					return err
+				}
+
+				e.write(" = ")
+
+				narrow := false
+
+				if basic := basicOf(e.analyzedType(s.Lhs[0])); basic != nil && basic.Kind() == gotypesstd.Complex64 {
+					narrow = true
+					e.write("go2jsComplex64(")
+				}
+
+				if err := e.emitComplexCall(helper, s.Lhs[0], s.Rhs[0]); err != nil {
+					return err
+				}
+
+				if narrow {
+					e.write(")")
+				}
+
+				e.write(";")
+				e.newline()
+
+				return nil
+			}
+		}
+
 		if e.hasBlankTarget(s.Lhs) {
 			return e.emitBlankAssignment(s)
 		}

@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	gotypesstd "go/types"
 	"strconv"
+	"strings"
 )
 
 func hasDefer(body *ast.BlockStmt) bool {
@@ -215,7 +216,15 @@ func (e *emitter) emitFuncBody(body *ast.BlockStmt) error {
 	e.newline()
 	e.indent++
 	e.writeIndent()
-	e.write("yield* go2jsDefers[i]();")
+	// A deferred function that is not written in place calls recover on its own,
+	// so the frame that is running its defers is the one it answers to.
+	e.write("const go2jsPrevRecover = go2jsRecoverHook;")
+	e.newline()
+	e.writeIndent()
+	e.write("go2jsRecoverHook = go2jsRecover;")
+	e.newline()
+	e.writeIndent()
+	e.write("try { yield* go2jsDefers[i](); } finally { go2jsRecoverHook = go2jsPrevRecover; }")
 	e.newline()
 	e.indent--
 	e.writeIndent()
@@ -292,6 +301,35 @@ func (e *emitter) emitFuncBody(body *ast.BlockStmt) error {
 				e.write(e.resolveName(name))
 			}
 			e.write("]")
+		}
+
+		e.newline()
+		e.indent--
+		e.writeIndent()
+		e.write("}")
+		e.newline()
+	}
+
+	// A function whose results have no names gives back the zero value of each
+	// one when a deferred call recovers a panic that cut it short.
+	if !namedReturn && e.currentSignature != nil && e.currentSignature.Results().Len() > 0 {
+		results := e.currentSignature.Results()
+		zeros := make([]string, 0, results.Len())
+
+		for i := 0; i < results.Len(); i++ {
+			zeros = append(zeros, e.zeroValue(results.At(i).Type()))
+		}
+
+		e.writeIndent()
+		e.write("if (go2jsRecovered) {")
+		e.newline()
+		e.indent++
+		e.writeIndent()
+
+		if len(zeros) == 1 {
+			e.write("return " + zeros[0] + ";")
+		} else {
+			e.write("return [" + strings.Join(zeros, ", ") + "];")
 		}
 
 		e.newline()

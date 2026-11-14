@@ -161,6 +161,14 @@ function go2jsRuntimeNumGoroutine() {
 // go2jsRuntimeReadMemStats fills in what the engine can say about its memory, as
 // the fields Go's statistics are named, and leaves the counts it has no way to
 // know at zero.
+class MemStats {
+	constructor() {
+		this.Alloc = 0; this.TotalAlloc = 0; this.Sys = 0; this.Lookups = 0; this.Mallocs = 0; this.Frees = 0;
+		this.HeapAlloc = 0; this.HeapSys = 0; this.HeapIdle = 0; this.HeapInuse = 0; this.HeapReleased = 0; this.HeapObjects = 0;
+		this.StackInuse = 0; this.StackSys = 0; this.NextGC = 0; this.LastGC = 0; this.PauseTotalNs = 0; this.NumGC = 0; this.NumForcedGC = 0;
+	}
+}
+
 function go2jsRuntimeReadMemStats(stats) {
 	const target = go2jsUnwrap(stats);
 	const usage = process.memoryUsage();

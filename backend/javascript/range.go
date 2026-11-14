@@ -295,6 +295,10 @@ func (e *emitter) emitEntriesRangeStmt(stmt *ast.RangeStmt) error {
 
 	binding := "const "
 
+	if rangeVarsChanged(stmt) {
+		binding = "let "
+	}
+
 	if stmt.Tok == token.ASSIGN {
 		binding = ""
 	}
@@ -572,4 +576,51 @@ function* go2jsRangeValue(value) {
 	}
 }
 `
+}
+
+// rangeVarsChanged reports whether the body of a range loop takes the address of
+// one of its variables or writes to one, which a constant binding cannot allow.
+func rangeVarsChanged(stmt *ast.RangeStmt) bool {
+	names := map[string]bool{}
+
+	for _, v := range []ast.Expr{stmt.Key, stmt.Value} {
+		if ident, ok := v.(*ast.Ident); ok && ident.Name != "_" {
+			names[ident.Name] = true
+		}
+	}
+
+	if len(names) == 0 || stmt.Body == nil {
+		return false
+	}
+
+	isName := func(x ast.Expr) bool {
+		ident, ok := unparen(x).(*ast.Ident)
+
+		return ok && names[ident.Name]
+	}
+
+	changed := false
+
+	ast.Inspect(stmt.Body, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.UnaryExpr:
+			if x.Op == token.AND && isName(x.X) {
+				changed = true
+			}
+		case *ast.AssignStmt:
+			for _, lhs := range x.Lhs {
+				if isName(lhs) {
+					changed = true
+				}
+			}
+		case *ast.IncDecStmt:
+			if isName(x.X) {
+				changed = true
+			}
+		}
+
+		return !changed
+	})
+
+	return changed
 }
