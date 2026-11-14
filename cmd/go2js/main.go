@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/zenobiatranoss/go2js/compiler"
 )
@@ -57,6 +58,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		runtime   bool
 		strict    bool
 		stack     int
+		page      bool
 	)
 
 	fs.StringVar(&output, "o", "", "write output to file")
@@ -69,12 +71,22 @@ func run(args []string, stdout, stderr io.Writer) error {
 	fs.BoolVar(&strict, "strict", true, "emit strict mode")
 	fs.IntVar(&stack, "stack", 0, "stack size in megabytes the program runs on under Node, 0 for Node's own")
 
+	fs.BoolVar(&page, "html", false, "write a web page that runs the program (also when the output file ends in .html)")
+
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
 	if len(args) > 0 && args[0] == "serve" {
 		return startServe(args[1:], stdout)
+	}
+
+	if strings.HasSuffix(output, ".html") {
+		page = true
+	}
+
+	if page {
+		module = "iife"
 	}
 
 	options := compiler.DefaultOptions().
@@ -109,6 +121,10 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 	if err != nil {
 		return err
+	}
+
+	if page {
+		result = htmlPage(result)
 	}
 
 	if output == "" {
@@ -207,4 +223,13 @@ type testFailure struct {
 
 func (e *testFailure) Error() string {
 	return fmt.Sprintf("tests failed")
+}
+
+// htmlPage wraps a program compiled for a page into the page that runs it, so a
+// program that draws, such as a game, opens by double clicking one file.
+func htmlPage(script string) string {
+	script = strings.ReplaceAll(script, "</script", "<\\/script")
+
+	return "<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>go2js</title>\n" +
+		"<style>html,body{margin:0;background:#111;color:#ddd;font-family:monospace}</style>\n</head>\n<body>\n<script>\n" + script + "\n</script>\n</body>\n</html>\n"
 }

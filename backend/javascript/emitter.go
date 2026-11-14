@@ -1124,6 +1124,7 @@ func shimTypeRegistrations(body string) string {
 // bundle is cut from.
 func runtimeSourceParts() []string {
 	return []string{
+		browserProcessSource(),
 		runtimeSource(),
 		collectionRuntimeSource(),
 		rangeRuntimeSource(),
@@ -1157,6 +1158,7 @@ func runtimeSourceParts() []string {
 		runtimeShimRuntimeSource(),
 		syncShimRuntimeSource(),
 		scanShimRuntimeSource(),
+		ebitenRuntimeSource(),
 		randV2ShimRuntimeSource(),
 		onceShimRuntimeSource(),
 		cryptoHashRuntimeSource(),

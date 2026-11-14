@@ -47,6 +47,20 @@ If you want the short version, [jump to the quick start](#quick-start).
 - [Changelog](CHANGELOG.md)
 - [License](#license)
 
+## Games and other libraries that draw (ebiten)
+
+A program that imports [ebiten](https://ebitengine.org) (`github.com/hajimehoshi/ebiten/v2` with `inpututil`, `vector` and `ebitenutil`) is compiled without the library being installed: what the transpiler needs is the shape of its API, which is built in (`types/virtual/*.stub`), and what runs behind it is a canvas in the page (`backend/javascript/ebiten_shim.go`). The page steps the game sixty times a second, reads the keyboard and the mouse of the page, and draws with the 2D canvas.
+
+```
+go2js -o game.html examples/temple-run/main.go   # open game.html in a browser
+```
+
+Under Node there is no screen, so `GO2JS_EBITEN_FRAMES=600 node game.js` steps the game for that many frames and draws to nothing, which is how the logic of a game is tested.
+
+What is covered: `RunGame`, `Image` (`Fill`, `Clear`, `Size`, `Set`, `DrawImage`, `NewImage`), `GeoM`, keys and mouse buttons, `inpututil` (just pressed, just released, press duration), `vector` shapes and `ebitenutil.DebugPrint`. Not covered yet: sound, shaders, text rendering with fonts, and images loaded from files.
+
+To give another library the same treatment, write its declarations as a `.stub` file in `types/virtual/`, list the import path in `virtualPackages` (`types/virtual.go`), and put what runs behind each name in the JavaScript runtime under the alias the program imports it as.
+
 ## What it does
 
 Go is a great language with a famously annoying way of getting your code to the

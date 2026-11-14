@@ -30,6 +30,8 @@ func (c Config) std() *gotypes.Config {
 		config.Importer = importer.Default()
 	}
 
+	config.Importer = newVirtualImporter(config.Importer)
+
 	return config
 }
 

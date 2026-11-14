@@ -1,0 +1,13 @@
+package vector
+
+import (
+	"image/color"
+
+	"github.com/hajimehoshi/ebiten/v2"
+)
+
+func DrawFilledRect(dst *ebiten.Image, x, y, width, height float32, clr color.Color, antialias bool)
+func StrokeRect(dst *ebiten.Image, x, y, width, height, strokeWidth float32, clr color.Color, antialias bool)
+func StrokeLine(dst *ebiten.Image, x0, y0, x1, y1, strokeWidth float32, clr color.Color, antialias bool)
+func DrawFilledCircle(dst *ebiten.Image, cx, cy, r float32, clr color.Color, antialias bool)
+func StrokeCircle(dst *ebiten.Image, cx, cy, r, strokeWidth float32, clr color.Color, antialias bool)

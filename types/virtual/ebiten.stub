@@ -1,0 +1,165 @@
+package ebiten
+
+import (
+	"image"
+	"image/color"
+)
+
+// Game is what a program hands to RunGame.
+type Game interface {
+	Update() error
+	Draw(screen *Image)
+	Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int)
+}
+
+type Image struct{}
+
+func NewImage(width, height int) *Image
+func (i *Image) Fill(clr color.Color)
+func (i *Image) Clear()
+func (i *Image) Size() (width, height int)
+func (i *Image) Bounds() image.Rectangle
+func (i *Image) DrawImage(img *Image, options *DrawImageOptions)
+func (i *Image) Set(x, y int, clr color.Color)
+func (i *Image) At(x, y int) color.Color
+
+type GeoM struct{}
+
+func (g *GeoM) Translate(tx, ty float64)
+func (g *GeoM) Scale(x, y float64)
+func (g *GeoM) Rotate(theta float64)
+
+type DrawImageOptions struct {
+	GeoM GeoM
+}
+
+type Key int
+
+const (
+	KeyA Key = iota
+	KeyB
+	KeyC
+	KeyD
+	KeyE
+	KeyF
+	KeyG
+	KeyH
+	KeyI
+	KeyJ
+	KeyK
+	KeyL
+	KeyM
+	KeyN
+	KeyO
+	KeyP
+	KeyQ
+	KeyR
+	KeyS
+	KeyT
+	KeyU
+	KeyV
+	KeyW
+	KeyX
+	KeyY
+	KeyZ
+	KeyDigit0
+	KeyDigit1
+	KeyDigit2
+	KeyDigit3
+	KeyDigit4
+	KeyDigit5
+	KeyDigit6
+	KeyDigit7
+	KeyDigit8
+	KeyDigit9
+	KeyArrowDown
+	KeyArrowLeft
+	KeyArrowRight
+	KeyArrowUp
+	KeyEnter
+	KeyEscape
+	KeySpace
+	KeyTab
+	KeyBackspace
+	KeyShiftLeft
+	KeyShiftRight
+	KeyControlLeft
+	KeyControlRight
+	KeyAltLeft
+	KeyAltRight
+	KeyF1
+	KeyF2
+	KeyF3
+	KeyF4
+	KeyF5
+	KeyF6
+	KeyF7
+	KeyF8
+	KeyF9
+	KeyF10
+	KeyF11
+	KeyF12
+)
+
+const (
+	Key0     = KeyDigit0
+	Key1     = KeyDigit1
+	Key2     = KeyDigit2
+	Key3     = KeyDigit3
+	Key4     = KeyDigit4
+	Key5     = KeyDigit5
+	Key6     = KeyDigit6
+	Key7     = KeyDigit7
+	Key8     = KeyDigit8
+	Key9     = KeyDigit9
+	KeyDown  = KeyArrowDown
+	KeyLeft  = KeyArrowLeft
+	KeyRight = KeyArrowRight
+	KeyUp    = KeyArrowUp
+)
+
+type MouseButton int
+
+const (
+	MouseButtonLeft MouseButton = iota
+	MouseButtonRight
+	MouseButtonMiddle
+)
+
+const DefaultTPS = 60
+
+var Termination error
+
+func RunGame(game Game) error
+func SetWindowSize(width, height int)
+func SetWindowTitle(title string)
+func SetWindowResizingMode(mode WindowResizingModeType)
+func SetTPS(tps int)
+func SetMaxTPS(tps int)
+func MaxTPS() int
+func ActualTPS() float64
+func ActualFPS() float64
+func IsKeyPressed(key Key) bool
+func IsMouseButtonPressed(mouseButton MouseButton) bool
+func CursorPosition() (x, y int)
+func Wheel() (xoff, yoff float64)
+func SetFullscreen(fullscreen bool)
+func SetVsyncEnabled(enabled bool)
+func SetCursorMode(mode CursorModeType)
+func WindowSize() (int, int)
+
+type WindowResizingModeType int
+
+const (
+	WindowResizingModeDisabled WindowResizingModeType = iota
+	WindowResizingModeOnlyFullscreenEnabled
+	WindowResizingModeEnabled
+)
+
+type CursorModeType int
+
+const (
+	CursorModeVisible CursorModeType = iota
+	CursorModeHidden
+	CursorModeCaptured
+)

@@ -1,0 +1,6 @@
+package ebitenutil
+
+import "github.com/hajimehoshi/ebiten/v2"
+
+func DebugPrint(image *ebiten.Image, str string)
+func DebugPrintAt(image *ebiten.Image, str string, x, y int)
