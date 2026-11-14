@@ -1717,8 +1717,12 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 		}
 
 		// The check comes first, because an assignment target cannot hold it.
-		if err := e.emitTargetIndexChecks(s.Lhs); err != nil {
-			return err
+		// A store of one value into an element of a slice is made by the
+		// runtime, which checks the place as it writes to it.
+		if !e.isSliceElementStore(s) {
+			if err := e.emitTargetIndexChecks(s.Lhs); err != nil {
+				return err
+			}
 		}
 
 		if handled, err := e.emitTypeAssertAssignment(s); handled {
@@ -1864,7 +1868,7 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 					return err
 				}
 				e.write(", ")
-				if err := e.emitExpr(s.Rhs[0]); err != nil {
+				if err := e.emitInterfaceValue(s.Rhs[0], e.valueKindTarget(s.Lhs[0])); err != nil {
 					return err
 				}
 				e.write(");")
@@ -1882,7 +1886,7 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 					return err
 				}
 				e.write(", ")
-				if err := e.emitExpr(s.Rhs[0]); err != nil {
+				if err := e.emitInterfaceValue(s.Rhs[0], e.valueKindTarget(s.Lhs[0])); err != nil {
 					return err
 				}
 				e.write(");")
@@ -1938,6 +1942,35 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 
 		}
 
+		if e.isSliceElementStore(s) {
+			index := unparen(s.Lhs[0]).(*ast.IndexExpr)
+
+			e.writeIndent()
+			e.needsRuntime = true
+			e.write("go2jsSliceStore(")
+
+			if err := e.emitExpr(index.X); err != nil {
+				return err
+			}
+
+			e.write(", ")
+
+			if err := e.emitExpr(index.Index); err != nil {
+				return err
+			}
+
+			e.write(", ")
+
+			if err := e.emitInterfaceValue(s.Rhs[0], e.valueKindTarget(s.Lhs[0])); err != nil {
+				return err
+			}
+
+			e.write(");")
+			e.newline()
+
+			return nil
+		}
+
 		e.writeIndent()
 
 		if s.Tok == token.DEFINE {
@@ -1977,6 +2010,8 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 			if i < len(s.Lhs) {
 				if ident, ok := s.Lhs[i].(*ast.Ident); ok {
 					target = e.variableType(ident)
+				} else {
+					target = e.valueKindTarget(s.Lhs[i])
 				}
 			}
 
@@ -2575,6 +2610,15 @@ func (e *emitter) emitInlineAsStatement(stmt ast.Stmt) error {
 }
 
 func (e *emitter) emitInlineStmt(stmt ast.Stmt) error {
+	// What a header declares belongs to the statement it heads, whichever case
+	// of a goto's dispatch that statement is in, so it is not one of the
+	// declarations that are hoisted to the function. A loop's variable has to be
+	// a fresh one for each time round for a closure that keeps it.
+	if e.gotoMode {
+		e.gotoStmtDepth++
+		defer func() { e.gotoStmtDepth-- }()
+	}
+
 	switch s := stmt.(type) {
 	case *ast.AssignStmt:
 		if inlineTargetRunsSomething(s.Lhs) {
@@ -4113,4 +4157,51 @@ func (e *emitter) declaresPackageLevel(name string) bool {
 	}
 
 	return false
+}
+
+// isSliceElementStore is whether a statement puts one value into one element of
+// a slice with a plain assignment, which is the commonest write there is.
+func (e *emitter) isSliceElementStore(s *ast.AssignStmt) bool {
+	if s.Tok != token.ASSIGN || len(s.Lhs) != 1 || len(s.Rhs) != 1 || e.analysis == nil {
+		return false
+	}
+
+	index, ok := unparen(s.Lhs[0]).(*ast.IndexExpr)
+
+	if !ok || !e.isArrayOrSliceExpr(index.X) {
+		return false
+	}
+
+	info, ok := e.analysis.Types[index.X]
+
+	if !ok || info.Type == nil {
+		return false
+	}
+
+	_, isSlice := info.Type.Underlying().(*gotypesstd.Slice)
+
+	return isSlice
+}
+
+// valueKindTarget is the type of an assignment target when it is one that holds
+// its value rather than a reference to it, a struct or an array, which is what a
+// value written to it has to be a copy for. A target of any other type gives nil,
+// as the types that need nothing done to what is written to them always did.
+func (e *emitter) valueKindTarget(target ast.Expr) gotypesstd.Type {
+	if e.analysis == nil {
+		return nil
+	}
+
+	t := e.analyzedType(target)
+
+	if t == nil {
+		return nil
+	}
+
+	switch t.Underlying().(type) {
+	case *gotypesstd.Struct, *gotypesstd.Array:
+		return t
+	}
+
+	return nil
 }

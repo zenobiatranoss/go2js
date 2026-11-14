@@ -2188,6 +2188,19 @@ func (e *emitter) emitStructFieldValue(expr ast.Expr, fieldType gotypes.Type) er
 		return e.emitExpr(expr)
 	}
 
+	if _, isArray := fieldType.Underlying().(*gotypes.Array); isArray {
+		e.needsRuntime = true
+		e.write("go2jsArrayCopy(")
+
+		if err := e.emitExpr(expr); err != nil {
+			return err
+		}
+
+		e.write(")")
+
+		return nil
+	}
+
 	if _, isStruct := fieldType.Underlying().(*gotypes.Struct); !isStruct {
 		return e.emitExpr(expr)
 	}
