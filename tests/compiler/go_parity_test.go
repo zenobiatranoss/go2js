@@ -344,6 +344,66 @@ i64 PANIC runtime error: negative shift amount
 7 7
 8 2 1099511627776
 `},
+	{"recover_in_deferred_function", `package main
+
+import (
+	"errors"
+	"fmt"
+)
+
+func handle() {
+	if r := recover(); r != nil {
+		fmt.Println("handled:", r)
+	}
+}
+
+func check(tag string, n int) {
+	if r := recover(); r != nil {
+		fmt.Println(tag, "recovered", r, n)
+	} else {
+		fmt.Println(tag, "no panic", n)
+	}
+}
+
+func a() {
+	defer handle()
+	panic("boom")
+}
+
+func b(x, y int) int {
+	defer check("div", x)
+	return x / y
+}
+
+func c() (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("wrapped: %v", r)
+		}
+	}()
+	panic(errors.New("inner"))
+}
+
+func d() {
+	defer check("quiet", 1)
+}
+
+func main() {
+	a()
+	fmt.Println(b(6, 0))
+	fmt.Println(c())
+	d()
+	fmt.Println(recover())
+	fmt.Println("done")
+}
+`, `handled: boom
+div recovered runtime error: integer divide by zero 6
+0
+wrapped: inner
+quiet no panic 1
+<nil>
+done
+`},
 	{"concurrency_patterns", `package main
 import ("fmt"; "sync"; "time"; "context"; "strings"; "bufio")
 type Counter struct { mu sync.Mutex; m map[string]int }

@@ -1841,7 +1841,7 @@ function go2jsRunesToString(value) {
 		return "";
 	}
 
-	return Array.from(value).map(item => String.fromCodePoint(Number(item))).join("");
+	return Array.from(value).map(item => go2jsRuneString(item)).join("");
 }
 
 function go2jsBytesToString(value) {

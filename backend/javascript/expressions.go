@@ -264,9 +264,6 @@ func (e *emitter) foldedIntConstant(expr ast.Expr) (string, bool) {
 		// a narrow type is wrapped on the way to being used rather than worked
 		// out, so folding one here would take the wrapping away from it, and a
 		// type that carries no name of its own has nothing to be folded to
-		if basic.Info()&gotypes.IsUntyped == 0 && !isWideIntType(info.Type) {
-			return "", false
-		}
 	}
 
 	text, ok := new(big.Int).SetString(value.ExactString(), 10)
@@ -457,6 +454,28 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 	if name, ok := e.exprOverride[expr]; ok {
 		e.write(name)
 		return nil
+	}
+
+	// A whole-number constant that the program uses as a float or a complex
+	// number is a number of that type, and a constant wider than a double
+	// holds is kept as digits, so it is written as the float it stands for.
+	if id, isIdent := expr.(*ast.Ident); isIdent && e.analysis != nil && id.Name != "nil" {
+		if info, ok := e.analysis.Types[expr]; ok && info.Value != nil && info.Type != nil && (info.Value.Kind() == constant.Int || info.Value.Kind() == constant.Float) {
+			if basic, isBasic := info.Type.Underlying().(*gotypes.Basic); isBasic {
+				number, _ := constant.Float64Val(constant.ToFloat(info.Value))
+
+				switch {
+				case basic.Kind() == gotypes.Float64 || basic.Kind() == gotypes.UntypedFloat:
+					e.write(strconv.FormatFloat(number, 'g', -1, 64))
+
+					return nil
+				case basic.Kind() == gotypes.Complex128 || basic.Kind() == gotypes.Complex64 || basic.Kind() == gotypes.UntypedComplex:
+					e.write("{re: " + strconv.FormatFloat(number, 'g', -1, 64) + ", im: 0}")
+
+					return nil
+				}
+			}
+		}
 	}
 
 	switch x := expr.(type) {
@@ -1484,6 +1503,22 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				e.write(strconv.Quote(method.Name()))
 				e.write(", ")
 				e.write(strconv.FormatBool(e.methodValueCopiesReceiver(signature)))
+
+				// A pointer method may be asked of a nil pointer, which carries no
+				// class of its own, so the class of the type is handed over.
+				if t := e.analyzedType(x.X); t != nil {
+					if ptr, isPtr := gotypes.Unalias(t).(*gotypes.Pointer); isPtr {
+						t = ptr.Elem()
+					}
+
+					if named, isNamed := gotypes.Unalias(t).(*gotypes.Named); isNamed && named.Obj().Pkg() != nil {
+						if _, isStruct := named.Underlying().(*gotypes.Struct); isStruct && named.Obj().Parent() == named.Obj().Pkg().Scope() && named.TypeParams().Len() == 0 {
+							e.write(", ")
+							e.write(typeJavaScriptName(named.Obj().Name()))
+						}
+					}
+				}
+
 				e.write(")")
 				return nil
 			}
