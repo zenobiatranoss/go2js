@@ -1,5 +1,16 @@
 //go:build ignore
 
+// Temple Run: a three-lane endless runner written with the ebiten game library.
+//
+// Author: Zhukov
+//
+// The example shows a program that go2js can turn into a web page. Compile it
+// with:
+//
+//	go2js -o game.html examples/temple-run/main.go
+//
+// then open game.html in a browser. Controls: Left/Right (or A/D) change lane,
+// Space/Up jumps over rocks, R or Space restarts after a game over.
 package main
 
 import (
