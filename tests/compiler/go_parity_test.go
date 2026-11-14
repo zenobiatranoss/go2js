@@ -269,6 +269,51 @@ none
 [x y] x,y
 0121 2.5
 `},
+	{"value_copy_semantics", `package main
+import "fmt"
+type P struct{ X, Y int }
+type W struct{ In P; Arr [2]int; Ps []P }
+func mod(p P) P { p.X = 100; return p }
+func modArr(a [2]int) [2]int { a[0] = 100; return a }
+func main() {
+	p := P{1, 2}
+	w := W{}; w.In = p; p.X = 5; fmt.Println(w.In, p)
+	pp := &P{}; *pp = p; p.Y = 6; fmt.Println(*pp, p)
+	s := []P{}; s = append(s, p); p.X = 7; fmt.Println(s, p)
+	for _, v := range s { v.X = 99 }; fmt.Println(s)
+	for i := range s { s[i].X = 42 }; fmt.Println(s)
+	ch := make(chan P, 1); ch <- p; p.X = 8; fmt.Println(<-ch, p)
+	q := mod(p); fmt.Println(p, q)
+	a := [2]int{1, 2}; b := a; b[0] = 9; var c [2]int; c = a; c[1] = 9; fmt.Println(a, b, c, modArr(a), a)
+	arrs := [][2]int{a}; arrs[0][0] = 55; a[1] = 66; fmt.Println(arrs, a); arrs = append(arrs, a); a[0] = 77; fmt.Println(arrs)
+	grid := [2][2]int{{1, 2}, {3, 4}}; row := grid[0]; row[0] = 9; g2 := grid; g2[1][1] = 0; fmt.Println(grid, row, g2)
+	m := map[string]P{"a": p}; v := m["a"]; v.X = -1; fmt.Println(m, v)
+	mp := map[string]*P{"a": &p}; mp["a"].X = 3; fmt.Println(p)
+	type T struct{ A [2]P }; t1 := T{}; t1.A[0] = p; t2 := t1; t2.A[0].X = 1000; fmt.Println(t1, t2)
+	var iface any = p; p.X = 0; fmt.Println(iface, p)
+	ps := []P{{1, 1}, {2, 2}}; copy(ps, []P{{9, 9}}); x := ps[0]; x.X = 0; fmt.Println(ps, x)
+	w2 := w; w2.In.X = 12345; w2.Arr[0] = 1; fmt.Println(w.In, w.Arr, w2.In, w2.Arr)
+	sw := []P{{1, 2}, {3, 4}}; sw[0], sw[1] = sw[1], sw[0]; sw[0].X = 100; fmt.Println(sw)
+}
+`, `{1 2} {5 2}
+{5 2} {5 6}
+[{5 6}] {7 6}
+[{5 6}]
+[{42 6}]
+{7 6} {8 6}
+{8 6} {100 6}
+[1 2] [9 2] [1 9] [100 2] [1 2]
+[[55 2]] [1 66]
+[[55 2] [1 66]]
+[[1 2] [3 4]] [9 2] [[1 2] [3 0]]
+map[a:{8 6}] {-1 6}
+{3 6}
+{[{3 6} {0 0}]} {[{1000 6} {0 0}]}
+{3 6} {0 6}
+[{9 9} {2 2}] {0 9}
+{1 2} [0 0] {12345 2} [1 0]
+[{100 4} {1 2}]
+`},
 	{"concurrency_patterns", `package main
 import ("fmt"; "sync"; "time"; "context"; "strings"; "bufio")
 type Counter struct { mu sync.Mutex; m map[string]int }

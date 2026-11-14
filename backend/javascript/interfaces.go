@@ -208,6 +208,34 @@ func (e *emitter) emitInterfaceValue(expr ast.Expr, target gotypes.Type) error {
 		}
 	}
 
+	// An interface holding a struct or an array holds a copy of it, so a later
+	// change to the variable it came from is not seen through the interface.
+	if isInterfaceLikeType(target) && !isInterfaceGoType(target) && e.analysis != nil && mayAliasStructValue(expr) {
+		if info, ok := e.analysis.Types[expr]; ok && info.Type != nil && gotypes.Comparable(info.Type) {
+			copyName := ""
+
+			switch info.Type.Underlying().(type) {
+			case *gotypes.Struct:
+				copyName = "go2jsStructCopy("
+			case *gotypes.Array:
+				copyName = "go2jsArrayCopy("
+			}
+
+			if copyName != "" {
+				e.needsRuntime = true
+				e.write(copyName)
+
+				if err := e.emitExpr(expr); err != nil {
+					return err
+				}
+
+				e.write(")")
+
+				return nil
+			}
+		}
+	}
+
 	if isInterfaceGoType(target) {
 		if e.isInterfaceExpr(expr) {
 			return e.emitExpr(expr)
@@ -284,7 +312,7 @@ func (e *emitter) emitInterfaceValue(expr ast.Expr, target gotypes.Type) error {
 			e.needsRuntime = true
 			e.write("go2jsInterface(")
 
-			if err := e.emitExpr(expr); err != nil {
+			if err := e.emitStructFieldValue(expr, info.Type); err != nil {
 				return err
 			}
 

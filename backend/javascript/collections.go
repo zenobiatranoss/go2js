@@ -446,7 +446,22 @@ func (e *emitter) emitCollectionBuiltinCall(call *ast.CallExpr) (bool, error) {
 				e.write("go2jsStringToBytes(")
 			}
 
-			if err := e.emitExpr(arg); err != nil {
+			var elemTarget gotypes.Type
+
+			if i > 0 && !spread {
+				if sl, ok := e.analyzedType(call.Args[0]).Underlying().(*gotypes.Slice); ok {
+					switch sl.Elem().Underlying().(type) {
+					case *gotypes.Struct, *gotypes.Array:
+						elemTarget = sl.Elem()
+					}
+				}
+			}
+
+			if elemTarget != nil {
+				if err := e.emitStructFieldValue(arg, elemTarget); err != nil {
+					return true, err
+				}
+			} else if err := e.emitExpr(arg); err != nil {
 				return true, err
 			}
 

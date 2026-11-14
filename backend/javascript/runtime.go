@@ -9442,6 +9442,20 @@ function go2jsIndex(value, index) {
 
 // go2jsIndexCheck guards an assignment to a slice or an array element, where
 // the check has to stand beside the assignment rather than inside it.
+// go2jsSliceStore puts an element where Go puts it: in the place a slice has for
+// it, and when it has none, the fault Go makes of that.
+function go2jsSliceStore(value, index, element) {
+	const state = go2jsSliceMeta.get(value);
+
+	if (state !== undefined && typeof index === "number" && index >= 0 && index < state.length) {
+		state.data[state.offset + index] = element;
+		return;
+	}
+
+	go2jsIndexCheck(value, index);
+	value[index] = element;
+}
+
 function go2jsIndexCheck(value, index) {
 	const state = go2jsSliceMeta.get(value);
 
