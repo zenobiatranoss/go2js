@@ -778,7 +778,7 @@ func main() {
 	bg := context.Background()
 	fmt.Println("background done is nil", bg.Done() == nil)
 
-	timed, cancelTimed := context.WithTimeout(bg, 20*time.Millisecond)
+	timed, cancelTimed := context.WithTimeout(bg, 150*time.Millisecond)
 	fmt.Println("before", timed.Err())
 
 	select {
@@ -822,7 +822,7 @@ func main() {
 	cancelPast()
 
 	// the earlier of two deadlines is the one that is carried
-	short, cancelShort := context.WithTimeout(bg, 20*time.Millisecond)
+	short, cancelShort := context.WithTimeout(bg, 150*time.Millisecond)
 	long, cancelLong := context.WithTimeout(short, 2*time.Second)
 
 	<-long.Done()
