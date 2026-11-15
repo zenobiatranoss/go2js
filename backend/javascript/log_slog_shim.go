@@ -2262,6 +2262,15 @@ function go2jsSlogWriteLine(handler, text) {
 		return go2jsSlogErrorValue("slog: writer is nil");
 	}
 
+	// The standard streams of the host carry no Write of their own; the file
+	// the program sees is written through the one the os package registered.
+	if (typeof target.Write !== "function" && (target === process.stdout || target === process.stderr)) {
+		go2jsOSFileMethods();
+		go2jsOSFileWrite(target, go2jsStringToBytes(text));
+
+		return null;
+	}
+
 	if (typeof target.Write !== "function") {
 		return go2jsSlogErrorValue("slog: writer does not implement io.Writer");
 	}
