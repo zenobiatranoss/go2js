@@ -90,6 +90,14 @@ func (e *emitter) emitTypeSwitch(stmt *ast.TypeSwitchStmt) error {
 	if name != "" {
 		e.declare(name)
 
+		// A switch that gives a name to the value it examines under the name it
+		// already has, as in switch v := v.(type), declares a variable of its
+		// own, which a parameter of the same name must not be taken for.
+		if ident, ok := ast.Unparen(value).(*ast.Ident); ok && ident.Name == name && e.resolveName(name) == javaScriptIdentifier(name) {
+			e.renames++
+			e.scopes[len(e.scopes)-1][name] = name + "$" + strconv.Itoa(e.renames)
+		}
+
 		e.writeIndent()
 		e.write(e.emitDeclarationKeyword())
 		e.write(e.resolveName(name))
