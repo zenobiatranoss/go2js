@@ -627,7 +627,9 @@ func (e *emitter) emitMultiReturnWithTemps(stmt *ast.AssignStmt) error {
 			continue
 		}
 
-		fresh := ok && !e.isDeclaredHere(ident.Name)
+		// Only a short declaration makes names; a plain assignment reaches the
+		// ones that are already there, in whatever scope they were made.
+		fresh := ok && stmt.Tok == token.DEFINE && !e.isDeclaredHere(ident.Name)
 
 		if !e.inlineMode {
 			e.writeIndent()
