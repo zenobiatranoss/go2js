@@ -1172,6 +1172,7 @@ func runtimeSourceParts() []string {
 		testingShimRuntimeSource(),
 		sortSliceShimRuntimeSource(),
 		execRuntimeSource(),
+		signalRuntimeSource(),
 		netHTTPRuntimeSource(),
 		osEnvironRuntimeSource(),
 		randGeneratorSource(),
