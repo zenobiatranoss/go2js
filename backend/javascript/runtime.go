@@ -8255,6 +8255,16 @@ function go2jsSwitchTypeOf(value) {
 // interface matches every value carrying its methods, not only a value whose
 // own type is that interface, and a label that names the empty interface
 // matches anything but a nil.
+// go2jsAnyTypeName spells the empty interface one way, wherever a type is
+// written with it, since "any" and "interface {}" are the one type.
+function go2jsAnyTypeName(name) {
+	if (typeof name !== "string") {
+		return name;
+	}
+
+	return name.replace(/\binterface ?\{\}/g, "any");
+}
+
 function go2jsSwitchCaseIndex(value, labels) {
 	const name = go2jsSwitchTypeOf(value);
 
@@ -8284,6 +8294,7 @@ function go2jsSwitchCaseIndex(value, labels) {
 		// to their last part, and finally the labels that name an interface,
 		// which match on the methods the value carries.
 		if (name === label ||
+			go2jsAnyTypeName(name) === go2jsAnyTypeName(label) ||
 			go2jsShortTypeName(name) === go2jsShortTypeName(label) ||
 			go2jsSatisfiesInterface(value, label)) {
 			return index;
@@ -8302,7 +8313,7 @@ function go2jsSameTypeName(actual, expected) {
 		return false;
 	}
 
-	return go2jsShortTypeName(actual) === go2jsShortTypeName(expected);
+	return go2jsAnyTypeName(go2jsShortTypeName(actual)) === go2jsAnyTypeName(go2jsShortTypeName(expected));
 }
 
 // go2jsNormalizeTypeName gives a type the one name Go has for it, since byte is
