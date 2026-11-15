@@ -3,6 +3,8 @@ package javascript
 import (
 	"go/ast"
 	gotypes "go/types"
+
+	go2jstypes "github.com/zenobiatranoss/go2js/types"
 )
 
 type functionInfo struct {
@@ -350,6 +352,29 @@ func (e *emitter) calleeTakesRestParameter(call *ast.CallExpr) bool {
 		}
 
 		return false
+
+	case *ast.SelectorExpr:
+		// A function or method of a package the program brings along is written
+		// by this backend with a rest parameter, as the ones of the program are.
+		if e.analysis == nil || e.analysis.Selections[fn] != nil {
+			return false
+		}
+
+		object := e.analysis.Uses[fn.Sel]
+
+		function, ok := object.(*gotypes.Func)
+		if !ok || function.Pkg() == nil {
+			return false
+		}
+
+		path := function.Pkg().Path()
+		if isStandardLibraryPath(path) || go2jstypes.IsVirtualPackage(path) {
+			return false
+		}
+
+		signature, _ := function.Type().(*gotypes.Signature)
+
+		return signature != nil && signature.Variadic()
 	}
 
 	return false
