@@ -11593,6 +11593,20 @@ function go2jsGoSyntax(value, typeName) {
 		}
 	}
 
+	// A value with a GoString of its own writes itself.
+	if (value !== null && value !== undefined && typeof value === "object" &&
+		!Array.isArray(value) && !(value instanceof go2jsNativeMap)) {
+		const receiver = value.__go2js_pointer === true ? go2jsDeref(value) : value;
+
+		if (receiver !== null && receiver !== undefined && typeof receiver === "object") {
+			const goString = go2jsNamedFormatMethod(receiver, "GoString");
+
+			if (goString !== null) {
+				return goString;
+			}
+		}
+	}
+
 	if (value === null || value === undefined) {
 		// A value held in an interface has no value of its own when the value it
 		// holds is nothing, so what is written is the type it was held as rather
@@ -12241,7 +12255,8 @@ function go2jsFormatValue(verb, spec, value, raw, nested) {
 	// read a string at all, which is the set fmt consults them for. Every other
 	// verb is answered by the value itself, so %d on a named integer is the
 	// number and not what its String method would have said.
-	if (raw !== true && go2jsVerbInSet(verb, "vsxXq")) {
+	// %#v asks for Go syntax, which a String method has no say in.
+	if (raw !== true && go2jsVerbInSet(verb, "vsxXq") && !(verb === "v" && flags.includes("#"))) {
 		const text = go2jsSelfWrittenText(operand, value);
 
 		if (text !== null) {
@@ -12334,6 +12349,13 @@ function go2jsFormatValue(verb, spec, value, raw, nested) {
 	const isBytes = go2jsIsByteCompound(accepted);
 	// The sharp flag with %v asks for the value as Go writes it, which is the
 	// whole of it with its type in front rather than the elements one by one.
+	// A nil slice written with a number verb is the empty list, whatever its
+	// elements would have been.
+	if ((value === null || value === undefined) && typeof accepted === "string" && accepted.startsWith("[]") &&
+		go2jsVerbInSet(verb, "dxXobceEfFgG") && !isBytes) {
+		return go2jsPad("[]", parsed, false);
+	}
+
 	const compound = go2jsFormatCompound(value, accepted, verb, flags, parsed.width, precision, isBytes);
 
 	if (compound !== null) {
