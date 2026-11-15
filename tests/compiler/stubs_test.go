@@ -161,3 +161,22 @@ func TestLibraryWithNativeCodeIsExplainedThenFilledIn(t *testing.T) {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }
+
+func TestVendoredLibraryInsideTheProjectIsTranslated(t *testing.T) {
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("node is not installed")
+	}
+
+	root := t.TempDir()
+
+	writeTree(t, root, map[string]string{
+		"go.mod":                     "module example.com/app\n\ngo 1.22\n\nrequire github.com/acme/small v1.0.0\n\nreplace github.com/acme/small => ./third_party/small\n",
+		"main.go":                    "package main\n\nimport (\n\t\"fmt\"\n\n\t\"github.com/acme/small\"\n)\n\nfunc main() { fmt.Println(small.Double(21)) }\n",
+		"third_party/small/go.mod":   "module github.com/acme/small\n\ngo 1.22\n",
+		"third_party/small/small.go": "package small\n\nfunc Double(n int) int { return n * 2 }\n",
+	})
+
+	if got, want := runModule(t, root), "42\n"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
