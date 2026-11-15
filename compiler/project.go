@@ -706,6 +706,13 @@ func (p *project) dependencyDir(path string) (string, bool) {
 		return "", false
 	}
 
+	// A library whose declarations came with the program is not read from its
+	// source, even when the source is in the module cache: the declarations and
+	// the shim behind them are what the program is built against.
+	if gotypes.IsVirtualPackage(path) {
+		return "", false
+	}
+
 	if dir, ok := p.dependencyDirs[path]; ok {
 		return dir, dir != ""
 	}
@@ -717,7 +724,7 @@ func (p *project) dependencyDir(path string) (string, bool) {
 }
 
 func (p *project) lookupDependencyDir(path string) string {
-	cmd := exec.Command("go", "list", "-f", "{{.Dir}}", path)
+	cmd := exec.Command("go", "list", "-f", "{{.Dir}}|{{len .CgoFiles}}|{{len .SFiles}}", path)
 	cmd.Dir = p.root
 
 	output, err := cmd.Output()
@@ -725,16 +732,26 @@ func (p *project) lookupDependencyDir(path string) string {
 		return ""
 	}
 
-	dir := strings.TrimSpace(string(output))
-	if dir == "" {
+	fields := strings.Split(strings.TrimSpace(string(output)), "|")
+	if len(fields) != 3 || fields[0] == "" {
 		return ""
 	}
 
-	if !strings.HasPrefix(dir, p.root) {
-		return dir
+	// A package under the root of the project is a dependency when it is not one
+	// of the project's own packages: a vendored copy, or a module a replace
+	// directive points into the project.
+	if p.isLocal(path) {
+		return ""
 	}
 
-	return ""
+	// Assembly is not counted: most packages that carry some also carry the
+	// same thing in Go for the machines it does not cover, and that is the one a
+	// transpiler reads. A package that calls into C has no such other half.
+	if fields[1] != "0" {
+		p.nativeDeps[path] = fmt.Sprintf("%s cgo file(s)", fields[1])
+	}
+
+	return fields[0]
 }
 
 func (p *project) localDir(path string) (string, bool) {
