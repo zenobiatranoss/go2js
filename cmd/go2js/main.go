@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/zenobiatranoss/go2js/compiler"
@@ -71,6 +72,10 @@ func run(args []string, stdout, stderr io.Writer) error {
 	fs.BoolVar(&strict, "strict", true, "emit strict mode")
 	fs.IntVar(&stack, "stack", 0, "stack size in megabytes the program runs on under Node, 0 for Node's own")
 
+	var stubs, shims repeatedFlag
+
+	fs.Var(&stubs, "stubs", "declarations of a library that is not translated from source: a directory of .stub files, or one file (repeatable)")
+	fs.Var(&shims, "shim", "JavaScript that stands behind such a library, written into the program (repeatable)")
 	fs.BoolVar(&page, "html", false, "write a web page that runs the program (also when the output file ends in .html)")
 
 	if err := fs.Parse(args); err != nil {
@@ -79,6 +84,18 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 	if len(args) > 0 && args[0] == "serve" {
 		return startServe(args[1:], stdout)
+	}
+
+	for _, location := range stubs {
+		if _, err := compiler.LoadStubs(location); err != nil {
+			return err
+		}
+	}
+
+	if len(shims) > 0 {
+		if err := compiler.LoadShims(shims); err != nil {
+			return err
+		}
 	}
 
 	if strings.HasSuffix(output, ".html") {
@@ -232,4 +249,60 @@ func htmlPage(script string) string {
 
 	return "<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>go2js</title>\n" +
 		"<style>html,body{margin:0;background:#111;color:#ddd;font-family:monospace}</style>\n</head>\n<body>\n<script>\n" + script + "\n</script>\n</body>\n</html>\n"
+}
+
+// repeatedFlag is a flag that may be given more than once.
+type repeatedFlag []string
+
+func (r *repeatedFlag) String() string { return strings.Join(*r, ",") }
+
+func (r *repeatedFlag) Set(value string) error {
+	*r = append(*r, value)
+
+	return nil
+}
+
+// runStubgen writes, for a library that cannot be translated from its source, the
+// declarations of its API and a JavaScript skeleton to fill in, which is what a
+// program that imports it is compiled against with -stubs and -shim.
+func runStubgen(args []string, stdout io.Writer) error {
+	fs := flag.NewFlagSet("stubgen", flag.ContinueOnError)
+
+	var dir, out string
+
+	fs.StringVar(&dir, "dir", ".", "the project that imports the library, which is where its module is found")
+	fs.StringVar(&out, "o", "stubs", "the directory the stub and the shim are written to")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	if fs.NArg() != 1 {
+		return fmt.Errorf("usage: go2js stubgen [-dir project] [-o dir] <import path>")
+	}
+
+	stub, err := compiler.GenerateStub(fs.Arg(0), dir)
+	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(out, 0755); err != nil {
+		return err
+	}
+
+	stubFile := filepath.Join(out, stub.Package+".stub")
+	shimFile := filepath.Join(out, stub.Package+".js")
+
+	if err := os.WriteFile(stubFile, []byte(stub.Declarations), 0644); err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(shimFile, []byte(stub.Shim), 0644); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(stdout, "wrote %s and %s\n", stubFile, shimFile)
+	fmt.Fprintf(stdout, "fill in the functions of %s that the program uses, then compile with:\n  go2js -stubs %s -shim %s -o program.js .\n", shimFile, out, shimFile)
+
+	return nil
 }
