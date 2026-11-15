@@ -930,6 +930,15 @@ function go2jsRunMain(generator) {
 
 	go2jsMainTask = main;
 
+	go2jsRunLoop(main);
+}
+
+// go2jsIdleHook is set by a library that can wake the program from outside, as
+// a signal can. When nothing is runnable it is asked whether it will do so; if
+// it will, the loop is left where it is and picked up again from there.
+var go2jsIdleHook = null;
+
+function go2jsRunLoop(main) {
 	while (go2jsLiveTasks > 0) {
 		if (main.finished) {
 			go2jsReady.length = 0;
@@ -950,7 +959,21 @@ function go2jsRunMain(generator) {
 			break;
 		}
 
+		if (go2jsIdleHook !== null && go2jsIdleHook(function() {
+			try {
+				go2jsRunLoop(main);
+			} catch (e) {
+				go2jsReportUncaughtPanic(e);
+			}
+		})) {
+			return;
+		}
+
 		throw go2jsFatalError("all goroutines are asleep - deadlock!");
+	}
+
+	if (go2jsIdleHook !== null) {
+		go2jsIdleHook(null);
 	}
 }
 
