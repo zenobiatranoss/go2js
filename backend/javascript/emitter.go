@@ -1174,6 +1174,7 @@ func runtimeSourceParts() []string {
 		sortSliceShimRuntimeSource(),
 		execRuntimeSource(),
 		signalRuntimeSource(),
+		unicodeTableRuntimeSource(),
 		netHTTPRuntimeSource(),
 		osEnvironRuntimeSource(),
 		randGeneratorSource(),
