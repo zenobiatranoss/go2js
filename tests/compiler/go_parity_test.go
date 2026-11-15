@@ -344,6 +344,31 @@ i64 PANIC runtime error: negative shift amount
 7 7
 8 2 1099511627776
 `},
+	{"slog_to_stdout", `package main
+
+import (
+	"log/slog"
+	"os"
+)
+
+func drop(groups []string, a slog.Attr) slog.Attr {
+	if a.Key == "time" {
+		return slog.Attr{}
+	}
+	return a
+}
+
+func main() {
+	l := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{ReplaceAttr: drop}))
+	l.Info("hi", "k", 1)
+	l.Warn("careful", "n", "x y")
+	j := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{ReplaceAttr: drop}))
+	j.Error("bad", "code", 5)
+}
+`, `level=INFO msg=hi k=1
+level=WARN msg=careful n="x y"
+{"level":"ERROR","msg":"bad","code":5}
+`},
 	{"recover_in_deferred_function", `package main
 
 import (
