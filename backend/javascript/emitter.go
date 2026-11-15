@@ -1067,8 +1067,14 @@ func emitFilePassWith(file *ast.File, analysis *gotypes.Result, context *semanti
 // ProgramRuntime returns the runtime bundle a program needs for the given
 // generated code, so callers that concatenate several files can emit it once.
 func ProgramRuntime(requiredSource, target string) string {
-	prefix := runtimeBundle(requiredSource, runtimeSourceParts()...)
+	shims := ShimSource()
+
+	prefix := runtimeBundle(requiredSource+"\n"+shims, runtimeSourceParts()...)
 	prefix = lowerJavaScriptTarget(prefix, normalizeTarget(target))
+
+	if shims != "" {
+		prefix += "\n" + shims
+	}
 
 	if prefix != "" {
 		prefix += "\n"
