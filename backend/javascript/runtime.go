@@ -7770,6 +7770,19 @@ function go2jsEqual(a, b, deep) {
 			throw new Error(go2jsRuntimeErrorPrefix + "comparing uncomparable type " + (a.type || ""));
 		}
 
+		// Two pointers are one only when they point at the very same thing, however
+		// alike what they point at is.
+		if (deep !== true && typeof a.type === "string" && a.type.startsWith("*") &&
+			a.value !== null && typeof a.value === "object" && a.value.__go2js_pointer === true &&
+			b.value !== null && typeof b.value === "object" && b.value.__go2js_pointer === true) {
+			const pointeeA = go2jsDeref(a.value);
+			const pointeeB = go2jsDeref(b.value);
+
+			if (pointeeA !== null && typeof pointeeA === "object" && pointeeB !== null && typeof pointeeB === "object") {
+				return pointeeA === pointeeB;
+			}
+		}
+
 		// An array that is its own interface wrapper keeps its elements
 		// directly, so unwrapping would only arrive back at the same object.
 		if (a.value !== a && b.value !== b) {
@@ -7789,6 +7802,18 @@ function go2jsEqual(a, b, deep) {
 
 		if (wrapped.value === wrapped) {
 			return false;
+		}
+
+		// A pointer is the very thing it points at or it is not.
+		if (deep !== true && typeof wrapped.type === "string" && wrapped.type.startsWith("*") &&
+			plain !== null && typeof plain === "object" && plain.__go2js_pointer === true &&
+			wrapped.value !== null && typeof wrapped.value === "object" && wrapped.value.__go2js_pointer === true) {
+			const pointeeW = go2jsDeref(wrapped.value);
+			const pointeeP = go2jsDeref(plain);
+
+			if (pointeeW !== null && typeof pointeeW === "object" && pointeeP !== null && typeof pointeeP === "object") {
+				return pointeeW === pointeeP;
+			}
 		}
 
 		if (typeof plain !== "object" || plain === null) {
