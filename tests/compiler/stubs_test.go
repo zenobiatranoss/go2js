@@ -180,3 +180,24 @@ func TestVendoredLibraryInsideTheProjectIsTranslated(t *testing.T) {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }
+
+// A module need not have a dot in its name, and its packages may be named like
+// ones of the standard library without being them.
+func TestModuleWithoutADotKeepsItsOwnPackages(t *testing.T) {
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("node is not installed")
+	}
+
+	root := t.TempDir()
+
+	writeTree(t, root, map[string]string{
+		"go.mod":            "module myapp\n\ngo 1.22\n",
+		"main.go":           "package main\n\nimport (\n\t\"fmt\"\n\n\t\"myapp/token\"\n\t\"myapp/util/strings\"\n)\n\nfunc main() { fmt.Println(token.Next(1), strings.Shout(\"hi\")) }\n",
+		"token/token.go":    "package token\n\nfunc Next(n int) int { return n + 1 }\n",
+		"util/strings/s.go": "package strings\n\nfunc Shout(s string) string { return s + \"!\" }\n",
+	})
+
+	if got, want := runModule(t, root), "2 hi!\n"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}

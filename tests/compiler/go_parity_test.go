@@ -404,6 +404,440 @@ func main() {
 timeout
 still running <nil>
 `},
+	{"goto_into_nested_blocks", `package main
+
+import "fmt"
+
+func scan(s string) (n int) {
+	for i := 0; i < len(s); i++ {
+		b := s[i]
+		if b == '<' {
+			depth := 1
+			for j := i + 1; j < len(s); j++ {
+				c := s[j]
+				if c == '<' {
+					depth++
+				}
+			Handle:
+				n++
+				if c == '>' {
+					depth--
+					if depth > 0 && n < 50 {
+						goto Handle
+					}
+				}
+				_ = depth
+			}
+		}
+	}
+	return
+}
+
+func retry(max int) int {
+	tries := 0
+	for k := 0; k < 3; k++ {
+	again:
+		tries++
+		if tries%2 == 1 && tries < max {
+			goto again
+		}
+	}
+	return tries
+}
+
+func twoLevel(x int) []int {
+	var out []int
+	if x > 0 {
+		i := 0
+	loop:
+		if i < x {
+			out = append(out, i)
+			i++
+			if i%2 == 0 {
+				if i < 6 {
+					goto loop
+				}
+			} else {
+				goto loop
+			}
+		}
+	}
+	return out
+}
+
+func namedResult(s int) (n int) {
+	i := 0
+top:
+	n += i
+	i++
+	if i < s {
+		goto top
+	}
+	return
+}
+
+func main() {
+	fmt.Println(namedResult(5))
+	fmt.Println(scan("a<b<c>d>e"), retry(7), twoLevel(5), twoLevel(9))
+}
+`, `10
+13 6 [0 1 2 3 4] [0 1 2 3 4 5]
+`},
+	{"unicode_tables_and_simple_fold", `package main
+
+import (
+	"fmt"
+	"unicode"
+)
+
+func main() {
+	for _, r := range []rune{'a', 'A', 'k', 'K', 0x212A, 's', 'ſ', 'é', '1', '中', 'я', 'ß', 0x3C3, 0x3C2, 0x3A3} {
+		fmt.Print(unicode.SimpleFold(r), " ")
+	}
+	fmt.Println()
+	fmt.Println(unicode.Is(unicode.Han, '中'), unicode.Is(unicode.Han, 'a'), unicode.In('я', unicode.Latin, unicode.Cyrillic), unicode.Is(unicode.Letter, 'x'), unicode.Is(unicode.Space, ' '), unicode.IsOneOf([]*unicode.RangeTable{unicode.Digit, unicode.Punct}, '!'))
+	fmt.Println(unicode.Is(unicode.Hiragana, 'あ'), unicode.Is(unicode.Greek, 'λ'), unicode.Is(unicode.Upper, 'Q'), unicode.Is(unicode.White_Space, '\t'))
+}
+`, `65 97 8490 107 75 383 83 201 49 20013 1071 7838 931 963 962 
+true false true true true true
+true true true true
+`},
+	{"assign_to_outer_variables_with_field_target", `package main
+
+import "fmt"
+
+type parsed struct{ major, pre, build string }
+
+func pp(v string) (t, rest string, ok bool) {
+	if v == "" || v[0] != '-' {
+		return
+	}
+	i := 1
+	for i < len(v) && v[i] != '+' {
+		i++
+	}
+	return v[:i], v[i:], true
+}
+
+func parse(v string) (p parsed, ok bool) {
+	if v == "" {
+		return
+	}
+	p.major = "1"
+	if len(v) > 0 && v[0] == '-' {
+		p.pre, v, ok = pp(v)
+		if !ok {
+			return
+		}
+	}
+	if v != "" {
+		ok = false
+		return
+	}
+	ok = true
+	return
+}
+
+func main() {
+	fmt.Println(parse("-rc.1"))
+	fmt.Println(parse("-rc.1+x"))
+}`, `{1 -rc.1 } true
+{1 -rc.1 } false
+`},
+	{"append_nil_spread", `package main
+
+import "fmt"
+
+func main() {
+	var a, b []int
+	a = append(a, b...)
+	fmt.Println(a == nil, len(a))
+	c := append([]int{1}, b...)
+	d := append(b, c...)
+	var bs []byte
+	bs = append(bs, "hi"...)
+	fmt.Println(c, d, string(bs))
+}`, `true 0
+[1] [1] hi
+`},
+	{"assert_any_and_interface", `package main
+
+import "fmt"
+
+func main() {
+	var x any = []any{1, "a"}
+	s, ok := x.([]any)
+	fmt.Println(len(s), ok)
+	var y any = map[string]any{"k": 1}
+	m, ok := y.(map[string]any)
+	fmt.Println(len(m), ok)
+	_, ok = y.(map[string]interface{})
+	fmt.Println(ok)
+	var z any = []interface{}{2}
+	_, ok = z.([]any)
+	fmt.Println(ok)
+	switch z.(type) {
+	case []any:
+		fmt.Println("sl")
+	}
+}`, `2 true
+1 true
+true
+true
+sl
+`},
+	{"type_switch_rebinding_parameter", `package main
+
+import "fmt"
+
+func decl(x any) string {
+	switch x := x.(type) {
+	case int:
+		return fmt.Sprint("int", x+1)
+	case string:
+		return "s" + x
+	}
+	return "?"
+}
+
+func main() {
+	var lit func(v any) string
+	lit = func(v any) string {
+		switch v := v.(type) {
+		case int:
+			return fmt.Sprint("int", v+1)
+		case []any:
+			return lit(v[0])
+		}
+		return "?"
+	}
+	m := func(a any, n int) string {
+		if n > 0 {
+			switch a := a.(type) {
+			case string:
+				return a
+			}
+		}
+		return "no"
+	}
+	fmt.Println(decl(1), decl("a"), lit(1), lit([]any{4}), m("z", 1), m(2, 1))
+	for _, p := range []any{1, "x"} {
+		switch p := p.(type) {
+		case int:
+			fmt.Println(p + 1)
+		case string:
+			fmt.Println(p + "!")
+		}
+	}
+}`, `int2 sa int2 int5 z no
+2
+x!
+`},
+	{"gostring_with_sharp_v", `package main
+
+import "fmt"
+
+type T struct{ a int }
+
+func (t *T) GoString() string { return "T!" }
+
+type U struct{ b int }
+
+func (u U) GoString() string { return "U!" }
+func (u U) String() string   { return "u-str" }
+
+func main() {
+	fmt.Printf("%#v %v %#v %v %+v\n", &T{1}, T{2}, U{3}, U{3}, []U{{1}})
+	fmt.Printf("%#v\n", []U{{1}})
+}`, `T! {2} U! u-str [u-str]
+[]main.U{U!}
+`},
+	{"nil_slices_and_maps_in_library_calls", `package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"os"
+	"slices"
+	"sort"
+	"strconv"
+	"strings"
+)
+
+func try(name string, f func() any) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println(name, "PANIC", r)
+		}
+	}()
+	fmt.Println(name, f())
+}
+
+func main() {
+	var s []string
+	var is []int
+	var bs []byte
+	var m map[string]int
+	try("join", func() any { return strings.Join(s, ",") })
+	try("sortstrings", func() any { sort.Strings(s); return s == nil })
+	try("sortints", func() any { sort.Ints(is); return is == nil })
+	try("sortslice", func() any { sort.Slice(s, func(i, j int) bool { return s[i] < s[j] }); return len(s) })
+	try("contains", func() any { return slices.Contains(s, "a") })
+	try("index", func() any { return slices.Index(is, 1) })
+	try("slsort", func() any { slices.Sort(is); return is == nil })
+	try("reverse", func() any { slices.Reverse(is); return len(is) })
+	try("clone", func() any { return slices.Clone(is) == nil })
+	try("equal", func() any { return slices.Equal(is, nil) })
+	try("bjoin", func() any { return string(bytes.Join(nil, []byte(","))) })
+	try("bequal", func() any { return bytes.Equal(bs, nil) })
+	try("string", func() any { return string(bs) })
+	try("json", func() any { b, _ := json.Marshal(s); return string(b) })
+	try("jsonmap", func() any { b, _ := json.Marshal(m); return string(b) })
+	try("jsonstruct", func() any { b, _ := json.Marshal(struct{ A []int }{}); return string(b) })
+	try("appendint", func() any { return string(strconv.AppendInt(nil, 5, 10)) })
+	try("copy", func() any { return copy(bs, []byte("x")) })
+	try("range", func() any { n := 0; for range s { n++ }; return n })
+	try("fields", func() any { return len(strings.Fields("")) })
+	try("repeat", func() any { return strings.Repeat("a", 0) == "" })
+	try("write", func() any { n, err := os.Stdout.Write(bs); return fmt.Sprint(n, err) })
+	try("fmt", func() any { return fmt.Sprintf("%v %d %q %s", s, is, s, bs) })
+	try("maxmin", func() any { return slices.Max([]int{1}) })
+	try("slicesdel", func() any { return slices.Delete(is, 0, 0) == nil })
+	try("insert", func() any { return slices.Insert(is, 0, 1) })
+	try("sorted", func() any { return slices.IsSorted(is) })
+	try("binsearch", func() any { i, f := slices.BinarySearch(is, 1); return fmt.Sprint(i, f) })
+	try("compact", func() any { return slices.Compact(is) == nil })
+	try("mapread", func() any { return m["a"] })
+	try("mapdelete", func() any { delete(m, "a"); return len(m) })
+	try("tostring", func() any { return strings.TrimSpace(string(bs)) })
+	try("utf8", func() any { return []rune(string(bs)) == nil })
+	try("copyfrom", func() any { return copy(is, []int{1}) })
+	try("split", func() any { return strings.Split("", ",") })
+	try("sliceslice", func() any { return s[0:0] == nil })
+	try("deepequal", func() any { return slices.EqualFunc(s, s, func(a, b string) bool { return a == b }) })
+}`, `join 
+sortstrings true
+sortints true
+sortslice 0
+contains false
+index -1
+slsort true
+reverse 0
+clone true
+equal true
+bjoin 
+bequal true
+string 
+json null
+jsonmap null
+jsonstruct {"A":null}
+appendint 5
+copy 0
+range 0
+fields 0
+repeat true
+write 0 <nil>
+fmt [] [] [] 
+maxmin 1
+slicesdel true
+insert [1]
+sorted true
+binsearch 0 false
+compact true
+mapread 0
+mapdelete 0
+tostring 
+utf8 false
+copyfrom 0
+split []
+sliceslice true
+deepequal true
+`},
+	{"sort_named_slice", `package main
+
+import (
+	"fmt"
+	"sort"
+)
+
+type ByV []string
+
+func (vs ByV) Len() int      { return len(vs) }
+func (vs ByV) Swap(i, j int) { vs[i], vs[j] = vs[j], vs[i] }
+func (vs ByV) Less(i, j int) bool {
+	cmp := cmpS(vs[i], vs[j])
+	if cmp != 0 {
+		return cmp < 0
+	}
+	return vs[i] < vs[j]
+}
+
+func cmpS(a, b string) int {
+	if len(a) < len(b) {
+		return -1
+	}
+	if len(a) > len(b) {
+		return 1
+	}
+	return 0
+}
+
+func Sort(list []string) { sort.Sort(ByV(list)) }
+
+func main() {
+	vs := []string{"ccc", "a", "bb", "a1", "zz", "b"}
+	Sort(vs)
+	fmt.Println(vs)
+	w := []string{"ccc", "a", "bb", "a1", "zz", "b"}
+	sort.Sort(sort.Reverse(ByV(w)))
+	fmt.Println(w)
+}`, `[a b a1 bb zz ccc]
+[ccc zz bb a1 b a]
+`},
+	{"named_results_with_defer_closure", `package main
+
+import "fmt"
+
+type F struct{ n int }
+type EL []string
+
+func (e EL) Error() string { return "errs" }
+
+func fix(f *F, errs *EL) { *errs = append(*errs, "x") }
+
+func parse(bad bool) (parsed *F, err error) {
+	fs, err := step()
+	if err != nil {
+		return nil, err
+	}
+	f := &F{n: fs}
+	var errs EL
+	defer func() {
+		old := len(errs)
+		if bad {
+			fix(f, &errs)
+		}
+		if len(errs) > old {
+			parsed, err = nil, errs
+		}
+	}()
+	for i := 0; i < 2; i++ {
+		f.n += i
+	}
+	return f, nil
+}
+
+func step() (int, error) { return 5, nil }
+
+func main() {
+	f, err := parse(false)
+	fmt.Println(f, err)
+	f, err = parse(true)
+	fmt.Println(f, err)
+}`, `&{6} <nil>
+<nil> errs
+`},
 	{"recover_in_deferred_function", `package main
 
 import (
