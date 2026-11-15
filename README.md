@@ -314,6 +314,26 @@ A few facts of the hand-over:
 The full tour — including structs, the module formats, and calling conventions —
 lives in [docs/exporting-functions.md](docs/exporting-functions.md).
 
+## Projects that import third-party libraries
+
+go2js picks one of three routes for every import:
+
+1. **Pure-Go libraries** (no cgo, no assembly) are compiled from source together with your project. Nothing to do; `go.mod`, `vendor/` and `replace` directives are honoured.
+2. **Libraries go2js ships a shim for** (for example `github.com/hajimehoshi/ebiten/v2`) work out of the box. Use `-html` to get a page that runs the program.
+3. **Native libraries** (cgo, assembly, OS bindings) have no JavaScript equivalent, so you describe them yourself:
+
+```bash
+# 1. generate a Go declaration file and a JavaScript shim skeleton
+go2js stubgen -dir . -o stubs github.com/some/native/lib
+
+# 2. fill in the functions of stubs/lib.js that your program calls
+
+# 3. compile with the stub and the shim
+go2js -stubs stubs -shim stubs/lib.js -o program.js .
+```
+
+A stub file may also start with `//go2js:import <path>` to say which import path it stands for. When a library cannot be loaded, the error names the import and points to this workflow instead of failing with a type-checker message.
+
 ## How it works under the hood
 
 The pipeline is a proper compiler, not a regex-and-hope:
