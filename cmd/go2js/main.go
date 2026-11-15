@@ -46,6 +46,10 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runTests(args[1:], stdout, stderr)
 	}
 
+	if len(args) > 0 && args[0] == "stubgen" {
+		return runStubgen(args[1:], stdout)
+	}
+
 	fs := flag.NewFlagSet("go2js", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 
