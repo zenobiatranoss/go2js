@@ -4105,15 +4105,14 @@ func (e *emitter) emitStructMethodBody(fn *ast.FuncDecl, receiverType string, pl
 		// too and hands the turn to it: a caller waiting on the method waits on
 		// the goroutine the method is running in.
 		if named {
-			e.write("function*(")
-			e.write(e.receiver)
-			e.write(", ...args) { return yield* ")
+			// Whatever the method calls its receiver, it may be a word the
+			// host reserves or the name of something here, so the wrapper
+			// has a name of its own for it.
+			e.write("function*(receiver, ...args) { return yield* ")
 			e.write(receiverType)
 			e.write(".prototype.")
 			e.write(fn.Name.Name)
-			e.write(".call(")
-			e.write(e.receiver)
-			e.write(", ...args); }")
+			e.write(".call(receiver, ...args); }")
 		} else {
 			e.write("function*(...args) { return yield* ")
 			e.write(receiverType)
