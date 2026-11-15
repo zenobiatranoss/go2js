@@ -32,6 +32,7 @@ type project struct {
 	packages       map[string]*projectPackage
 	active         map[string]bool
 	dependencyDirs map[string]string
+	nativeDeps     map[string]string
 	importer       *projectImporter
 	needsRuntime   bool
 }
@@ -51,6 +52,12 @@ func (i *projectImporter) Import(path string) (*types.Package, error) {
 	}
 
 	if _, ok := i.project.dependencyDir(path); ok {
+		if why, native := i.project.nativeDeps[path]; native {
+			return nil, fmt.Errorf("compiler: package %q holds native code (%s), which cannot be translated from its source.\n"+
+				"  Give the program a JavaScript implementation of it: run `go2js stubgen %s` to write its declarations and a shim to fill in,\n"+
+				"  then compile with -stubs <dir> -shim <file>.js", path, why, path)
+		}
+
 		pkg, err := i.project.load(path)
 		if err != nil {
 			return nil, err
@@ -84,6 +91,7 @@ func compileProjectWithOptions(dir string, options Options) (string, error) {
 		packages:       make(map[string]*projectPackage),
 		active:         make(map[string]bool),
 		dependencyDirs: make(map[string]string),
+		nativeDeps:     make(map[string]string),
 	}
 
 	p.importer = &projectImporter{
