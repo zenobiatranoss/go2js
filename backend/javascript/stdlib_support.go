@@ -128,12 +128,9 @@ func isStandardLibraryPath(path string) bool {
 		return false
 	}
 
-	first := path
-	if index := strings.Index(path, "/"); index >= 0 {
-		first = path[:index]
-	}
-
-	return !strings.Contains(first, ".")
+	// "C" and "unsafe" are not in the list of packages with source, but they are
+	// the language's own.
+	return standardLibraryPaths[path] || path == "unsafe" || path == "C"
 }
 
 func (e *emitter) checkSupportedPackageSelector(selector *ast.SelectorExpr) error {
