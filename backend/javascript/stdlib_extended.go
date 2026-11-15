@@ -516,6 +516,10 @@ function go2jsSlicesSorted(source) {
 }
 
 function go2jsSlicesCompact(a) {
+	if (a === null || a === undefined) {
+		return null;
+	}
+
 	a = go2jsSliceList(a);
 
 	const out = [];
@@ -552,6 +556,10 @@ function go2jsSlicesInsert(a, index, ...values) {
 }
 
 function go2jsSlicesDelete(a, start, end) {
+	if (a === null || a === undefined) {
+		return null;
+	}
+
 	a = go2jsSliceList(a);
 
 	const low = Math.max(0, Math.min(start, a.length));
@@ -4534,7 +4542,7 @@ function go2jsBytesHasSuffix(a, suffix) {
 function go2jsBytesJoin(chunks, sep) {
 	const out = [];
 
-	for (const chunk of chunks) {
+	for (const chunk of go2jsToArray(chunks)) {
 		for (const item of go2jsToArray(chunk)) {
 			out.push(item);
 		}
@@ -4547,7 +4555,7 @@ function go2jsBytesJoin(chunks, sep) {
 	const joined = [];
 	const separator = go2jsToArray(sep);
 
-	chunks.forEach((chunk, index) => {
+	go2jsToArray(chunks).forEach((chunk, index) => {
 		if (index > 0) {
 			joined.push(...separator);
 		}

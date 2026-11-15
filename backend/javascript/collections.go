@@ -435,12 +435,17 @@ func (e *emitter) emitCollectionBuiltinCall(call *ast.CallExpr) (bool, error) {
 
 			spread := call.Ellipsis.IsValid() && i == len(call.Args)-1
 
-			if spread {
-				e.write("...")
-			}
-
 			// Bytes are appended from a string by what the string holds as bytes.
 			fromString := spread && isStringType(e.analyzedType(arg))
+
+			if spread {
+				e.write("...")
+
+				// A nil slice has nothing in it to spread.
+				if !fromString {
+					e.write("(")
+				}
+			}
 
 			if fromString {
 				e.write("go2jsStringToBytes(")
@@ -467,6 +472,8 @@ func (e *emitter) emitCollectionBuiltinCall(call *ast.CallExpr) (bool, error) {
 
 			if fromString {
 				e.write(")")
+			} else if spread {
+				e.write(" ?? [])")
 			}
 		}
 
@@ -752,6 +759,11 @@ function go2jsSliceMake(length, capacity, zero, sharedZero) {
 
 function go2jsSliceAppend(value, ...items) {
 	if (value === null || value === undefined) {
+		// Nothing added to nothing is still nil.
+		if (items.length === 0) {
+			return null;
+		}
+
 		value = go2jsSliceView([], 0, 0, 0);
 	}
 
@@ -1058,6 +1070,11 @@ function go2jsSliceCopy(dst, src) {
 	// from, so what it holds is taken as the bytes it is.
 	if (typeof src === "string") {
 		src = go2jsStringToBytes(src);
+	}
+
+	// Nothing is copied to or from a nil slice.
+	if (dst === null || dst === undefined || src === null || src === undefined) {
+		return 0;
 	}
 
 	const destination = go2jsSliceState(dst);

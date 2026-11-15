@@ -9171,6 +9171,10 @@ function go2jsMapUpdate(map, key, zero, operation) {
 }
 
 function go2jsMapDelete(map, key) {
+	if (map === null || map === undefined) {
+		return;
+	}
+
 	if (!(map instanceof go2jsNativeMap)) {
 		throw new TypeError("go2jsMapDelete expects a Map");
 	}
@@ -14454,6 +14458,10 @@ function go2jsStringsSplit(s, sep) {
 }
 
 function go2jsStringsJoin(parts, sep) {
+	if (parts === null || parts === undefined) {
+		return "";
+	}
+
 	return parts.join(sep);
 }
 
