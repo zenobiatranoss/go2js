@@ -369,6 +369,41 @@ func main() {
 level=WARN msg=careful n="x y"
 {"level":"ERROR","msg":"bad","code":5}
 `},
+	{"os_signal_notify_idle", `package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+)
+
+func main() {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	fmt.Println(os.Interrupt, syscall.SIGTERM, os.Interrupt == syscall.SIGINT)
+	select {
+	case s := <-c:
+		fmt.Println("signal", s)
+	case <-time.After(20 * time.Millisecond):
+		fmt.Println("timeout")
+	}
+	signal.Stop(c)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	select {
+	case <-ctx.Done():
+		fmt.Println("done")
+	case <-time.After(10 * time.Millisecond):
+		fmt.Println("still running", ctx.Err())
+	}
+}
+`, `interrupt terminated true
+timeout
+still running <nil>
+`},
 	{"recover_in_deferred_function", `package main
 
 import (
