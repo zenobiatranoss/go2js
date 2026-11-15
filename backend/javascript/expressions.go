@@ -2,6 +2,7 @@ package javascript
 
 import (
 	"fmt"
+	go2jstypes "github.com/zenobiatranoss/go2js/types"
 	"go/ast"
 	"go/constant"
 	"go/token"
@@ -454,6 +455,21 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 	if name, ok := e.exprOverride[expr]; ok {
 		e.write(name)
 		return nil
+	}
+
+	// A constant of a library whose declarations came with the program is written
+	// as the value the declarations give it, so the shim behind the library need
+	// not repeat what the declarations already say.
+	if sel, isSelector := expr.(*ast.SelectorExpr); isSelector && e.analysis != nil {
+		if path, resolved := e.packageImportPath(sel); resolved && go2jstypes.IsVirtualPackage(path) {
+			if info, ok := e.analysis.Types[expr]; ok && info.Value != nil {
+				if literal, ok := constantLiteral(info.Value); ok {
+					e.write(literal)
+
+					return nil
+				}
+			}
+		}
 	}
 
 	// A whole-number constant that the program uses as a float or a complex
@@ -2991,4 +3007,32 @@ func (e *emitter) isSmallConstant(expr ast.Expr) bool {
 	value, exact := constant.Int64Val(info.Value)
 
 	return exact && value >= -(1<<31) && value < 1<<31 && !isUnsignedWideIntType(e.analyzedType(expr))
+}
+
+// constantLiteral writes the value of a constant as JavaScript.
+func constantLiteral(value constant.Value) (string, bool) {
+	switch value.Kind() {
+	case constant.Bool:
+		return strconv.FormatBool(constant.BoolVal(value)), true
+	case constant.String:
+		return strconv.Quote(constant.StringVal(value)), true
+	case constant.Int:
+		if i, exact := constant.Int64Val(value); exact {
+			if i > 1<<53 || i < -(1<<53) {
+				return strconv.FormatInt(i, 10) + "n", true
+			}
+
+			return strconv.FormatInt(i, 10), true
+		}
+
+		if u, exact := constant.Uint64Val(value); exact {
+			return strconv.FormatUint(u, 10) + "n", true
+		}
+	case constant.Float:
+		number, _ := constant.Float64Val(value)
+
+		return strconv.FormatFloat(number, 'g', -1, 64), true
+	}
+
+	return "", false
 }
