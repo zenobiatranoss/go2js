@@ -79,8 +79,9 @@ type emitter struct {
 	selectBodyLabel string
 	selectBodyCount int
 	gotoMode        bool
-	gotoLabels      map[string]int
-	gotoDispatcher  string
+	gotoLabels      map[string]gotoTarget
+	gotoNested      map[*ast.BlockStmt]bool
+	gotoListDepths  map[int]bool
 	gotoStmtDepth   int
 
 	// An expression Go evaluates once for a statement that is written over it
@@ -1454,6 +1455,10 @@ func (e *emitter) emitDeferredReturn(stmt *ast.ReturnStmt) error {
 }
 
 func (e *emitter) emitBlock(block *ast.BlockStmt) error {
+	if e.gotoMode && e.gotoNested[block] {
+		return e.emitGotoBlock(block)
+	}
+
 	e.write("{")
 	e.newline()
 

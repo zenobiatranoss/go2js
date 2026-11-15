@@ -33,11 +33,11 @@ func (e *emitter) emitBranchStmt(stmt *ast.BranchStmt) error {
 			return fmt.Errorf("goto target %q is not supported", stmt.Label.Name)
 		}
 		e.writeIndent()
-		e.write(fmt.Sprintf("go2jsPC = %d;", target))
+		e.write(fmt.Sprintf("%s = %d;", target.counter, target.index))
 		e.newline()
 		e.writeIndent()
 		e.write("continue ")
-		e.write(e.gotoDispatcher)
+		e.write(target.dispatcher)
 		e.write(";")
 		e.newline()
 		return nil
