@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"strconv"
 	"strings"
+	"sync"
 
 	gotypesstd "go/types"
 )
@@ -892,4 +893,37 @@ func packageVarValueExpression(value string) string {
 	}
 
 	return trimmed
+}
+
+// RegisterNativeType says that a struct type of a package whose declarations
+// were brought with the program is built by the class of the same name that the
+// program's JavaScript shim keeps on the object it names the package by, so a
+// literal of the type, or its zero value, builds an instance of it.
+func RegisterNativeType(pkg, name string) {
+	key := pkg + "." + name
+
+	packageTypes[key] = pkg + "." + name
+	packageTypeNew[key] = true
+}
+
+var (
+	shimSourceMu sync.RWMutex
+	shimSource   string
+)
+
+// SetShimSource sets the JavaScript that stands behind the libraries a program
+// brought declarations for. It is written after the runtime, and what it uses
+// of the runtime is kept when the runtime is cut down to what a program needs.
+func SetShimSource(source string) {
+	shimSourceMu.Lock()
+	shimSource = source
+	shimSourceMu.Unlock()
+}
+
+// ShimSource is the JavaScript set by SetShimSource.
+func ShimSource() string {
+	shimSourceMu.RLock()
+	defer shimSourceMu.RUnlock()
+
+	return shimSource
 }
