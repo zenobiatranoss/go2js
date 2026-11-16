@@ -12,8 +12,10 @@
   var status = document.getElementById("status");
   var examples = document.getElementById("examples");
   var shrinkBox = document.getElementById("shrink");
+  var readableBox = document.getElementById("readable");
 
   var compiled = "";
+  var shown = "";
 
   // paint colors the Go in the editor, leaving the real text in the textarea
   // untouched above it; the two are kept in step so they never drift apart.
@@ -67,14 +69,14 @@
   // has been shown, since the generated program carries the whole runtime and
   // coloring all of it takes a moment.
   function renderJS() {
-    if (!compiled) {
+    if (!shown) {
       return;
     }
 
     if (window.go2jsHighlight) {
-      js.innerHTML = window.go2jsHighlight(compiled, "js");
+      js.innerHTML = window.go2jsHighlight(shown, "js");
     } else {
-      js.textContent = compiled;
+      js.textContent = shown;
     }
   }
 
@@ -207,6 +209,7 @@
 
       if (answer.error) {
         compiled = "";
+        shown = "";
         js.textContent = "";
         show(answer.error, true);
         status.textContent = "";
@@ -215,6 +218,11 @@
       }
 
       compiled = answer.js;
+      shown = compiled;
+
+      if (readableBox && readableBox.checked && typeof window.go2jsReadable === "function") {
+        shown = window.go2jsReadable(compiled);
+      }
 
       var note = "";
 
@@ -224,6 +232,10 @@
         if (shrunk.length < compiled.length) {
           note = " (" + Math.round(compiled.length / 1024) + " KB → " + Math.round(shrunk.length / 1024) + " KB)";
           compiled = shrunk;
+
+          if (!readableBox || !readableBox.checked) {
+            shown = compiled;
+          }
         }
       }
 
@@ -244,6 +256,11 @@
         if (shrinkBox) {
           shrinkBox.checked = false;
           shrinkBox.disabled = true;
+        }
+
+        if (readableBox) {
+          readableBox.checked = false;
+          readableBox.disabled = true;
         }
       });
     }

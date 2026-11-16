@@ -15,7 +15,7 @@ cp go2jslog.png playground/go2jslog.png
 if [ -n "${WASI_SDK_PATH:-}" ]; then
 	"$WASI_SDK_PATH/bin/clang++" --sysroot="$WASI_SDK_PATH/share/wasi-sysroot" -O2 -std=c++17 \
 		-fno-exceptions -mexec-model=reactor -Wl,--strip-all -o playground/go2js-min.wasm \
-		tools/jsmin/lx.cpp tools/jsmin/em.cpp tools/jsmin/rn.cpp tools/jsmin/wa.cpp
+		tools/jsmin/lx.cpp tools/jsmin/em.cpp tools/jsmin/rn.cpp tools/jsmin/fm.cpp tools/jsmin/pg.cpp tools/jsmin/wa.cpp
 	echo "playground/go2js-min.wasm"
 fi
 

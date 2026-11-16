@@ -38,9 +38,7 @@
       });
   };
 
-  // go2jsShrink answers the program in fewer bytes, or the program as it was
-  // when the shrinker is not loaded or cannot read it.
-  root.go2jsShrink = function (text) {
+  function run(entry, text) {
     if (inst === null) {
       return text;
     }
@@ -50,7 +48,7 @@
 
     new Uint8Array(inst.memory.buffer, at, input.length).set(input);
 
-    var out = inst.jr(at, input.length, 0);
+    var out = entry === "jv" ? inst.jv(at, input.length) : inst.jr(at, input.length, 0);
     var size = inst.jl();
 
     inst.jf(at);
@@ -60,5 +58,17 @@
     }
 
     return new TextDecoder().decode(new Uint8Array(inst.memory.buffer, out, size));
+  }
+
+  // go2jsReadable answers only the program of a generated script, indented and
+  // in lines, without the runtime that is written in front of it.
+  root.go2jsReadable = function (text) {
+    return run("jv", text);
+  };
+
+  // go2jsShrink answers the program in fewer bytes, or the program as it was
+  // when the shrinker is not loaded or cannot read it.
+  root.go2jsShrink = function (text) {
+    return run("jr", text);
   };
 })(typeof window !== "undefined" ? window : globalThis);
