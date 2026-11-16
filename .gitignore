@@ -17,3 +17,6 @@ out.js
 *.out
 /bench/out/
 /bench/profiles/
+
+tools/jsmin/*.o
+tools/jsmin/go2js-min
