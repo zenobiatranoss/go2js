@@ -17,6 +17,16 @@ var runtimeFuncs = map[string]string{
 	"SetFinalizer":  "go2jsRuntimeSetFinalizer",
 	"GOROOT":        "go2jsRuntimeGOROOT",
 	"NumCgoCall":    "go2jsRuntimeNumCPU",
+
+	// A program has one thread of its own here and no profiler to feed, so these
+	// settle for what a program that never asked for them would see.
+	"LockOSThread":            "go2jsRuntimeNothing",
+	"UnlockOSThread":          "go2jsRuntimeNothing",
+	"Breakpoint":              "go2jsRuntimeNothing",
+	"Stack":                   "go2jsRuntimeStack",
+	"SetBlockProfileRate":     "go2jsRuntimeNothing",
+	"SetCPUProfileRate":       "go2jsRuntimeNothing",
+	"SetMutexProfileFraction": "go2jsRuntimeZero",
 }
 
 var runtimeConstants = map[string]string{
@@ -193,6 +203,25 @@ function go2jsRuntimeSetFinalizer(value, finalizer) {
 
 function go2jsRuntimeGOROOT() {
 	return "/usr/local/go";
+}
+
+// go2jsRuntimeStack fills buf with as much of the trace as fits, and says how
+// many bytes it wrote.
+function go2jsRuntimeStack(buf, all) {
+	const bytes = go2jsStringToBytes(go2jsDebugStack());
+	const n = Math.min(bytes.length, buf === null ? 0 : buf.length);
+	for (let i = 0; i < n; i++) {
+		buf[i] = bytes[i];
+	}
+	return n;
+}
+
+function go2jsRuntimeNothing() {
+	return null;
+}
+
+function go2jsRuntimeZero() {
+	return 0;
 }
 
 function go2jsRuntimeGC() {

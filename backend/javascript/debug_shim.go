@@ -9,6 +9,13 @@ package javascript
 var debugFuncs = map[string]string{
 	"Stack":      "go2jsDebugStack",
 	"PrintStack": "go2jsDebugPrintStack",
+
+	"SetGCPercent":    "go2jsDebugSetGCPercent",
+	"SetPanicOnFault": "go2jsDebugSetPanicOnFault",
+	"SetMaxStack":     "go2jsDebugSetMaxStack",
+	"SetMaxThreads":   "go2jsDebugSetMaxThreads",
+	"FreeOSMemory":    "go2jsDebugFreeOSMemory",
+	"SetMemoryLimit":  "go2jsDebugSetMemoryLimit",
 }
 
 func debugRuntimeSource() string {
@@ -24,6 +31,32 @@ function go2jsDebugStack() {
 // writes of what debug.Stack returns.
 function go2jsDebugPrintStack() {
 	go2jsPrint(go2jsDebugStack());
+}
+
+// The knobs below tune a collector and a stack this runtime does not have, so
+// each hands back the setting a program that never touched it would have found.
+function go2jsDebugSetGCPercent(percent) {
+	return 100;
+}
+
+function go2jsDebugSetPanicOnFault(enabled) {
+	return false;
+}
+
+function go2jsDebugSetMaxStack(bytes) {
+	return 1000000000;
+}
+
+function go2jsDebugSetMaxThreads(threads) {
+	return 10000;
+}
+
+function go2jsDebugSetMemoryLimit(limit) {
+	return 9223372036854775807n;
+}
+
+function go2jsDebugFreeOSMemory() {
+	return null;
 }`
 }
 
