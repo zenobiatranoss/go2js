@@ -33,6 +33,7 @@ If you want the short version, [jump to the quick start](#quick-start).
   - [Compiling](#compiling)
   - [Version](#version)
   - [Running tests](#running-tests)
+- [Shrinking the output (go2js-min)](#shrinking-the-output-go2js-min)
 - [Handing functions over to JavaScript](#handing-functions-over-to-javascript)
 - [How it works under the hood](#how-it-works-under-the-hood)
 - [Language support](#language-support)
@@ -260,6 +261,17 @@ tagged with the file and line it came from.
 A benchmark runs for as long as it was asked to run — as many times as it takes
 for the measurement to be worth having — and reports both the count and the
 per-run cost. The newer `b.Loop`-style benchmarks work too.
+
+## Shrinking the output (go2js-min)
+
+`tools/jsmin` holds `go2js-min`, a small C++17 program that reads a generated script and writes the same program in about half the bytes: comments and white space are dropped, and the long names of the runtime (`go2jsFormatValue` and the like) are replaced by short ones. It reads the script as tokens, so strings, templates and regular expressions are left alone, and with `-k` it reads its own result back and fails if the tokens are not the ones it was given.
+
+```
+make -C tools/jsmin
+go2js -shrink -module commonjs -o app.js main.go
+```
+
+`-shrink` finds the tool through `GO2JS_MIN`, next to the `go2js` binary, or on the `PATH`. It can also be run by hand: `go2js-min -k -s -o app.min.js app.js`. Names that the runtime builds or compares as text are kept as they are, and a name keeps the `go2js` (or `__go2js_`) it starts with, because the runtime tells its own frames and fields apart by that. The lines of the script are no longer the lines the emitter wrote, so the Go places in a trace of a shrunk program are not exact. Every program of the official `// run` tests that passes also runs the same once shrunk.
 
 ## Handing functions over to JavaScript
 
