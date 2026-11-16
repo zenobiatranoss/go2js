@@ -33,6 +33,21 @@ bool ed(const Tk& tk) {
     }
 }
 
+bool sp(const Tk& pv, const Tk& cu) {
+    if (wd(pv) && wd(cu)) return true;
+    if (pv.ty == Rx && wd(cu)) return true;
+    char xa = pv.tx.back();
+    char ya = cu.tx.front();
+    if (pv.ty == Pu && cu.ty == Pu && (xa == '+' || xa == '-') && xa == ya) return true;
+    if (pv.ty == Pu && xa == '/' && (ya == '/' || ya == '*')) return true;
+    if (pv.ty == Pu && xa == '<' && ya == '!') return true;
+    if (pv.ty == Pu && pv.tx == "?" && cu.ty == Nu && ya == '.') return true;
+    if (pv.ty == Nu && cu.ty == Pu && cu.tx == "." && pv.tx.find_first_of(".eExXnbBoO") == std::string::npos) return true;
+    return false;
+}
+
+}
+
 bool nq(const Tk& pv, const Tk& cu) {
     if (pv.ty == Kw && rs.count(pv.tx)) {
         return !(cu.ty == Pu && (cu.tx == ";" || cu.tx == "}"));
@@ -52,21 +67,6 @@ bool nq(const Tk& pv, const Tk& cu) {
     }
 }
 
-bool sp(const Tk& pv, const Tk& cu) {
-    if (wd(pv) && wd(cu)) return true;
-    if (pv.ty == Rx && wd(cu)) return true;
-    char xa = pv.tx.back();
-    char ya = cu.tx.front();
-    if (pv.ty == Pu && cu.ty == Pu && (xa == '+' || xa == '-') && xa == ya) return true;
-    if (pv.ty == Pu && xa == '/' && (ya == '/' || ya == '*')) return true;
-    if (pv.ty == Pu && xa == '<' && ya == '!') return true;
-    if (pv.ty == Pu && pv.tx == "?" && cu.ty == Nu && ya == '.') return true;
-    if (pv.ty == Nu && cu.ty == Pu && cu.tx == "." && pv.tx.find_first_of(".eExXnbBoO") == std::string::npos) return true;
-    return false;
-}
-
-}
-
 std::string em(const Ts& ts) {
     std::string ot;
     for (size_t ix = 0; ix < ts.size(); ++ix) {
@@ -82,6 +82,43 @@ std::string em(const Ts& ts) {
         ot += cu.tx;
     }
     return ot;
+}
+
+namespace {
+
+size_t tb(const Ts& ts, size_t ix) {
+    size_t dp = 0;
+    for (size_t jx = ix + 1; jx < ts.size(); ++jx) {
+        if (ts[jx].ty != Pu) continue;
+        if (ts[jx].tx == "(") ++dp;
+        if (ts[jx].tx == ")") {
+            if (dp == 0) return jx;
+            --dp;
+        }
+    }
+    return ts.size();
+}
+
+bool tc(const Ts& ts, size_t ix) {
+    return ts[ix].ty == Id && ts[ix].tx == "go2jsSetSourceLines" && ix + 1 < ts.size() && ts[ix + 1].tx == "(";
+}
+
+}
+
+bool ak(const Ts& a, const Ts& b) {
+    size_t ia = 0, ib = 0;
+    while (ia < a.size() && ib < b.size()) {
+        if (a[ia].ty != b[ib].ty || a[ia].tx != b[ib].tx) return false;
+        if (tc(a, ia) != tc(b, ib)) return false;
+        if (tc(a, ia)) {
+            ia = tb(a, ia + 1);
+            ib = tb(b, ib + 1);
+            continue;
+        }
+        ++ia;
+        ++ib;
+    }
+    return ia == a.size() && ib == b.size();
 }
 
 bool ok(const Ts& a, const Ts& b) {

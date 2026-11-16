@@ -38,6 +38,8 @@ struct Sc {
     std::vector<char> bs;
     bool nl = false;
     std::string er;
+    size_t cp = 0;
+    size_t cn = 1;
 
     explicit Sc(const std::string& s) : sr(s) {}
 
@@ -55,7 +57,13 @@ struct Sc {
     }
 
     void ad(Ty ty, size_t fr) {
-        ts.push_back({ty, sr.substr(fr, ps - fr), nl});
+        for (; cp < fr; ++cp) {
+            if (sr[cp] == '\n') ++cn;
+        }
+        Tk tk{ty, sr.substr(fr, ps - fr), nl};
+        tk.ln = cn;
+        tk.of = fr;
+        ts.push_back(std::move(tk));
         nl = false;
     }
 
