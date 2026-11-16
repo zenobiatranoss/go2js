@@ -64,6 +64,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		strict    bool
 		stack     int
 		page      bool
+		shrink    bool
 	)
 
 	fs.StringVar(&output, "o", "", "write output to file")
@@ -80,6 +81,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 	fs.Var(&stubs, "stubs", "declarations of a library that is not translated from source: a directory of .stub files, or one file (repeatable)")
 	fs.Var(&shims, "shim", "JavaScript that stands behind such a library, written into the program (repeatable)")
+	fs.BoolVar(&shrink, "shrink", false, "shrink the program with go2js-min (built from tools/jsmin): no comments, no white space, short names for the runtime")
 	fs.BoolVar(&page, "html", false, "write a web page that runs the program (also when the output file ends in .html)")
 
 	if err := fs.Parse(args); err != nil {
@@ -142,6 +144,12 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 	if err != nil {
 		return err
+	}
+
+	if shrink {
+		if result, err = shrinkScript(result); err != nil {
+			return err
+		}
 	}
 
 	if page {
