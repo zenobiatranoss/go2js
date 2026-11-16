@@ -51,6 +51,7 @@ func TestShrunkProgramBehavesTheSame(t *testing.T) {
 	binary := filepath.Join(dir, "go2js-min")
 
 	sources, err := filepath.Glob(filepath.Join("..", "..", "tools", "jsmin", "*.cpp"))
+	sources = withoutWebAssemblyEntry(sources)
 	if err != nil || len(sources) == 0 {
 		t.Fatalf("the sources of go2js-min are missing: %v", err)
 	}
@@ -103,4 +104,16 @@ func TestShrunkProgramBehavesTheSame(t *testing.T) {
 	if after.Size()*100 > before.Size()*60 {
 		t.Fatalf("the shrunk program is %d bytes of %d", after.Size(), before.Size())
 	}
+}
+
+func withoutWebAssemblyEntry(sources []string) []string {
+	var kept []string
+
+	for _, source := range sources {
+		if filepath.Base(source) != "wa.cpp" {
+			kept = append(kept, source)
+		}
+	}
+
+	return kept
 }
