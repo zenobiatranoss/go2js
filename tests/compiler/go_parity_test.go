@@ -936,6 +936,148 @@ true
 "l1\n" "l2" EOF
 r: close of nil channel
 `},
+	{"range_and_tuple_assign_to_complex_targets", `package main
+
+import "fmt"
+
+type T struct{ x int }
+
+func main() {
+	var i any = new(bool)
+	var p *bool
+	*new(bool) = true
+	b := new(bool)
+	i = b
+	p, *b = i.(*bool)
+	fmt.Println(p != nil, *b)
+	var a [3]int
+	m := map[string]int{}
+	var s T
+	for a[1] = range 3 {
+	}
+	for m["k"], s.x = range []int{5, 6} {
+	}
+	for a[2] = range a {
+	}
+	var q *int = new(int)
+	for *q = range 4 {
+	}
+	fmt.Println(a, m, s, *q)
+	v, ok := m["z"]
+	var ok2 bool
+	_, ok2 = m["k"]
+	fmt.Println(ok2)
+	fmt.Println(v, ok, a)
+	var arr [2]int
+	arr[0], arr[1] = arr[1]+1, arr[0]+2
+	fmt.Println(arr)
+}
+`, `true true
+[0 2 2] map[k:1] {6} 3
+true
+0 false [0 2 2]
+[1 2]
+`},
+	{"func_type_conversion_and_anonymous_interface", `package main
+
+import "fmt"
+
+type I interface{ M() int }
+type T int
+
+func (t T) M() int { return int(t) }
+
+func main() {
+	f := (func(int) int)(func(x int) int { return x + 1 })
+	fmt.Println(f(1))
+	var x any = T(4)
+	i := interface{ M() int }(T(5))
+	fmt.Println(i.M(), x.(interface{ M() int }).M())
+	defer print("d\n")
+	print(1, "a", true, "\n")
+	var e struct{}
+	var a any = e
+	_, ok := a.(struct{})
+	fmt.Println(ok)
+	var n any = nil
+	switch {
+	case n == nil:
+		fmt.Println("nil")
+	}
+	var b any = true
+	switch b {
+	case true:
+		fmt.Println("true")
+	case false:
+		fmt.Println("false")
+	}
+	switch b {
+	case 1:
+		fmt.Println("one")
+	default:
+		fmt.Println("dflt")
+	}
+	fmt.Printf("%T %v\n", e, e)
+}
+`, `2
+5 4
+1atrue
+true
+nil
+true
+dflt
+struct {} {}
+d
+`},
+	{"empty_struct_type_name", `package main
+
+import "fmt"
+
+type I interface{ M() int }
+type T int
+
+func (t T) M() int { return int(t) }
+
+func main() {
+	var x any = T(4)
+	_, ok1 := x.(I)
+	_, ok2 := x.(interface{ M() int })
+	_, ok3 := x.(interface{ N() })
+	fmt.Println(ok1, ok2, ok3)
+}
+`, `true true false
+`},
+	{"runtime_and_debug_noop_controls", `package main
+
+import (
+	"fmt"
+	"runtime"
+	"runtime/debug"
+)
+
+func main() {
+	runtime.LockOSThread()
+	runtime.UnlockOSThread()
+	runtime.SetBlockProfileRate(0)
+	runtime.SetMutexProfileFraction(0)
+	fmt.Println(debug.SetGCPercent(50), debug.SetPanicOnFault(false), debug.SetMaxStack(1<<20) > 0)
+	debug.FreeOSMemory()
+	fmt.Println(debug.SetMemoryLimit(-1) > 0)
+	buf := make([]byte, 100)
+	n := runtime.Stack(buf, false)
+	fmt.Println(n > 0)
+	runtime.Gosched()
+	fmt.Println(runtime.NumGoroutine() >= 1, runtime.Compiler)
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+	fmt.Println(ms.Alloc >= 0)
+}
+`, `100 false true
+true
+true
+true gc
+true
+`},
 }
 
 func TestGoVerifiedProgramsPrintTheSame(t *testing.T) {
