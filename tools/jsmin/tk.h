@@ -16,7 +16,7 @@ struct Tk {
 
 using Ts = std::vector<Tk>;
 
-Ts lx(const std::string& sr);
+Ts lx(const std::string& sr, std::string* er = nullptr);
 std::string em(const Ts& ts);
 size_t rn(Ts& ts);
 bool rw(const std::string& wd);

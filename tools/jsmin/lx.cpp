@@ -3,7 +3,6 @@
 
 #include <cctype>
 #include <cstring>
-#include <stdexcept>
 #include <unordered_set>
 
 namespace jm {
@@ -38,6 +37,7 @@ struct Sc {
     Ts ts;
     std::vector<char> bs;
     bool nl = false;
+    std::string er;
 
     explicit Sc(const std::string& s) : sr(s) {}
 
@@ -47,6 +47,11 @@ struct Sc {
 
     unsigned char ub(size_t of) const {
         return static_cast<unsigned char>(at(of));
+    }
+
+    void bd(const char* ms) {
+        if (er.empty()) er = ms;
+        ps = sr.size();
     }
 
     void ad(Ty ty, size_t fr) {
@@ -73,7 +78,7 @@ struct Sc {
                 while (ps < sr.size() && sr[ps] != '\n' && sr[ps] != '\r') ++ps;
             } else if (c == '/' && at(1) == '*') {
                 size_t en = sr.find("*/", ps + 2);
-                if (en == std::string::npos) throw std::runtime_error("unterminated comment");
+                if (en == std::string::npos) return bd("unterminated comment");
                 for (size_t ix = ps; ix < en; ++ix) {
                     if (sr[ix] == '\n' || sr[ix] == '\r') nl = true;
                 }
@@ -135,7 +140,7 @@ struct Sc {
             if (sr[ps] == '\\') ++ps;
             ++ps;
         }
-        if (ps >= sr.size()) throw std::runtime_error("unterminated string");
+        if (ps >= sr.size()) return bd("unterminated string");
         ++ps;
         ad(St, fr);
     }
@@ -158,7 +163,7 @@ struct Sc {
                 ++ps;
             }
         }
-        throw std::runtime_error("unterminated template");
+        bd("unterminated template");
     }
 
     void rg() {
@@ -177,12 +182,12 @@ struct Sc {
             } else if (c == '/' && !cl) {
                 break;
             } else if (c == '\n' || c == '\r') {
-                throw std::runtime_error("unterminated regular expression");
+                return bd("unterminated regular expression");
             } else {
                 ++ps;
             }
         }
-        if (ps >= sr.size()) throw std::runtime_error("unterminated regular expression");
+        if (ps >= sr.size()) return bd("unterminated regular expression");
         ++ps;
         while (ip(at())) ++ps;
         ad(Rx, fr);
@@ -273,9 +278,14 @@ bool rw(const std::string& wd) {
     return kw.count(wd) > 0;
 }
 
-Ts lx(const std::string& sr) {
+Ts lx(const std::string& sr, std::string* er) {
     Sc sc(sr);
-    return sc.go();
+    Ts ts = sc.go();
+    if (!sc.er.empty()) {
+        if (er) *er = sc.er;
+        return Ts();
+    }
+    return ts;
 }
 
 }

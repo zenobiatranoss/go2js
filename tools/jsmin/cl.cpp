@@ -66,7 +66,9 @@ int main(int ac, char** av) {
 
     try {
         std::string sr = rd(in);
-        jm::Ts ts = jm::lx(sr);
+        std::string er;
+        jm::Ts ts = jm::lx(sr, &er);
+        if (!er.empty()) throw std::runtime_error(er);
         size_t rc = nn ? 0 : jm::rn(ts);
         std::string ot = jm::em(ts);
 
