@@ -8287,7 +8287,7 @@ function go2jsAnyTypeName(name) {
 		return name;
 	}
 
-	return name.replace(/\binterface ?\{\}/g, "any");
+	return name.replace(/\binterface ?\{\}/g, "any").replace(/\bstruct ?\{\}/g, "struct{}");
 }
 
 function go2jsSwitchCaseIndex(value, labels) {
@@ -8399,7 +8399,54 @@ const go2jsBuiltinInterfaces = {
 	"StringWriter": ["WriteString"],
 };
 
+// go2jsAnonymousInterfaceMethods reads the method names out of an interface
+// written in place, as interface{M() int; N(x int)} is, which has no name to
+// have been registered under.
+function go2jsAnonymousInterfaceMethods(name) {
+	const match = typeof name === "string" ? /^interface ?\{(.*)\}$/s.exec(name.trim()) : null;
+
+	if (match === null || match[1].trim() === "") {
+		return undefined;
+	}
+
+	const methods = [];
+	let depth = 0;
+	let start = 0;
+	const body = match[1];
+
+	const take = function(end) {
+		const part = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(/.exec(body.slice(start, end));
+
+		if (part !== null) {
+			methods.push(part[1]);
+		}
+	};
+
+	for (let i = 0; i < body.length; i++) {
+		const ch = body[i];
+
+		if (ch === "(" || ch === "{" || ch === "[") {
+			depth++;
+		} else if (ch === ")" || ch === "}" || ch === "]") {
+			depth--;
+		} else if (ch === ";" && depth === 0) {
+			take(i);
+			start = i + 1;
+		}
+	}
+
+	take(body.length);
+
+	return methods;
+}
+
 function go2jsInterfaceMethods(name) {
+	const anonymous = go2jsAnonymousInterfaceMethods(name);
+
+	if (anonymous !== undefined) {
+		return anonymous;
+	}
+
 	const key = go2jsInterfaceKey(name);
 
 	if (key === "") {
