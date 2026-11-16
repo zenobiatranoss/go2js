@@ -273,6 +273,8 @@ go2js -shrink -module commonjs -o app.js main.go
 
 `-shrink` finds the tool through `GO2JS_MIN`, next to the `go2js` binary, or on the `PATH`. It can also be run by hand: `go2js-min -k -s -o app.min.js app.js`. Names that the runtime builds or compares as text are kept as they are, and a name keeps the `go2js` (or `__go2js_`) it starts with, because the runtime tells its own frames and fields apart by that. The lines of the script are no longer the lines the emitter wrote, so the Go places in a trace of a shrunk program are not exact. Every program of the official `// run` tests that passes also runs the same once shrunk.
 
+The playground uses the same code: `tools/jsmin/wa.cpp` builds it as a 68 KB WebAssembly module (`scripts/playground.sh` with `WASI_SDK_PATH` set), and the page shrinks the JavaScript it shows and runs with the "Shrink the JavaScript" box ticked.
+
 ## Handing functions over to JavaScript
 
 That's the whole point, right? A Go program that talks to JavaScript instead of
