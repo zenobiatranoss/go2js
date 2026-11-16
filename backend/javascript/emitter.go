@@ -1718,6 +1718,13 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 		return e.emitGoStmt(s)
 
 	case *ast.AssignStmt:
+		// A pair of values from one expression, assigned to places that are not
+		// plain names, is taken into names of their own first and then assigned
+		// on, one place at a time, the way any assignment is written.
+		if split := e.splitTupleAssignment(s); split != nil {
+			return e.emitBlock(split)
+		}
+
 		// The left-hand side is read once, even when the assignment writes it
 		// out more than once, so the parts that would run again are given a
 		// name of their own first.

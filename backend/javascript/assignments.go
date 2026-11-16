@@ -845,3 +845,49 @@ func (e *emitter) emitParallelTempsInline(stmt *ast.AssignStmt, prefix string) e
 
 	return nil
 }
+
+// splitTupleAssignment turns v, ok = x.(T), and the like with a place on the left
+// that a destructuring pattern cannot hold, as *p or a[i] is, into a block that
+// takes the values into fresh names and assigns them one by one. It gives nil
+// for any other assignment.
+func (e *emitter) splitTupleAssignment(stmt *ast.AssignStmt) *ast.BlockStmt {
+	if stmt.Tok != token.ASSIGN || len(stmt.Lhs) < 2 || len(stmt.Rhs) != 1 {
+		return nil
+	}
+
+	complexTarget := false
+
+	for _, target := range stmt.Lhs {
+		if _, ok := ast.Unparen(target).(*ast.Ident); !ok {
+			complexTarget = true
+		}
+	}
+
+	if !complexTarget {
+		return nil
+	}
+
+	temps := make([]ast.Expr, len(stmt.Lhs))
+	assignments := make([]ast.Stmt, 0, len(stmt.Lhs))
+
+	for i, target := range stmt.Lhs {
+		if isBlankIdent(target) {
+			temps[i] = ast.NewIdent(blankIdentifier)
+			continue
+		}
+
+		temp := ast.NewIdent(e.nextTemp("pair"))
+		temps[i] = temp
+
+		assignments = append(assignments, &ast.AssignStmt{
+			Lhs:    []ast.Expr{target},
+			TokPos: target.Pos(),
+			Tok:    token.ASSIGN,
+			Rhs:    []ast.Expr{temp},
+		})
+	}
+
+	first := &ast.AssignStmt{Lhs: temps, TokPos: stmt.TokPos, Tok: token.DEFINE, Rhs: stmt.Rhs}
+
+	return &ast.BlockStmt{Lbrace: stmt.Pos(), List: append([]ast.Stmt{first}, assignments...), Rbrace: stmt.End()}
+}
