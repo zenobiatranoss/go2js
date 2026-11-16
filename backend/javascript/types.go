@@ -179,7 +179,6 @@ func isDurationArithmetic(op token.Token) bool {
 }
 
 func (e *emitter) isMapExpr(expr ast.Expr) bool {
-
 	if e.analysis == nil {
 		return false
 	}
@@ -244,7 +243,7 @@ func (e *emitter) isTypeConversion(call *ast.CallExpr) bool {
 	call.Fun = fun
 
 	switch fun.(type) {
-	case *ast.ArrayType, *ast.MapType, *ast.StarExpr, *ast.ChanType, *ast.InterfaceType, *ast.StructType:
+	case *ast.ArrayType, *ast.MapType, *ast.StarExpr, *ast.ChanType, *ast.InterfaceType, *ast.StructType, *ast.FuncType:
 		return e.analyzedType(call) != nil
 	}
 
