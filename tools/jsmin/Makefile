@@ -1,6 +1,6 @@
 CXX ?= g++
 CXXFLAGS ?= -O2 -std=c++17 -Wall -Wextra
-OB = cl.o lx.o em.o rn.o
+OB = cl.o lx.o em.o rn.o fm.o pg.o
 
 go2js-min: $(OB)
 	$(CXX) $(CXXFLAGS) -o $@ $(OB)
