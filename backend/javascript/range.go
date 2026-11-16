@@ -18,6 +18,12 @@ func (e *emitter) emitRangeStmt(stmt *ast.RangeStmt) error {
 		return fmt.Errorf("invalid range statement")
 	}
 
+	// Whatever the loop assigns to that is not a plain name is assigned from
+	// names of the loop's own, in the body.
+	if rewritten := e.rangeThroughTemporaries(stmt); rewritten != stmt {
+		stmt = rewritten
+	}
+
 	if handled, err := e.emitChannelRange(stmt); handled {
 		return err
 	}
@@ -280,6 +286,61 @@ func (e *emitter) rangeValueType(stmt *ast.RangeStmt) gotypesstd.Type {
 	default:
 		return nil
 	}
+}
+
+// rangeThroughTemporaries rewrites a loop that assigns each key or value to
+// something that is not a plain name, as for a[i], p.x = range s does, into a
+// loop over names of its own whose body begins by assigning them on. What is
+// assigned to is then written by the same code that writes any assignment.
+func (e *emitter) rangeThroughTemporaries(stmt *ast.RangeStmt) *ast.RangeStmt {
+	if stmt.Tok != token.ASSIGN {
+		return stmt
+	}
+
+	plain := func(expr ast.Expr) bool {
+		if expr == nil {
+			return true
+		}
+
+		_, ok := ast.Unparen(expr).(*ast.Ident)
+
+		return ok
+	}
+
+	if plain(stmt.Key) && plain(stmt.Value) {
+		return stmt
+	}
+
+	rewritten := *stmt
+	body := &ast.BlockStmt{Lbrace: stmt.Body.Lbrace, Rbrace: stmt.Body.Rbrace}
+
+	var assignments []ast.Stmt
+
+	replace := func(target ast.Expr, prefix string) ast.Expr {
+		if plain(target) {
+			return target
+		}
+
+		temp := ast.NewIdent(e.nextTemp(prefix))
+
+		assignments = append(assignments, &ast.AssignStmt{
+			Lhs:    []ast.Expr{target},
+			TokPos: target.Pos(),
+			Tok:    token.ASSIGN,
+			Rhs:    []ast.Expr{temp},
+		})
+
+		return temp
+	}
+
+	rewritten.Key = replace(stmt.Key, "rangeKey")
+	rewritten.Value = replace(stmt.Value, "rangeValue")
+	rewritten.Tok = token.DEFINE
+
+	body.List = append(assignments, stmt.Body.List...)
+	rewritten.Body = body
+
+	return &rewritten
 }
 
 func (e *emitter) emitEntriesRangeStmt(stmt *ast.RangeStmt) error {
