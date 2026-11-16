@@ -65,6 +65,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		stack     int
 		page      bool
 		shrink    bool
+		readable  bool
 	)
 
 	fs.StringVar(&output, "o", "", "write output to file")
@@ -82,6 +83,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	fs.Var(&stubs, "stubs", "declarations of a library that is not translated from source: a directory of .stub files, or one file (repeatable)")
 	fs.Var(&shims, "shim", "JavaScript that stands behind such a library, written into the program (repeatable)")
 	fs.BoolVar(&shrink, "shrink", false, "shrink the program with go2js-min (built from tools/jsmin): no comments, no white space, short names for the runtime")
+	fs.BoolVar(&readable, "readable", false, "write the program as readable JavaScript to -o, and the runtime beside it as NAME.runtime.js (needs go2js-min and -module commonjs or esm)")
 	fs.BoolVar(&page, "html", false, "write a web page that runs the program (also when the output file ends in .html)")
 
 	if err := fs.Parse(args); err != nil {
@@ -101,6 +103,16 @@ func run(args []string, stdout, stderr io.Writer) error {
 	if len(shims) > 0 {
 		if err := compiler.LoadShims(shims); err != nil {
 			return err
+		}
+	}
+
+	if readable {
+		if output == "" || shrink || strings.HasSuffix(output, ".html") {
+			return fmt.Errorf("-readable writes two files, so it needs -o NAME.js, and it does not go with -shrink or a page")
+		}
+
+		if module == "iife" {
+			return fmt.Errorf("-readable needs -module commonjs or esm, since the program of an iife is inside a function")
 		}
 	}
 
@@ -144,6 +156,10 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 	if err != nil {
 		return err
+	}
+
+	if readable {
+		return readableScript(result, output, module == "esm")
 	}
 
 	if shrink {

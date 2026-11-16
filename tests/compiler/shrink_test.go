@@ -48,19 +48,7 @@ func TestShrunkProgramBehavesTheSame(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	binary := filepath.Join(dir, "go2js-min")
-
-	sources, err := filepath.Glob(filepath.Join("..", "..", "tools", "jsmin", "*.cpp"))
-	sources = withoutWebAssemblyEntry(sources)
-	if err != nil || len(sources) == 0 {
-		t.Fatalf("the sources of go2js-min are missing: %v", err)
-	}
-
-	build := exec.Command("g++", append([]string{"-O1", "-std=c++17", "-o", binary}, sources...)...)
-
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("go2js-min does not build: %v\n%s", err, out)
-	}
+	binary := buildShrinker(t, dir)
 
 	source := filepath.Join(dir, "main.go")
 
@@ -116,4 +104,23 @@ func withoutWebAssemblyEntry(sources []string) []string {
 	}
 
 	return kept
+}
+
+func buildShrinker(t *testing.T, dir string) string {
+	t.Helper()
+
+	binary := filepath.Join(dir, "go2js-min")
+
+	sources, err := filepath.Glob(filepath.Join("..", "..", "tools", "jsmin", "*.cpp"))
+	if err != nil || len(sources) == 0 {
+		t.Fatalf("the sources of go2js-min are missing: %v", err)
+	}
+
+	build := exec.Command("g++", append([]string{"-O1", "-std=c++17", "-o", binary}, withoutWebAssemblyEntry(sources)...)...)
+
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("go2js-min does not build: %v\n%s", err, out)
+	}
+
+	return binary
 }

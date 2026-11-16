@@ -34,6 +34,7 @@ If you want the short version, [jump to the quick start](#quick-start).
   - [Version](#version)
   - [Running tests](#running-tests)
 - [Shrinking the output (go2js-min)](#shrinking-the-output-go2js-min)
+- [Readable output (go2js-min)](#readable-output-go2js-min)
 - [Handing functions over to JavaScript](#handing-functions-over-to-javascript)
 - [How it works under the hood](#how-it-works-under-the-hood)
 - [Language support](#language-support)
@@ -274,6 +275,18 @@ go2js -shrink -module commonjs -o app.js main.go
 `-shrink` finds the tool through `GO2JS_MIN`, next to the `go2js` binary, or on the `PATH`. It can also be run by hand: `go2js-min -k -s -o app.min.js app.js`. Names that the runtime builds or compares as text are kept as they are, and a name keeps the `go2js` (or `__go2js_`) it starts with, because the runtime tells its own frames and fields apart by that. The lines of the script are no longer the lines the emitter wrote, so the Go places in a trace of a shrunk program are not exact. Every program of the official `// run` tests that passes also runs the same once shrunk.
 
 The playground uses the same code: `tools/jsmin/wa.cpp` builds it as a 68 KB WebAssembly module (`scripts/playground.sh` with `WASI_SDK_PATH` set), and the page shrinks the JavaScript it shows and runs with the "Shrink the JavaScript" box ticked.
+
+## Readable output (go2js-min)
+
+The script go2js writes is mostly runtime: a program of a hundred lines comes with fifteen thousand lines in front of it that the program never needs to be read through. `go2js-min` can take the two apart and write the program the way it reads:
+
+```
+go2js -readable -module commonjs -o out/main.js main.go
+```
+
+writes `out/main.js`, which holds the program and nothing else, and `out/main.runtime.js`, which holds the runtime and is imported by the first (`-module esm` joins them with `import` and `export` instead). `node out/main.js` runs it like the single file. The program is indented and broken into lines, its temporary names read as names (`received2` for what was `$go2js_received_2`), and the parentheses the emitter put around every `yield*` are gone. The Go places a trace names are carried along, so a panic in the split program still points at `main.go:8`.
+
+By hand: `go2js-min -p` writes any script readable, `-u` writes only the program of a generated script, and `-S -o main.js` splits it. The playground shows the program this way and runs the whole script behind it. Every program of the official `// run` tests that passes also runs the same split and indented, and `lodash` and `acorn` behave the same once written by `-p`.
 
 ## Handing functions over to JavaScript
 
