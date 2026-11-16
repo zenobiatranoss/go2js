@@ -8,6 +8,7 @@
 # build artifacts
 /bin/
 /playground/playground.wasm
+/playground/go2js-min.wasm
 /playground/wasm_exec.js
 /playground/go2jslog.png
 /dist/

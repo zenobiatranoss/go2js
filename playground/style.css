@@ -280,3 +280,11 @@ button.ghost:hover {
     min-height: 240px;
   }
 }
+
+.shrink {
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: 0.75rem;
+}

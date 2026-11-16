@@ -28,6 +28,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: get the wasi-sdk, which builds the shrinker
+        run: |
+          curl -sSL https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-25/wasi-sdk-25.0-x86_64-linux.tar.gz | tar xz
+          echo "WASI_SDK_PATH=$PWD/wasi-sdk-25.0-x86_64-linux" >> "$GITHUB_ENV"
       - name: build the compiler as WebAssembly
         run: ./scripts/playground.sh
       - uses: actions/configure-pages@v5

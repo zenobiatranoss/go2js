@@ -11,6 +11,7 @@
   var runButton = document.getElementById("run");
   var status = document.getElementById("status");
   var examples = document.getElementById("examples");
+  var shrinkBox = document.getElementById("shrink");
 
   var compiled = "";
 
@@ -214,11 +215,23 @@
       }
 
       compiled = answer.js;
-      status.textContent = "running…";
+
+      var note = "";
+
+      if (shrinkBox && shrinkBox.checked && typeof window.go2jsShrink === "function") {
+        var shrunk = window.go2jsShrink(compiled);
+
+        if (shrunk.length < compiled.length) {
+          note = " (" + Math.round(compiled.length / 1024) + " KB → " + Math.round(shrunk.length / 1024) + " KB)";
+          compiled = shrunk;
+        }
+      }
+
+      status.textContent = "running…" + note;
 
       runProgram(compiled).then(function (text) {
         show(text, false);
-        status.textContent = "done";
+        status.textContent = "done" + note;
         runButton.disabled = false;
         renderJS();
       });
@@ -226,6 +239,15 @@
   }
 
   function loadCompiler() {
+    if (typeof window.go2jsShrinkLoad === "function") {
+      window.go2jsShrinkLoad("go2js-min.wasm").catch(function () {
+        if (shrinkBox) {
+          shrinkBox.checked = false;
+          shrinkBox.disabled = true;
+        }
+      });
+    }
+
     var go = new Go();
     var loader = WebAssembly.instantiateStreaming
       ? WebAssembly.instantiateStreaming(fetch("playground.wasm"), go.importObject)
