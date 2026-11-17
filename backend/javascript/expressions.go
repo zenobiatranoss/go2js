@@ -498,6 +498,8 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 	case *ast.Ident:
 		if x.Name == "nil" {
 			e.write("null")
+		} else if (x.Name == "true" || x.Name == "false") && e.isUniverseName(x) {
+			e.write(x.Name)
 		} else if x.Name == "_" {
 			e.writeBlankIdentifier(x)
 		} else if x.Name == e.aggregateReceiver && !e.isShadowed(x.Name) {
@@ -3111,4 +3113,14 @@ func (e *emitter) tableMethodReceiver(x *ast.SelectorExpr, method *gotypes.Func)
 	}
 
 	return "", false
+}
+
+func (e *emitter) isUniverseName(ident *ast.Ident) bool {
+	if e.analysis == nil {
+		return true
+	}
+
+	object := e.analysis.Uses[ident]
+
+	return object == nil || object.Parent() == gotypes.Universe
 }

@@ -3492,7 +3492,7 @@ var javaScriptReservedNames = map[string]bool{
 	"super": true, "switch": true, "this": true, "throw": true,
 	"try": true, "typeof": true, "var": true,
 	"void": true, "while": true, "with": true, "yield": true,
-	"NaN": true, "Infinity": true, "undefined": true,
+	"NaN": true, "Infinity": true, "undefined": true, "true": true, "false": true,
 
 	// The runtime is one bundle with the program, so a declaration of one of
 	// these would stand in front of the built in it is meant to reach, and the
