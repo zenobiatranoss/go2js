@@ -727,8 +727,16 @@ function go2jsSliceCap(value) {
 }
 
 function go2jsSliceMake(length, capacity, zero, sharedZero) {
-	length = Math.trunc(length);
-	capacity = Math.trunc(capacity);
+	length = Math.trunc(Number(length));
+	capacity = Math.trunc(Number(capacity));
+
+	if (length > 4294967295) {
+		throw new RangeError(go2jsRuntimeErrorPrefix + "makeslice: len out of range");
+	}
+
+	if (capacity > 4294967295) {
+		throw new RangeError(go2jsRuntimeErrorPrefix + "makeslice: cap out of range");
+	}
 
 	// A slice can only be made with a length that is not negative and a
 	// capacity that can hold it, and Go says which of the two went wrong.
