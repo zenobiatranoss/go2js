@@ -1078,6 +1078,96 @@ true
 true gc
 true
 `},
+	{"switch_shift_method_expr_shadow", `package main
+
+import "fmt"
+
+type S []int
+
+func (*S) Sum(a ...int) int {
+	t := 0
+	for _, v := range a {
+		t += v
+	}
+	return t
+}
+
+type P struct{ X int }
+
+var want = 3
+
+func use() int { return want }
+
+func main() {
+	var i any = 5
+	switch {
+	case i == 5:
+		fmt.Println("tagless iface")
+	default:
+		fmt.Println("no")
+	}
+	switch [2]int{1, 2} {
+	case [2]int{1, 2}:
+		fmt.Println("array tag")
+	default:
+		fmt.Println("no")
+	}
+	for _, v := range []any{func() {}, P{1}, 3} {
+		switch v.(type) {
+		case func():
+			fmt.Println("func")
+		case P:
+			fmt.Println("struct")
+		default:
+			fmt.Println("other")
+		}
+	}
+	var n uint = 70
+	fmt.Println(1<<n == 0, uint32(1)<<n, int64(-8)>>200)
+	fmt.Println((*S).Sum(nil, 1, 2, 3), ((*S)(nil)).Sum(4, 5))
+	fmt.Println(use())
+	want := 9
+	fmt.Println(want, use())
+}
+`, `tagless iface
+array tag
+func
+struct
+other
+true 0 -1
+6 9
+3
+9 3
+`},
+	{"tuple_assign_operand_order", `package main
+
+import "fmt"
+
+func fp() (*int, int) { v := 7; return &v, 5 }
+
+func main() {
+	x := []int{1, 2, 3}
+	i := 0
+	i, x[i] = 1, 100
+	fmt.Println(i, x)
+	y := []int{1, 2, 3}
+	j := 0
+	y[j], j = 100, 1
+	fmt.Println(j, y)
+	p := new(int)
+	q := p
+	p, *p = fp()
+	fmt.Println(*p, *q)
+	m := []int{5, 6}
+	k := 1
+	k, m[k] = 0, 9
+	fmt.Println(k, m)
+}
+`, `1 [100 2 3]
+1 [100 2 3]
+7 5
+0 [5 9]
+`},
 }
 
 func TestGoVerifiedProgramsPrintTheSame(t *testing.T) {
