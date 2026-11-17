@@ -419,7 +419,7 @@ func (e *emitter) emitParallelAssignment(stmt *ast.AssignStmt) (bool, error) {
 		return true, nil
 	}
 
-	if e.parallelAssignReusesTargets(stmt) || hasPointerTarget(stmt.Lhs) {
+	if e.parallelAssignReusesTargets(stmt) || hasPointerTarget(stmt.Lhs) || e.targetUsesEarlierTarget(stmt) {
 		e.statementContext = true
 
 		defer func() { e.statementContext = false }()
@@ -706,6 +706,17 @@ func (e *emitter) emitParallelAssignmentWithTemps(stmt *ast.AssignStmt) error {
 		return e.emitParallelTempsInline(stmt, prefix)
 	}
 
+	hoisted, err := e.hoistTargetOperands(stmt, prefix)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		for _, expr := range hoisted {
+			delete(e.exprOverride, expr)
+		}
+	}()
+
 	e.writeIndent()
 	e.write("const [")
 
@@ -869,8 +880,25 @@ func (e *emitter) splitTupleAssignment(stmt *ast.AssignStmt) *ast.BlockStmt {
 
 	temps := make([]ast.Expr, len(stmt.Lhs))
 	assignments := make([]ast.Stmt, 0, len(stmt.Lhs))
+	hoists := []ast.Stmt{}
+	assigned := map[string]bool{}
 
 	for i, target := range stmt.Lhs {
+		if ident, ok := ast.Unparen(target).(*ast.Ident); ok {
+			assigned[ident.Name] = true
+		} else if star, ok := ast.Unparen(target).(*ast.StarExpr); ok && mentionsAny(star.X, assigned) {
+			name := e.nextTemp("ptr")
+			hoists = append(hoists, &ast.AssignStmt{Lhs: []ast.Expr{ast.NewIdent(name)}, TokPos: star.Pos(), Tok: token.DEFINE, Rhs: []ast.Expr{star.X}})
+
+			if e.exprOverride == nil {
+				e.exprOverride = map[ast.Expr]string{}
+			}
+
+			wrapper := &ast.ParenExpr{Lparen: star.X.Pos(), X: star.X, Rparen: star.X.End()}
+			e.exprOverride[wrapper] = name
+			target = &ast.StarExpr{Star: star.Star, X: wrapper}
+		}
+
 		if isBlankIdent(target) {
 			temps[i] = ast.NewIdent(blankIdentifier)
 			continue
@@ -889,5 +917,95 @@ func (e *emitter) splitTupleAssignment(stmt *ast.AssignStmt) *ast.BlockStmt {
 
 	first := &ast.AssignStmt{Lhs: temps, TokPos: stmt.TokPos, Tok: token.DEFINE, Rhs: stmt.Rhs}
 
-	return &ast.BlockStmt{Lbrace: stmt.Pos(), List: append([]ast.Stmt{first}, assignments...), Rbrace: stmt.End()}
+	return &ast.BlockStmt{Lbrace: stmt.Pos(), List: append(append(hoists, first), assignments...), Rbrace: stmt.End()}
+}
+
+func mentionsAny(expr ast.Expr, names map[string]bool) bool {
+	found := false
+
+	ast.Inspect(expr, func(n ast.Node) bool {
+		if ident, ok := n.(*ast.Ident); ok && names[ident.Name] {
+			found = true
+		}
+
+		return !found
+	})
+
+	return found
+}
+
+func (e *emitter) targetUsesEarlierTarget(stmt *ast.AssignStmt) bool {
+	if stmt.Tok == token.DEFINE {
+		return false
+	}
+
+	assigned := map[string]bool{}
+
+	for _, lhs := range stmt.Lhs {
+		if ident, ok := lhs.(*ast.Ident); ok {
+			assigned[ident.Name] = true
+			continue
+		}
+
+		index, ok := lhs.(*ast.IndexExpr)
+		if !ok {
+			continue
+		}
+
+		used := false
+
+		for _, part := range []ast.Expr{index.X, index.Index} {
+			ast.Inspect(part, func(n ast.Node) bool {
+				if ident, ok := n.(*ast.Ident); ok && assigned[ident.Name] {
+					used = true
+				}
+
+				return !used
+			})
+		}
+
+		if used {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (e *emitter) hoistTargetOperands(stmt *ast.AssignStmt, prefix string) ([]ast.Expr, error) {
+	if !e.statementContext || !e.targetUsesEarlierTarget(stmt) {
+		return nil, nil
+	}
+
+	if e.exprOverride == nil {
+		e.exprOverride = map[ast.Expr]string{}
+	}
+
+	var hoisted []ast.Expr
+
+	for i, lhs := range stmt.Lhs {
+		index, ok := lhs.(*ast.IndexExpr)
+		if !ok {
+			continue
+		}
+
+		for j, part := range []ast.Expr{index.X, index.Index} {
+			name := prefix + "t" + strconv.Itoa(i) + "_" + strconv.Itoa(j)
+
+			e.writeIndent()
+			e.write("const " + name + " = ")
+
+			if err := e.emitExpr(part); err != nil {
+				return hoisted, err
+			}
+
+			e.write(";")
+			e.newline()
+
+			e.exprOverride[part] = name
+			hoisted = append(hoisted, part)
+		}
+	}
+
+	return hoisted, nil
 }
