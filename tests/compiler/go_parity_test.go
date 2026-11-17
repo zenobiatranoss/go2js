@@ -1168,6 +1168,32 @@ func main() {
 7 5
 0 [5 9]
 `},
+	{"predeclared_names_and_huge_make", `package main
+
+import "fmt"
+
+const true = 3
+
+var false = "no"
+
+func try(f func()) {
+	defer func() { fmt.Println(recover()) }()
+	f()
+}
+
+func main() {
+	fmt.Println(true, false)
+	n := uint64(1) << 63
+	try(func() { _ = make([]int, n) })
+	try(func() { _ = make([]int, 0, n) })
+	m := -1
+	try(func() { _ = make([]int, m) })
+}
+`, `3 no
+runtime error: makeslice: len out of range
+runtime error: makeslice: cap out of range
+runtime error: makeslice: len out of range
+`},
 }
 
 func TestGoVerifiedProgramsPrintTheSame(t *testing.T) {
