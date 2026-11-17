@@ -322,6 +322,17 @@ func (e *emitter) isComplexExpr(expr ast.Expr) bool {
 	case *ast.BasicLit:
 		return x.Kind == token.IMAG
 	case *ast.BinaryExpr:
+		// What a shift is made of is its left side, and the count on its right
+		// is a whole number even where a constant writes it as a complex one.
+		if x.Op == token.SHL || x.Op == token.SHR {
+			if e.analysis != nil {
+				if value, ok := e.analysis.Types[x]; ok && value.Type != nil {
+					return isComplexType(value.Type)
+				}
+			}
+
+			return e.isComplexExpr(x.X)
+		}
 		return e.isComplexExpr(x.X) || e.isComplexExpr(x.Y)
 	case *ast.UnaryExpr:
 		return e.isComplexExpr(x.X)

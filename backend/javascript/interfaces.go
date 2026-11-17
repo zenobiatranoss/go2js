@@ -72,6 +72,11 @@ func concreteTypeName(t gotypes.Type) string {
 		return value.Obj().Name()
 	case *gotypes.Pointer:
 		return "*" + concreteTypeName(value.Elem())
+	case *gotypes.Signature, *gotypes.Struct:
+		// These are spelled with the names of their parameters and fields,
+		// which a type switch and an assertion do not ask about, so they are
+		// given the spelling every other place that names the type uses.
+		return goTypeName(t)
 	default:
 		return t.String()
 	}
@@ -697,6 +702,12 @@ func (e *emitter) isInterfaceMethod(sel *ast.SelectorExpr) bool {
 
 	selection := e.analysis.Selections[sel]
 	if selection == nil {
+		return false
+	}
+
+	// I.m, asked of a type, is a function of its own that takes the receiver
+	// first, and not a call of the method on something that holds a value.
+	if selection.Kind() == gotypes.MethodExpr {
 		return false
 	}
 

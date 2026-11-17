@@ -87,10 +87,11 @@ type emitter struct {
 	// An expression Go evaluates once for a statement that is written over it
 	// more than once is written to a name of its own, and this holds where that
 	// name stands for the expression until the statement has been written.
-	exprOverride    map[ast.Expr]string
-	inlineMode      bool
-	selfPackagePath string
-	qualifiers      map[string]string
+	exprOverride     map[ast.Expr]string
+	packageVariables map[string]bool
+	inlineMode       bool
+	selfPackagePath  string
+	qualifiers       map[string]string
 }
 
 // emitTargetIndexChecks writes the bounds check that writing to a slice or an
@@ -2289,16 +2290,40 @@ func (e *emitter) emitSwitchStmt(stmt *ast.SwitchStmt) error {
 	return nil
 }
 
+func (e *emitter) caseIsInterface(expr ast.Expr) bool {
+	if e.analysis == nil {
+		return false
+	}
+
+	caseType := e.analysis.TypeOf(expr)
+	if caseType == nil {
+		return false
+	}
+
+	_, isInterface := caseType.Underlying().(*gotypesstd.Interface)
+
+	return isInterface
+}
+
 func (e *emitter) emitSwitchClauses(s *ast.SwitchStmt) error {
 	// A value of an interface type is compared with each case by what it holds,
 	// since what stands for one is not always the value it holds, and a case
 	// may name a value of any type that satisfies the interface. The value is
 	// taken once, before the clauses.
 	interfaceTag := ""
+	aggregateTag := false
 
 	if s.Tag != nil && e.analysis != nil {
 		if tagType := e.analysis.TypeOf(s.Tag); tagType != nil {
-			if _, isInterface := tagType.Underlying().(*gotypesstd.Interface); isInterface && !e.switchTagIsErrorOnly(s) {
+			_, isInterface := tagType.Underlying().(*gotypesstd.Interface)
+			_, isArray := tagType.Underlying().(*gotypesstd.Array)
+			_, isStruct := tagType.Underlying().(*gotypesstd.Struct)
+
+			// An array or a struct is compared by what it holds as well, which
+			// is not what === says of two of them.
+			aggregateTag = isArray || isStruct
+
+			if (isInterface && !e.switchTagIsErrorOnly(s)) || aggregateTag {
 				e.tempCounter++
 				interfaceTag = fmt.Sprintf("go2jsTag%d", e.tempCounter)
 
@@ -2363,7 +2388,23 @@ func (e *emitter) emitSwitchClauses(s *ast.SwitchStmt) error {
 					e.needsRuntime = true
 					e.write("go2jsEqual(" + interfaceTag + ", ")
 
-					if err := e.emitInterfaceValue(expr, e.analysis.TypeOf(s.Tag)); err != nil {
+					if aggregateTag {
+						if err := e.emitExpr(expr); err != nil {
+							return err
+						}
+					} else if err := e.emitInterfaceValue(expr, e.analysis.TypeOf(s.Tag)); err != nil {
+						return err
+					}
+
+					e.write(")")
+				} else if s.Tag == nil && e.caseIsInterface(expr) {
+					// A switch with no tag is a switch on true, and a case that
+					// holds a value of an interface type is that value compared
+					// with true, by what it holds.
+					e.needsRuntime = true
+					e.write("go2jsEqual(true, ")
+
+					if err := e.emitExpr(expr); err != nil {
 						return err
 					}
 
@@ -3403,6 +3444,33 @@ func (e *emitter) isShadowed(name string) bool {
 	return false
 }
 
+// shadowsPackageVariable reports whether a variable declared inside a function
+// takes the name of a variable of the package. The variables of the package are
+// written after the functions, so they are not in a scope when a function is
+// written, and a function that uses one before it declares its own of that name
+// would meet the second in the place of the first.
+func (e *emitter) shadowsPackageVariable(name string) bool {
+	if e.analysis == nil || len(e.scopes) < 1 {
+		return false
+	}
+
+	if e.isParameterName(name) {
+		return false
+	}
+
+	if e.packageVariables == nil {
+		e.packageVariables = map[string]bool{}
+
+		for _, object := range e.analysis.Defs {
+			if variable, ok := object.(*gotypesstd.Var); ok && !variable.IsField() && variable.Pkg() != nil && variable.Parent() == variable.Pkg().Scope() {
+				e.packageVariables[variable.Name()] = true
+			}
+		}
+	}
+
+	return e.packageVariables[name]
+}
+
 func (e *emitter) isDeclaredHere(name string) bool {
 	if len(e.scopes) == 0 {
 		return false
@@ -3524,7 +3592,7 @@ func (e *emitter) declare(name string) {
 		return
 	}
 
-	if !e.isShadowed(name) {
+	if !e.isShadowed(name) && !e.shadowsPackageVariable(name) {
 		current[name] = javaScriptIdentifier(name)
 		return
 	}
@@ -4290,4 +4358,37 @@ func (e *emitter) valueKindTarget(target ast.Expr) gotypesstd.Type {
 	}
 
 	return nil
+}
+
+func (e *emitter) isParameterName(name string) bool {
+	var ftype *ast.FuncType
+
+	var recv *ast.FieldList
+
+	switch fn := e.enclosingFunction().(type) {
+	case *ast.FuncDecl:
+		ftype, recv = fn.Type, fn.Recv
+	case *ast.FuncLit:
+		ftype = fn.Type
+	}
+
+	if ftype == nil {
+		return false
+	}
+
+	for _, list := range []*ast.FieldList{recv, ftype.Params, ftype.Results} {
+		if list == nil {
+			continue
+		}
+
+		for _, field := range list.List {
+			for _, id := range field.Names {
+				if id.Name == name {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
 }

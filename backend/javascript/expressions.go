@@ -607,6 +607,10 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			return err
 		}
 
+		if x.Op == token.SHL || x.Op == token.SHR {
+			e.wholeShiftOperands(x)
+		}
+
 		if e.isComplexExpr(x) {
 			return e.emitComplexBinary(x)
 		}
@@ -639,7 +643,7 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		// JavaScript shift is thirty-two bits wide whatever the count says, so
 		// both are read through the runtime rather than through an operator that
 		// cannot be asked for more.
-		if (x.Op == token.SHL || x.Op == token.SHR) && e.isIntegerExpr(x.X) && e.isIntegerExpr(x.Y) {
+		if (x.Op == token.SHL || x.Op == token.SHR) && e.isIntegerExpr(x.X) && (e.isIntegerExpr(x.Y) || e.exprOverride[x.Y] != "") {
 			e.needsRuntime = true
 			wrapName, wraps := narrowIntTypeName(e.analyzedType(x))
 
@@ -1513,6 +1517,16 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			case gotypes.MethodExpr:
 				if handled, err := e.emitScalarNamedMethodExpr(x); handled {
 					return err
+				}
+
+				if name, ok := e.tableMethodReceiver(x, method); ok {
+					e.needsRuntime = true
+					e.write("function* (receiver, ...args) { return go2jsNamedMethodCall(receiver, ")
+					e.write(strconv.Quote(name))
+					e.write(", ")
+					e.write(strconv.Quote(method.Name()))
+					e.write(", ...args); }")
+					return nil
 				}
 
 				e.write("go2jsMethodExpression(")
@@ -3032,6 +3046,68 @@ func constantLiteral(value constant.Value) (string, bool) {
 		number, _ := constant.Float64Val(value)
 
 		return strconv.FormatFloat(number, 'g', -1, 64), true
+	}
+
+	return "", false
+}
+
+// wholeShiftOperands writes the operands of a shift that a constant spells as a
+// complex number, such as the count in x<<(1+0i), as the whole numbers they
+// are, since a shift has no complex operand and the type of a constant that
+// has not met a variable is left as it was written.
+func (e *emitter) wholeShiftOperands(shift *ast.BinaryExpr) {
+	if e.analysis == nil {
+		return
+	}
+
+	for _, operand := range []ast.Expr{shift.X, shift.Y} {
+		info, ok := e.analysis.Types[operand]
+		if !ok || info.Value == nil {
+			continue
+		}
+
+		whole := constant.ToInt(info.Value)
+		if whole.Kind() != constant.Int || (info.Value.Kind() != constant.Complex && operand != shift.Y) {
+			continue
+		}
+
+		text := whole.ExactString()
+
+		// A count past every width a number has shifts all of it away, whatever
+		// it is, and a count as large as the biggest unsigned number would ask
+		// the runtime for a number of that many bits.
+		if operand == shift.Y && constant.Compare(whole, token.GTR, constant.MakeInt64(1024)) {
+			text = "1024"
+		} else if info.Value.Kind() != constant.Complex {
+			continue
+		}
+
+		if e.exprOverride == nil {
+			e.exprOverride = map[ast.Expr]string{}
+		}
+
+		e.exprOverride[operand] = text
+	}
+}
+
+func (e *emitter) tableMethodReceiver(x *ast.SelectorExpr, method *gotypes.Func) (string, bool) {
+	t := e.analyzedType(x.X)
+	if t == nil {
+		return "", false
+	}
+
+	if ptr, ok := gotypes.Unalias(t).(*gotypes.Pointer); ok {
+		t = ptr.Elem()
+	}
+
+	named, ok := gotypes.Unalias(t).(*gotypes.Named)
+	if !ok || named.Obj().Pkg() == nil || named.Obj().Parent() != named.Obj().Pkg().Scope() || named.TypeParams().Len() != 0 || !e.declaresInSource(method) {
+		return "", false
+	}
+
+	switch named.Underlying().(type) {
+	case *gotypes.Slice, *gotypes.Map:
+		return named.Obj().Name(), true
 	}
 
 	return "", false

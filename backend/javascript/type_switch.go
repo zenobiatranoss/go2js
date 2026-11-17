@@ -235,6 +235,15 @@ func (e *emitter) typeSwitchCaseName(expr ast.Expr) (string, error) {
 	}
 
 	name := e.typeSwitchExprName(expr)
+	if name == "" && e.analysis != nil {
+		// A type spelled with something the names above do not cover, such as
+		// a function, a channel, an array or a struct, is named the way the
+		// compiler names it where a value of it is put in an interface.
+		if known, ok := e.analysis.Types[expr]; ok && known.IsType() && known.Type != nil {
+			name = goTypeName(known.Type)
+		}
+	}
+
 	if name == "" {
 		return "", fmt.Errorf("unsupported type switch case: %s", exprString(expr))
 	}
