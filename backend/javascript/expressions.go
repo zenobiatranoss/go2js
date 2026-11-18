@@ -1129,6 +1129,17 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		e.write(")")
 
 	case *ast.CallExpr:
+		if fn, ok := x.Fun.(*ast.Ident); ok && (fn.Name == "len" || fn.Name == "cap") && e.analysis != nil && len(x.Args) == 1 && e.isUniverseName(fn) {
+			if tv, known := e.analysis.Types[x]; known && tv.Value != nil && tv.Value.Kind() == constant.Int {
+				if argument := e.analyzedType(x.Args[0]); argument != nil {
+					if _, pointer := gotypes.Unalias(argument).Underlying().(*gotypes.Pointer); pointer {
+						e.write(tv.Value.ExactString())
+						return nil
+					}
+				}
+			}
+		}
+
 		// What the call has to be written as comes from what the target turned
 		// out to be: a function of this package is a generator the call steps, a
 		// name whose shape is not settled is one the runtime runs, and anything

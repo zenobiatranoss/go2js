@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/token"
 	gotypesstd "go/types"
+	"strconv"
 	"strings"
 )
 
@@ -38,7 +39,13 @@ func (e *emitter) emitRangeStmt(stmt *ast.RangeStmt) error {
 	e.writeIndent()
 	e.write("for (const ")
 	e.write(temp)
-	e.write(" of go2jsRangeValue(")
+	arrayLength, throughPointer := e.pointerToArrayLength(stmt.X)
+
+	if throughPointer {
+		e.write(" of go2jsRangeArrayPointer(" + strconv.FormatInt(arrayLength, 10) + ", " + strconv.FormatBool(stmt.Value != nil && !isBlankIdent(stmt.Value)) + ", ")
+	} else {
+		e.write(" of go2jsRangeValue(")
+	}
 
 	// The subject is written after the loop variable but belongs to the
 	// enclosing scope, so it is rendered with the header scope popped; a range
@@ -317,7 +324,7 @@ func (e *emitter) rangeThroughTemporaries(stmt *ast.RangeStmt) *ast.RangeStmt {
 	var assignments []ast.Stmt
 
 	replace := func(target ast.Expr, prefix string) ast.Expr {
-		if plain(target) {
+		if target == nil || isBlankIdent(target) {
 			return target
 		}
 
@@ -336,6 +343,12 @@ func (e *emitter) rangeThroughTemporaries(stmt *ast.RangeStmt) *ast.RangeStmt {
 	rewritten.Key = replace(stmt.Key, "rangeKey")
 	rewritten.Value = replace(stmt.Value, "rangeValue")
 	rewritten.Tok = token.DEFINE
+
+	if len(assignments) == 2 {
+		if key, ok := ast.Unparen(stmt.Key).(*ast.Ident); ok && mentionsAny(stmt.Value, map[string]bool{key.Name: true}) {
+			assignments[0], assignments[1] = assignments[1], assignments[0]
+		}
+	}
 
 	body.List = append(assignments, stmt.Body.List...)
 	rewritten.Body = body
@@ -540,6 +553,22 @@ function go2jsRangeMap(value) {
 	return value === null || value === undefined ? new go2jsNativeMap() : value;
 }
 
+function* go2jsRangeArrayPointer(length, withValue, value) {
+	if (value === null || value === undefined) {
+		if (withValue) {
+			return null.length;
+		}
+
+		for (let index = 0; index < length; index++) {
+			yield [index, undefined];
+		}
+
+		return;
+	}
+
+	yield* go2jsRangeValue(value);
+}
+
 function* go2jsRangeValue(value) {
 	if (value === null || value === undefined) {
 		return;
@@ -684,4 +713,23 @@ func rangeVarsChanged(stmt *ast.RangeStmt) bool {
 	})
 
 	return changed
+}
+
+func (e *emitter) pointerToArrayLength(expr ast.Expr) (int64, bool) {
+	t := e.analyzedType(expr)
+	if t == nil {
+		return 0, false
+	}
+
+	pointer, ok := gotypesstd.Unalias(t).Underlying().(*gotypesstd.Pointer)
+	if !ok {
+		return 0, false
+	}
+
+	array, ok := gotypesstd.Unalias(pointer.Elem()).Underlying().(*gotypesstd.Array)
+	if !ok {
+		return 0, false
+	}
+
+	return array.Len(), true
 }
