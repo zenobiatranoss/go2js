@@ -233,7 +233,7 @@ func zeroValueForGoType(t types.Type) string {
 
 	case *types.Array:
 		elemZero := zeroValueForGoType(t.Elem())
-		return "go2jsZeroArray(" + strconv.FormatInt(t.Len(), 10) + ", () => " + elemZero + ")"
+		return "go2jsZeroArray(" + strconv.FormatInt(t.Len(), 10) + ", () => (" + elemZero + "))"
 
 	case *types.Struct:
 		return "{}"
