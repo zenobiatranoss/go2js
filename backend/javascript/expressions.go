@@ -532,12 +532,17 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			e.write(javaScriptStringLiteral(value))
 
 		case token.CHAR:
-			value, err := strconv.Unquote(x.Value)
+			literal := x.Value
+			if len(literal) < 3 {
+				return fmt.Errorf("bad character literal %s", x.Value)
+			}
+
+			value, _, _, err := strconv.UnquoteChar(literal[1:len(literal)-1], '\'')
 			if err != nil {
 				return err
 			}
 
-			e.write(strconv.Itoa(int([]rune(value)[0])))
+			e.write(strconv.Itoa(int(value)))
 
 		case token.IMAG:
 			value, err := complexLiteralJavaScript(x.Value)
