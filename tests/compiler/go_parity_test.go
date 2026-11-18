@@ -1194,6 +1194,43 @@ runtime error: makeslice: len out of range
 runtime error: makeslice: cap out of range
 runtime error: makeslice: len out of range
 `},
+	{"uncomparable_struct_and_nil_array_pointer", `package main
+
+import (
+	"fmt"
+)
+
+type T struct {
+	a int
+	c []int
+}
+
+func try(f func()) {
+	defer func() {
+		r := recover()
+		_, ok := r.(error)
+		fmt.Println(r, ok)
+	}()
+	f()
+}
+
+func main() {
+	var x T
+	var z any = x
+	try(func() { fmt.Println(z != z) })
+	m := map[any]int{}
+	try(func() { m[z] = 1 })
+	var p *[10]int
+	try(func() { fmt.Println(p[3]) })
+	var q *[10]int = new([10]int)
+	q[2] = 5
+	fmt.Println(q[2], len(q))
+}
+`, `runtime error: comparing uncomparable type main.T true
+runtime error: hash of unhashable type main.T true
+runtime error: invalid memory address or nil pointer dereference true
+5 10
+`},
 }
 
 func TestGoVerifiedProgramsPrintTheSame(t *testing.T) {
