@@ -275,7 +275,22 @@ func (e *emitter) emitInterfaceValue(expr ast.Expr, target gotypes.Type) error {
 			display = goTypeName(info.Type)
 		}
 
-		e.write(", " + strconv.Quote(name) + ", " + strconv.Quote(display) + ")")
+		uncomparable := false
+
+		if info, ok := e.analysis.Types[expr]; ok && info.Type != nil {
+			if _, isStruct := info.Type.Underlying().(*gotypes.Struct); isStruct && !gotypes.Comparable(info.Type) {
+				uncomparable = true
+				name = display
+			}
+		}
+
+		e.write(", " + strconv.Quote(name) + ", " + strconv.Quote(display))
+
+		if uncomparable {
+			e.write(", true")
+		}
+
+		e.write(")")
 		return nil
 	}
 
