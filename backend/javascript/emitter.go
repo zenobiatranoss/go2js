@@ -1757,28 +1757,38 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 		if op, ok := compoundAssignBinaryOp(s.Tok); ok && len(s.Lhs) == 1 && len(s.Rhs) == 1 && isFloat32Type(e.analyzedType(s.Lhs[0])) &&
 			(op == token.ADD || op == token.SUB || op == token.MUL || op == token.QUO) {
 			e.needsRuntime = true
-			e.writeIndent()
 
-			if err := e.emitExpr(s.Lhs[0]); err != nil {
+			saved := e.buf
+			e.buf = bytes.Buffer{}
+
+			e.write("go2jsFloat32(")
+
+			err := e.emitExpr(s.Lhs[0])
+			if err == nil {
+				e.write(" " + op.String() + " (")
+				err = e.emitExpr(s.Rhs[0])
+			}
+
+			e.write("))")
+
+			text := e.buf.String()
+			e.buf = saved
+
+			if err != nil {
 				return err
 			}
 
-			e.write(" = go2jsFloat32(")
+			value := &ast.Ident{NamePos: s.Rhs[0].Pos(), Name: "go2jsFloat32Result"}
 
-			if err := e.emitExpr(s.Lhs[0]); err != nil {
-				return err
+			if e.exprOverride == nil {
+				e.exprOverride = map[ast.Expr]string{}
 			}
 
-			e.write(" " + op.String() + " (")
+			e.exprOverride[value] = text
 
-			if err := e.emitExpr(s.Rhs[0]); err != nil {
-				return err
-			}
+			defer delete(e.exprOverride, value)
 
-			e.write("));")
-			e.newline()
-
-			return nil
+			return e.emitStmt(&ast.AssignStmt{Lhs: s.Lhs, TokPos: s.TokPos, Tok: token.ASSIGN, Rhs: []ast.Expr{value}})
 		}
 
 		// A complex number is an object, so an assignment that works itself out
@@ -1787,13 +1797,8 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 			helper := map[token.Token]string{token.ADD: "go2jsComplexAdd", token.SUB: "go2jsComplexSub", token.MUL: "go2jsComplexMul", token.QUO: "go2jsComplexDiv"}[op]
 
 			if helper != "" {
-				e.writeIndent()
-
-				if err := e.emitExpr(s.Lhs[0]); err != nil {
-					return err
-				}
-
-				e.write(" = ")
+				saved := e.buf
+				e.buf = bytes.Buffer{}
 
 				narrow := false
 
@@ -1802,18 +1807,30 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 					e.write("go2jsComplex64(")
 				}
 
-				if err := e.emitComplexCall(helper, s.Lhs[0], s.Rhs[0]); err != nil {
-					return err
-				}
+				err := e.emitComplexCall(helper, s.Lhs[0], s.Rhs[0])
 
 				if narrow {
 					e.write(")")
 				}
 
-				e.write(";")
-				e.newline()
+				text := e.buf.String()
+				e.buf = saved
 
-				return nil
+				if err != nil {
+					return err
+				}
+
+				value := &ast.Ident{NamePos: s.Rhs[0].Pos(), Name: "go2jsComplexResult"}
+
+				if e.exprOverride == nil {
+					e.exprOverride = map[ast.Expr]string{}
+				}
+
+				e.exprOverride[value] = text
+
+				defer delete(e.exprOverride, value)
+
+				return e.emitStmt(&ast.AssignStmt{Lhs: s.Lhs, TokPos: s.TokPos, Tok: token.ASSIGN, Rhs: []ast.Expr{value}})
 			}
 		}
 
