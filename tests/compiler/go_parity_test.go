@@ -1312,6 +1312,67 @@ func main() {
 `, `1.0615201 [1 0.6666667 2.9] 1.6 1.21 1.0201 [(-2+2i) (2+0i)] (3+4i)
 3 2
 `},
+	{"values_sent_on_interface_channels_keep_their_type", `package main
+
+import "fmt"
+
+type U32 uint32
+type Name string
+type Pair struct{ a, b int }
+
+func kind(v any) string {
+	switch x := v.(type) {
+	case nil:
+		return "nil"
+	case U32:
+		return fmt.Sprint("U32 ", uint32(x))
+	case Name:
+		return "Name " + string(x)
+	case Pair:
+		return fmt.Sprint("Pair ", x.a+x.b)
+	case int:
+		return fmt.Sprint("int ", x)
+	}
+	return "other"
+}
+
+func main() {
+	c := make(chan any, 8)
+	c <- U32(7)
+	c <- Name("go")
+	c <- Pair{1, 2}
+	c <- 5
+	c <- nil
+	for i := 0; i < 5; i++ {
+		fmt.Println(kind(<-c))
+	}
+	for _, v := range []any{U32(1), Name("a"), Pair{3, 4}} {
+		select {
+		case c <- v:
+		}
+		fmt.Println(kind(<-c))
+	}
+	u := U32(9)
+	n := Name("z")
+	select {
+	case c <- u:
+	}
+	select {
+	case c <- n:
+	}
+	g := <-c
+	fmt.Println(g == u, g == any(n), kind(g), kind(<-c))
+}
+`, `U32 7
+Name go
+Pair 3
+int 5
+nil
+U32 1
+Name a
+Pair 7
+true false U32 9 Name z
+`},
 }
 
 func TestGoVerifiedProgramsPrintTheSame(t *testing.T) {
