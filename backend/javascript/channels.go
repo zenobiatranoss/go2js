@@ -212,6 +212,10 @@ func (e *emitter) emitChannelSendValue(channel, value ast.Expr) error {
 
 	switch element.Underlying().(type) {
 	case *gotypesstd.Struct, *gotypesstd.Array:
+	case *gotypesstd.Interface:
+		if e.selectingSend {
+			return e.emitExpr(value)
+		}
 	default:
 		return e.emitExpr(value)
 	}

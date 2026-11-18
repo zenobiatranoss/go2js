@@ -101,7 +101,11 @@ func (e *emitter) emitSelectStmt(stmt *ast.SelectStmt) error {
 		// whole select, and a copy of it rather than the value itself: what is
 		// sent is a value of its own and writing to what was sent afterwards is a
 		// write to the copy.
-		if err := e.emitChannelSendValue(channel, send.Value); err != nil {
+		e.selectingSend = true
+		err = e.emitChannelSendValue(channel, send.Value)
+		e.selectingSend = false
+
+		if err != nil {
 			return err
 		}
 

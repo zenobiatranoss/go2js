@@ -89,6 +89,7 @@ type emitter struct {
 	// name stands for the expression until the statement has been written.
 	exprOverride     map[ast.Expr]string
 	packageVariables map[string]bool
+	selectingSend    bool
 	inlineMode       bool
 	selfPackagePath  string
 	qualifiers       map[string]string
