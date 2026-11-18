@@ -726,6 +726,14 @@ function go2jsSliceCap(value) {
 	return state ? state.capacity : 0;
 }
 
+function go2jsArrayPointer(value) {
+	if (value === null || value === undefined) {
+		return null.length;
+	}
+
+	return value;
+}
+
 function go2jsSliceMake(length, capacity, zero, sharedZero) {
 	length = Math.trunc(Number(length));
 	capacity = Math.trunc(Number(capacity));

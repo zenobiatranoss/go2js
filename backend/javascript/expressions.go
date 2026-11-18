@@ -1640,8 +1640,22 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			e.needsRuntime = true
 			e.write("go2jsIndex(")
 
+			pointer := false
+
+			if t := e.analyzedType(x.X); t != nil {
+				_, pointer = gotypes.Unalias(t).Underlying().(*gotypes.Pointer)
+			}
+
+			if pointer {
+				e.write("go2jsArrayPointer(")
+			}
+
 			if err := e.emitExpr(x.X); err != nil {
 				return err
+			}
+
+			if pointer {
+				e.write(")")
 			}
 
 			e.write(", ")
