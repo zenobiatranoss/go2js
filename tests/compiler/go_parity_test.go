@@ -1231,6 +1231,51 @@ runtime error: hash of unhashable type main.T true
 runtime error: invalid memory address or nil pointer dereference true
 5 10
 `},
+	{"nil_array_pointer_range_len_and_unsafe_sizes", `package main
+
+import (
+	"fmt"
+	"unsafe"
+)
+
+type S struct {
+	A int8
+	B int64
+	C struct{ D, E int32 }
+}
+
+func main() {
+	var p *[4]int
+	n := 0
+	for i := range p {
+		n += i
+	}
+	fmt.Println(n, len(p), cap(p))
+	func() {
+		defer func() { fmt.Println(recover() != nil) }()
+		for _, v := range p {
+			n += v
+		}
+	}()
+	x := []int{10, 20}
+	y := []int{99}
+	i := 1
+	for i, x[i] = range y {
+		break
+	}
+	fmt.Println(i, x)
+	var s S
+	ps := &s
+	fmt.Println(unsafe.Sizeof(s), unsafe.Offsetof(s.B), unsafe.Offsetof(ps.C), unsafe.Alignof(s.A))
+	var t struct{ a, b bool }
+	fmt.Println(unsafe.Sizeof(t), unsafe.Sizeof(uintptr(0)))
+}
+`, `6 4 4
+true
+0 [10 99]
+24 8 16 1
+2 8
+`},
 }
 
 func TestGoVerifiedProgramsPrintTheSame(t *testing.T) {
