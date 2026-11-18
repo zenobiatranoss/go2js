@@ -1373,6 +1373,20 @@ Name a
 Pair 7
 true false U32 9 Name z
 `},
+	{"rune_literals_with_byte_escapes", `package main
+
+import "fmt"
+
+func main() {
+	var a uint8 = '\xff'
+	var b uint8 = '\377'
+	var c rune = 'é'
+	var d int32 = '\x80'
+	var e = '本'
+	fmt.Println(a, b, c, d, e, a == b, '\'', '\\', '\n')
+}
+`, `255 255 233 128 26412 true 39 92 10
+`},
 }
 
 func TestGoVerifiedProgramsPrintTheSame(t *testing.T) {
