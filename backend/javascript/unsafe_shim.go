@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"strconv"
 
+	gotypesconstant "go/constant"
 	gotypesstd "go/types"
 )
 
@@ -43,6 +44,11 @@ func (e *emitter) emitUnsafeCall(call *ast.CallExpr, selector *ast.SelectorExpr)
 	pkg, ok := selector.X.(*ast.Ident)
 	if !ok || pkg.Name != "unsafe" {
 		return false, nil
+	}
+
+	if tv, known := e.analysis.Types[call]; known && tv.Value != nil && tv.Value.Kind() == gotypesconstant.Int {
+		e.write(tv.Value.ExactString())
+		return true, nil
 	}
 
 	switch selector.Sel.Name {
