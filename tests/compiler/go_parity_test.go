@@ -1276,6 +1276,42 @@ true
 24 8 16 1
 2 8
 `},
+	{"float32_and_complex_compound_assign_targets", `package main
+
+import "fmt"
+
+type P struct {
+	f float32
+	c complex64
+}
+
+func main() {
+	a := new(float32)
+	*a = 1.01
+	for i := 0; i < 5; i++ {
+		*a *= 1.01
+	}
+	arr := [3]float32{1, 2, 3}
+	arr[1] /= 3
+	arr[2] -= 0.1
+	m := map[string]float32{"x": 1.5}
+	m["x"] += 0.1
+	var s P
+	s.f += 1.1
+	s.f *= 1.1
+	c := new(complex64)
+	*c = 1.01 + 1.01i
+	*c *= 1.01 + 0i
+	ca := [2]complex128{1 + 1i, 2}
+	ca[0] *= 2i
+	s.c += 3 + 4i
+	fmt.Println(*a, arr, m["x"], s.f, real(*c), ca, s.c)
+	var z [3][2]struct{}
+	fmt.Println(len(z), len(z[0]))
+}
+`, `1.0615201 [1 0.6666667 2.9] 1.6 1.21 1.0201 [(-2+2i) (2+0i)] (3+4i)
+3 2
+`},
 }
 
 func TestGoVerifiedProgramsPrintTheSame(t *testing.T) {
