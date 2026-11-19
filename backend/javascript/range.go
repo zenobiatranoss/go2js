@@ -527,6 +527,10 @@ function go2jsRangeSequence(value) {
 		return go2jsRangeYielded(value);
 	}
 
+	if (go2jsNaNKeys === true && value instanceof go2jsNativeMap) {
+		return go2jsRangeNaNKeys(value);
+	}
+
 	return value === null || value === undefined ? [] : value;
 }
 
@@ -587,6 +591,11 @@ function* go2jsRangeValue(value) {
 
 	if (value instanceof go2jsNativeMap) {
 		for (const entry of value.entries()) {
+			if (entry[0] instanceof Number) {
+				yield [NaN, entry[1]];
+				continue;
+			}
+
 			yield entry;
 		}
 		return;

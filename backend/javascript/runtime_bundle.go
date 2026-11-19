@@ -26,6 +26,33 @@ type runtimeBlock struct {
 	whole bool
 }
 
+// runtimeReplaceMarker begins a source whose blocks stand in for the blocks of
+// the same names that came before them, so that a part of the runtime can be
+// written again without the source it was first written in being touched.
+const runtimeReplaceMarker = "// go2js:replaces"
+
+func runtimeReplaceBlocks(blocks, replacements []runtimeBlock) []runtimeBlock {
+	replaced := map[string]bool{}
+
+	for _, block := range replacements {
+		if len(block.names) == 1 {
+			replaced[block.names[0]] = true
+		}
+	}
+
+	kept := blocks[:0:0]
+
+	for _, block := range blocks {
+		if len(block.names) == 1 && replaced[block.names[0]] {
+			continue
+		}
+
+		kept = append(kept, block)
+	}
+
+	return append(kept, replacements...)
+}
+
 // runtimeBundle is the runtime a program needs, which is every block it names
 // and every block those blocks name in turn. A block nobody names is left out,
 // so a program that touches a little of the runtime carries only a little of it.
@@ -43,6 +70,12 @@ func runtimeBundle(requiredSource string, sources ...string) string {
 				text:  strings.TrimSpace(source),
 				whole: true,
 			})
+
+			continue
+		}
+
+		if strings.HasPrefix(strings.TrimSpace(source), runtimeReplaceMarker) {
+			blocks = runtimeReplaceBlocks(blocks, split)
 
 			continue
 		}

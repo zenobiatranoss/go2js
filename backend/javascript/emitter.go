@@ -1181,6 +1181,7 @@ func runtimeSourceParts() []string {
 		osEnvironRuntimeSource(),
 		randGeneratorSource(),
 		builtinPrintRuntimeSource(),
+		runtimeFixesSource(),
 	}
 }
 

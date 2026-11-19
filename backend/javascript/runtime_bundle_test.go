@@ -145,10 +145,28 @@ func TestRuntimeSourcesHaveNoDuplicateFunctions(t *testing.T) {
 	units := runtimeBundleSources()
 	owners := map[string][]string{}
 
+	replaced := map[string]bool{}
+
 	for index, source := range units {
+		replacing := strings.HasPrefix(strings.TrimSpace(source), runtimeReplaceMarker)
+
 		for _, match := range runtimeFunctionPattern.FindAllStringSubmatch(source, -1) {
+			if replacing {
+				replaced[match[1]] = true
+
+				continue
+			}
+
 			owners[match[1]] = append(owners[match[1]], strconv.Itoa(index))
 		}
+	}
+
+	for name := range replaced {
+		if len(owners[name]) > 1 {
+			t.Errorf("%s is replaced but is declared %d times before it", name, len(owners[name]))
+		}
+
+		delete(owners, name)
 	}
 
 	var duplicates []string
