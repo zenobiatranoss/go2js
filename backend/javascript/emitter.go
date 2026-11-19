@@ -1180,6 +1180,7 @@ func runtimeSourceParts() []string {
 		netHTTPRuntimeSource(),
 		osEnvironRuntimeSource(),
 		randGeneratorSource(),
+		builtinPrintRuntimeSource(),
 	}
 }
 

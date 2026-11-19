@@ -347,6 +347,20 @@ func (e *emitter) emitFuncBody(body *ast.BlockStmt) error {
 }
 
 func (e *emitter) emitDeferStmt(stmt *ast.DeferStmt) error {
+	if name, ok := e.builtinName(stmt.Call); ok && (name == "go2jsBuiltinPrintln" || name == "go2jsBuiltinPrint") {
+		wrapped, err := e.wrapBuiltinPrintOperands(stmt.Call)
+
+		defer func() {
+			for _, arg := range wrapped {
+				delete(e.exprOverride, arg)
+			}
+		}()
+
+		if err != nil {
+			return err
+		}
+	}
+
 	e.writeIndent()
 	e.write("((")
 

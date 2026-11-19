@@ -1134,6 +1134,20 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		e.write(")")
 
 	case *ast.CallExpr:
+		if name, ok := e.builtinName(x); ok && (name == "go2jsBuiltinPrintln" || name == "go2jsBuiltinPrint") && !e.printOperandsWrapped(x) {
+			wrapped, err := e.wrapBuiltinPrintOperands(x)
+
+			defer func() {
+				for _, arg := range wrapped {
+					delete(e.exprOverride, arg)
+				}
+			}()
+
+			if err != nil {
+				return err
+			}
+		}
+
 		if fn, ok := x.Fun.(*ast.Ident); ok && (fn.Name == "len" || fn.Name == "cap") && e.analysis != nil && len(x.Args) == 1 && e.isUniverseName(fn) {
 			if tv, known := e.analysis.Types[x]; known && tv.Value != nil && tv.Value.Kind() == constant.Int {
 				if argument := e.analyzedType(x.Args[0]); argument != nil {
@@ -1447,7 +1461,7 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			if i > 0 {
 				e.write(", ")
 			}
-			if ident, ok := x.Fun.(*ast.Ident); ok && ident.Name == "println" && e.isFloatExpr(arg) {
+			if ident, ok := x.Fun.(*ast.Ident); ok && ident.Name == "println" && e.isFloatExpr(arg) && e.exprOverride[arg] == "" {
 				e.needsRuntime = true
 				e.write("go2jsFloat(")
 				if err := e.emitExpr(arg); err != nil {
