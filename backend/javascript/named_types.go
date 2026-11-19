@@ -549,8 +549,14 @@ func (e *emitter) emitScalarNamedPointerCall(call *ast.CallExpr, selector *ast.S
 	}
 
 	e.needsRuntime = true
-	e.write(e.resolveName(ident.Name))
-	e.write(" = yield* (function* () {")
+
+	if results == 1 {
+		e.write("(yield* (function* () {")
+	} else {
+		e.write(e.resolveName(ident.Name))
+		e.write(" = yield* (function* () {")
+	}
+
 	e.write("const cell = go2jsNew(")
 	e.write(e.resolveName(ident.Name))
 	e.write(");")
@@ -589,7 +595,12 @@ func (e *emitter) emitScalarNamedPointerCall(call *ast.CallExpr, selector *ast.S
 		e.write("return go2jsDeref(cell);")
 	}
 
-	e.write("})()")
+	if results == 1 {
+		e.write("})())")
+	} else {
+		e.write("})()")
+	}
+
 	return true, nil
 }
 
