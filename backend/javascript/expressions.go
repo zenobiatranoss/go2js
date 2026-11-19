@@ -494,6 +494,23 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		}
 	}
 
+	if call, isCall := expr.(*ast.CallExpr); isCall && e.analysis != nil && len(call.Args) == 1 {
+		if info, ok := e.analysis.Types[expr]; ok && info.Value != nil && info.Type != nil {
+			if basic, isBasic := info.Type.Underlying().(*gotypes.Basic); isBasic && (basic.Kind() == gotypes.Complex64 || basic.Kind() == gotypes.Complex128) {
+				re, _ := constant.Float64Val(constant.ToFloat(constant.Real(info.Value)))
+				im, _ := constant.Float64Val(constant.ToFloat(constant.Imag(info.Value)))
+
+				if basic.Kind() == gotypes.Complex64 {
+					re, im = float64(float32(re)), float64(float32(im))
+				}
+
+				e.write("{re: " + strconv.FormatFloat(re, 'g', -1, 64) + ", im: " + strconv.FormatFloat(im, 'g', -1, 64) + "}")
+
+				return nil
+			}
+		}
+	}
+
 	switch x := expr.(type) {
 	case *ast.Ident:
 		if x.Name == "nil" {
