@@ -1387,6 +1387,33 @@ func main() {
 }
 `, `255 255 233 128 26412 true 39 92 10
 `},
+	{"num_goroutine_follows_the_scheduler", `package main
+
+import (
+	"fmt"
+	"runtime"
+	"sync"
+)
+
+func main() {
+	fmt.Println(runtime.NumGoroutine())
+	var wg sync.WaitGroup
+	ch := make(chan int)
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); <-ch }()
+	}
+	runtime.Gosched()
+	fmt.Println(runtime.NumGoroutine())
+	close(ch)
+	wg.Wait()
+	runtime.Gosched()
+	fmt.Println(runtime.NumGoroutine())
+}
+`, `1
+4
+1
+`},
 }
 
 func TestGoVerifiedProgramsPrintTheSame(t *testing.T) {
