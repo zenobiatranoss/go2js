@@ -1414,6 +1414,105 @@ func main() {
 4
 1
 `},
+	{"nan_keys_never_match", `package main
+
+import (
+	"fmt"
+	"math"
+)
+
+func main() {
+	m64 := map[float64]string{}
+	m32 := map[float32]string{}
+	n := math.NaN()
+	m64[n] = "a"
+	m64[n] = "b"
+	m32[float32(n)] = "a"
+	m32[float32(n)] = "b"
+	_, ok64 := m64[n]
+	_, ok32 := m32[float32(n)]
+	fmt.Println(len(m64), len(m32), ok64, ok32)
+	delete(m64, n)
+	fmt.Println(len(m64))
+}
+`, `2 2 false false
+2
+`},
+	{"nan_keys_are_walked_as_nan", `package main
+
+import (
+	"fmt"
+	"math"
+)
+
+func main() {
+	m := map[float64]int{math.NaN(): 1, 1.5: 2}
+	m[math.NaN()] = 3
+	sum := 0
+	nans := 0
+	for k, v := range m {
+		sum += v
+		if k != k {
+			nans++
+		}
+	}
+	fmt.Println(len(m), sum, nans, m[1.5])
+	clear(m)
+	fmt.Println(len(m))
+}
+`, `3 6 2 2
+0
+`},
+	{"faults_raised_by_the_runtime_are_runtime_errors", `package main
+
+import (
+	"fmt"
+	"runtime"
+)
+
+type T struct{ c []int }
+
+func try(f func()) {
+	defer func() {
+		r := recover()
+		_, ok := r.(runtime.Error)
+		fmt.Println(r, ok)
+	}()
+	f()
+}
+
+func main() {
+	var z any = T{}
+	m := map[any]int{}
+	try(func() { fmt.Println(z == z) })
+	try(func() { m[z] = 1 })
+	var a []int
+	try(func() { _ = a[3] })
+	try(func() { panic(fmt.Errorf("mine")) })
+}
+`, `runtime error: comparing uncomparable type main.T true
+runtime error: hash of unhashable type main.T true
+runtime error: index out of range [3] with length 0 true
+mine false
+`},
+	{"constant_complex_conversion_is_a_complex_key", `package main
+
+import (
+	"fmt"
+	"math"
+)
+
+func main() {
+	pz := complex64(0)
+	nz := complex(0, math.Float32frombits(1<<31))
+	m := map[complex64]string{pz: "+0"}
+	fmt.Println(m[nz], m[pz], len(m))
+	m[nz] = "-0"
+	fmt.Println(len(m))
+}
+`, `+0 +0 1
+1
+`},
 }
 
 func TestGoVerifiedProgramsPrintTheSame(t *testing.T) {
