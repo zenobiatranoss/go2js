@@ -165,7 +165,7 @@ function go2jsRuntimeNumCPU() {
 }
 
 function go2jsRuntimeNumGoroutine() {
-	return 1;
+	return Math.max(1, go2jsLiveTasks);
 }
 
 // go2jsRuntimeReadMemStats fills in what the engine can say about its memory, as
