@@ -1,0 +1,40 @@
+City Library 3 books
+ID  TITLE                        AUTHORS                         YEAR  RATING  IN
+1   The Go Programming Language  Alan Donovan & Brian Kernighan  2015  4.7     yes
+2   Dune                         Frank Herbert                   1965  4.5     no
+3   Poems                        Anonymous                       1850  3.2     yes
+best: The Go Programming Language
+[
+  {
+    "id": 3,
+    "title": "Poems",
+    "authors": [
+      {
+        "name": "Anonymous"
+      }
+    ],
+    "rating": 3.2,
+    "available": true,
+    "published": "1850-01-01T00:00:00Z",
+    "extra": {
+      "branch": "north",
+      "note": "loaned out"
+    }
+  },
+  {
+    "id": 4,
+    "title": "New Arrival",
+    "authors": null,
+    "rating": 0,
+    "available": false,
+    "published": "2024-02-29T12:30:00Z"
+  }
+] <nil>
+{"a":null,"b":[1,2],"c":1.5,"d":"x\u003cy"}
+list: [1 two true <nil>] ([]interface {})
+n: 3 (float64)
+obj: map[k:v] (map[string]interface {})
+json: cannot unmarshal string into Go struct field Book.id of type int
+unexpected end of JSON input
+Mon Nov 16 2015 Monday -8
+2024-03-02 2024-02-01T12:00:00Z 1h30m0s

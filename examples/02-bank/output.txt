@@ -1,0 +1,10 @@
+1. alice -> bob 30: ok             <nil>
+2. bob -> alice 80: short by 30    withdraw from bob: insufficient funds: need 80, have 50
+3. alice -> carol 10: frozen         deposit to carol: account frozen
+4. dave -> bob 1: other          no account "dave"
+5. alice -> bob -5: other          transfer aborted: invalid deposit -5
+6. carol -> bob 5: frozen         withdraw from carol: account frozen
+alice    75  [withdraw 30; withdraw 10; rollback 10; withdraw -5]
+bob      50  [deposit 30]
+carol   500  []
+true account frozen | insufficient funds: need 5, have 1

@@ -1,0 +1,13 @@
+28 3.75 22
+[25 9 64 1 81 4] [25 64 81]
+538192
+[GO JS]
+oldest: {Cid 47 Oslo}
+empty: false
+Kyiv  [Eve] avg age 29.0
+Oslo  [Ann Cid] avg age 39.0
+Rome  [Bob Dee] avg age 31.5
+three two one empty stack
+[apple=7 fig=1 pear=3]
+3 true false
+9 2 false

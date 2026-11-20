@@ -1,0 +1,14 @@
+1 + 2 * 3                      (1 + (2 * 3)) = 7
+(1 + 2) * 3                    ((1 + 2) * 3) = 9
+2 ^ 3 ^ 2                      (2 ^ (3 ^ 2)) = 512
+-x ^ 2 + 10                    (((-x) ^ 2) + 10) = 26
+sqrt(16) + max(1, x, 3) * 2    (sqrt(16) + (max(1, x, 3) * 2)) = 12
+100 * (1 + rate) ^ 10          (100 * ((1 + rate) ^ 10)) = 196.715
+17 % 5 + abs(-2.5)             ((17 % 5) + abs((-2.5))) = 4.5
+2 * pi * x                     ((2 * pi) * x) = 25.1327
+1 / (x - 4)                    error: division by zero
+3 +                            error: unexpected EOF "" at 4
+y * 2                          error: undefined variable y
+foo(1)                         error: unknown function foo
+4 $ 4                          error: unexpected '$' at 2
+(1 + 2                         error: missing )

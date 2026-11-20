@@ -1,0 +1,25 @@
+By SKU
+----------------------------------------------------------
+B-100    Go in Practice by A. Smith, 320 pages    4 x   39.90
+B-200    Types and Programming by B. Jones, 623 pages    2 x   54.50
+F-900    Coffee beans (F-900)                 25 x   12.75
+F-901    Fresh milk (F-901)                   40 x    1.20
+G-001    Desk lamp drawing 12W                15 x   24.00
+G-002    Kettle drawing 1800W                  3 x   31.25
+
+By value, highest first
+----------------------------------------------------------
+G-001    Desk lamp drawing 12W                15 x   24.00
+F-900    Coffee beans (F-900)                 25 x   12.75
+B-100    Go in Practice by A. Smith, 320 pages    4 x   39.90
+B-200    Types and Programming by B. Jones, 623 pages    2 x   54.50
+G-002    Kettle drawing 1800W                  3 x   31.25
+F-901    Fresh milk (F-901)                   40 x    1.20
+
+Total stock value: 1089.10
+removed 15 of G-001
+error: only 40 of F-901 left, wanted 41
+error: unknown sku "X-000"
+removed 2 of B-200
+Items left: 4, value 620.10
+map[book:1 gadget:1 other:2]

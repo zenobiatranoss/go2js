@@ -1,0 +1,10 @@
+BFS from A: [A B C F D E]
+A to A:  0 via A
+A to B:  7 via A -> B
+A to C:  9 via A -> C
+A to D: 20 via A -> C -> D
+A to E: 20 via A -> C -> F -> E
+A to F: 11 via A -> C -> F
+dress order: [shirt socks tie trousers belt jacket shoes] <nil>
+with cycle: cycle detected after 3 of 7 nodes
+MST weight 14 [1-2 1-3 3-4 0-2 4-5]

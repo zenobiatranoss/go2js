@@ -1,0 +1,24 @@
+job  1 ->  16 steps
+job  2 ->  17 steps
+job  3 ->   7 steps
+job  4 ->  18 steps
+job  5 ->  13 steps
+job  6 ->   8 steps
+job  7 ->  24 steps
+job  8 ->  19 steps
+job  9 -> 107 steps
+job 10 ->  14 steps
+job 11 ->  22 steps
+job 12 ->   9 steps
+job 13 ->  92 steps
+job 14 ->  25 steps
+job 15 ->  38 steps
+job 16 ->  20 steps
+job 17 ->  33 steps
+job 18 -> 108 steps
+job 19 ->  28 steps
+job 20 ->  15 steps
+sum of odd squares up to 10: 165
+17 17 16
+ticker fired repeatedly: true
+got hello from select
