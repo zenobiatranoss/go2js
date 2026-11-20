@@ -8,7 +8,7 @@ the tool does not do yet are as much a part of a release as the things it does.
 
 ## [Unreleased]
 
-- **Measured against Go's own conformance tests: 100 of 138 (72.5%).**
+- **Measured against Go's own conformance tests: 101 of 138 (73.2%).**
   `tests/goroot/corpus/run.py` compiles and runs every top-level `// run`
   program of `$GOROOT/test` and compares with Go's `.out` file; the table of
   results is `tests/goroot/corpus/RESULTS.md`. This round fixed, among others:
@@ -21,7 +21,8 @@ the tool does not do yet are as much a part of a release as the things it does.
   as `type T1 T`, typed nil pointers in interfaces, interface method
   expressions, package variables initialized in dependency order, `len` of a
   pointer to an array, "missing method" in failed interface assertions, and
-  channels stored in slices losing their identity when the slice grew.
+  channels stored in slices losing their identity when the slice grew. A
+  minimal `syscall` package now offers `Getpid`, `Kill` and `SIGCHLD`.
 
 - **A browser playground,** live at
   <https://zenobiatranoss.github.io/go2js/>. The compiler, built as WebAssembly,
