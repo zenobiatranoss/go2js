@@ -291,14 +291,14 @@ func (e *emitter) emitFuncBody(body *ast.BlockStmt) error {
 
 		names := e.namedResultNames()
 		if len(names) == 1 {
-			e.write(e.resolveName(names[0]))
+			e.write(e.resultJSName(0, names[0]))
 		} else {
 			e.write("[")
 			for i, name := range names {
 				if i > 0 {
 					e.write(", ")
 				}
-				e.write(e.resolveName(name))
+				e.write(e.resultJSName(i, name))
 			}
 			e.write("]")
 		}

@@ -243,5 +243,12 @@ function go2jsRunInitializers() {
 	while (go2jsInitializers.length > 0) {
 		go2jsInitializers.shift().run();
 	}
+}
+
+function go2jsGenerator(value) {
+	// A generator answers to next, throw and return together. A struct of the
+	// program that has a method called next is not one, and running it as one
+	// would wait on a task that never was.
+	return value !== null && typeof value === "object" && typeof value.next === "function" && typeof value.throw === "function" && typeof value.return === "function";
 }`
 }

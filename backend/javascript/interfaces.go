@@ -652,7 +652,15 @@ func (e *emitter) emitNamedMethodCall(expr ast.Expr, named *gotypes.Named, name 
 		// The method was written as a generator, so the call hands the turn to
 		// it, in parentheses so that it can stand wherever a value is expected.
 		e.write("(yield* ")
-		e.write(scalarNamedMethodName(namedMethodRegisteredName(named), name))
+
+		// The methods of a named slice, map or array are written under a name of
+		// their own, apart from the ones of a named number or string.
+		if e.isNamedAggregateType(named.Obj().Name()) {
+			e.write(namedAggregateMethodName(namedMethodRegisteredName(named), name))
+		} else {
+			e.write(scalarNamedMethodName(namedMethodRegisteredName(named), name))
+		}
+
 		e.write("(")
 
 		if err := e.emitExpr(expr); err != nil {
@@ -968,7 +976,7 @@ func isFormatStringPlaceholder(call *ast.CallExpr) bool {
 		return false
 	}
 
-	return selector.Sel.Name == "Sprintf" || selector.Sel.Name == "Printf"
+	return selector.Sel.Name == "Sprintf" || selector.Sel.Name == "Printf" || selector.Sel.Name == "Errorf"
 }
 
 func (e *emitter) declaresInSource(fn *gotypes.Func) bool {

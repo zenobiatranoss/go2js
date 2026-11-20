@@ -118,7 +118,7 @@ func isFmtPrintBuiltin(call *ast.CallExpr) bool {
 	}
 
 	switch selector.Sel.Name {
-	case "Println", "Print", "Sprintf", "Printf", "Fprintf", "Fprintln", "Fprint":
+	case "Println", "Print", "Sprintf", "Printf", "Fprintf", "Fprintln", "Fprint", "Errorf":
 		return true
 	default:
 		return false

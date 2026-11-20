@@ -1557,6 +1557,65 @@ func main() {
 42 41 5 7
 interface conversion: int is not main.m: missing method m
 `},
+	{"shadowed_results_next_method_stringers", `package main
+
+import (
+	"fmt"
+	"math/big"
+	"strings"
+)
+
+type K int
+
+func (k K) String() string { return [...]string{"A", "B"}[k] }
+
+type Grid [][]bool
+
+func (g Grid) String() string { return fmt.Sprint(len(g), " rows") }
+
+type Parser struct{ pos int }
+
+func (p *Parser) next() int { p.pos++; return p.pos }
+
+func shadow(fail bool) (err error) {
+	if err := check(fail); err != nil {
+		return err
+	}
+	return nil
+}
+
+func check(fail bool) error {
+	if fail {
+		return fmt.Errorf("failed with %v", K(1))
+	}
+	return nil
+}
+
+func swap() (a, b int) {
+	a, b = 1, 2
+	return b, a
+}
+
+func main() {
+	p := &Parser{}
+	fmt.Println(p.next(), p.next())
+	fmt.Println(shadow(true), shadow(false))
+	fmt.Println(swap())
+	fmt.Printf("%s\n", Grid{{true}, {false}})
+	var sb strings.Builder
+	for _, v := range []float64{1, 2.5} {
+		fmt.Fprintf(&sb, "%6.1f|", v)
+	}
+	fmt.Println(sb.String())
+	fmt.Println(new(big.Int).MulRange(1, 25))
+}
+`, `1 2
+failed with B <nil>
+2 1
+2 rows
+   1.0|   2.5|
+15511210043330985984000000
+`},
 }
 
 func TestGoVerifiedProgramsPrintTheSame(t *testing.T) {

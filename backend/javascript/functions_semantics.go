@@ -1,6 +1,7 @@
 package javascript
 
 import (
+	"go/ast"
 	"go/types"
 	"strconv"
 	"strings"
@@ -45,6 +46,16 @@ func (e *emitter) canUseNamedReturn() bool {
 	return true
 }
 
+// resultJSName is the name a named result has in the script, however many
+// variables of the same name a block inside the function has put in front of it.
+func (e *emitter) resultJSName(index int, name string) string {
+	if names, ok := e.resultJSNames[e.namedResultsBody]; ok && index < len(names) {
+		return names[index]
+	}
+
+	return e.resolveName(name)
+}
+
 func (e *emitter) emitNamedResults() error {
 	if e.currentSignature == nil {
 		return nil
@@ -61,6 +72,12 @@ func (e *emitter) emitNamedResults() error {
 		}
 
 		e.declare(name)
+
+		if e.resultJSNames == nil {
+			e.resultJSNames = map[*ast.BlockStmt][]string{}
+		}
+
+		e.resultJSNames[e.namedResultsBody] = append(e.resultJSNames[e.namedResultsBody], e.resolveName(name))
 
 		e.writeIndent()
 		e.write(e.emitDeclarationKeyword())

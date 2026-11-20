@@ -88,8 +88,23 @@ func (e *emitter) emitErrorfCall(call *ast.CallExpr) error {
 		return err
 	}
 
-	for _, arg := range call.Args[1:] {
+	verbs, literal := formatStringVerbs(call.Args)
+
+	for i, arg := range call.Args[1:] {
 		e.write(", ")
+
+		// A value with a String or Error method of its own is told by that
+		// method here, as Sprintf does, so the text reads as it does in Go.
+		verb, known := formatVerbForArg(verbs, i+1)
+		if literal && !call.Ellipsis.IsValid() && known && verb != 'w' && verbUsesStringer(verb) {
+			if emitted, err := e.emitStringerValue(arg); emitted || err != nil {
+				if err != nil {
+					return err
+				}
+
+				continue
+			}
+		}
 
 		if err := e.emitExpr(arg); err != nil {
 			return err

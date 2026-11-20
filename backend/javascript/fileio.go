@@ -171,6 +171,8 @@ func (e *emitter) emitFileCall(call *ast.CallExpr, selector *ast.SelectorExpr) (
 	if format == "printf" {
 		e.write("go2jsSprintf(")
 
+		verbs, literal := formatStringVerbs(call.Args[1:])
+
 		if err := e.emitFormatArgument(call.Args[1]); err != nil {
 			return true, err
 		}
@@ -193,7 +195,7 @@ func (e *emitter) emitFileCall(call *ast.CallExpr, selector *ast.SelectorExpr) (
 				continue
 			}
 
-			if err := e.emitFormatArgument(arg); err != nil {
+			if err := e.emitPrintfOperand(arg, verbs, literal, i+1); err != nil {
 				return true, err
 			}
 		}
@@ -210,6 +212,14 @@ func (e *emitter) emitFileCall(call *ast.CallExpr, selector *ast.SelectorExpr) (
 			// as one operand of its own.
 			if i == len(call.Args)-2 && call.Ellipsis.IsValid() {
 				e.write("...")
+			}
+
+			if emitted, err := e.emitStringerValue(arg); emitted || err != nil {
+				if err != nil {
+					return true, err
+				}
+
+				continue
 			}
 
 			if err := e.emitFormatArgument(arg); err != nil {
@@ -250,7 +260,7 @@ func (e *emitter) isPrintCall(call *ast.CallExpr) bool {
 	switch ident.Name {
 	case "fmt":
 		switch selector.Sel.Name {
-		case "Println", "Print", "Printf", "Sprintf", "Fprint", "Fprintf", "Fprintln":
+		case "Println", "Print", "Printf", "Sprintf", "Fprint", "Fprintf", "Fprintln", "Errorf":
 			return true
 		}
 	case "log":
@@ -290,4 +300,24 @@ func (e *emitter) byteSliceTypeName(arg ast.Expr) (string, bool) {
 	}
 
 	return "", false
+}
+
+// emitPrintfOperand writes one operand of a formatted write to a writer: a value
+// that a verb reads through its String or Error method is told by that method,
+// and any other value keeps the type it was declared with, so that a float64
+// which happens to be whole is still written as a float by %f.
+func (e *emitter) emitPrintfOperand(arg ast.Expr, verbs []byte, literal bool, index int) error {
+	verb, known := formatVerbForArg(verbs, index)
+
+	if literal && (!known || verbUsesStringer(verb)) {
+		if emitted, err := e.emitStringerValue(arg); emitted || err != nil {
+			return err
+		}
+	}
+
+	if _, isBytes := e.byteSliceTypeName(arg); isBytes {
+		return e.emitFormatArgument(arg)
+	}
+
+	return e.emitTypedValue(arg)
 }

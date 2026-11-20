@@ -265,6 +265,49 @@ go2jsBigInt.prototype.Mul = function(x, y) {
 	return this;
 };
 
+go2jsBigInt.prototype.MulRange = function(a, b) {
+	// MulRange is the product of every whole number from a to b, one when the
+	// range is empty and zero when it takes in zero.
+	const low = BigInt(a);
+	const high = BigInt(b);
+
+	if (low > high) {
+		this.value = 1n;
+	} else if (low <= 0n && high >= 0n) {
+		this.value = 0n;
+	} else {
+		let product = 1n;
+
+		for (let n = low; n <= high; n++) {
+			product *= n;
+		}
+
+		this.value = product;
+	}
+
+	return this;
+};
+
+go2jsBigInt.prototype.Binomial = function(n, k) {
+	// Binomial is n over k, worked out as a product that stays whole at each step.
+	let top = BigInt(n);
+	let choose = BigInt(k);
+
+	if (choose > top - choose) {
+		choose = top - choose;
+	}
+
+	let result = 1n;
+
+	for (let i = 1n; i <= choose; i++) {
+		result = result * (top - choose + i) / i;
+	}
+
+	this.value = choose < 0n ? 0n : result;
+
+	return this;
+};
+
 go2jsBigInt.prototype.Quo = function(x, y) {
 	// Quo is the quotient as it falls, cut off at the point and no further, so
 	// the remainder is left holding the sign of what was divided.

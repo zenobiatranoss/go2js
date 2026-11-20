@@ -89,6 +89,7 @@ type emitter struct {
 	// name stands for the expression until the statement has been written.
 	exprOverride       map[ast.Expr]string
 	promotionRewritten map[*ast.SelectorExpr]bool
+	resultJSNames      map[*ast.BlockStmt][]string
 	initRanks          map[gotypesstd.Object]int
 	packageVariables   map[string]bool
 	reflectChecked     bool
@@ -1446,21 +1447,51 @@ func (e *emitter) emitDeferredReturn(stmt *ast.ReturnStmt) error {
 	names := e.namedResultNames()
 
 	if len(stmt.Results) > 0 {
-		for i, result := range stmt.Results {
-			if i >= len(names) {
-				break
-			}
-
+		// All the values are worked out before any result is set, so that a
+		// return which swaps the results reads them as they were.
+		if len(stmt.Results) > 1 && len(stmt.Results) == len(names) {
 			e.writeIndent()
-			e.write(e.resolveName(names[i]))
-			e.write(" = ")
+			e.write("[")
 
-			if err := e.emitReturnExpr(result, i); err != nil {
-				return err
+			for i := range names {
+				if i > 0 {
+					e.write(", ")
+				}
+
+				e.write(e.resultJSName(i, names[i]))
 			}
 
-			e.write(";")
+			e.write("] = [")
+
+			for i, result := range stmt.Results {
+				if i > 0 {
+					e.write(", ")
+				}
+
+				if err := e.emitReturnExpr(result, i); err != nil {
+					return err
+				}
+			}
+
+			e.write("];")
 			e.newline()
+		} else {
+			for i, result := range stmt.Results {
+				if i >= len(names) {
+					break
+				}
+
+				e.writeIndent()
+				e.write(e.resultJSName(i, names[i]))
+				e.write(" = ")
+
+				if err := e.emitReturnExpr(result, i); err != nil {
+					return err
+				}
+
+				e.write(";")
+				e.newline()
+			}
 		}
 	}
 
@@ -1668,14 +1699,14 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 				names := e.namedResultNames()
 				if len(names) == 1 {
 					e.write(" ")
-					e.write(e.resolveName(names[0]))
+					e.write(e.resultJSName(0, names[0]))
 				} else if len(names) > 1 {
 					e.write(" [")
 					for i, name := range names {
 						if i > 0 {
 							e.write(", ")
 						}
-						e.write(e.resolveName(name))
+						e.write(e.resultJSName(i, name))
 					}
 					e.write("]")
 				}
