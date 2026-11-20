@@ -480,13 +480,13 @@ A number, measured rather than guessed. Go ships its own conformance suite in
 cleanly) and say exactly what correct looks like. go2js compiles every one,
 runs it under Node, and compares with Go's own expected output:
 
-> **98 of 138 pass — 71.0%** (Go 1.24.7, the top-level `// run` programs).
+> **100 of 138 pass — 72.5%** (Go 1.24.7, the top-level `// run` programs).
 
 The full table, test by test, is in
 [tests/goroot/corpus/RESULTS.md](tests/goroot/corpus/RESULTS.md), and anyone can
 reproduce it: `GO2JS=bin/go2js python3 tests/goroot/corpus/run.py`.
 
-What the 40 that fail are, grouped by cause:
+What the 38 that fail are, grouped by cause:
 
 | Cause | Tests | Fixable? |
 |---|---|---|
@@ -496,20 +496,20 @@ What the 40 that fail are, grouped by cause:
 | Linker tests (`linkobj`, `linkx_run`, ...) | 3 | No — they need the Go toolchain's object files |
 | Too slow — 64-bit integer arithmetic goes through `BigInt` | 3 | Partly (performance work) |
 | `package syscall`, `reflect.MakeFunc` | 3 | Yes, with work |
-| Real gaps (nil embedded pointers, interface-conversion messages, a few conversions, zero-size pointer identity, invalid UTF-8 string literals) | 9 | Yes |
+| Real gaps (nil embedded pointers, methods promoted through anonymous structs, zero-size pointer identity, invalid UTF-8 string literals, a timing test) | 7 | Yes |
 
-So **25 of the 40 failures are things a JavaScript target cannot do by design**,
-and the other 15 are within reach. Read that way: of the 113 programs a
-transpiler can in principle run, go2js runs about **87%**.
+So **25 of the 38 failures are things a JavaScript target cannot do by design**,
+and the other 13 are within reach. Read that way: of the 113 programs a
+transpiler can in principle run, go2js runs about **88%**.
 
-What this number is **not**: it is not "71% of Go programs work". These tests
+What this number is **not**: it is not "72% of Go programs work". These tests
 are deliberately nasty — they probe the corners of the language, the runtime
 and the garbage collector. Ordinary programs (structs, interfaces, generics,
 goroutines, channels, `fmt`, `strings`, `sort`, `encoding/json` ...) are the
 ones the [parity tests](#testing-how-go2js-tests-go2js) check, run as Go and as
 JavaScript, byte for byte. It also does not cover the `fixedbugs`, `typeparam`
 and other sub-directories of Go's suite, nor the `errorcheck` and `compile`
-tests (which check compiler diagnostics, not behaviour). Treat 71% as a hard,
+tests (which check compiler diagnostics, not behaviour). Treat 72% as a hard,
 honest floor and not as a promise about your program; the way to know is to
 compile your program and compare.
 

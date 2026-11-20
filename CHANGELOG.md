@@ -8,7 +8,7 @@ the tool does not do yet are as much a part of a release as the things it does.
 
 ## [Unreleased]
 
-- **Measured against Go's own conformance tests: 98 of 138 (71.0%).**
+- **Measured against Go's own conformance tests: 100 of 138 (72.5%).**
   `tests/goroot/corpus/run.py` compiles and runs every top-level `// run`
   program of `$GOROOT/test` and compares with Go's `.out` file; the table of
   results is `tests/goroot/corpus/RESULTS.md`. This round fixed, among others:
@@ -17,7 +17,11 @@ the tool does not do yet are as much a part of a release as the things it does.
   float32 and complex compound assignment, interface-typed channel sends, NaN
   map keys, `runtime.Error` identity, `print`/`println` formatting, and
   `reflect` `Method`, `MethodByName`, `Method.Func` and method expressions on
-  `reflect.Type`.
+  `reflect.Type`. Also fixed: methods called on a nil pointer of a type declared
+  as `type T1 T`, typed nil pointers in interfaces, interface method
+  expressions, package variables initialized in dependency order, `len` of a
+  pointer to an array, "missing method" in failed interface assertions, and
+  channels stored in slices losing their identity when the slice grew.
 
 - **A browser playground,** live at
   <https://zenobiatranoss.github.io/go2js/>. The compiler, built as WebAssembly,

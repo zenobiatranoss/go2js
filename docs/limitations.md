@@ -5,7 +5,7 @@ corners. Read these before you promise a deadline around it.
 
 ## Measured against Go's own tests
 
-98 of the 138 top-level `// run` programs of Go 1.24.7's test suite pass (71.0%); the
+100 of the 138 top-level `// run` programs of Go 1.24.7's test suite pass (72.5%); the
 rest, and why, are in [tests/goroot/corpus/RESULTS.md](../tests/goroot/corpus/RESULTS.md).
 
 ## Where the semantics bend
