@@ -1313,6 +1313,10 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 				}
 			}
 
+			if handled, err := e.emitAnonymousPromotedCall(x, selector); handled {
+				return err
+			}
+
 			if e.isInterfaceMethod(selector) {
 				return e.emitInterfaceCall(x, selector)
 			}
@@ -1375,6 +1379,22 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 					e.write(")")
 				}
 				e.write(")")
+				return nil
+			}
+		}
+
+		if name, ok := e.builtinName(x); ok && (name == "go2jsLen" || name == "go2jsCap") && len(x.Args) == 1 {
+			// The length of a pointer to an array is the length of its type, even
+			// for a nil pointer, but the operand is still evaluated.
+			if length, isArrayPointer := e.pointerToArrayLength(x.Args[0]); isArrayPointer {
+				e.write("(")
+
+				if err := e.emitExpr(x.Args[0]); err != nil {
+					return err
+				}
+
+				e.write(", " + strconv.FormatInt(length, 10) + ")")
+
 				return nil
 			}
 		}
@@ -1566,6 +1586,16 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			case gotypes.MethodExpr:
 				if handled, err := e.emitScalarNamedMethodExpr(x); handled {
 					return err
+				}
+
+				if t := e.analyzedType(x.X); t != nil {
+					if _, isInterface := gotypes.Unalias(t).Underlying().(*gotypes.Interface); isInterface {
+						e.write("function* (receiver, ...args) { return yield* go2jsInterfaceCall(receiver, ")
+						e.write(strconv.Quote(method.Name()))
+						e.write(", ...args); }")
+
+						return nil
+					}
 				}
 
 				if sel, isSel := x.X.(*ast.SelectorExpr); isSel {

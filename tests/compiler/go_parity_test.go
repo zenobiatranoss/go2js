@@ -1513,6 +1513,50 @@ func main() {
 `, `+0 +0 1
 1
 `},
+	{"nil_receivers_init_order_channels", `package main
+
+import "fmt"
+
+type T struct{ x int }
+type T1 T
+
+func (t *T1) val() int { return 8 }
+
+type S string
+
+func (s *S) val() int { return 2 }
+
+type V interface{ val() int }
+
+type m interface{ m() }
+
+var n2 = len(*ga)
+var ga = new([5]int)
+var first = second + 1
+var second = 41
+
+func pa() *[7]int { return nil }
+
+func main() {
+	var pt *T1
+	var ps *S
+	var v V = ps
+	fmt.Println(pt.val(), (*T1).val(pt), v.val())
+	c := make(chan int, 1)
+	var cs []chan int
+	cs = append(cs, c)
+	cs[0] <- 3
+	fmt.Println(<-c, cs[0] == c)
+	fmt.Println(first, second, n2, len(pa()))
+	defer func() { fmt.Println(recover()) }()
+	var i interface{} = 1
+	_ = i.(m)
+}
+`, `8 8 2
+3 true
+42 41 5 7
+interface conversion: int is not main.m: missing method m
+`},
 }
 
 func TestGoVerifiedProgramsPrintTheSame(t *testing.T) {

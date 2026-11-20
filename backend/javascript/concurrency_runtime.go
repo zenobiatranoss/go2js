@@ -17,6 +17,9 @@ function go2jsChannel(capacity) {
 
 	return {
 		__go2js_channel: true,
+		// A channel is one channel however many places hold it, so copying the
+		// slice or struct that holds it hands on the same one.
+		__go2js_shared: true,
 		buffer: [],
 		capacity: typeof capacity === "number" && capacity > 0 ? Math.trunc(capacity) : 0,
 		closed: false,

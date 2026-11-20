@@ -87,14 +87,16 @@ type emitter struct {
 	// An expression Go evaluates once for a statement that is written over it
 	// more than once is written to a name of its own, and this holds where that
 	// name stands for the expression until the statement has been written.
-	exprOverride     map[ast.Expr]string
-	packageVariables map[string]bool
-	reflectChecked   bool
-	reflectUsed      bool
-	selectingSend    bool
-	inlineMode       bool
-	selfPackagePath  string
-	qualifiers       map[string]string
+	exprOverride       map[ast.Expr]string
+	promotionRewritten map[*ast.SelectorExpr]bool
+	initRanks          map[gotypesstd.Object]int
+	packageVariables   map[string]bool
+	reflectChecked     bool
+	reflectUsed        bool
+	selectingSend      bool
+	inlineMode         bool
+	selfPackagePath    string
+	qualifiers         map[string]string
 }
 
 // emitTargetIndexChecks writes the bounds check that writing to a slice or an
@@ -859,6 +861,16 @@ func (e *emitter) isLocalStructType(obj gotypesstd.Object) bool {
 	}
 
 	pkg := obj.Pkg()
+
+	// A type declared in terms of another named struct (type T1 T) is a class of
+	// the program as well, though its declaration is not a struct literal.
+	if pkg != nil && e.analysis != nil && e.analysis.Package != nil && pkg == e.analysis.Package {
+		if named, ok := obj.Type().(*gotypesstd.Named); ok {
+			if _, isStruct := named.Underlying().(*gotypesstd.Struct); isStruct {
+				return true
+			}
+		}
+	}
 
 	return pkg != nil && e.selfPackagePath != "" && pkg.Path() == e.selfPackagePath
 }
@@ -2983,7 +2995,7 @@ func (e *emitter) emitTopLevelVarDecl(decl *ast.GenDecl) error {
 				e.write(" = ")
 				e.write(e.zeroValue(e.variableType(name)))
 				e.write(";")
-				e.write("})")
+				e.write("}, -1)")
 				e.newline()
 
 				continue
@@ -2998,11 +3010,10 @@ func (e *emitter) emitTopLevelVarDecl(decl *ast.GenDecl) error {
 	}
 
 	e.needsRuntime = true
-	e.writeIndent()
-	e.write("go2jsDeferInit(function* () {")
-	e.newline()
-	e.indent++
 
+	// Go initializes the variables of a package in the order their initializers
+	// depend on one another, not the order they were written in, so each one is
+	// handed over with the place the type checker gave it in that order.
 	for _, spec := range decl.Specs {
 		valueSpec, ok := spec.(*ast.ValueSpec)
 		if !ok {
@@ -3015,6 +3026,10 @@ func (e *emitter) emitTopLevelVarDecl(decl *ast.GenDecl) error {
 			}
 
 			e.writeIndent()
+			e.write("go2jsDeferInit(function* () {")
+			e.newline()
+			e.indent++
+			e.writeIndent()
 			e.write(e.variableName(name))
 			e.write(" = ")
 
@@ -3026,15 +3041,43 @@ func (e *emitter) emitTopLevelVarDecl(decl *ast.GenDecl) error {
 
 			e.write(";")
 			e.newline()
+			e.indent--
+			e.writeIndent()
+			e.write("}, ")
+			e.write(strconv.Itoa(e.initializerRank(name)))
+			e.write(");")
+			e.newline()
 		}
 	}
 
-	e.indent--
-	e.writeIndent()
-	e.write("});")
-	e.newline()
-
 	return nil
+}
+
+// initializerRank reports where the type checker put the initializer of a
+// package level variable in the order Go runs them, or a number past all of
+// them for one it did not place.
+func (e *emitter) initializerRank(name *ast.Ident) int {
+	if e.initRanks == nil {
+		e.initRanks = map[gotypesstd.Object]int{}
+
+		if e.analysis != nil {
+			for index, initializer := range e.analysis.InitOrder {
+				for _, variable := range initializer.Lhs {
+					e.initRanks[variable] = index
+				}
+			}
+		}
+	}
+
+	if e.analysis != nil {
+		if object := e.analysis.Defs[name]; object != nil {
+			if rank, ok := e.initRanks[object]; ok {
+				return rank
+			}
+		}
+	}
+
+	return 1 << 30
 }
 
 func (e *emitter) emitValueDecl(decl *ast.GenDecl) error {
@@ -4188,7 +4231,12 @@ func (e *emitter) emitStructMethodBody(fn *ast.FuncDecl, receiverType string, pl
 		e.noteBody(plain, scope)
 		e.write(";")
 		e.newline()
-		e.write(receiverType + ".prototype." + fn.Name.Name + " = function*(" + params + ") { return this." + fn.Name.Name + "$(" + params + "); };")
+		callTail := ""
+		if params != "" {
+			callTail = ", " + params
+		}
+
+		e.write(receiverType + ".prototype." + fn.Name.Name + " = function*(" + params + ") { return " + receiverType + ".prototype." + fn.Name.Name + "$.call(this" + callTail + "); };")
 		e.newline()
 	}
 

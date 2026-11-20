@@ -82,5 +82,166 @@ function go2jsRuntimeErrorText(value) {
 	}
 
 	return null;
+}
+
+function* go2jsInterfaceCall(value, method, ...args) {
+	if (value === null || value === undefined) {
+		throw new TypeError(go2jsRuntimeErrorPrefix + "invalid memory address or nil pointer dereference");
+	}
+
+	if (value instanceof Error && method === "Error") {
+		return value.message;
+	}
+
+	if (value.__go2js_interface !== true) {
+		if (value.__go2js_pointer === true) {
+			return yield* go2jsInterfaceCall(value[go2jsPointerGet](), method, ...args);
+		}
+
+		if (typeof value[method] === "function") {
+			return yield* go2jsCall(value[method], value, args);
+		}
+
+		throw new TypeError("value is not an interface");
+	}
+
+	const target = value.value;
+
+	if (target === null || target === undefined) {
+		// A typed nil pointer is still a pointer of its type, and Go runs the
+		// method of that type on the nil receiver.
+		if (typeof value.type === "string" && value.type.startsWith("*")) {
+			const nilMethod = go2jsMethodTable[value.type + "." + method] || go2jsMethodTable[value.type.slice(1) + "." + method];
+
+			if (typeof nilMethod === "function") {
+				return yield* go2jsCall(nilMethod, null, [null, ...args]);
+			}
+		}
+
+		throw new TypeError(go2jsRuntimeErrorPrefix + "invalid memory address or nil pointer dereference");
+	}
+
+	if (typeof value.type === "string" && target.__go2js_pointer === true) {
+		const key = value.type.startsWith("*")
+			? value.type.slice(1) + "." + method
+			: value.type + "." + method;
+		const registered = go2jsMethodTable[key];
+
+		// A method reached through the table is a wrapper that takes the value
+		// it works on as its first argument, so that is how it is called here.
+		if (typeof registered === "function") {
+			return yield* go2jsCall(registered, null, [target, ...args]);
+		}
+	}
+
+	let fn = target[method];
+	let registered = false;
+
+	if (typeof fn !== "function" && typeof value.type === "string") {
+		fn = go2jsMethodTable[value.type + "." + method];
+		registered = true;
+	}
+
+	// A lock held in an interface (a sync.Locker, the L of a condition) is told
+	// from a read-write one by what it keeps, and is locked the way the call that
+	// names it directly would.
+	if (typeof fn !== "function") {
+		let lock = target;
+
+		if (lock.__go2js_pointer === true) {
+			lock = lock[go2jsPointerGet]();
+		}
+
+		if (lock !== null && typeof lock === "object" && Array.isArray(lock.blocked)) {
+			const readWrite = "readers" in lock;
+
+			if (method === "Lock") {
+				return yield* (readWrite ? go2jsRWMutexLock(lock) : go2jsMutexLock(lock));
+			}
+
+			if (method === "Unlock") {
+				return readWrite ? go2jsRWMutexUnlock(lock) : go2jsMutexUnlock(lock);
+			}
+
+			if (method === "RLock" && readWrite) {
+				return yield* go2jsRWMutexRLock(lock);
+			}
+
+			if (method === "RUnlock" && readWrite) {
+				return go2jsRWMutexRUnlock(lock);
+			}
+		}
+
+		throw new TypeError("interface method " + method + " is not implemented");
+	}
+
+	if (registered) {
+		return yield* go2jsCall(fn, null, [target, ...args]);
+	}
+
+	return yield* go2jsCall(fn, target, args);
+}
+
+function go2jsMissingMethodName(value, typeName) {
+	const methods = go2jsInterfaceMethods(typeName);
+
+	if (methods === undefined || value === null || value === undefined) {
+		return "";
+	}
+
+	for (const method of Array.from(methods).sort()) {
+		if (go2jsLookupMember(value, method) === undefined) {
+			return method;
+		}
+	}
+
+	return "";
+}
+
+function go2jsAssert(value, typeName, interfaceName) {
+	const boxed = value !== null && value !== undefined && value.__go2js_interface === true;
+	const actual = boxed ? value.type : go2jsTypeOf(value);
+
+	if (boxed) {
+		if (go2jsSameTypeName(value.type, typeName)) {
+			return value.value;
+		}
+	} else if (go2jsSameTypeName(actual, typeName)) {
+		return value;
+	}
+
+	if (go2jsSatisfiesInterface(value, typeName)) {
+		return value;
+	}
+
+	// An interface asked for and not satisfied is told by the method it lacks.
+	const missing = go2jsMissingMethodName(boxed ? value.value : value, typeName);
+
+	if (missing !== "") {
+		const qualified = typeName.indexOf(".") === -1 ? "main." + typeName : typeName;
+
+		throw new TypeError("interface conversion: " + actual + " is not " + qualified + ": missing method " + missing);
+	}
+
+	// A broken assertion says what the value is and what it was asked to be, the
+	// same way Go writes it out, with the interface it was read from in front.
+	throw new TypeError("interface conversion: " + interfaceName + " is " + actual + ", not " + typeName);
+}
+
+function go2jsDeferInit(assign, rank) {
+	go2jsInitializers.push({
+		rank: typeof rank === "number" ? rank : -1,
+		run: function () { return go2jsRunNow(assign()); }
+	});
+}
+
+function go2jsRunInitializers() {
+	// The order Go initializes in, which follows what each initializer reads.
+	// A sort that keeps equal ranks where they were written stays stable.
+	go2jsInitializers.sort((a, b) => a.rank - b.rank);
+
+	while (go2jsInitializers.length > 0) {
+		go2jsInitializers.shift().run();
+	}
 }`
 }

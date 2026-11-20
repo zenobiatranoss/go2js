@@ -490,6 +490,14 @@ func (e *emitter) callSignature(call *ast.CallExpr) *gotypes.Signature {
 		}
 	case *ast.SelectorExpr:
 		if selection := e.analysis.Selections[fn]; selection != nil {
+			// T.m, asked of a type, is a function whose first parameter is the
+			// receiver, so its arguments line up with that signature.
+			if selection.Kind() == gotypes.MethodExpr {
+				if signature, ok := e.analysis.TypeOf(fn).(*gotypes.Signature); ok {
+					return signature
+				}
+			}
+
 			object = selection.Obj()
 		}
 
