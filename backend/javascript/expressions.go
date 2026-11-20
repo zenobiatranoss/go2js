@@ -1568,6 +1568,18 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 					return err
 				}
 
+				if sel, isSel := x.X.(*ast.SelectorExpr); isSel {
+					if pkg, isPkg := sel.X.(*ast.Ident); isPkg && pkg.Name == "reflect" && (sel.Sel.Name == "Type" || sel.Sel.Name == "Value") {
+						e.write("function* (receiver, ...args) { return go2jsReflectInvoke(")
+						e.write(strconv.Quote("reflect." + sel.Sel.Name))
+						e.write(", ")
+						e.write(strconv.Quote(method.Name()))
+						e.write(", receiver, ...args); }")
+
+						return nil
+					}
+				}
+
 				if name, ok := e.tableMethodReceiver(x, method); ok {
 					e.needsRuntime = true
 					e.write("function* (receiver, ...args) { return go2jsNamedMethodCall(receiver, ")

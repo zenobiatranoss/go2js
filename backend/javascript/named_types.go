@@ -718,6 +718,7 @@ func (e *emitter) emitScalarNamedFuncDecl(fn *ast.FuncDecl) (bool, error) {
 	e.write(scalarNamedMethodName(typeName, fn.Name.Name))
 	e.write(");")
 	e.newline()
+	e.emitMethodSignature(typeName+"."+fn.Name.Name, fn)
 
 	return true, nil
 }
@@ -1248,6 +1249,7 @@ func (e *emitter) emitNamedAggregateFuncDecl(fn *ast.FuncDecl) (bool, error) {
 	e.write(namedAggregateMethodName(typeName, fn.Name.Name))
 	e.write(");")
 	e.newline()
+	e.emitMethodSignature(typeName+"."+fn.Name.Name, fn)
 
 	return true, nil
 }

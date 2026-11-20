@@ -89,6 +89,8 @@ type emitter struct {
 	// name stands for the expression until the statement has been written.
 	exprOverride     map[ast.Expr]string
 	packageVariables map[string]bool
+	reflectChecked   bool
+	reflectUsed      bool
 	selectingSend    bool
 	inlineMode       bool
 	selfPackagePath  string
@@ -4221,6 +4223,7 @@ func (e *emitter) emitStructMethodBody(fn *ast.FuncDecl, receiverType string, pl
 		e.write(strconv.Itoa(methodResultCount(fn)))
 		e.write(");")
 		e.newline()
+		e.emitMethodSignature("*"+receiverType+"."+fn.Name.Name, fn)
 	} else {
 		e.needsRuntime = true
 		e.write("go2jsRegisterMethod(")
@@ -4234,6 +4237,7 @@ func (e *emitter) emitStructMethodBody(fn *ast.FuncDecl, receiverType string, pl
 		e.write(")")
 		e.write(";")
 		e.newline()
+		e.emitMethodSignature(receiverType+"."+fn.Name.Name, fn)
 	}
 
 	return nil

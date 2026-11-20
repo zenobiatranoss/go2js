@@ -245,7 +245,34 @@ function go2jsReflectType(go2jsKind, go2jsName, go2jsElem, go2jsKey, go2jsMethod
 		configurable: true
 	});
 
+	// A program may hold a type behind an interface of its own that names one of
+	// the methods of reflect.Type, so the descriptor answers a call made on it.
+	Object.setPrototypeOf(type, go2jsReflectTypePrototype());
+
 	return type;
+}
+
+let go2jsReflectTypeProtoCache = null;
+
+function go2jsReflectTypePrototype() {
+	if (go2jsReflectTypeProtoCache === null) {
+		go2jsReflectTypeProtoCache = {};
+
+		for (const name of Object.keys(go2jsReflectTypeMethods)) {
+			const fn = go2jsReflectTypeMethods[name];
+
+			Object.defineProperty(go2jsReflectTypeProtoCache, name, {
+				value: function(...args) {
+					return go2jsCallNow(fn, null, [this, ...args]);
+				},
+				enumerable: false,
+				writable: true,
+				configurable: true
+			});
+		}
+	}
+
+	return go2jsReflectTypeProtoCache;
 }
 
 // go2jsReflectMethodsOf reports the method set a type descriptor carries. It is
@@ -270,7 +297,7 @@ function go2jsReflectPtrTo(type) {
 		? go2jsReflectMethodsOfName(type.name)
 		: go2jsReflectMethodsOf(type);
 
-	return go2jsReflectType("ptr", "", type, null, methods);
+	return go2jsReflectType("ptr", "", type, null, methods.length === 0 ? go2jsReflectMethodsOf(type) : methods);
 }
 
 // go2jsReflectTypeImplements reports whether a type carries every method an
@@ -1087,7 +1114,8 @@ function go2jsReflectBoundMethod(receiver, name) {
 				v: {
 					__go2js_callable: true,
 					__go2js_callable_results: results,
-					__go2js_callable_value: (...args) => go2jsCallNow(fn, null, [value, ...args])
+					__go2js_callable_value: (...args) => go2jsCallNow(fn, null, [value, ...args]),
+					__go2js_signature: go2jsMethodSignatures[key] !== undefined ? go2jsMethodSignatures[key][0] : null
 				},
 				// A method is a function, and its type carries how many results it
 				// hands back so a call boxes the right number of them.
@@ -1632,7 +1660,47 @@ function go2jsReflectTypeMethod(receiver, index) {
 		throw new RangeError("reflect: Method index out of range");
 	}
 
-	return {Name: methods[index], Type: go2jsReflectType("func", "", null, null, []), Index: index};
+	const name = methods[index];
+	const type = go2jsReflectValueType(receiver);
+	const found = go2jsReflectFindMethod(type, name);
+	let func = go2jsReflectValue(undefined, go2jsReflectType("invalid", "", null, null, []));
+
+	if (found !== null) {
+		const signature = go2jsMethodSignatures[found.key];
+
+		func = {
+			__go2js_reflectValue: true,
+			v: {
+				__go2js_callable: true,
+				__go2js_callable_results: found.results,
+				__go2js_callable_value: (...args) => go2jsCallNow(found.fn, null, args),
+				__go2js_signature: signature !== undefined ? signature[1] : null
+			},
+			t: go2jsReflectType("func", "", null, null, [], null, found.results === null ? 1 : found.results, false)
+		};
+	}
+
+	return {Name: name, Type: go2jsReflectType("func", "", null, null, []), Func: func, Index: index};
+}
+
+const go2jsMethodSignatures = Object.create(null);
+
+function go2jsRegisterMethodSignature(key, bare, withReceiver) {
+	go2jsMethodSignatures[key] = [bare, withReceiver];
+}
+
+// go2jsReflectFindMethod finds the function a method of a type was recorded
+// under, with the key it was recorded by and how many results it hands back.
+function go2jsReflectFindMethod(type, name) {
+	for (const key of go2jsReflectMethodKeys(type, name)) {
+		const fn = go2jsMethodTable[key];
+
+		if (typeof fn === "function") {
+			return {key: key, fn: fn, results: typeof go2jsMethodResults[key] === "number" ? go2jsMethodResults[key] : null};
+		}
+	}
+
+	return null;
 }
 
 // go2jsReflectTypeIsVariadic reports whether a function type takes a trailing
@@ -2297,7 +2365,22 @@ function go2jsReflectValueSet(receiver, value) {
 }
 
 function go2jsReflectValueInterface(receiver) {
-	return go2jsReflectUnwrap(go2jsReflectRead(receiver));
+	const value = go2jsReflectUnwrap(go2jsReflectRead(receiver));
+
+	if (value !== null && typeof value === "object" && value.__go2js_callable === true && typeof value.__go2js_callable_value === "function") {
+		const call = value.__go2js_callable_value;
+		const typed = function*(...args) {
+			return call(...args);
+		};
+
+		if (typeof value.__go2js_signature === "string") {
+			return go2jsInterface(typed, value.__go2js_signature, value.__go2js_signature);
+		}
+
+		return typed;
+	}
+
+	return value;
 }
 
 function go2jsReflectValueString(receiver) {
