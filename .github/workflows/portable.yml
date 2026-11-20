@@ -1,0 +1,38 @@
+name: portable
+
+# Builds, tests and runs the examples on Linux, macOS and Windows, so the claim
+# that go2js works on all three is one that is checked rather than assumed.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  os:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: build the compiler
+        run: go build -o bin/go2js ./cmd/go2js
+      - name: unit tests
+        run: go test ./...
+      - name: build go2js-min
+        run: |
+          cd tools/jsmin
+          g++ -O2 -std=c++17 -o go2js-min cl.cpp lx.cpp em.cpp rn.cpp fm.cpp pg.cpp
+      - name: run the examples both ways
+        run: examples/build.sh
