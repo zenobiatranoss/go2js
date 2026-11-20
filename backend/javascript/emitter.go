@@ -1190,6 +1190,7 @@ func runtimeSourceParts() []string {
 		sortSliceShimRuntimeSource(),
 		execRuntimeSource(),
 		signalRuntimeSource(),
+		syscallRuntimeSource(),
 		unicodeTableRuntimeSource(),
 		netHTTPRuntimeSource(),
 		osEnvironRuntimeSource(),

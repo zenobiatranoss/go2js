@@ -31,6 +31,7 @@ var signalNames = []struct {
 	{"SIGKILL", 9, "killed"},
 	{"SIGUSR1", 10, "user defined signal 1"},
 	{"SIGUSR2", 12, "user defined signal 2"},
+	{"SIGCHLD", 17, "child exited"},
 	{"SIGPIPE", 13, "broken pipe"},
 	{"SIGALRM", 14, "alarm clock"},
 	{"SIGTERM", 15, "terminated"},
@@ -42,6 +43,12 @@ func init() {
 	for name, value := range signalFuncs {
 		functions[name] = value
 	}
+
+	stdlibFuncMaps["syscall"] = map[string]string{
+		"Kill":   "go2jsSyscallKill",
+		"Getpid": "go2jsSyscallGetpid",
+	}
+	supportedStdlibPackages["syscall"] = funcSet(stdlibFuncMaps["syscall"])
 
 	stdlibFuncMaps["os/signal"] = functions
 	supportedStdlibPackages["os/signal"] = funcSet(functions)
