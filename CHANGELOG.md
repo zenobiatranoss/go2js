@@ -8,6 +8,17 @@ the tool does not do yet are as much a part of a release as the things it does.
 
 ## [Unreleased]
 
+- **Measured against Go's own conformance tests: 98 of 138 (71.0%).**
+  `tests/goroot/corpus/run.py` compiles and runs every top-level `// run`
+  program of `$GOROOT/test` and compares with Go's `.out` file; the table of
+  results is `tests/goroot/corpus/RESULTS.md`. This round fixed, among others:
+  switch tags of aggregate type, shifts, method expressions, tuple-assignment
+  ordering, huge `make` lengths, nil array pointers, `unsafe.Sizeof` constants,
+  float32 and complex compound assignment, interface-typed channel sends, NaN
+  map keys, `runtime.Error` identity, `print`/`println` formatting, and
+  `reflect` `Method`, `MethodByName`, `Method.Func` and method expressions on
+  `reflect.Type`.
+
 - **A browser playground,** live at
   <https://zenobiatranoss.github.io/go2js/>. The compiler, built as WebAssembly,
   runs entirely in a web page: type Go, watch it become JavaScript, and run it,

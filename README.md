@@ -40,6 +40,7 @@ If you want the short version, [jump to the quick start](#quick-start).
 - [Language support](#language-support)
 - [Standard library support](#standard-library-support)
 - [The compiler as a library](#the-compiler-as-a-library)
+- [How much of Go it really supports](#how-much-of-go-it-really-supports)
 - [Honest limitations](#honest-limitations)
 - [Testing](#testing-how-go2js-tests-go2js)
 - [How this was written](#how-this-was-written)
@@ -472,6 +473,46 @@ Ways in:
 module format, target, minification, pretty-printing, source maps, strict mode,
 and runtime inclusion.
 
+## How much of Go it really supports
+
+A number, measured rather than guessed. Go ships its own conformance suite in
+`$GOROOT/test`; the programs marked `// run` each print something (or exit
+cleanly) and say exactly what correct looks like. go2js compiles every one,
+runs it under Node, and compares with Go's own expected output:
+
+> **98 of 138 pass — 71.0%** (Go 1.24.7, the top-level `// run` programs).
+
+The full table, test by test, is in
+[tests/goroot/corpus/RESULTS.md](tests/goroot/corpus/RESULTS.md), and anyone can
+reproduce it: `GO2JS=bin/go2js python3 tests/goroot/corpus/run.py`.
+
+What the 40 that fail are, grouped by cause:
+
+| Cause | Tests | Fixable? |
+|---|---|---|
+| `unsafe` and raw memory (`unsafe.Pointer` casts, `StringHeader`, `SliceHeader`, `uintptr` arithmetic) | 13 | No — JavaScript has no addressable memory |
+| Garbage collector and finalizers (`runtime.SetFinalizer`, `MemProfileRate`) | 6 | No — a JavaScript heap can't be observed the way Go's can |
+| Stack liveness and stack objects | 3 | No — there is no Go stack |
+| Linker tests (`linkobj`, `linkx_run`, ...) | 3 | No — they need the Go toolchain's object files |
+| Too slow — 64-bit integer arithmetic goes through `BigInt` | 3 | Partly (performance work) |
+| `package syscall`, `reflect.MakeFunc` | 3 | Yes, with work |
+| Real gaps (nil embedded pointers, interface-conversion messages, a few conversions, zero-size pointer identity, invalid UTF-8 string literals) | 9 | Yes |
+
+So **25 of the 40 failures are things a JavaScript target cannot do by design**,
+and the other 15 are within reach. Read that way: of the 113 programs a
+transpiler can in principle run, go2js runs about **87%**.
+
+What this number is **not**: it is not "71% of Go programs work". These tests
+are deliberately nasty — they probe the corners of the language, the runtime
+and the garbage collector. Ordinary programs (structs, interfaces, generics,
+goroutines, channels, `fmt`, `strings`, `sort`, `encoding/json` ...) are the
+ones the [parity tests](#testing-how-go2js-tests-go2js) check, run as Go and as
+JavaScript, byte for byte. It also does not cover the `fixedbugs`, `typeparam`
+and other sub-directories of Go's suite, nor the `errorcheck` and `compile`
+tests (which check compiler diagnostics, not behaviour). Treat 71% as a hard,
+honest floor and not as a promise about your program; the way to know is to
+compile your program and compare.
+
 ## Honest limitations
 
 Nobody ships a perfect transpiler, and this one is honest about where it cuts
@@ -506,12 +547,18 @@ short version:
 - **A nil pointer is printed as `<nil>` even if its type has a `String`
   method.** Go calls the method on the nil pointer; the translation can't tell
   which type a nil was.
-- **A NaN map key is one key.** Go keeps every NaN as a key of its own.
 - **`fmt.Scan` reads a whole chunk of the standard input at a time.** It waits
   for the chunk, not for the line, so a program that prompts and waits for a
   reply on a terminal sees the reply when the line is finished, as usual, but
   one that mixes `fmt.Scan` with its own reads of `os.Stdin` should read through
   one of them.
+- **`unsafe` is mostly not there.** A conversion to or from `unsafe.Pointer`,
+  `reflect.StringHeader` and friends is refused with a compile error; only
+  `unsafe.Sizeof`, `Offsetof` and `Alignof` work, because they are constants.
+- **Finalizers and the garbage collector can't be observed.** `runtime.GC`
+  runs, but `runtime.SetFinalizer` callbacks are not promised to ever fire.
+- **Two zero-size values may not compare equal by address,** and an invalid
+  UTF-8 byte in a string literal can't be represented as it is.
 - **Some of the standard library isn't there.** `os/signal`, `encoding/xml`,
   `html`, `text/scanner`, `math/cmplx`, `container/ring`, `io.Pipe` and
   `syscall` are refused with a "not available" error rather than compiled
