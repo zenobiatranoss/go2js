@@ -41,6 +41,7 @@ If you want the short version, [jump to the quick start](#quick-start).
 - [Standard library support](#standard-library-support)
 - [The compiler as a library](#the-compiler-as-a-library)
 - [How much of Go it really supports](#how-much-of-go-it-really-supports)
+- [Examples](#examples)
 - [Honest limitations](#honest-limitations)
 - [Testing](#testing-how-go2js-tests-go2js)
 - [How this was written](#how-this-was-written)
@@ -513,6 +514,15 @@ tests (which check compiler diagnostics, not behaviour). Treat 73% as a hard,
 honest floor and not as a promise about your program; the way to know is to
 compile your program and compare.
 
+## Examples
+
+[examples/](examples) holds ten complete programs — an inventory, a bank, a worker pool,
+a word counter, a generics library, a calculator with its own parser, graph algorithms,
+number crunching with `math/big`, a JSON library catalogue, an LRU cache with a maze and a
+game of life — each next to the readable JavaScript go2js makes from it, and the output of
+the real Go program, which the JavaScript matches line for line. `examples/build.sh`
+rebuilds all of them and checks that.
+
 ## Honest limitations
 
 Nobody ships a perfect transpiler, and this one is honest about where it cuts
@@ -552,6 +562,8 @@ short version:
   reply on a terminal sees the reply when the line is finished, as usual, but
   one that mixes `fmt.Scan` with its own reads of `os.Stdin` should read through
   one of them.
+- **`encoding/json` does not read or write a `time.Time` field** yet; keep dates as strings
+  and parse them with `time.Parse`.
 - **`unsafe` is mostly not there.** A conversion to or from `unsafe.Pointer`,
   `reflect.StringHeader` and friends is refused with a compile error; only
   `unsafe.Sizeof`, `Offsetof` and `Alignof` work, because they are constants.

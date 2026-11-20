@@ -23,6 +23,11 @@ the tool does not do yet are as much a part of a release as the things it does.
   pointer to an array, "missing method" in failed interface assertions, and
   channels stored in slices losing their identity when the slice grew. A
   minimal `syscall` package now offers `Getpid`, `Kill` and `SIGCHLD`.
+- `examples/`: ten complete Go programs with the readable JavaScript made from them and
+  a script that checks both print the same. Writing them fixed a `return` that lost a
+  shadowed named result, a struct with a method called `next` being run as an iterator,
+  `%v` of a Stringer in `Errorf`, `%f` of a whole float in `Fprintf`, `String` on a named
+  slice type in `Sprintf`, and added `big.Int.MulRange` and `Binomial`.
 
 - **A browser playground,** live at
   <https://zenobiatranoss.github.io/go2js/>. The compiler, built as WebAssembly,
