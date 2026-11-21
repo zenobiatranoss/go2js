@@ -1,6 +1,9 @@
 package integration_test
 
-import "testing"
+import (
+	"runtime"
+	"testing"
+)
 
 func TestMathErfFamilyMatchGo(t *testing.T) {
 	runParityTest(t, `package main
@@ -68,6 +71,9 @@ func main() {
 }
 
 func TestMathTranscendentalsMatchGoBitForBit(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("Go on arm64 fuses multiply-add inside math, so the last bit differs from JavaScript")
+	}
 	runParityTest(t, `package main
 
 import (
