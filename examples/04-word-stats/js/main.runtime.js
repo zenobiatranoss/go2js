@@ -10541,10 +10541,6 @@ function go2jsTimeNow() {
 	return now;
 }
 
-// go2jsTimeParse reads a moment out of text the way a layout says it is
-// written. A layout is read one piece at a time and each piece takes what it
-// stands for from the text where it stands, so text that does not hold what a
-// piece asks for is refused rather than read as something else.
 function go2jsTimeParse(layout, value) {
 	const text = String(value);
 	const parts = { year: 0, month: 1, day: 1, hour: 0, minute: 0, second: 0, milli: 0, nsec: 0, offset: null, pm: null };
