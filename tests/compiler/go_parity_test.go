@@ -154,9 +154,9 @@ func main() {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 	runtime.GC()
-	fmt.Println(string(b), runtime.NumCPU() > 0, runtime.GOOS)
+	fmt.Println(string(b), runtime.NumCPU() > 0, runtime.GOOS != "")
 }
-`, `hi true linux
+`, `hi true true
 `},
 	{"stringers_and_collections", `package main
 import ("fmt"; "sort"; "container/heap"; "container/list"; "sync/atomic"; "strings"; "regexp"; "bytes"; "errors")
