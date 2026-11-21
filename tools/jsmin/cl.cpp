@@ -47,14 +47,14 @@ int us() {
 }
 
 std::string bs(const std::string& pa) {
-    size_t sl = pa.find_last_of('/');
+    size_t sl = pa.find_last_of("/\\");
     std::string fl = sl == std::string::npos ? pa : pa.substr(sl + 1);
     size_t dt = fl.rfind('.');
     return dt == std::string::npos || dt == 0 ? fl : fl.substr(0, dt);
 }
 
 std::string dr(const std::string& pa) {
-    size_t sl = pa.find_last_of('/');
+    size_t sl = pa.find_last_of("/\\");
     return sl == std::string::npos ? std::string() : pa.substr(0, sl + 1);
 }
 
