@@ -23,16 +23,27 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.24.x'
+          cache: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - name: build the compiler
         run: go build -o bin/go2js ./cmd/go2js
       - name: unit tests
-        run: go test ./...
+        run: |
+          set +e
+          go test ./... 2>&1 | tee test.log
+          status=${PIPESTATUS[0]}
+          # the first failures are repeated as annotations, which show on the run page
+          grep -E '^\s*--- FAIL|^FAIL|panic:|Error' test.log | head -12 | while IFS= read -r line; do
+            echo "::error::${line}"
+          done
+          exit $status
       - name: build go2js-min
+        if: always()
         run: |
           cd tools/jsmin
           g++ -O2 -std=c++17 -o go2js-min cl.cpp lx.cpp em.cpp rn.cpp fm.cpp pg.cpp
       - name: run the examples both ways
+        if: always()
         run: examples/build.sh
