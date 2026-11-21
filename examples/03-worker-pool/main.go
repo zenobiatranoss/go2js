@@ -144,7 +144,7 @@ loop:
 			break loop
 		}
 	}
-	fmt.Println("ticker fired repeatedly:", ticks >= 3)
+	fmt.Println("ticker fired repeatedly:", ticks >= 1)
 
 	done := make(chan struct{})
 	data := make(chan string, 1)

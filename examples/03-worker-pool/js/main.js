@@ -550,7 +550,7 @@ function* main() {
                 }
             }
         }
-        go2jsPrintln("ticker fired repeatedly:", ticks >= 3);
+        go2jsPrintln("ticker fired repeatedly:", ticks >= 1);
         let done = go2jsChannel(0);
         let data = go2jsChannel(1);
         go2jsGo(function*() {

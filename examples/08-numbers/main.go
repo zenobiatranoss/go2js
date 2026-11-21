@@ -57,7 +57,7 @@ func (m Matrix) Mul(o Matrix) Matrix {
 	for i := range m {
 		for j := range o[0] {
 			for k := range o {
-				out[i][j] += m[i][k] * o[k][j]
+				out[i][j] += float64(m[i][k] * o[k][j]) // float64() stops arm64 from fusing the multiply-add
 			}
 		}
 	}
@@ -113,7 +113,7 @@ func det(m Matrix) float64 {
 		for r := c + 1; r < n; r++ {
 			f := a[r][c] / a[c][c]
 			for k := c; k < n; k++ {
-				a[r][k] -= f * a[c][k]
+				a[r][k] -= float64(f * a[c][k])
 			}
 		}
 	}
