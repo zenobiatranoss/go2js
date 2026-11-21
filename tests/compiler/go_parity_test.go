@@ -148,9 +148,10 @@ recovered: 3
 	{"ioutil_and_runtime", `package main
 import ("fmt"; "io/ioutil"; "os"; "runtime")
 func main() {
-	ioutil.WriteFile("/tmp/zz_x.txt", []byte("hi"), 0644)
-	b, _ := ioutil.ReadFile("/tmp/zz_x.txt")
-	os.Remove("/tmp/zz_x.txt")
+	name := os.TempDir() + "/zz_x.txt"
+	ioutil.WriteFile(name, []byte("hi"), 0644)
+	b, _ := ioutil.ReadFile(name)
+	os.Remove(name)
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 	runtime.GC()

@@ -1,12 +1,16 @@
 package integration_test
 
-import "testing"
+import (
+	"runtime"
+	"testing"
+)
 
 // A command is put together by its name and the arguments after it, and the
 // three ways of running it answer differently: one lets the command write where
 // it was told, one gathers what it wrote to its own output, and one gathers both
 // of its streams together.
 func TestExecRunsACommandAndGathersWhatItSaid(t *testing.T) {
+	skipWithoutAUnixShell(t)
 	runParityTest(t, `package main
 
 import (
@@ -35,6 +39,7 @@ func main() {
 // A command that leaves a fault behind gives back an error that says which code
 // it left, and an error read as a command error says that much about itself.
 func TestExecReportsTheCodeACommandLeftBehind(t *testing.T) {
+	skipWithoutAUnixShell(t)
 	runParityTest(t, `package main
 
 import (
@@ -71,6 +76,7 @@ func main() {
 // none is given nothing at all, which is where Go sends the output of a command
 // that asked for no stream.
 func TestExecWritesWhereItWasTold(t *testing.T) {
+	skipWithoutAUnixShell(t)
 	runParityTest(t, `package main
 
 import (
@@ -114,6 +120,7 @@ func main() {
 // The name of a command is looked up on the path, and a name carrying a
 // separator of its own is used as it stands.
 func TestExecLooksACommandUpOnThePath(t *testing.T) {
+	skipWithoutAUnixShell(t)
 	runParityTest(t, `package main
 
 import (
@@ -149,4 +156,13 @@ func main() {
 	_ = os.Stdout
 }
 `)
+}
+
+// These programs run sh, true and echo, which a Windows machine does not have.
+func skipWithoutAUnixShell(t *testing.T) {
+	t.Helper()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("the programs run sh, true and echo")
+	}
 }

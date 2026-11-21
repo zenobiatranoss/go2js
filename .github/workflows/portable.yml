@@ -34,10 +34,18 @@ jobs:
           set +e
           go test ./... 2>&1 | tee test.log
           status=${PIPESTATUS[0]}
-          # the first failures are repeated as annotations, which show on the run page
-          grep -E '^\s*--- FAIL|^FAIL|panic:|Error' test.log | head -12 | while IFS= read -r line; do
-            echo "::error::${line}"
-          done
+          # each failing test is repeated as one annotation holding what it said,
+          # so the run page shows the reason without opening the log
+          cat > annotate.py <<'PY'
+          import re
+          lines = open("test.log", errors="replace").read().splitlines()
+          starts = [i for i, l in enumerate(lines) if re.match(r"\s*--- FAIL", l)]
+          for i in starts[:4]:
+              body = "\n".join(x[:300] for x in lines[i:i + 45])
+              body = body.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+              print("::error title=" + lines[i].strip()[:80].replace(",", " ").replace(":", " ") + "::" + body)
+          PY
+          (python3 annotate.py || python annotate.py) || true
           exit $status
       - name: build go2js-min
         if: always()
