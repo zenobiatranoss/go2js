@@ -1616,6 +1616,23 @@ failed with B <nil>
    1.0|   2.5|
 15511210043330985984000000
 `},
+	{"parse_in_location", `package main
+
+import (
+	"fmt"
+	"time"
+)
+
+func main() {
+	loc := time.FixedZone("X", 3*3600)
+	t, err := time.ParseInLocation("2006-01-02 15:04", "2024-03-05 10:30", loc)
+	fmt.Println(t, err)
+	u, _ := time.ParseInLocation("2006-01-02 15:04", "2024-03-05 10:30", time.UTC)
+	fmt.Println(u, t.Sub(u))
+}
+`, `2024-03-05 10:30:00 +0300 X <nil>
+2024-03-05 10:30:00 +0000 UTC -3h0m0s
+`},
 }
 
 func TestGoVerifiedProgramsPrintTheSame(t *testing.T) {

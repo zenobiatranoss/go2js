@@ -2119,22 +2119,23 @@ func extendedStdlibFuncs() {
 	})
 
 	extend(timeFuncs, map[string]string{
-		"Since":         "go2jsTimeSince",
-		"Until":         "go2jsTimeUntil",
-		"Now":           "go2jsTimeNow",
-		"Sleep":         "go2jsTimeSleep",
-		"Unix":          "go2jsTimeFromUnix",
-		"UnixMilli":     "go2jsTimeFromUnixMilli",
-		"UnixMicro":     "go2jsTimeFromUnixMicro",
-		"Parse":         "go2jsTimeParse",
-		"After":         "go2jsTimeAfter",
-		"NewTimer":      "go2jsTimeNewTimer",
-		"NewTicker":     "go2jsTimeNewTicker",
-		"AfterFunc":     "go2jsTimeAfterFunc",
-		"ParseDuration": "go2jsParseDuration",
-		"Tick":          "go2jsTimeTick",
-		"FixedZone":     "go2jsTimeFixedZone",
-		"LoadLocation":  "go2jsTimeLoadLocation",
+		"Since":           "go2jsTimeSince",
+		"Until":           "go2jsTimeUntil",
+		"Now":             "go2jsTimeNow",
+		"Sleep":           "go2jsTimeSleep",
+		"Unix":            "go2jsTimeFromUnix",
+		"UnixMilli":       "go2jsTimeFromUnixMilli",
+		"UnixMicro":       "go2jsTimeFromUnixMicro",
+		"Parse":           "go2jsTimeParse",
+		"ParseInLocation": "go2jsTimeParseInLocation",
+		"After":           "go2jsTimeAfter",
+		"NewTimer":        "go2jsTimeNewTimer",
+		"NewTicker":       "go2jsTimeNewTicker",
+		"AfterFunc":       "go2jsTimeAfterFunc",
+		"ParseDuration":   "go2jsParseDuration",
+		"Tick":            "go2jsTimeTick",
+		"FixedZone":       "go2jsTimeFixedZone",
+		"LoadLocation":    "go2jsTimeLoadLocation",
 	})
 
 }
@@ -5613,6 +5614,21 @@ function go2jsTimeFromUnixMicro(microseconds) {
 // written. A layout is read one piece at a time and each piece takes what it
 // stands for from the text where it stands, so text that does not hold what a
 // piece asks for is refused rather than read as something else.
+// go2jsTimeParseInLocation reads a time as Parse does, and reads one that carries
+// no zone of its own as the wall clock of the location given.
+function go2jsTimeParseInLocation(layout, value, location) {
+	const result = go2jsTimeParse(layout, value);
+
+	if (result[1] !== null || location === null || location === undefined || /Z07|-07|MST/.test(String(layout))) {
+		return result;
+	}
+
+	const moment = result[0];
+
+	return [go2jsTimeDate(Number(moment.Year()), Number(moment.Month()), Number(moment.Day()), Number(moment.Hour()),
+		Number(moment.Minute()), Number(moment.Second()), Number(moment.Nanosecond()), location), null];
+}
+
 function go2jsTimeParse(layout, value) {
 	const text = String(value);
 	const parts = { year: 0, month: 1, day: 1, hour: 0, minute: 0, second: 0, milli: 0, nsec: 0, offset: null, pm: null };
