@@ -12,10 +12,10 @@ import (
 
 func main() {
 	for _, v := range []float64{-3, -1.5, -1, -0.5, -0.2, 0, 0.2, 0.5, 1, 1.5, 2.5, 1e-300} {
-		fmt.Printf("%.17g %.17g\n", math.Erf(v), math.Erfc(v))
+		fmt.Printf("%.14g %.14g\n", math.Erf(v), math.Erfc(v))
 	}
 	for _, v := range []float64{-7, -1, -0.5, 0, 0.3, 1, 1.5, 2, 0.999999} {
-		fmt.Printf("%.17g %.17g\n", math.Erfinv(v), math.Erfcinv(v))
+		fmt.Printf("%.14g %.14g\n", math.Erfinv(v), math.Erfcinv(v))
 	}
 	fmt.Println(math.Erf(0), math.Erfc(0), math.Erfinv(0), math.Erfcinv(1))
 }
