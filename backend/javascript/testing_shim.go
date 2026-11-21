@@ -436,10 +436,11 @@ function go2jsTestingWhere() {
 			continue;
 		}
 
-		let file = String(place.file);
+		let file = String(place.file).split("\\").join("/");
+		const root = dir.split("\\").join("/");
 
-		if (dir !== "" && file.indexOf(dir + "/") === 0) {
-			file = file.slice(dir.length + 1);
+		if (root !== "" && file.indexOf(root + "/") === 0) {
+			file = file.slice(root.length + 1);
 		}
 
 		return file + ":" + place.line + ": ";
