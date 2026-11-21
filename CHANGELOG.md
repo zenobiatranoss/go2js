@@ -23,6 +23,7 @@ the tool does not do yet are as much a part of a release as the things it does.
   pointer to an array, "missing method" in failed interface assertions, and
   channels stored in slices losing their identity when the slice grew. A
   minimal `syscall` package now offers `Getpid`, `Kill` and `SIGCHLD`.
+- `time.ParseInLocation`; the README lists the third-party libraries that were tried.
 - `examples/`: ten complete Go programs with the readable JavaScript made from them and
   a script that checks both print the same. Writing them fixed a `return` that lost a
   shadowed named result, a struct with a method called `next` being run as an iterator,

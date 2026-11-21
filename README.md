@@ -363,6 +363,20 @@ go2js -stubs stubs -shim stubs/lib.js -o program.js .
 
 A stub file may also start with `//go2js:import <path>` to say which import path it stands for. When a library cannot be loaded, the error names the import and points to this workflow instead of failing with a type-checker message.
 
+### Third-party libraries that were tried
+
+Compiled from source and run under Node, with the output compared to Go's:
+
+| Library | Result |
+|---|---|
+| `github.com/shopspring/decimal` | works, same output as Go |
+| `github.com/dustin/go-humanize` | works, same output as Go |
+| `github.com/google/uuid` | works, same output as Go |
+| `github.com/BurntSushi/toml` | compiles; decoding into a struct fails, because `reflect` on a pointer to a struct is not complete yet |
+
+This is a short list, not a promise: a pure-Go library works when everything it uses from the
+standard library does. If one fails, the error names what is missing.
+
 ## How it works under the hood
 
 The pipeline is a proper compiler, not a regex-and-hope:
