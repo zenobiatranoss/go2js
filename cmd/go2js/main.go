@@ -346,21 +346,69 @@ func runStubgen(args []string, stdout io.Writer) error {
 func runBind(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("bind", flag.ContinueOnError)
 
-	var out string
+	var out, dir, name, importPath, dts string
 
 	fs.StringVar(&out, "o", "stubs", "the directory the declarations and the shim are written to")
+	fs.StringVar(&dir, "dir", ".", "the project the npm package is installed in")
+	fs.StringVar(&name, "name", "", "the name of the Go package (the last part of the import path by default)")
+	fs.StringVar(&importPath, "import", "", "the import path a Go program uses (npm/<package> by default)")
+	fs.StringVar(&dts, "dts", "", "declaration files (.d.ts), separated by commas, instead of looking for the package's own")
 
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
 	if fs.NArg() != 1 {
-		return fmt.Errorf("usage: go2js bind [-o dir] <description.json>")
+		return fmt.Errorf("usage: go2js bind [-o dir] [-dir project] [-dts files] [-name pkg] [-import path] <npm package | description.json>")
 	}
 
-	module, err := bind.ReadModule(fs.Arg(0))
-	if err != nil {
-		return err
+	var module *bind.Module
+
+	if strings.HasSuffix(fs.Arg(0), ".json") {
+		read, err := bind.ReadModule(fs.Arg(0))
+		if err != nil {
+			return err
+		}
+
+		module = read
+	} else {
+		files := strings.Split(dts, ",")
+
+		if dts == "" {
+			found, err := bind.FindDeclarations(dir, fs.Arg(0))
+			if err != nil {
+				return err
+			}
+
+			files = found
+		}
+
+		var sources []string
+
+		for _, file := range files {
+			data, err := os.ReadFile(file)
+			if err != nil {
+				return err
+			}
+
+			sources = append(sources, string(data))
+		}
+
+		parsed, notes := bind.ParseDeclarations(sources...)
+		module = parsed
+		module.Name = fs.Arg(0)
+
+		for _, note := range notes {
+			fmt.Fprintf(stdout, "left out %s\n", note)
+		}
+	}
+
+	if name != "" {
+		module.Package = name
+	}
+
+	if importPath != "" {
+		module.Import = importPath
 	}
 
 	generated, err := bind.Generate(module)
