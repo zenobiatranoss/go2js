@@ -6,6 +6,11 @@ built in the open, faithful where it can be and honest where it cannot. Read
 [docs/limitations.md](docs/limitations.md) alongside any entry here — the things
 the tool does not do yet are as much a part of a release as the things it does.
 
+## Unreleased
+
+- `go2js bind`: write Go declarations and the JavaScript behind them for a JavaScript library described in JSON, so Go programs can call npm libraries (functions, constants, classes, properties, statics, callbacks). See docs/bind.md.
+- The flags of `os.OpenFile` are written as the numbers the file shim reads, whatever machine compiled the program (on macOS appending overwrote the file).
+
 ## [Unreleased]
 
 - **Measured against Go's own conformance tests: 101 of 138 (73.2%).**

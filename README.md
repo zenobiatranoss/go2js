@@ -363,6 +363,12 @@ go2js -stubs stubs -shim stubs/lib.js -o program.js .
 
 A stub file may also start with `//go2js:import <path>` to say which import path it stands for. When a library cannot be loaded, the error names the import and points to this workflow instead of failing with a type-checker message.
 
+### Calling JavaScript libraries from Go
+
+`go2js bind` turns a description of an npm library into Go declarations and the JavaScript behind them,
+so a Go program can call it with types (classes, methods, properties, callbacks). See [docs/bind.md](docs/bind.md).
+It reads a JSON description for now; reading TypeScript `.d.ts` files is the next step.
+
 ### Third-party libraries that were tried
 
 Compiled from source and run under Node, with the output compared to Go's:
