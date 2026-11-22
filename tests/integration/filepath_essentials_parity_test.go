@@ -4,6 +4,7 @@ import "testing"
 
 // TestFilepathEssentialsParity checks filepath helpers programs reach for first.
 func TestFilepathEssentialsParity(t *testing.T) {
+	skipWhereGoAnswersAsWindowsDoes(t)
 	runParityTest(t, `package main
 
 import (

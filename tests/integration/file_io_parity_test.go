@@ -6,6 +6,7 @@ import "testing"
 // is read after it there, which is what tells a read from a place of its own
 // apart from a read that moves along.
 func TestFileReadFollowsTheFile(t *testing.T) {
+	skipWhereGoAnswersAsWindowsDoes(t)
 	runParityTest(t, `package main
 
 import (
@@ -262,6 +263,7 @@ func main() {
 }
 
 func TestFileModeIsItsOwnType(t *testing.T) {
+	skipWhereGoAnswersAsWindowsDoes(t)
 	runParityTest(t, `package main
 
 import (

@@ -166,3 +166,14 @@ func skipWithoutAUnixShell(t *testing.T) {
 		t.Skip("the programs run sh, true and echo")
 	}
 }
+
+// Go on Windows answers these the way Windows does (paths with backslashes, no
+// unix permission bits, its own words for an error), and the program written out
+// answers the way the machine it targets does, so the two are not compared there.
+func skipWhereGoAnswersAsWindowsDoes(t *testing.T) {
+	t.Helper()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("Go answers this as Windows does, and the program written out as a unix machine does")
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -89,7 +90,7 @@ func writeFile(t *testing.T, path, content string) {
 func compileDirectory(t *testing.T, target, output string) (string, error) {
 	t.Helper()
 
-	binary := filepath.Join(t.TempDir(), "go2js")
+	binary := filepath.Join(t.TempDir(), "go2js"+executableSuffix())
 
 	build := exec.Command("go", "build", "-o", binary, "./cmd/go2js")
 	build.Dir = projectRoot(t)
@@ -170,4 +171,13 @@ func main() {
 	if want := "js\n"; got != want {
 		t.Fatalf("build constraint selection mismatch: want %q got %q\njs:\n%s", want, got, code)
 	}
+}
+
+// A program a Windows machine can run is named with the ending it looks for.
+func executableSuffix() string {
+	if runtime.GOOS == "windows" {
+		return ".exe"
+	}
+
+	return ""
 }
