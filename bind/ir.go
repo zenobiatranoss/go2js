@@ -21,11 +21,12 @@ const (
 	Integer Kind = "integer" // a number the library only means as a whole one, an int in Go
 	String  Kind = "string"
 	Boolean Kind = "boolean"
-	Any     Kind = "any"   // anything at all, any in Go
-	Void    Kind = "void"  // no value
-	Array   Kind = "array" // Elem[], a []Elem in Go
-	Class   Kind = "class" // a class of the module, named by Name, a *Name in Go
-	Func    Kind = "func"  // a callback taking Params and giving Result
+	Any     Kind = "any"     // anything at all, any in Go
+	Void    Kind = "void"    // no value
+	Array   Kind = "array"   // Elem[], a []Elem in Go
+	Class   Kind = "class"   // a class of the module, named by Name, a *Name in Go
+	Func    Kind = "func"    // a callback taking Params and giving Result
+	Promise Kind = "promise" // a value that arrives later; Go cannot wait for one yet, so it is left out
 )
 
 // Type is the type of a value that crosses between Go and JavaScript.
@@ -42,6 +43,9 @@ type Param struct {
 	Name     string `json:"name"`
 	Type     Type   `json:"type"`
 	Variadic bool   `json:"variadic,omitempty"`
+	// Optional parameters are left out of the Go function, and the library gets
+	// none, which is what it takes them to be when they are missing.
+	Optional bool `json:"optional,omitempty"`
 }
 
 // Function is a function of the module, or a method of one of its classes.
@@ -61,17 +65,21 @@ type Property struct {
 
 // ClassDecl is a class of the module.
 type ClassDecl struct {
-	Name        string     `json:"name"`
-	Constructor []Param    `json:"constructor,omitempty"`
-	NoConstruct bool       `json:"noConstructor,omitempty"` // instances only ever come from the library
-	Methods     []Function `json:"methods,omitempty"`
-	Properties  []Property `json:"properties,omitempty"`
-	Statics     []Function `json:"statics,omitempty"`
+	Name        string  `json:"name"`
+	Constructor []Param `json:"constructor,omitempty"`
+	NoConstruct bool    `json:"noConstructor,omitempty"` // instances only ever come from the library
+	// Extends names the classes of the module this one is a kind of. Go has no
+	// subclasses, so a parameter that takes such a class takes any of its kinds.
+	Extends    []string   `json:"extends,omitempty"`
+	Methods    []Function `json:"methods,omitempty"`
+	Properties []Property `json:"properties,omitempty"`
+	Statics    []Function `json:"statics,omitempty"`
 }
 
 // Constant is a value of the module that does not change.
 type Constant struct {
 	Name  string `json:"name"`
+	JS    string `json:"js,omitempty"` // where the library has it, such as "Color.Red"; Name when empty
 	Type  Type   `json:"type"`
 	Value string `json:"value,omitempty"` // the literal, when it is known; otherwise it is read from the module
 }

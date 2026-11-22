@@ -1,8 +1,11 @@
 package bind
 
 import (
+	"encoding/json"
 	"fmt"
 	"go/token"
+	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -21,7 +24,7 @@ func Generate(module *Module) (*Output, error) {
 		return nil, fmt.Errorf("bind: the module has no name")
 	}
 
-	g := &generator{module: module, classes: map[string]bool{}}
+	g := &generator{module: module, classes: map[string]bool{}, taken: map[string]bool{}, skippedClass: map[string]bool{}}
 
 	g.pkg = module.Package
 
@@ -44,25 +47,38 @@ func Generate(module *Module) (*Output, error) {
 		g.classes[class.Name] = true
 	}
 
+	g.lineage()
+
 	g.write()
 
 	return &Output{Package: g.pkg, Stub: g.stub.String(), Shim: g.shim.String(), Skipped: g.skipped}, nil
 }
 
 type generator struct {
-	module     *Module
-	pkg        string
-	importPath string
-	classes    map[string]bool
-	stub       strings.Builder
-	shim       strings.Builder
-	skipped    []string
+	module       *Module
+	pkg          string
+	importPath   string
+	classes      map[string]bool
+	stub         strings.Builder
+	shim         strings.Builder
+	skipped      []string
+	taken        map[string]bool
+	skippedClass map[string]bool
+	ancestors    map[string][]string // every class a class is a kind of, itself not included
+	hasKinds     map[string]bool     // classes that some other class is a kind of
+	descendants  map[string][]string
 }
 
 func (g *generator) write() {
 	fmt.Fprintf(&g.stub, "//go2js:import %s\n\n", g.importPath)
 	fmt.Fprintf(&g.stub, "// Declarations of the JavaScript library %q, written by go2js bind.\n", g.module.Name)
 	fmt.Fprintf(&g.stub, "package %s\n", g.pkg)
+
+	var classText []string
+
+	for _, class := range g.module.Classes {
+		classText = append(classText, g.class(class))
+	}
 
 	var members []string
 
@@ -76,20 +92,17 @@ func (g *generator) write() {
 		}
 	}
 
-	var classText []string
-
-	for _, class := range g.module.Classes {
-		classText = append(classText, g.class(class))
-	}
-
 	fmt.Fprintf(&g.shim, "// JavaScript behind the library %q, written by go2js bind.\n", g.module.Name)
 	fmt.Fprintf(&g.shim, "// It is loaded the first time something of it is used, with require(%q).\n", g.module.Name)
 	fmt.Fprintf(&g.shim, "let %s_module = null;\n", g.pkg)
 	fmt.Fprintf(&g.shim, "function %s_load() {\n\tif (%s_module === null) {\n\t\t%s_module = require(%q);\n\t}\n\n\treturn %s_module;\n}\n\n", g.pkg, g.pkg, g.pkg, g.module.Name, g.pkg)
 	fmt.Fprintf(&g.shim, "// One JavaScript object is always the same Go value, so two of them compare as they should.\n")
 	fmt.Fprintf(&g.shim, "const %s_wrapped = new WeakMap();\n", g.pkg)
-	fmt.Fprintf(&g.shim, "function %s_unwrap(value) {\n\treturn value === null || value === undefined ? null : value.handle;\n}\n\n", g.pkg)
-	fmt.Fprintf(&g.shim, "function %s_wrap(Class, handle) {\n\tif (handle === null || handle === undefined) {\n\t\treturn null;\n\t}\n\n\tlet value = %s_wrapped.get(handle);\n\n\tif (value === undefined) {\n\t\tvalue = new Class();\n\t\tvalue.handle = handle;\n\t\t%s_wrapped.set(handle, value);\n\t}\n\n\treturn value;\n}\n\n", g.pkg, g.pkg, g.pkg)
+	fmt.Fprintf(&g.shim, "function %s_unwrap(value) {\n\tvalue = %s_open(value);\n\n\treturn value === null || value === undefined ? null : value.handle;\n}\n\n", g.pkg, g.pkg)
+	fmt.Fprintf(&g.shim, "// whether an object of the library is the class of that name, or a kind of it\nfunction %s_is(value, name) {\n\tconst kind = value.handle && value.handle.constructor ? %s_kinds[value.handle.constructor.name] : undefined;\n\n\treturn kind !== undefined && kind.lineage.includes(name);\n}\n\n", g.pkg, g.pkg)
+	fmt.Fprintf(&g.shim, "// a value Go holds in an interface is boxed; the library gets what is inside\nfunction %s_open(value) {\n\treturn value !== null && typeof value === \"object\" && value.__go2js_interface === true ? value.value : value;\n}\n\n", g.pkg)
+	fmt.Fprintf(&g.shim, "// a value of any type that is one of the library's objects as Go holds it goes back as the object itself\nfunction %s_unwrapAny(value) {\n\tvalue = %s_open(value);\n\n\tif (value !== null && typeof value === \"object\" && value.handle !== undefined && value.handle !== null && %s_wrapped.get(value.handle) === value) {\n\t\treturn value.handle;\n\t}\n\n\treturn value;\n}\n\n", g.pkg, g.pkg, g.pkg)
+	fmt.Fprintf(&g.shim, "function %s_wrap(Class, handle) {\n\tif (handle === null || handle === undefined) {\n\t\treturn null;\n\t}\n\n\tlet value = %s_wrapped.get(handle);\n\n\tif (value === undefined) {\n\t\t// a Mesh the library gives where an Object3D was declared is a Mesh\n\t\tconst kind = handle.constructor ? %s_kinds[handle.constructor.name] : undefined;\n\n\t\tif (kind !== undefined && kind.lineage.includes(Class.name)) {\n\t\t\tClass = kind.Class();\n\t\t}\n\n\t\tvalue = new Class();\n\t\tvalue.handle = handle;\n\t\t%s_wrapped.set(handle, value);\n\t}\n\n\treturn value;\n}\n\n", g.pkg, g.pkg, g.pkg, g.pkg)
 	fmt.Fprintf(&g.shim, "const %s = {\n", g.pkg)
 
 	for _, text := range members {
@@ -98,6 +111,24 @@ func (g *generator) write() {
 
 	for _, text := range classText {
 		g.shim.WriteString(text)
+	}
+
+	g.shim.WriteString("};\n")
+
+	fmt.Fprintf(&g.shim, "\n// the classes of the library by the name its objects carry, with the classes each is a kind of\nconst %s_kinds = {\n", g.pkg)
+
+	for _, class := range g.module.Classes {
+		if g.skippedClass[class.Name] {
+			continue
+		}
+
+		lineage := []string{strconv.Quote(exportName(class.Name))}
+
+		for _, ancestor := range g.ancestors[class.Name] {
+			lineage = append(lineage, strconv.Quote(exportName(ancestor)))
+		}
+
+		fmt.Fprintf(&g.shim, "\t%s: {Class: () => %s.%s, lineage: [%s]},\n", strconv.Quote(class.Name), g.pkg, exportName(class.Name), strings.Join(lineage, ", "))
 	}
 
 	g.shim.WriteString("};\n")
@@ -111,6 +142,18 @@ func (g *generator) skip(what, why string) {
 // known, and otherwise a variable that is read from the library when it loads.
 func (g *generator) constant(c Constant) string {
 	name := exportName(c.Name)
+
+	if !validName(c.Name) && c.JS == "" {
+		g.skip(c.Name, "its name cannot be written in JavaScript")
+
+		return ""
+	}
+
+	if !g.claim(name) {
+		g.skip(c.Name, "another name of the package is the same in Go")
+
+		return ""
+	}
 
 	if c.Value != "" && isPlain(c.Type.Kind) {
 		fmt.Fprintf(&g.stub, "\nconst %s = %s\n", name, c.Value)
@@ -128,7 +171,7 @@ func (g *generator) constant(c Constant) string {
 
 	fmt.Fprintf(&g.stub, "\nvar %s %s\n", name, goType)
 
-	return fmt.Sprintf("\tget %s() {\n\t\treturn %s;\n\t},\n", name, g.fromJS(fmt.Sprintf("%s_load().%s", g.pkg, c.Name), c.Type))
+	return fmt.Sprintf("\tget %s() {\n\t\treturn %s;\n\t},\n", name, g.fromJS(fmt.Sprintf("%s_load().%s", g.pkg, jsPath(c)), c.Type))
 }
 
 func isPlain(kind Kind) bool {
@@ -145,13 +188,13 @@ type member struct {
 
 // object writes a member as a member of the object the shim is.
 func (m member) object() string {
-	return fmt.Sprintf("\t%s(%s) {\n%s\t},\n", m.name, m.params, indent(m.body, 1))
+	return fmt.Sprintf("\t%s(%s) {\n%s\t},\n", m.name, m.params, indent(m.body, 2))
 }
 
 // method writes a member as a method of a class, where nothing separates one
 // member from the next.
 func (m member) method() string {
-	return fmt.Sprintf("\n\t\t%s(%s) {\n%s\t\t}\n", m.name, m.params, indent(m.body, 2))
+	return fmt.Sprintf("\n\t\t%s(%s) {\n%s\t\t}\n", m.name, m.params, indent(m.body, 3))
 }
 
 func indent(text string, levels int) string {
@@ -173,6 +216,12 @@ func (g *generator) function(f Function, owner string, mode string) (member, boo
 
 	if owner != "" {
 		what = owner + "." + f.Name
+	}
+
+	if !validName(f.Name) {
+		g.skip(what, "its name cannot be written in JavaScript")
+
+		return member{}, false
 	}
 
 	params, names, ok := g.parameters(f.Params)
@@ -199,6 +248,21 @@ func (g *generator) function(f Function, owner string, mode string) (member, boo
 
 	goName := exportName(f.Name)
 
+	taken := goName
+
+	switch mode {
+	case "method":
+		taken = owner + "." + goName
+	case "static":
+		taken = owner + goName
+	}
+
+	if !g.claim(taken) {
+		g.skip(what, "another name of the package is the same in Go")
+
+		return member{}, false
+	}
+
 	var call string
 
 	switch mode {
@@ -219,10 +283,10 @@ func (g *generator) function(f Function, owner string, mode string) (member, boo
 
 	invoke := fmt.Sprintf("%s(%s)", call, g.arguments(f.Params))
 
-	body := invoke + ";\n"
+	body := g.restFix(f.Params) + invoke + ";\n"
 
 	if result != "" {
-		body = "return " + g.fromJS(invoke, *f.Result) + ";\n"
+		body = g.restFix(f.Params) + "return " + g.fromJS(invoke, *f.Result) + ";\n"
 	}
 
 	return member{name: goName, params: names, body: body}, true
@@ -233,18 +297,61 @@ func (g *generator) function(f Function, owner string, mode string) (member, boo
 func (g *generator) class(c ClassDecl) string {
 	name := exportName(c.Name)
 
+	if !g.claim(name) {
+		g.skip(c.Name, "another name of the package is the same in Go")
+
+		g.skippedClass[c.Name] = true
+
+		return ""
+	}
+
 	fmt.Fprintf(&g.stub, "\ntype %s struct {\n\thandle any\n}\n", name)
+
+	// a parameter that takes this class takes its kinds too, which have these markers
+	var markers strings.Builder
+
+	for _, kind := range append([]string{c.Name}, g.ancestors[c.Name]...) {
+		marker := "Is" + exportName(kind)
+
+		if g.claim(name + "." + marker) {
+			fmt.Fprintf(&g.stub, "\nfunc (self *%s) %s()\n", name, marker)
+			markers.WriteString(member{name: marker}.method())
+		}
+	}
+
+	// a class is seen as one of its kinds with AsKind(), and an object that is a more specific class is told with AsClass()
+	for _, ancestor := range g.ancestors[c.Name] {
+		if method := "As" + exportName(ancestor); g.claim(name + "." + method) {
+			fmt.Fprintf(&g.stub, "\nfunc (self *%s) %s() *%s\n", name, method, exportName(ancestor))
+			markers.WriteString(member{name: method, body: "return this;\n"}.method())
+		}
+	}
+
+	for _, descendant := range g.descendants[c.Name] {
+		if method := "As" + exportName(descendant); g.claim(name + "." + method) {
+			fmt.Fprintf(&g.stub, "\nfunc (self *%s) %s() *%s\n", name, method, exportName(descendant))
+			markers.WriteString(member{name: method, body: fmt.Sprintf("return %s_is(this, %s) ? this : null;\n", g.pkg, strconv.Quote(exportName(descendant)))}.method())
+		}
+	}
+
+	if g.hasKinds[c.Name] && g.claim(name+"Like") {
+		fmt.Fprintf(&g.stub, "\n// %sLike is what a parameter takes where the library takes a %s or any kind of one.\ntype %sLike interface {\n\tIs%s()\n}\n", name, c.Name, name, name)
+	}
 
 	var methods strings.Builder
 	var others []member
 
+	methods.WriteString(markers.String())
+
 	if !c.NoConstruct {
 		params, names, ok := g.parameters(c.Constructor)
 
-		if ok {
+		if ok && !g.claim("New"+name) {
+			g.skip(c.Name+" constructor", "another name of the package is the same in Go")
+		} else if ok {
 			fmt.Fprintf(&g.stub, "\nfunc New%s(%s) *%s\n", name, params, name)
 
-			body := fmt.Sprintf("const value = new %s.%s();\nvalue.handle = new (%s_load().%s)(%s);\n%s_wrapped.set(value.handle, value);\n\nreturn value;\n", g.pkg, name, g.pkg, c.Name, g.arguments(c.Constructor), g.pkg)
+			body := g.restFix(c.Constructor) + fmt.Sprintf("const value = new %s.%s();\nvalue.handle = new (%s_load().%s)(%s);\n%s_wrapped.set(value.handle, value);\n\nreturn value;\n", g.pkg, name, g.pkg, c.Name, g.arguments(c.Constructor), g.pkg)
 
 			others = append(others, member{name: "New" + name, params: names, body: body})
 		} else {
@@ -261,6 +368,12 @@ func (g *generator) class(c ClassDecl) string {
 	for _, property := range c.Properties {
 		goType, ok := g.goType(property.Type)
 
+		if !validName(property.Name) {
+			g.skip(c.Name+"."+property.Name, "its name cannot be written in JavaScript")
+
+			continue
+		}
+
 		if !ok || goType == "" {
 			g.skip(c.Name+"."+property.Name, "its type cannot be said in Go yet")
 
@@ -269,11 +382,19 @@ func (g *generator) class(c ClassDecl) string {
 
 		goName := exportName(property.Name)
 
+		if !g.claim(name + "." + goName) {
+			g.skip(c.Name+"."+property.Name, "another name of the class is the same in Go")
+
+			continue
+		}
+
 		fmt.Fprintf(&g.stub, "\nfunc (self *%s) %s() %s\n", name, goName, goType)
 		methods.WriteString(member{name: goName, body: "return " + g.fromJS("this.handle."+property.Name, property.Type) + ";\n"}.method())
 
-		if !property.ReadOnly {
-			fmt.Fprintf(&g.stub, "\nfunc (self *%s) Set%s(value %s)\n", name, goName, goType)
+		if !property.ReadOnly && g.claim(name+".Set"+goName) {
+			setType, _ := g.goParamType(property.Type)
+
+			fmt.Fprintf(&g.stub, "\nfunc (self *%s) Set%s(value %s)\n", name, goName, setType)
 			methods.WriteString(member{name: "Set" + goName, params: "value", body: "this.handle." + property.Name + " = " + g.toJS("value", property.Type) + ";\n"}.method())
 		}
 	}
@@ -298,10 +419,12 @@ func (g *generator) class(c ClassDecl) string {
 // parameters writes the parameters of a function as Go declares them and as the
 // shim names them.
 func (g *generator) parameters(params []Param) (string, string, bool) {
+	params = required(params)
+
 	var declared, names []string
 
 	for i, param := range params {
-		goType, ok := g.goType(param.Type)
+		goType, ok := g.goParamType(param.Type)
 
 		if !ok || goType == "" {
 			return "", "", false
@@ -323,6 +446,8 @@ func (g *generator) parameters(params []Param) (string, string, bool) {
 
 // arguments writes what the shim passes to the library for each parameter.
 func (g *generator) arguments(params []Param) string {
+	params = required(params)
+
 	var out []string
 
 	for i, param := range params {
@@ -407,6 +532,8 @@ func (g *generator) goType(t Type) (string, bool) {
 // toJS writes a value going from Go to the library.
 func (g *generator) toJS(expr string, t Type) string {
 	switch t.Kind {
+	case Any:
+		return fmt.Sprintf("%s_unwrapAny(%s)", g.pkg, expr)
 	case Class:
 		if g.classes[t.Name] {
 			return fmt.Sprintf("%s_unwrap(%s)", g.pkg, expr)
@@ -456,6 +583,8 @@ func (g *generator) fromJS(expr string, t Type) string {
 
 func needsConversion(t Type, g *generator) bool {
 	switch t.Kind {
+	case Any:
+		return true
 	case Class:
 		return g.classes[t.Name]
 	case Array, Func:
@@ -501,6 +630,14 @@ func exportName(name string) string {
 		return "X"
 	}
 
+	name = strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' {
+			return r
+		}
+
+		return '_'
+	}, name)
+
 	runes := []rune(name)
 
 	if !unicode.IsLetter(runes[0]) {
@@ -525,4 +662,150 @@ func safeName(name string, index int) string {
 
 		return '_'
 	}, name)
+}
+
+func jsPath(c Constant) string {
+	if c.JS != "" {
+		return c.JS
+	}
+
+	return c.Name
+}
+
+// required is what Go can say of the parameters of a function. Parameters that
+// may be left out, which are always the last ones, become one variadic parameter,
+// so a Go program gives as many of them as it means to and the library gets
+// exactly those. When they are all of one type that is the type of the variadic
+// parameter, and otherwise it is any.
+func required(params []Param) []Param {
+	var out, optional []Param
+
+	rest := false
+
+	for _, param := range params {
+		if param.Variadic {
+			rest = true
+		}
+
+		if param.Optional {
+			optional = append(optional, param)
+		} else {
+			out = append(out, param)
+		}
+	}
+
+	if len(optional) == 0 || rest {
+		return out
+	}
+
+	elem := optional[0].Type
+
+	for _, param := range optional[1:] {
+		if !sameType(elem, param.Type) {
+			elem = Type{Kind: Any}
+
+			break
+		}
+	}
+
+	return append(out, Param{Name: "optional", Type: Type{Kind: Array, Elem: &elem}, Variadic: true})
+}
+
+func sameType(a, b Type) bool {
+	x, _ := json.Marshal(a)
+	y, _ := json.Marshal(b)
+
+	return string(x) == string(y)
+}
+
+// claim takes a name of the Go package for something, or says it is taken.
+func (g *generator) claim(name string) bool {
+	if g.taken[name] {
+		return false
+	}
+
+	g.taken[name] = true
+
+	return true
+}
+
+// lineage works out, for every class, the classes it is a kind of.
+func (g *generator) lineage() {
+	direct := map[string][]string{}
+
+	for _, class := range g.module.Classes {
+		direct[class.Name] = class.Extends
+	}
+
+	g.ancestors = map[string][]string{}
+	g.hasKinds = map[string]bool{}
+	g.descendants = map[string][]string{}
+
+	for _, class := range g.module.Classes {
+		seen := map[string]bool{class.Name: true}
+		queue := append([]string(nil), class.Extends...)
+
+		for len(queue) > 0 {
+			name := queue[0]
+			queue = queue[1:]
+
+			if seen[name] || !g.classes[name] {
+				continue
+			}
+
+			seen[name] = true
+			g.ancestors[class.Name] = append(g.ancestors[class.Name], name)
+			g.descendants[name] = append(g.descendants[name], class.Name)
+			g.hasKinds[name] = true
+			queue = append(queue, direct[name]...)
+		}
+	}
+}
+
+// goParamType is goType for a parameter, which takes any kind of a class that
+// has kinds: such a class is an interface there, and a pointer elsewhere.
+func (g *generator) goParamType(t Type) (string, bool) {
+	switch t.Kind {
+	case Class:
+		if g.classes[t.Name] && g.hasKinds[t.Name] {
+			return exportName(t.Name) + "Like", true
+		}
+	case Array:
+		if t.Elem != nil {
+			elem, ok := g.goParamType(*t.Elem)
+
+			if !ok || elem == "" {
+				return "", false
+			}
+
+			return "[]" + elem, true
+		}
+	}
+
+	return g.goType(t)
+}
+
+var jsName = regexp.MustCompile(`^[A-Za-z_$][A-Za-z0-9_$]*$`)
+
+// validName says whether a name from the description can be written as a
+// property of a JavaScript object.
+func validName(name string) bool {
+	return jsName.MatchString(name)
+}
+
+// restFix writes what undoes a habit of the compiler: a call that gives none of
+// a variadic parameter's arguments passes an empty slice in their place, and that
+// must not reach the library as an argument.
+func (g *generator) restFix(params []Param) string {
+	var out strings.Builder
+
+	for i, param := range required(params) {
+		if !param.Variadic || param.Type.Elem == nil || param.Type.Elem.Kind == Array || param.Type.Elem.Kind == Any {
+			continue
+		}
+
+		fmt.Fprintf(&out, "if (p%d.length === 1 && Array.isArray(p%d[0]) && p%d[0].length === 0) {\n\tp%d = [];\n}\n\n", i, i, i, i)
+	}
+
+	return out.String()
 }
