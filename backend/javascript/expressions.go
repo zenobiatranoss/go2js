@@ -457,6 +457,18 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		return nil
 	}
 
+	// The flags of a file are the numbers of the file shim, whichever machine
+	// the program was compiled on.
+	if e.analysis != nil {
+		if info, ok := e.analysis.Types[expr]; ok && info.Value != nil && info.Value.Kind() == constant.Int {
+			if flags, ok := e.linuxOpenFlags(expr); ok {
+				e.write(strconv.FormatInt(flags, 10))
+
+				return nil
+			}
+		}
+	}
+
 	// A constant of a library whose declarations came with the program is written
 	// as the value the declarations give it, so the shim behind the library need
 	// not repeat what the declarations already say.
