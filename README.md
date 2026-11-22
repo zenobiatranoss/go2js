@@ -365,9 +365,10 @@ A stub file may also start with `//go2js:import <path>` to say which import path
 
 ### Calling JavaScript libraries from Go
 
-`go2js bind` turns a description of an npm library into Go declarations and the JavaScript behind them,
-so a Go program can call it with types (classes, methods, properties, callbacks). See [docs/bind.md](docs/bind.md).
-It reads a JSON description for now; reading TypeScript `.d.ts` files is the next step.
+`go2js bind three` reads the TypeScript declarations an npm package ships and writes Go declarations and the
+JavaScript behind them, so a Go program can call the library with types: classes and their kinds, methods,
+properties, callbacks, optional parameters, namespaces. A Go program that does vector math, builds a scene
+and adds a mesh runs against the real three.js. See [docs/bind.md](docs/bind.md).
 
 ### Third-party libraries that were tried
 

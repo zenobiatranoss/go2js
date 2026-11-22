@@ -2,14 +2,41 @@
 
 `go2js bind` writes what a Go program needs to use a JavaScript library: Go
 declarations the type checker reads, and the JavaScript behind them that calls the
-library. The library is described in a JSON file; reading TypeScript `.d.ts` files
-into that description is the next step (see the roadmap below).
+library. It reads the TypeScript declaration files (`.d.ts`) the package ships, or
+that DefinitelyTyped wrote for it (`@types/...`), so most npm packages need nothing
+written by hand.
 
 ```bash
-go2js bind -o stubs gadget.json
-go2js -stubs stubs -shim stubs/gadget.js -module commonjs -o program.js .
-node program.js          # needs the library in node_modules
+npm install three @types/three
+go2js bind -o stubs three                 # finds the declaration files in node_modules
+go2js -stubs stubs -shim stubs/three.js -module commonjs -o program.js .
+node program.js
 ```
+
+```go
+import "npm/three"
+
+v := three.NewVector3(3, 4, 0)
+fmt.Println(v.Length())               // 5
+
+scene := three.NewScene()
+mesh := three.NewMesh(three.NewBoxGeometry(1, 1, 1, 1, 1, 1), three.NewMeshBasicMaterial())
+scene.Add(mesh)                       // a Mesh is an Object3D, so it is taken
+```
+
+That program runs against the real three.js: the vector math, a scene, a camera and a
+mesh give the numbers three.js gives. Of its type declarations, about 300 constructors
+and 450 types are written in a fifth of a second.
+
+Other ways to give the description:
+
+```bash
+go2js bind -dts lib.d.ts,more.d.ts -o stubs name   # declaration files you name
+go2js bind -o stubs description.json               # a description written by hand (below)
+```
+
+Options: `-dir` (where the package is installed), `-name` (the Go package name),
+`-import` (the import path, `npm/<package>` by default).
 
 ## The description
 
@@ -60,8 +87,36 @@ fmt.Println(gadget.Greet("go2js"), w.X())
 
 One JavaScript object is always the same Go pointer, so `a == b` means what it says.
 
+## Kinds of a class
+
+Go has no subclasses, so a class that other classes extend is taken by an interface
+where a parameter wants it: a parameter declared as `Object3D` is `Object3DLike`, and any
+`*Mesh`, `*Scene` and the like fit. Going the other way, `mesh.AsObject3D()` sees a
+class as one of its kinds, and `obj.AsMesh()` is the class when the object really is a
+`Mesh` and `nil` when it is not. An object the library gives back is always the most
+specific class it is, so `scene.Children()[0].AsMesh()` works.
+
+## Optional parameters
+
+A parameter that may be left out is written as a variadic one at the end, so a Go program
+gives as many of them as it means to and the library gets exactly those:
+`three.NewPerspectiveCamera(75, 1.5)`, with the near and far planes left to the library.
+When they are of different types it is `...any`.
+
+## Namespaces and objects with members
+
+`namespace MathUtils { function degToRad(...) }` and `const MathUtils: { degToRad(...) }`
+are an object that has functions and values, so Go has a value that has them as
+methods: `three.MathUtils.DegToRad(180)`.
+
 ## What is left out
 
 Anything Go cannot say yet is left out, and `go2js bind` prints each one with the
-reason, so nothing disappears silently. Today that means: `Promise` results, callbacks
-the library returns to Go, maps, unions and generics. These are the next steps.
+reason, so nothing disappears silently. Today that means: `Promise` results (Go cannot
+wait for one yet), callbacks the library returns to Go, maps, generic types (they are
+`any`), options objects (`{ x?: number }`), and a name that Go already has for something
+else in the package. These are the next steps.
+
+The library is loaded with `require`, so for now a program that uses it is compiled with
+`-module commonjs` (or run where `require` exists), and a package that only ships as an
+ES module needs a build of it for Node.
