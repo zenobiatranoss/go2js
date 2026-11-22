@@ -1,0 +1,106 @@
+// Package bind turns the description of a JavaScript library into what a Go
+// program needs to use it: a file of Go declarations the type checker reads, and
+// the JavaScript behind them that calls the library.
+//
+// The description is plain data (see Module), so whatever reads the library —
+// a TypeScript declaration file, a hand-written file — hands over the same thing
+// and the same generator writes the bindings.
+package bind
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+// Kind is what sort of thing a Type is.
+type Kind string
+
+const (
+	Number  Kind = "number"  // a JavaScript number, a float64 in Go
+	Integer Kind = "integer" // a number the library only means as a whole one, an int in Go
+	String  Kind = "string"
+	Boolean Kind = "boolean"
+	Any     Kind = "any"   // anything at all, any in Go
+	Void    Kind = "void"  // no value
+	Array   Kind = "array" // Elem[], a []Elem in Go
+	Class   Kind = "class" // a class of the module, named by Name, a *Name in Go
+	Func    Kind = "func"  // a callback taking Params and giving Result
+)
+
+// Type is the type of a value that crosses between Go and JavaScript.
+type Type struct {
+	Kind   Kind    `json:"kind"`
+	Elem   *Type   `json:"elem,omitempty"`
+	Name   string  `json:"name,omitempty"`
+	Params []Param `json:"params,omitempty"`
+	Result *Type   `json:"result,omitempty"`
+}
+
+// Param is one parameter of a function, a method or a callback.
+type Param struct {
+	Name     string `json:"name"`
+	Type     Type   `json:"type"`
+	Variadic bool   `json:"variadic,omitempty"`
+}
+
+// Function is a function of the module, or a method of one of its classes.
+type Function struct {
+	Name   string  `json:"name"` // the name in JavaScript
+	Params []Param `json:"params,omitempty"`
+	Result *Type   `json:"result,omitempty"`
+}
+
+// Property is a field of an instance of a class. Go has no properties, so it is
+// read with Name() and, unless it is read only, written with SetName().
+type Property struct {
+	Name     string `json:"name"`
+	Type     Type   `json:"type"`
+	ReadOnly bool   `json:"readonly,omitempty"`
+}
+
+// ClassDecl is a class of the module.
+type ClassDecl struct {
+	Name        string     `json:"name"`
+	Constructor []Param    `json:"constructor,omitempty"`
+	NoConstruct bool       `json:"noConstructor,omitempty"` // instances only ever come from the library
+	Methods     []Function `json:"methods,omitempty"`
+	Properties  []Property `json:"properties,omitempty"`
+	Statics     []Function `json:"statics,omitempty"`
+}
+
+// Constant is a value of the module that does not change.
+type Constant struct {
+	Name  string `json:"name"`
+	Type  Type   `json:"type"`
+	Value string `json:"value,omitempty"` // the literal, when it is known; otherwise it is read from the module
+}
+
+// Module is a JavaScript library as a Go program sees it.
+type Module struct {
+	// Name is how the library is loaded: what require() is given.
+	Name string `json:"name"`
+	// Package is the name of the Go package; the last part of Import when empty.
+	Package string `json:"package,omitempty"`
+	// Import is the import path the Go program uses for it.
+	Import    string      `json:"import,omitempty"`
+	Functions []Function  `json:"functions,omitempty"`
+	Constants []Constant  `json:"constants,omitempty"`
+	Classes   []ClassDecl `json:"classes,omitempty"`
+}
+
+// ReadModule reads the description of a module from a JSON file.
+func ReadModule(path string) (*Module, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var module Module
+
+	if err := json.Unmarshal(data, &module); err != nil {
+		return nil, fmt.Errorf("bind: %s: %w", path, err)
+	}
+
+	return &module, nil
+}

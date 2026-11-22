@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/zenobiatranoss/go2js/bind"
 	"io"
 	"os"
 	"path/filepath"
@@ -44,6 +45,10 @@ func run(args []string, stdout, stderr io.Writer) error {
 	// same compiler.
 	if len(args) > 0 && args[0] == "test" {
 		return runTests(args[1:], stdout, stderr)
+	}
+
+	if len(args) > 0 && args[0] == "bind" {
+		return runBind(args[1:], stdout)
 	}
 
 	if len(args) > 0 && args[0] == "stubgen" {
@@ -331,6 +336,60 @@ func runStubgen(args []string, stdout io.Writer) error {
 
 	fmt.Fprintf(stdout, "wrote %s and %s\n", stubFile, shimFile)
 	fmt.Fprintf(stdout, "fill in the functions of %s that the program uses, then compile with:\n  go2js -stubs %s -shim %s -o program.js .\n", shimFile, out, shimFile)
+
+	return nil
+}
+
+// runBind writes the Go declarations and the JavaScript behind them for a
+// JavaScript library that is described in a JSON file, so a Go program can call
+// the library and the program is compiled against it with -stubs and -shim.
+func runBind(args []string, stdout io.Writer) error {
+	fs := flag.NewFlagSet("bind", flag.ContinueOnError)
+
+	var out string
+
+	fs.StringVar(&out, "o", "stubs", "the directory the declarations and the shim are written to")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	if fs.NArg() != 1 {
+		return fmt.Errorf("usage: go2js bind [-o dir] <description.json>")
+	}
+
+	module, err := bind.ReadModule(fs.Arg(0))
+	if err != nil {
+		return err
+	}
+
+	generated, err := bind.Generate(module)
+	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(out, 0755); err != nil {
+		return err
+	}
+
+	stubFile := filepath.Join(out, generated.Package+".stub")
+	shimFile := filepath.Join(out, generated.Package+".js")
+
+	if err := os.WriteFile(stubFile, []byte(generated.Stub), 0644); err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(shimFile, []byte(generated.Shim), 0644); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(stdout, "wrote %s and %s\n", stubFile, shimFile)
+
+	for _, skipped := range generated.Skipped {
+		fmt.Fprintf(stdout, "left out %s\n", skipped)
+	}
+
+	fmt.Fprintf(stdout, "compile a program that uses it with:\n  go2js -stubs %s -shim %s -o program.js .\n", out, shimFile)
 
 	return nil
 }
