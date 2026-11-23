@@ -99,6 +99,19 @@ browser. There are approaches: WASM (heavy, awkward), hand-ported translations
   Anything ES2022-capable can run the output; Node is what the tests use.
 - No third-party Go dependencies to build the tool itself.
 
+### Platforms
+
+CI builds and tests go2js on **Linux, macOS and Windows**. Two honest caveats:
+
+- On Windows, the parity programs that use libraries which answer as the
+  machine does (`os`, `path`, `path/filepath`, `io/fs`, `io/ioutil`, `log/slog`,
+  `net/http` helpers, `syscall`, `os/exec`, `os/signal`, `os/user`,
+  `runtime/debug`) and a few path and stack-trace tests are not compared with
+  Go, because Go itself answers differently there (`\` paths, Windows error
+  texts, no unix permission bits).
+- On arm64 (Apple silicon) Go fuses multiply-add, so some `math` results differ
+  in the last digits from the JavaScript output; those tests are skipped there.
+
 ## Build & install
 
 ```sh
