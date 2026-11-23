@@ -5,6 +5,7 @@ import "testing"
 // A pattern names the files that stand under the directory it begins with, and
 // the names it answers with are in the order they sort into.
 func TestGlobAnswersWithTheNamesItStandsFor(t *testing.T) {
+	skipWhereGoAnswersAsWindowsDoes(t)
 	runParityTest(t, `package main
 
 import (
@@ -45,6 +46,7 @@ func main() {
 // A walk of a filesystem reads it in order, a directory before what is in it,
 // and a reader that answers a fault stops the walk at the fault.
 func TestWalkReadsInOrderAndStops(t *testing.T) {
+	skipWhereGoAnswersAsWindowsDoes(t)
 	runParityTest(t, `package main
 
 import (
@@ -100,6 +102,7 @@ func main() {
 // A walk of entries gives the entry itself, which says what it is without the
 // cost of asking, and the same faults are given to the reader.
 func TestWalkDirGivesEntries(t *testing.T) {
+	skipWhereGoAnswersAsWindowsDoes(t)
 	runParityTest(t, `package main
 
 import (
@@ -139,6 +142,7 @@ func main() {
 }
 
 func TestWalkStopsWhereAsked(t *testing.T) {
+	skipWhereGoAnswersAsWindowsDoes(t)
 	runParityTest(t, `package main
 
 import (

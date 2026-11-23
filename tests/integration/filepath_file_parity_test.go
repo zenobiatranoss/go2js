@@ -7,6 +7,7 @@ import "testing"
 // for nothing, or a class with a range that has only one end, is not a pattern
 // at all and is told so rather than matched.
 func TestFilepathPatternsAreReadTheSameWay(t *testing.T) {
+	skipWhereGoAnswersAsWindowsDoes(t)
 	runParityTest(t, `package main
 
 import (
@@ -60,6 +61,7 @@ func main() {
 // A file is written through the same writer anything else is written through,
 // and a reader or a scanner is given what is in the file to read.
 func TestAFileIsWrittenAndReadAsAWriterAndReader(t *testing.T) {
+	skipWhereGoAnswersAsWindowsDoes(t)
 	runParityTest(t, `package main
 
 import (

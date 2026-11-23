@@ -3,6 +3,7 @@ package integration_test
 import "testing"
 
 func TestFilepathSlashHelpersMatchGo(t *testing.T) {
+	skipWhereGoAnswersAsWindowsDoes(t)
 	runParityTest(t, `package main
 
 import (
