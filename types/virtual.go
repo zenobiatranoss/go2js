@@ -9,6 +9,7 @@ import (
 	gotypes "go/types"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 )
@@ -114,6 +115,57 @@ func StubImportPath(source string) string {
 	}
 
 	return ""
+}
+
+// AsyncDirective marks the function that follows it in a stub file as one that
+// waits for something outside the program (a promise, say), so a call to it is
+// one the goroutine waits in.
+const AsyncDirective = "//go2js:async"
+
+var asyncStubFunc = regexp.MustCompile(`^func\s+(?:\(\s*\w+\s+\*?(\w+)\s*\)\s*)?(\w+)`)
+
+// AsyncStub reports whether a function of a stub package waits. name is the
+// function's name, or "Type.Method" for a method.
+func AsyncStub(path, name string) bool {
+	source := VirtualSource(path)
+
+	if source == "" || !strings.Contains(source, AsyncDirective) {
+		return false
+	}
+
+	marked := false
+
+	for _, line := range strings.Split(source, "\n") {
+		line = strings.TrimSpace(line)
+
+		if line == AsyncDirective {
+			marked = true
+
+			continue
+		}
+
+		if line == "" || strings.HasPrefix(line, "//") {
+			continue
+		}
+
+		if marked {
+			if match := asyncStubFunc.FindStringSubmatch(line); match != nil {
+				found := match[2]
+
+				if match[1] != "" {
+					found = match[1] + "." + match[2]
+				}
+
+				if found == name {
+					return true
+				}
+			}
+		}
+
+		marked = false
+	}
+
+	return false
 }
 
 // IsVirtualPackage reports whether the import path is one whose declarations

@@ -3,6 +3,8 @@ package javascript
 import (
 	"go/ast"
 	gotypesstd "go/types"
+
+	go2jstypes "github.com/zenobiatranoss/go2js/types"
 )
 
 // A Go function is written as a generator, so a call to one is a delegation:
@@ -181,11 +183,19 @@ func (e *emitter) callFormFor(fun ast.Expr) callForm {
 				return callYield
 			}
 
+			if object := e.objectOf(target.Sel); object != nil && e.waitingStub(object) {
+				return callYield
+			}
+
 			return callPlain
 		}
 
 		if selection := e.selectionOf(target); selection != nil {
 			if e.programFunction(selection.Obj()) {
+				return callYield
+			}
+
+			if e.waitingStub(selection.Obj()) {
 				return callYield
 			}
 
@@ -247,4 +257,29 @@ func (e *emitter) selectionOf(selector *ast.SelectorExpr) *gotypesstd.Selection 
 	}
 
 	return nil
+}
+
+// waitingStub says whether an object is a function of a stub package that the
+// stub marks as one that waits, which is a generator in the shim behind it.
+func (e *emitter) waitingStub(object gotypesstd.Object) bool {
+	fn, ok := object.(*gotypesstd.Func)
+	if !ok || fn.Pkg() == nil || !go2jstypes.IsVirtualPackage(fn.Pkg().Path()) {
+		return false
+	}
+
+	name := fn.Name()
+
+	if signature, ok := fn.Type().(*gotypesstd.Signature); ok && signature.Recv() != nil {
+		receiver := signature.Recv().Type()
+
+		if pointer, isPointer := receiver.(*gotypesstd.Pointer); isPointer {
+			receiver = pointer.Elem()
+		}
+
+		if named, isNamed := receiver.(*gotypesstd.Named); isNamed {
+			name = named.Obj().Name() + "." + name
+		}
+	}
+
+	return go2jstypes.AsyncStub(fn.Pkg().Path(), name)
 }
