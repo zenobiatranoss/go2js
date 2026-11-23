@@ -8,7 +8,7 @@ the tool does not do yet are as much a part of a release as the things it does.
 
 ## Unreleased
 
-- `go2js bind`: write Go declarations and the JavaScript behind them for an npm library, from the TypeScript declarations it ships (or a JSON description), so Go programs can call it with types: functions, constants, enums, classes with their kinds, properties, statics, callbacks, optional parameters, namespaces. See docs/bind.md.
+- `go2js bind`: write Go declarations and the JavaScript behind them for an npm library, from the TypeScript declarations it ships (or a JSON description), so Go programs can call it with types: functions, constants, enums, classes with their kinds, properties, statics, callbacks, optional parameters, namespaces, and promises that a goroutine waits for (`//go2js:async` in a stub). See docs/bind.md.
 - The flags of `os.OpenFile` are written as the numbers the file shim reads, whatever machine compiled the program (on macOS appending overwrote the file).
 
 ## [Unreleased]

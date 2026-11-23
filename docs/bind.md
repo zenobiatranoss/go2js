@@ -109,11 +109,24 @@ When they are of different types it is `...any`.
 are an object that has functions and values, so Go has a value that has them as
 methods: `three.MathUtils.DegToRad(180)`.
 
+## Promises
+
+A function that gives a `Promise<T>` is a Go function that waits for it and gives `(T, error)`
+(or just `error` for `Promise<void>`). The goroutine that calls it waits, and every other goroutine
+goes on meanwhile; a promise that is rejected, or a call that throws, is the error.
+
+```go
+body, err := fetchlib.Get("https://example.com")   // Get(url): Promise<string>
+```
+
+The stub marks such a function with `//go2js:async`, and a call to it waits. The same marker works in a
+stub written by hand, if its shim function is a generator that waits with `yield*`.
+
 ## What is left out
 
 Anything Go cannot say yet is left out, and `go2js bind` prints each one with the
-reason, so nothing disappears silently. Today that means: `Promise` results (Go cannot
-wait for one yet), callbacks the library returns to Go, maps, generic types (they are
+reason, so nothing disappears silently. Today that means: a `Promise` that is a
+parameter, a property or a callback's result, callbacks the library returns to Go, maps, generic types (they are
 `any`), options objects (`{ x?: number }`), and a name that Go already has for something
 else in the package. These are the next steps.
 
