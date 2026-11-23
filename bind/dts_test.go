@@ -219,10 +219,8 @@ func TestDeclarationsGiveBindingsGoCanUse(t *testing.T) {
 		}
 	}
 
-	joined := strings.Join(out.Skipped, "\n")
-
-	if !strings.Contains(joined, "load") {
-		t.Fatalf("the promise was not said to be left out:\n%s", joined)
+	if !strings.Contains(out.Stub, "//go2js:async\nfunc Load(url string) (string, error)") {
+		t.Fatalf("a promise is waited for, and comes to a value and an error:\n%s", out.Stub)
 	}
 }
 

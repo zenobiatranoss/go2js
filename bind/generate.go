@@ -64,6 +64,7 @@ type generator struct {
 	skipped      []string
 	taken        map[string]bool
 	skippedClass map[string]bool
+	usesAwait    bool
 	ancestors    map[string][]string // every class a class is a kind of, itself not included
 	hasKinds     map[string]bool     // classes that some other class is a kind of
 	descendants  map[string][]string
@@ -103,6 +104,10 @@ func (g *generator) write() {
 	fmt.Fprintf(&g.shim, "// a value Go holds in an interface is boxed; the library gets what is inside\nfunction %s_open(value) {\n\treturn value !== null && typeof value === \"object\" && value.__go2js_interface === true ? value.value : value;\n}\n\n", g.pkg)
 	fmt.Fprintf(&g.shim, "// a value of any type that is one of the library's objects as Go holds it goes back as the object itself\nfunction %s_unwrapAny(value) {\n\tvalue = %s_open(value);\n\n\tif (value !== null && typeof value === \"object\" && value.handle !== undefined && value.handle !== null && %s_wrapped.get(value.handle) === value) {\n\t\treturn value.handle;\n\t}\n\n\treturn value;\n}\n\n", g.pkg, g.pkg, g.pkg)
 	fmt.Fprintf(&g.shim, "function %s_wrap(Class, handle) {\n\tif (handle === null || handle === undefined) {\n\t\treturn null;\n\t}\n\n\tlet value = %s_wrapped.get(handle);\n\n\tif (value === undefined) {\n\t\t// a Mesh the library gives where an Object3D was declared is a Mesh\n\t\tconst kind = handle.constructor ? %s_kinds[handle.constructor.name] : undefined;\n\n\t\tif (kind !== undefined && kind.lineage.includes(Class.name)) {\n\t\t\tClass = kind.Class();\n\t\t}\n\n\t\tvalue = new Class();\n\t\tvalue.handle = handle;\n\t\t%s_wrapped.set(handle, value);\n\t}\n\n\treturn value;\n}\n\n", g.pkg, g.pkg, g.pkg, g.pkg)
+	if g.usesAwait {
+		g.shim.WriteString(g.awaitHelpers())
+	}
+
 	fmt.Fprintf(&g.shim, "const %s = {\n", g.pkg)
 
 	for _, text := range members {
@@ -181,20 +186,29 @@ func isPlain(kind Kind) bool {
 // member is a function the shim has: its name, the names of its parameters and
 // the lines of its body.
 type member struct {
-	name   string
-	params string
-	body   string
+	name      string
+	params    string
+	body      string
+	generator bool // it waits, so it is a generator
 }
 
 // object writes a member as a member of the object the shim is.
 func (m member) object() string {
-	return fmt.Sprintf("\t%s(%s) {\n%s\t},\n", m.name, m.params, indent(m.body, 2))
+	return fmt.Sprintf("\t%s%s(%s) {\n%s\t},\n", m.star(), m.name, m.params, indent(m.body, 2))
 }
 
 // method writes a member as a method of a class, where nothing separates one
 // member from the next.
 func (m member) method() string {
-	return fmt.Sprintf("\n\t\t%s(%s) {\n%s\t\t}\n", m.name, m.params, indent(m.body, 3))
+	return fmt.Sprintf("\n\t\t%s%s(%s) {\n%s\t\t}\n", m.star(), m.name, m.params, indent(m.body, 3))
+}
+
+func (m member) star() string {
+	if m.generator {
+		return "*"
+	}
+
+	return ""
 }
 
 func indent(text string, levels int) string {
@@ -233,8 +247,30 @@ func (g *generator) function(f Function, owner string, mode string) (member, boo
 	}
 
 	result := ""
+	waits := f.Result != nil && f.Result.Kind == Promise
 
-	if f.Result != nil && f.Result.Kind != Void {
+	var settled Type
+
+	if waits {
+		// a promise is waited for: the call gives what it comes to, and an error if it fails
+		result = " error"
+
+		if f.Result.Elem != nil && f.Result.Elem.Kind != Void {
+			settled = *f.Result.Elem
+
+			text, ok := g.goType(settled)
+
+			if !ok || text == "" {
+				g.skip(what, "what its promise comes to has a type that cannot be said in Go yet")
+
+				return member{}, false
+			}
+
+			result = " (" + text + ", error)"
+		}
+
+		g.usesAwait = true
+	} else if f.Result != nil && f.Result.Kind != Void {
 		text, ok := g.goType(*f.Result)
 
 		if !ok || text == "" {
@@ -247,6 +283,12 @@ func (g *generator) function(f Function, owner string, mode string) (member, boo
 	}
 
 	goName := exportName(f.Name)
+
+	marker := ""
+
+	if waits {
+		marker = "\n" + "//go2js:async"
+	}
 
 	taken := goName
 
@@ -267,21 +309,33 @@ func (g *generator) function(f Function, owner string, mode string) (member, boo
 
 	switch mode {
 	case "method":
-		fmt.Fprintf(&g.stub, "\nfunc (self *%s) %s(%s)%s\n", owner, goName, params, result)
+		fmt.Fprintf(&g.stub, "%s\nfunc (self *%s) %s(%s)%s\n", marker, owner, goName, params, result)
 
 		call = "this.handle." + f.Name
 	case "static":
 		goName = owner + goName
-		fmt.Fprintf(&g.stub, "\nfunc %s(%s)%s\n", goName, params, result)
+		fmt.Fprintf(&g.stub, "%s\nfunc %s(%s)%s\n", marker, goName, params, result)
 
 		call = fmt.Sprintf("%s_load().%s.%s", g.pkg, owner, f.Name)
 	default:
-		fmt.Fprintf(&g.stub, "\nfunc %s(%s)%s\n", goName, params, result)
+		fmt.Fprintf(&g.stub, "%s\nfunc %s(%s)%s\n", marker, goName, params, result)
 
 		call = fmt.Sprintf("%s_load().%s", g.pkg, f.Name)
 	}
 
 	invoke := fmt.Sprintf("%s(%s)", call, g.arguments(f.Params))
+
+	if waits {
+		body := g.restFix(f.Params) + fmt.Sprintf("const outcome = yield* %s_await(() => %s);\n\n", g.pkg, invoke)
+
+		if result == " error" {
+			body += "return outcome.ok ? null : outcome.error;\n"
+		} else {
+			body += fmt.Sprintf("return outcome.ok ? [%s, null] : [%s, outcome.error];\n", g.fromJS("outcome.value", settled), g.zero(settled))
+		}
+
+		return member{name: goName, params: names, body: body, generator: true}, true
+	}
 
 	body := g.restFix(f.Params) + invoke + ";\n"
 
@@ -808,4 +862,102 @@ func (g *generator) restFix(params []Param) string {
 	}
 
 	return out.String()
+}
+
+// zero is what Go has for a type that has no value.
+func (g *generator) zero(t Type) string {
+	switch t.Kind {
+	case Number, Integer:
+		return "0"
+	case String:
+		return `""`
+	case Boolean:
+		return "false"
+	case Array:
+		return "[]"
+	}
+
+	return "null"
+}
+
+// awaitHelpers is what a goroutine uses to wait for a promise. A program with
+// nothing else to run would be called a deadlock, so while a promise is pending
+// the scheduler is told that something can still wake it, and it is woken from
+// the promise.
+func (g *generator) awaitHelpers() string {
+	p := g.pkg
+
+	return strings.ReplaceAll(`// waiting for a promise: the goroutine parks on a channel that the promise answers
+let PKG_pending = 0;
+let PKG_resume = null;
+let PKG_keep = null;
+let PKG_previous = null;
+
+function PKG_idle(resume) {
+	if (resume === null) {
+		return PKG_previous !== null ? PKG_previous(null) : false;
+	}
+
+	if (PKG_pending > 0) {
+		PKG_resume = resume;
+
+		return true;
+	}
+
+	return PKG_previous !== null ? PKG_previous(resume) : false;
+}
+
+function* PKG_await(start) {
+	const channel = go2jsChannel(1);
+	let outcome = null;
+
+	if (go2jsIdleHook !== PKG_idle) {
+		PKG_previous = go2jsIdleHook;
+		go2jsIdleHook = PKG_idle;
+	}
+
+	PKG_pending++;
+
+	if (PKG_keep === null && typeof setInterval === "function") {
+		PKG_keep = setInterval(function() {}, 1 << 30);
+	}
+
+	const answer = (result) => {
+		outcome = result;
+		PKG_pending--;
+
+		if (PKG_pending === 0 && PKG_keep !== null) {
+			clearInterval(PKG_keep);
+			PKG_keep = null;
+		}
+
+		go2jsChanTrySend(channel, true);
+
+		if (PKG_resume !== null) {
+			const resume = PKG_resume;
+
+			PKG_resume = null;
+			resume();
+		}
+	};
+
+	let promise;
+
+	try {
+		promise = Promise.resolve(start());
+	} catch (error) {
+		promise = Promise.reject(error);
+	}
+
+	promise.then(
+		(value) => answer({ok: true, value: value}),
+		(error) => answer({ok: false, error: go2jsErrorsNew(String(error !== null && error !== undefined && error.message !== undefined ? error.message : error))})
+	);
+
+	yield* go2jsChanRecv(channel, false);
+
+	return outcome;
+}
+
+`, "PKG", p)
 }

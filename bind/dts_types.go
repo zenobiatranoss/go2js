@@ -263,7 +263,11 @@ func (p *dtsParser) namedType() Type {
 
 		return Type{Kind: Array, Elem: &Type{Kind: Any}}
 	case "Promise", "PromiseLike":
-		return Type{Kind: Promise}
+		if len(arguments) == 1 {
+			return Type{Kind: Promise, Elem: &arguments[0]}
+		}
+
+		return Type{Kind: Promise, Elem: &Type{Kind: Void}}
 	case "Float32Array", "Float64Array", "Int8Array", "Int16Array", "Int32Array", "Uint8Array", "Uint16Array", "Uint32Array", "Uint8ClampedArray", "ArrayBuffer":
 		return Type{Kind: Any}
 	}
@@ -404,7 +408,7 @@ func (p *dtsParser) resolveParams(params []Param) {
 
 func (p *dtsParser) resolve(t *Type) {
 	switch t.Kind {
-	case Array:
+	case Array, Promise:
 		if t.Elem != nil {
 			p.resolve(t.Elem)
 		}

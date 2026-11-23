@@ -226,3 +226,122 @@ func TestAClassTakesItsKindsAndNamespacesAreObjects(t *testing.T) {
 		t.Fatalf("got\n%s\nwant\n%s\n--- stub\n%s", got, want, out.Stub)
 	}
 }
+
+const laterLibrary = `"use strict";
+
+module.exports = {
+	delay(ms, value) {
+		return new Promise((resolve) => setTimeout(() => resolve(value), ms));
+	},
+	fail(ms, why) {
+		return new Promise((resolve, reject) => setTimeout(() => reject(new Error(why)), ms));
+	},
+	nothing(ms) {
+		return new Promise((resolve) => setTimeout(resolve, ms));
+	},
+	boom() {
+		throw new Error("thrown at once");
+	},
+	now() { return 1; }
+};
+`
+
+const laterTypes = `export declare function delay(ms: number, value: string): Promise<string>;
+export declare function fail(ms: number, why: string): Promise<number>;
+export declare function nothing(ms: number): Promise<void>;
+export declare function boom(): Promise<string>;
+export declare function now(): number;
+`
+
+const laterApp = `package main
+
+import (
+	"fmt"
+	"sync"
+	"time"
+
+	"npm/later"
+)
+
+func main() {
+	v, err := later.Delay(20, "first")
+	fmt.Println(v, err)
+
+	n, err := later.Fail(5, "no luck")
+	fmt.Println(n, err)
+
+	fmt.Println(later.Nothing(5))
+
+	_, err = later.Boom()
+	fmt.Println(err)
+
+	// several waits at once, and a goroutine that goes on meanwhile
+	var wg sync.WaitGroup
+	results := make([]string, 3)
+
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			results[i], _ = later.Delay(float64(30-i*10), fmt.Sprint("r", i))
+		}(i)
+	}
+
+	ticks := 0
+	done := make(chan bool)
+	go func() {
+		for i := 0; i < 3; i++ {
+			time.Sleep(5 * time.Millisecond)
+			ticks++
+		}
+		done <- true
+	}()
+
+	wg.Wait()
+	<-done
+	fmt.Println(results, ticks, later.Now())
+}
+`
+
+func TestGoWaitsForAPromiseWhileOtherGoroutinesGoOn(t *testing.T) {
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("node is not installed")
+	}
+
+	module, _ := bind.ParseDeclarations(laterTypes)
+	module.Name = "later"
+	module.Import = "npm/later"
+
+	out, err := bind.Generate(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	root := t.TempDir()
+
+	writeTree(t, root, map[string]string{
+		"app/go.mod":                      "module example.com/app\n\ngo 1.22\n",
+		"app/main.go":                     laterApp,
+		"app/node_modules/later/index.js": laterLibrary,
+		"stubs/later.stub":                out.Stub,
+		"stubs/later.js":                  out.Shim,
+	})
+
+	stubs := filepath.Join(root, "stubs")
+
+	if _, err := compiler.LoadStubs(stubs); err != nil {
+		t.Fatalf("%v\n%s", err, out.Stub)
+	}
+
+	if err := compiler.LoadShims([]string{filepath.Join(stubs, "later.js")}); err != nil {
+		t.Fatal(err)
+	}
+
+	defer javascript.SetShimSource("")
+
+	want := "first <nil>\n0 no luck\n<nil>\nthrown at once\n[r0 r1 r2] 3 1\n"
+
+	if got := runModule(t, filepath.Join(root, "app")); got != want {
+		t.Fatalf("got\n%s\nwant\n%s\n--- stub\n%s", got, want, out.Stub)
+	}
+}

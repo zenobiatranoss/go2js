@@ -26,7 +26,7 @@ const (
 	Array   Kind = "array"   // Elem[], a []Elem in Go
 	Class   Kind = "class"   // a class of the module, named by Name, a *Name in Go
 	Func    Kind = "func"    // a callback taking Params and giving Result
-	Promise Kind = "promise" // a value that arrives later; Go cannot wait for one yet, so it is left out
+	Promise Kind = "promise" // a value that arrives later, Elem being what it comes to; as a result it is a (value, error) the goroutine waits for
 )
 
 // Type is the type of a value that crosses between Go and JavaScript.
