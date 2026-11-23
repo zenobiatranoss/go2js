@@ -102,7 +102,7 @@ func askOfServer(t *testing.T, dir, source, kind string, questions []string) str
 	var command *exec.Cmd
 
 	if kind == "go" {
-		binary := filepath.Join(dir, "program")
+		binary := filepath.Join(dir, "program"+executableSuffix())
 		build := exec.Command("go", "build", "-o", binary, input)
 		build.Dir = dir
 

@@ -219,6 +219,7 @@ func programFrameLines(output string) []string {
 }
 
 func TestRuntimeCallersNamesGoFrames(t *testing.T) {
+	skipWhereGoAnswersAsWindowsDoes(t)
 	source := `package main
 
 import (
