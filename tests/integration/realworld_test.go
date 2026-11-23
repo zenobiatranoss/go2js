@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -38,6 +39,8 @@ func runCommand(t *testing.T, dir string, name string, args ...string) string {
 
 func runGoProgram(t *testing.T, dir, file string) string {
 	t.Helper()
+
+	skipWhereTheMachineShowsThrough(t, filepath.Join(dir, file))
 
 	cmd := exec.Command("go", "run", file)
 	cmd.Dir = dir
@@ -517,5 +520,33 @@ func main() {
 
 	if got, want := stderr.String(), "builtin printbuiltin println\n"; got != want {
 		t.Fatalf("unexpected standard error: %q, want %q", got, want)
+	}
+}
+
+// The libraries that give an answer of the machine they run on: Go on Windows
+// answers them as Windows does (paths with backslashes, its own words for an
+// error, no unix permission bits), and the program written out answers as the
+// machine it targets does, so on Windows the two are not compared.
+var machineLibraries = []string{
+	`"os"`, `"os/exec"`, `"os/signal"`, `"os/user"`, `"path"`, `"path/filepath"`, `"io/fs"`,
+	`"io/ioutil"`, `"log/slog"`, `"net/http"`, `"syscall"`, `"runtime/debug"`,
+}
+
+func skipWhereTheMachineShowsThrough(t *testing.T, path string) {
+	t.Helper()
+
+	if runtime.GOOS != "windows" {
+		return
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+
+	for _, library := range machineLibraries {
+		if strings.Contains(string(data), library) {
+			t.Skipf("the program uses %s, which Go answers as Windows does", library)
+		}
 	}
 }
