@@ -546,6 +546,8 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			e.write("go2jsDeref(")
 			e.write(x.Name)
 			e.write(")")
+		} else if name := e.stubPackageName(x); name != "" {
+			e.write(name)
 		} else {
 			e.write(e.resolveName(x.Name))
 		}
@@ -3242,4 +3244,21 @@ func (e *emitter) isUniverseName(ident *ast.Ident) bool {
 	object := e.analysis.Uses[ident]
 
 	return object == nil || object.Parent() == gotypes.Universe
+}
+
+// stubPackageName is the name the shim of a package given by a stub is known by
+// when the program imports it under another name (import m "npm/matter-js"): the
+// shim is an object named after the package, not after what the program calls it.
+func (e *emitter) stubPackageName(ident *ast.Ident) string {
+	if e.analysis == nil {
+		return ""
+	}
+
+	pkg, ok := e.analysis.Uses[ident].(*gotypes.PkgName)
+
+	if !ok || pkg.Imported() == nil || !go2jstypes.IsVirtualPackage(pkg.Imported().Path()) || pkg.Imported().Name() == ident.Name {
+		return ""
+	}
+
+	return pkg.Imported().Name()
 }
