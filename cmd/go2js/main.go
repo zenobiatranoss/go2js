@@ -346,7 +346,7 @@ func runStubgen(args []string, stdout io.Writer) error {
 func runBind(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("bind", flag.ContinueOnError)
 
-	var out, dir, name, importPath, dts string
+	var out, dir, name, importPath, dts, format string
 
 	fs.StringVar(&out, "o", "stubs", "the directory the declarations and the shim are written to")
 	fs.StringVar(&dir, "dir", ".", "the project the npm package is installed in")
@@ -354,12 +354,18 @@ func runBind(args []string, stdout io.Writer) error {
 	fs.StringVar(&importPath, "import", "", "the import path a Go program uses (npm/<package> by default)")
 	fs.StringVar(&dts, "dts", "", "declaration files (.d.ts), separated by commas, instead of looking for the package's own")
 
+	fs.StringVar(&format, "module", "commonjs", "how the library is loaded: commonjs (require) or esm (import, for a program compiled with -module esm)")
+
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
+	if format != "commonjs" && format != "esm" {
+		return fmt.Errorf("go2js bind: -module is commonjs or esm, not %q", format)
+	}
+
 	if fs.NArg() != 1 {
-		return fmt.Errorf("usage: go2js bind [-o dir] [-dir project] [-dts files] [-name pkg] [-import path] <npm package | description.json>")
+		return fmt.Errorf("usage: go2js bind [-module commonjs|esm] [-o dir] [-dir project] [-dts files] [-name pkg] [-import path] <npm package | description.json>")
 	}
 
 	var module *bind.Module
@@ -403,6 +409,8 @@ func runBind(args []string, stdout io.Writer) error {
 		}
 	}
 
+	module.ESM = format == "esm"
+
 	if name != "" {
 		module.Package = name
 	}
@@ -437,7 +445,13 @@ func runBind(args []string, stdout io.Writer) error {
 		fmt.Fprintf(stdout, "left out %s\n", skipped)
 	}
 
-	fmt.Fprintf(stdout, "compile a program that uses it with:\n  go2js -stubs %s -shim %s -o program.js .\n", out, shimFile)
+	extension := "js"
+
+	if format == "esm" {
+		extension = "mjs"
+	}
+
+	fmt.Fprintf(stdout, "compile a program that uses it with:\n  go2js -stubs %s -shim %s -module %s -o program.%s .\n", out, shimFile, format, extension)
 
 	return nil
 }

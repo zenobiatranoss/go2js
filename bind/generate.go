@@ -116,9 +116,17 @@ func (g *generator) write() {
 	}
 
 	fmt.Fprintf(&g.shim, "// JavaScript behind the library %q, written by go2js bind.\n", g.module.Name)
-	fmt.Fprintf(&g.shim, "// It is loaded the first time something of it is used, with require(%q).\n", g.module.Name)
-	fmt.Fprintf(&g.shim, "let %s_module = null;\n", g.pkg)
-	fmt.Fprintf(&g.shim, "function %s_load() {\n\tif (%s_module === null) {\n\t\t%s_module = require(%q);\n\t}\n\n\treturn %s_module;\n}\n\n", g.pkg, g.pkg, g.pkg, g.module.Name, g.pkg)
+
+	if g.module.ESM {
+		fmt.Fprintf(&g.shim, "// It is imported with import, so the program is compiled with -module esm.\n")
+		fmt.Fprintf(&g.shim, "import * as %s_namespace from %q;\n", g.pkg, g.module.Name)
+		fmt.Fprintf(&g.shim, "function %s_load() {\n\treturn %s_namespace;\n}\n\n", g.pkg, g.pkg)
+	} else {
+		fmt.Fprintf(&g.shim, "// It is loaded the first time something of it is used, with require(%q).\n", g.module.Name)
+		fmt.Fprintf(&g.shim, "let %s_module = null;\n", g.pkg)
+		fmt.Fprintf(&g.shim, "function %s_load() {\n\tif (%s_module === null) {\n\t\t%s_module = require(%q);\n\t}\n\n\treturn %s_module;\n}\n\n", g.pkg, g.pkg, g.pkg, g.module.Name, g.pkg)
+	}
+
 	fmt.Fprintf(&g.shim, "// One JavaScript object is always the same Go value, so two of them compare as they should.\n")
 	fmt.Fprintf(&g.shim, "const %s_wrapped = new WeakMap();\n", g.pkg)
 	fmt.Fprintf(&g.shim, "function %s_unwrap(value) {\n\tvalue = %s_open(value);\n\n\treturn value === null || value === undefined ? null : value.handle;\n}\n\n", g.pkg, g.pkg)

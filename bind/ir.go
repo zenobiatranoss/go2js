@@ -108,7 +108,10 @@ type Module struct {
 	// Package is the name of the Go package; the last part of Import when empty.
 	Package string `json:"package,omitempty"`
 	// Import is the import path the Go program uses for it.
-	Import    string       `json:"import,omitempty"`
+	Import string `json:"import,omitempty"`
+	// ESM loads the library with an import declaration, for a program compiled
+	// with -module esm; otherwise it is loaded with require().
+	ESM       bool         `json:"esm,omitempty"`
 	Functions []Function   `json:"functions,omitempty"`
 	Constants []Constant   `json:"constants,omitempty"`
 	Classes   []ClassDecl  `json:"classes,omitempty"`

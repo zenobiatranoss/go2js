@@ -146,9 +146,17 @@ stub written by hand, if its shim function is a generator that waits with `yield
 Anything Go cannot say yet is left out, and `go2js bind` prints each one with the
 reason, so nothing disappears silently. Today that means: a `Promise` that is a
 parameter, a property or a callback's result, callbacks the library returns to Go, maps, generic types (they are
-`any`), options objects (`{ x?: number }`), and a name that Go already has for something
+`any`), and a name that Go already has for something
 else in the package. These are the next steps.
 
-The library is loaded with `require`, so for now a program that uses it is compiled with
-`-module commonjs` (or run where `require` exists), and a package that only ships as an
-ES module needs a build of it for Node.
+## CommonJS and ES modules
+
+By default the library is loaded with `require`, and the program is compiled with `-module commonjs`.
+A package that only ships as an ES module, or one that warns about `require` (three.js does), is bound with
+`-module esm`: the shim imports it with `import`, and the program is compiled the same way.
+
+```sh
+go2js bind -module esm three
+go2js -stubs stubs -shim stubs/three.js -module esm -o program.mjs .
+node program.mjs
+```
