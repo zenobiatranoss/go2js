@@ -1547,7 +1547,11 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 		}
 
 		if e.needsEmptyVariadicArgument(x) {
-			e.write(", []")
+			if len(x.Args) > 0 {
+				e.write(", ")
+			}
+
+			e.write("[]")
 		}
 
 		if callForm == callDelegate {
