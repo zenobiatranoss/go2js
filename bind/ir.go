@@ -26,6 +26,8 @@ const (
 	Array   Kind = "array"   // Elem[], a []Elem in Go
 	Class   Kind = "class"   // a class of the module, named by Name, a *Name in Go
 	Func    Kind = "func"    // a callback taking Params and giving Result
+	Map     Kind = "map"     // an object used as a dictionary of strings, Elem being the type of its values; a map[string]Elem in Go
+	Typed   Kind = "typed"   // a typed array (Name is Uint8Array, Float32Array, ...), a slice of the number it holds in Go
 	Struct  Kind = "struct"  // an object of plain data the library takes or gives, such as an options object; a struct of the module, named by Name
 	Promise Kind = "promise" // a value that arrives later, Elem being what it comes to; as a result it is a (value, error) the goroutine waits for
 )
@@ -111,7 +113,10 @@ type Module struct {
 	Import string `json:"import,omitempty"`
 	// ESM loads the library with an import declaration, for a program compiled
 	// with -module esm; otherwise it is loaded with require().
-	ESM       bool         `json:"esm,omitempty"`
+	ESM bool `json:"esm,omitempty"`
+	// Callable is what a library is when it is itself a function, as dayjs is
+	// (`export = dayjs`): a Go program calls it as Call(...).
+	Callable  *Function    `json:"callable,omitempty"`
 	Functions []Function   `json:"functions,omitempty"`
 	Constants []Constant   `json:"constants,omitempty"`
 	Classes   []ClassDecl  `json:"classes,omitempty"`

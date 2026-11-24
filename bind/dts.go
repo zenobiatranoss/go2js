@@ -19,6 +19,7 @@ func ParseDeclarations(sources ...string) (*Module, []string) {
 		classes: map[string]*dtsClass{},
 		aliases: map[string]Type{},
 		enums:   map[string]bool{},
+		bound:   map[string]Type{},
 	}
 
 	for _, source := range sources {
@@ -59,6 +60,19 @@ type dtsParser struct {
 	where []string
 	// structs are the interfaces that are plain data
 	structs map[string]bool
+	// bound is what a type parameter that is held to a plain type stands for
+	bound map[string]Type
+	// exportEquals is the name `export = name` gives the module; defaultExport the one `export default name` does
+	exportEquals  string
+	defaultExport string
+	namespaces    []*dtsNamespace
+}
+
+// dtsNamespace is what a namespace holds that is a value: its functions and its constants.
+type dtsNamespace struct {
+	name      string
+	functions []Function
+	constants []Constant
 }
 
 func (p *dtsParser) peek() lexeme { return p.tokens[p.at] }
@@ -149,8 +163,33 @@ func (p *dtsParser) statements(inBlock bool) {
 			continue
 		}
 
+		taken := false
+
 		for p.is("export") || p.is("declare") || p.is("default") || p.is("abstract") {
-			p.next()
+			word := p.next().text
+
+			if word == "export" && p.is("=") {
+				p.next()
+				p.exportEquals = p.dottedName()
+				p.accept(";")
+
+				taken = true
+
+				break
+			}
+
+			if word == "default" && p.peek().kind == tokName && !isDeclarationWord(p.peek().text) && (p.peekAt(1).text == ";" || p.peekAt(1).kind == tokEOF) {
+				p.defaultExport = p.next().text
+				p.accept(";")
+
+				taken = true
+
+				break
+			}
+		}
+
+		if taken {
+			continue
 		}
 
 		t := p.peek()
@@ -195,6 +234,15 @@ func (p *dtsParser) statements(inBlock bool) {
 	}
 }
 
+func isDeclarationWord(word string) bool {
+	switch word {
+	case "function", "class", "interface", "abstract", "enum", "const", "let", "var", "type", "namespace", "module", "async":
+		return true
+	}
+
+	return false
+}
+
 func (p *dtsParser) typeParameters() map[string]bool {
 	names := map[string]bool{}
 
@@ -219,6 +267,24 @@ func (p *dtsParser) typeParameters() map[string]bool {
 
 			if prev.kind == tokPunct && (prev.text == "<" || prev.text == ",") {
 				names[t.text] = true
+
+				delete(p.bound, t.text)
+
+				// <T extends string> is a string wherever T stands
+				if p.is("extends") {
+					limit, after := p.peekAt(1), p.peekAt(2)
+
+					if limit.kind == tokName && after.kind == tokPunct && (after.text == ">" || after.text == "," || after.text == "=") {
+						switch limit.text {
+						case "string":
+							p.bound[t.text] = Type{Kind: String}
+						case "number":
+							p.bound[t.text] = Type{Kind: Number}
+						case "boolean":
+							p.bound[t.text] = Type{Kind: Boolean}
+						}
+					}
+				}
 			}
 		}
 	}
@@ -452,7 +518,9 @@ func (p *dtsParser) aliasDecl() {
 		return
 	}
 
+	p.where = append(p.where, name)
 	p.aliases[name] = p.parseType()
+	p.where = p.where[:len(p.where)-1]
 	p.accept(";")
 }
 
@@ -768,50 +836,34 @@ func (p *dtsParser) namespaceDecl() {
 		return
 	}
 
-	class := &dtsClass{singleton: true}
-	class.decl.Name = name + "Type"
-	class.decl.NoConstruct = true
+	// what is inside is read as the file is: the classes, interfaces and types
+	// are the module's, and the functions and values are the namespace's own
+	functionsBefore, constantsBefore := len(p.module.Functions), len(p.module.Constants)
 
-	for !p.is("}") && p.peek().kind != tokEOF {
-		if p.accept(";") {
+	p.statements(true)
+	p.accept("}")
+
+	ns := &dtsNamespace{
+		name:      name,
+		functions: append([]Function(nil), p.module.Functions[functionsBefore:]...),
+	}
+
+	p.module.Functions = p.module.Functions[:functionsBefore]
+
+	var found []Constant
+
+	for _, c := range p.module.Constants[constantsBefore:] {
+		if c.JS != "" {
+			// a member of an enum: it is found through the namespace
+			c.JS = name + "." + c.JS
+			found = append(found, c)
+
 			continue
 		}
 
-		for p.is("export") || p.is("declare") {
-			p.next()
-		}
-
-		switch {
-		case p.is("function"):
-			p.next()
-
-			fn, ok := p.signature(p.next().text)
-
-			p.accept(";")
-
-			if ok {
-				class.decl.Methods = appendOnce(class.decl.Methods, fn)
-			}
-		case p.is("const") || p.is("let") || p.is("var"):
-			p.next()
-
-			prop := Property{Name: p.next().text, ReadOnly: true, Type: Type{Kind: Any}}
-
-			if p.accept(":") {
-				prop.Type = p.parseType()
-			}
-
-			p.accept(";")
-
-			class.decl.Properties = append(class.decl.Properties, prop)
-		default:
-			p.note("%s: something inside the namespace is left out", name)
-			p.skipStatement()
-		}
+		ns.constants = append(ns.constants, c)
 	}
 
-	p.accept("}")
-	p.register(class)
-
-	p.module.Constants = append(p.module.Constants, Constant{Name: name, Type: Type{Kind: Class, Name: class.decl.Name}})
+	p.module.Constants = append(p.module.Constants[:constantsBefore], found...)
+	p.namespaces = append(p.namespaces, ns)
 }

@@ -159,6 +159,28 @@ func (p *dtsParser) primaryType() Type {
 func (p *dtsParser) objectType() Type {
 	p.next()
 
+	// { [key: string]: T } is a dictionary
+	if p.is("[") && p.peekAt(2).text == ":" && p.peekAt(4).text == "]" && p.peekAt(5).text == ":" && p.peekAt(3).kind == tokName && p.peekAt(3).text == "string" {
+		for i := 0; i < 6; i++ {
+			p.next()
+		}
+
+		elem := p.parseType()
+
+		p.accept(";")
+		p.accept(",")
+
+		if p.is("}") {
+			p.next()
+
+			return Type{Kind: Map, Elem: &elem}
+		}
+
+		p.skipBalanced("{", "}")
+
+		return Type{Kind: Any}
+	}
+
 	name := p.anonymousName()
 
 	class := &dtsClass{anonymous: true}
@@ -280,9 +302,9 @@ func (p *dtsParser) namedType() Type {
 	}
 
 	for p.is(".") {
+		// ns.Type is the Type of the module
 		p.next()
-		p.next()
-		name = "?"
+		name = p.next().text
 	}
 
 	var arguments []Type
@@ -302,6 +324,10 @@ func (p *dtsParser) namedType() Type {
 	}
 
 	if p.generic[name] {
+		if bound, ok := p.bound[name]; ok {
+			return bound
+		}
+
 		return Type{Kind: Any}
 	}
 
@@ -318,8 +344,16 @@ func (p *dtsParser) namedType() Type {
 		}
 
 		return Type{Kind: Promise, Elem: &Type{Kind: Void}}
-	case "Float32Array", "Float64Array", "Int8Array", "Int16Array", "Int32Array", "Uint8Array", "Uint16Array", "Uint32Array", "Uint8ClampedArray", "ArrayBuffer":
+	case "Record":
+		if len(arguments) == 2 && arguments[0].Kind == String {
+			return Type{Kind: Map, Elem: &arguments[1]}
+		}
+
 		return Type{Kind: Any}
+	case "Float32Array", "Float64Array", "Int8Array", "Int16Array", "Int32Array", "Uint8Array", "Uint16Array", "Uint32Array", "Uint8ClampedArray":
+		return Type{Kind: Typed, Name: name}
+	case "ArrayBuffer":
+		return Type{Kind: Typed, Name: "Uint8Array"}
 	}
 
 	return Type{Kind: Class, Name: name}
@@ -344,6 +378,7 @@ func (p *dtsParser) finish() {
 		p.inherit(name, map[string]bool{})
 	}
 
+	p.placeNamespaces()
 	p.findStructs()
 
 	for _, name := range p.order {
@@ -412,8 +447,92 @@ func (p *dtsParser) finish() {
 		p.resolveFunction(&p.module.Functions[i])
 	}
 
+	if p.module.Callable != nil {
+		p.resolveFunction(p.module.Callable)
+	}
+
 	for i := range p.module.Constants {
 		p.resolve(&p.module.Constants[i].Type)
+	}
+}
+
+// placeNamespaces settles what the namespaces hold. The namespace that `export =`
+// names is the module itself, so its functions and values are the module's.
+// Any other is an object with members, which is a thing of its own, and a
+// function that has the name `export =` gives is what the module is when called.
+func (p *dtsParser) placeNamespaces() {
+	var merged []*dtsNamespace
+
+	for _, ns := range p.namespaces {
+		found := false
+
+		for _, have := range merged {
+			if have.name == ns.name {
+				have.functions = append(have.functions, ns.functions...)
+				have.constants = append(have.constants, ns.constants...)
+
+				found = true
+
+				break
+			}
+		}
+
+		if !found {
+			merged = append(merged, ns)
+		}
+	}
+
+	for _, ns := range merged {
+		if ns.name == p.exportEquals {
+			for _, f := range ns.functions {
+				p.module.Functions = appendOnce(p.module.Functions, f)
+			}
+
+			p.module.Constants = append(p.module.Constants, ns.constants...)
+
+			continue
+		}
+
+		class := &dtsClass{singleton: true}
+		class.decl.Name = ns.name + "Type"
+		class.decl.NoConstruct = true
+
+		for _, f := range ns.functions {
+			class.decl.Methods = appendOnce(class.decl.Methods, f)
+		}
+
+		for _, c := range ns.constants {
+			class.decl.Properties = append(class.decl.Properties, Property{Name: c.Name, Type: c.Type, ReadOnly: true})
+		}
+
+		p.register(class)
+
+		p.module.Constants = append(p.module.Constants, Constant{Name: ns.name, Type: Type{Kind: Class, Name: class.decl.Name}})
+	}
+
+	if p.exportEquals != "" {
+		var kept []Function
+
+		for _, f := range p.module.Functions {
+			if f.Name == p.exportEquals && p.module.Callable == nil {
+				fn := f
+				p.module.Callable = &fn
+
+				continue
+			}
+
+			kept = append(kept, f)
+		}
+
+		p.module.Functions = kept
+	}
+
+	if p.defaultExport != "" {
+		for i := range p.module.Constants {
+			if p.module.Constants[i].Name == p.defaultExport && p.module.Constants[i].JS == "" {
+				p.module.Constants[i].JS = "default"
+			}
+		}
 	}
 }
 
@@ -519,7 +638,7 @@ func (p *dtsParser) resolveParams(params []Param) {
 
 func (p *dtsParser) resolve(t *Type) {
 	switch t.Kind {
-	case Array, Promise:
+	case Array, Promise, Map:
 		if t.Elem != nil {
 			p.resolve(t.Elem)
 		}

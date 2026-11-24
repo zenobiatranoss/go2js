@@ -1,0 +1,154 @@
+package compiler_test
+
+import (
+	"os/exec"
+	"path/filepath"
+	"testing"
+
+	"github.com/zenobiatranoss/go2js/backend/javascript"
+	"github.com/zenobiatranoss/go2js/bind"
+	"github.com/zenobiatranoss/go2js/compiler"
+)
+
+const widgetLibrary = `"use strict";
+
+class Widget {
+	constructor(name) { this.name = name; }
+	label() { return "w:" + this.name; }
+	tags() { return { a: "1", b: "2" }; }
+	setHeaders(h) { return Object.keys(h).sort().map((k) => k + "=" + h[k]).join(","); }
+	bytes() { return new Uint8Array([1, 2, 3]); }
+	sum(b) { return b.reduce((x, y) => x + y, 0); }
+	id() { return "x1"; }
+	scores() { return { math: [1, 2], art: [3] }; }
+}
+
+function widget(name) { return new Widget(name); }
+widget.version = "9";
+widget.shout = (s) => s.toUpperCase();
+widget.Widget = Widget;
+
+module.exports = widget;
+`
+
+// The shape most libraries written before ES modules have: the module is a
+// function, and a namespace of the same name holds its types and members.
+const widgetTypes = `export = widget;
+
+declare function widget(name: string): widget.Widget;
+declare function widget(name: string, extra: number): widget.Widget;
+
+declare namespace widget {
+	const version: string;
+	function shout(text: string): string;
+	type Headers = { [key: string]: string };
+	interface Settings { size?: number }
+	class Widget {
+		constructor(name: string);
+		label(): string;
+		tags(): Record<string, string>;
+		setHeaders(h: Headers): string;
+		bytes(): Uint8Array;
+		sum(b: Uint8Array): number;
+		id<T extends string>(): T;
+		scores(): Record<string, number[]>;
+	}
+}
+`
+
+const widgetApp = `package main
+
+import (
+	"fmt"
+
+	wd "npm/widget"
+)
+
+func main() {
+	w := wd.Call("bob")
+	fmt.Println(w.Label(), wd.Version, wd.Shout("hi"))
+
+	tags := w.Tags()
+	fmt.Println(tags["a"], len(tags))
+
+	fmt.Println(w.SetHeaders(map[string]string{"x": "1", "a": "2"}))
+
+	fmt.Println(w.Bytes(), w.Sum([]byte{4, 5}))
+	fmt.Println(w.Id() + "!")
+	fmt.Println(w.Scores()["math"])
+}
+`
+
+const widgetWant = `w:bob 9 HI
+1 2
+a=2,x=1
+[1 2 3] 9
+x1!
+[1 2]
+`
+
+func TestAModuleThatIsAFunctionWithANamespaceIsBound(t *testing.T) {
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("node is not installed")
+	}
+
+	root := t.TempDir()
+
+	writeTree(t, root, map[string]string{
+		"app/go.mod":                           "module example.com/app\n\ngo 1.22\n",
+		"app/main.go":                          widgetApp,
+		"app/node_modules/widget/index.js":     widgetLibrary,
+		"app/node_modules/widget/index.d.ts":   widgetTypes,
+		"app/node_modules/widget/package.json": `{"name":"widget","main":"index.js","types":"index.d.ts"}`,
+	})
+
+	module, _ := bind.ParseDeclarations(widgetTypes)
+	module.Name = "widget"
+	module.Import = "npm/widget"
+
+	if module.Callable == nil {
+		t.Fatalf("the function the module is was not found: %+v", module)
+	}
+
+	out, err := bind.Generate(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(out.Skipped) != 0 {
+		t.Fatalf("something was left out: %v\n%s", out.Skipped, out.Stub)
+	}
+
+	stubs := filepath.Join(root, "stubs")
+
+	writeTree(t, stubs, map[string]string{"widget.stub": out.Stub, "widget.js": out.Shim})
+
+	if _, err := compiler.LoadStubs(stubs); err != nil {
+		t.Fatalf("%v\n%s", err, out.Stub)
+	}
+
+	if err := compiler.LoadShims([]string{filepath.Join(stubs, "widget.js")}); err != nil {
+		t.Fatal(err)
+	}
+
+	defer javascript.SetShimSource("")
+
+	if got := runModule(t, filepath.Join(root, "app")); got != widgetWant {
+		t.Fatalf("got\n%s\nwant\n%s\n--- stub\n%s", got, widgetWant, out.Stub)
+	}
+}
+
+func TestADefaultExportedValueIsReadFromDefault(t *testing.T) {
+	module, _ := bind.ParseDeclarations(`declare const tool: Tool;
+interface Tool { run(): string }
+export default tool;
+`)
+
+	for _, c := range module.Constants {
+		if c.Name == "tool" && c.JS == "default" {
+			return
+		}
+	}
+
+	t.Fatalf("the constant is not read from default: %+v", module.Constants)
+}

@@ -128,6 +128,26 @@ r := three.NewWebGLRenderer(three.WebGLRendererParameters{Antialias: true, Alpha
 - An interface that a class implements or extends stays a class, since a parameter that takes it must take
   that class too. Types built with generics or mapped types (`Partial<...>`) stay `any`.
 
+## Library shapes and types
+
+- **A library that is itself a function** (`export = dayjs` with a `namespace dayjs`, the shape of dayjs, express,
+  moment and many others) is called as `Call(...)`: `dayjs.Call("2024-03-05").Add(2, "day")`. The namespace's
+  classes, interfaces and functions are the package's own.
+- **`export default value`** is read from the module's `default`, which is what axios does.
+- **`Record<string, T>` and `{ [key: string]: T }`** are `map[string]T`.
+- **Typed arrays** (`Uint8Array`, `Float32Array`, ...) are slices of the number they hold (`[]byte`, `[]float32`).
+- **`<T extends string>`** is a `string` where `T` stands, so `nanoid()` gives a `string`.
+- **`ns.Type`** is the `Type` of the module.
+- A function or value that has the name of a class of the package gets `Func` or `Value` added
+  (`AxiosValue` is the `axios` object, `Axios` the class).
+- The mark a class carries that lets a parameter take any kind of it is `KindOfX()`, so a library's own
+  `isX` property is a method of its own.
+- A package that you give another name in Go (`import m "npm/matter-js"`) works.
+
+Tried on the real packages: three.js, Matter.js (a falling box lands where it should), dayjs, nanoid, uuid,
+axios, Howler, p5, Chart.js, zod and others. Packages whose types are spread over files that re-export each
+other with `import x = require(...)` (semver) or `/// <reference>` (lodash) are not read yet.
+
 ## Promises
 
 A function that gives a `Promise<T>` is a Go function that waits for it and gives `(T, error)`

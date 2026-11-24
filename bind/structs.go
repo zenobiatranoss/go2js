@@ -160,8 +160,10 @@ func (g *generator) structConverters(info *structInfo) string {
 			absent = fmt.Sprintf("value.%s === \"\"", f.goName)
 		case Boolean:
 			absent = fmt.Sprintf("value.%s === false", f.goName)
-		case Array:
+		case Array, Typed:
 			absent = fmt.Sprintf("value.%s === null || value.%s === undefined || value.%s.length === 0", f.goName, f.goName, f.goName)
+		case Map:
+			absent = fmt.Sprintf("value.%s === null || value.%s === undefined || value.%s.size === 0", f.goName, f.goName, f.goName)
 		case Struct:
 			if _, ok := g.structs[f.typ.Name]; ok {
 				fmt.Fprintf(&to, "\t{\n\t\tconst inner = %s;\n\n\t\tif (explicit.has(%s) || Object.keys(inner).length > 0) {\n\t\t\tout[%s] = inner;\n\t\t}\n\t}\n", g.toJS("value."+f.goName, f.typ), goKey, key)

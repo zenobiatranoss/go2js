@@ -109,6 +109,12 @@ func (g *generator) write() {
 		members = append(members, g.constant(constant))
 	}
 
+	if g.module.Callable != nil {
+		if m, ok := g.function(*g.module.Callable, "", "callable"); ok {
+			members = append(members, m.object())
+		}
+	}
+
 	for _, function := range g.module.Functions {
 		if m, ok := g.function(function, "", ""); ok {
 			members = append(members, m.object())
@@ -193,9 +199,14 @@ func (g *generator) constant(c Constant) string {
 	}
 
 	if !g.claim(name) {
-		g.skip(c.Name, "another name of the package is the same in Go")
+		// a value that has the name of a class of the package is told apart
+		if !g.claim(name + "Value") {
+			g.skip(c.Name, "another name of the package is the same in Go")
 
-		return ""
+			return ""
+		}
+
+		name += "Value"
 	}
 
 	if c.Value != "" && isPlain(c.Type.Kind) {
@@ -215,6 +226,28 @@ func (g *generator) constant(c Constant) string {
 	fmt.Fprintf(&g.stub, "\nvar %s %s\n", name, goType)
 
 	return fmt.Sprintf("\tget %s() {\n\t\treturn %s;\n\t},\n", name, g.fromJS(fmt.Sprintf("%s_load().%s", g.pkg, jsPath(c)), c.Type))
+}
+
+// typedElement is the Go type of what a typed array holds.
+func typedElement(name string) string {
+	switch name {
+	case "Uint8Array", "Uint8ClampedArray":
+		return "byte"
+	case "Int8Array":
+		return "int8"
+	case "Int16Array":
+		return "int16"
+	case "Uint16Array":
+		return "uint16"
+	case "Int32Array":
+		return "int32"
+	case "Uint32Array":
+		return "uint32"
+	case "Float32Array":
+		return "float32"
+	}
+
+	return "float64"
 }
 
 func isPlain(kind Kind) bool {
@@ -270,7 +303,7 @@ func (g *generator) function(f Function, owner string, mode string) (member, boo
 		what = owner + "." + f.Name
 	}
 
-	if !validName(f.Name) {
+	if !validName(f.Name) && mode != "callable" {
 		g.skip(what, "its name cannot be written in JavaScript")
 
 		return member{}, false
@@ -322,6 +355,10 @@ func (g *generator) function(f Function, owner string, mode string) (member, boo
 
 	goName := exportName(f.Name)
 
+	if mode == "callable" {
+		goName = "Call"
+	}
+
 	marker := ""
 
 	if waits {
@@ -338,9 +375,14 @@ func (g *generator) function(f Function, owner string, mode string) (member, boo
 	}
 
 	if !g.claim(taken) {
-		g.skip(what, "another name of the package is the same in Go")
+		// a function that has the name of a class of the package is told apart
+		if mode != "" || !g.claim(taken+"Func") {
+			g.skip(what, "another name of the package is the same in Go")
 
-		return member{}, false
+			return member{}, false
+		}
+
+		goName += "Func"
 	}
 
 	var call string
@@ -355,6 +397,10 @@ func (g *generator) function(f Function, owner string, mode string) (member, boo
 		fmt.Fprintf(&g.stub, "%s\nfunc %s(%s)%s\n", marker, goName, params, result)
 
 		call = fmt.Sprintf("%s_load().%s.%s", g.pkg, owner, f.Name)
+	case "callable":
+		fmt.Fprintf(&g.stub, "%s\nfunc %s(%s)%s\n", marker, goName, params, result)
+
+		call = fmt.Sprintf("%s_load()", g.pkg)
 	default:
 		fmt.Fprintf(&g.stub, "%s\nfunc %s(%s)%s\n", marker, goName, params, result)
 
@@ -403,7 +449,7 @@ func (g *generator) class(c ClassDecl) string {
 	var markers strings.Builder
 
 	for _, kind := range append([]string{c.Name}, g.ancestors[c.Name]...) {
-		marker := "Is" + exportName(kind)
+		marker := "KindOf" + exportName(kind)
 
 		if g.claim(name + "." + marker) {
 			fmt.Fprintf(&g.stub, "\nfunc (self *%s) %s()\n", name, marker)
@@ -427,7 +473,7 @@ func (g *generator) class(c ClassDecl) string {
 	}
 
 	if g.hasKinds[c.Name] && g.claim(name+"Like") {
-		fmt.Fprintf(&g.stub, "\n// %sLike is what a parameter takes where the library takes a %s or any kind of one.\ntype %sLike interface {\n\tIs%s()\n}\n", name, c.Name, name, name)
+		fmt.Fprintf(&g.stub, "\n// %sLike is what a parameter takes where the library takes a %s or any kind of one.\ntype %sLike interface {\n\tKindOf%s()\n}\n", name, c.Name, name, name)
 	}
 
 	var methods strings.Builder
@@ -596,6 +642,20 @@ func (g *generator) goType(t Type) (string, bool) {
 		}
 
 		return "any", true
+	case Map:
+		if t.Elem == nil {
+			return "", false
+		}
+
+		elem, ok := g.goType(*t.Elem)
+
+		if !ok || elem == "" {
+			return "", false
+		}
+
+		return "map[string]" + elem, true
+	case Typed:
+		return "[]" + typedElement(t.Name), true
 	case Func:
 		var params []string
 
@@ -642,6 +702,16 @@ func (g *generator) toJS(expr string, t Type) string {
 		}
 
 		return fmt.Sprintf("%s_unwrapAny(%s)", g.pkg, expr)
+	case Typed:
+		return fmt.Sprintf("%s.from(%s || [])", t.Name, expr)
+	case Map:
+		inner := "value"
+
+		if t.Elem != nil {
+			inner = g.toJS("value", *t.Elem)
+		}
+
+		return fmt.Sprintf("(%s === null || %s === undefined ? null : Object.fromEntries(Array.from(%s.entries(), ([key, value]) => [key, %s])))", expr, expr, expr, inner)
 	case Array:
 		if t.Elem != nil && needsConversion(*t.Elem, g) {
 			return fmt.Sprintf("Array.from(%s || [], (item) => %s)", expr, g.toJS("item", *t.Elem))
@@ -678,6 +748,16 @@ func (g *generator) fromJS(expr string, t Type) string {
 		if info, ok := g.structs[t.Name]; ok {
 			return fmt.Sprintf("%s_from%s(%s)", g.pkg, info.goName, expr)
 		}
+	case Typed:
+		return fmt.Sprintf("Array.from(%s || [])", expr)
+	case Map:
+		inner := "value"
+
+		if t.Elem != nil {
+			inner = g.fromJS("value", *t.Elem)
+		}
+
+		return fmt.Sprintf("(%s === null || %s === undefined ? null : new Map(Object.entries(%s).map(([key, value]) => [key, %s])))", expr, expr, expr, inner)
 	case Array:
 		if t.Elem != nil && needsConversion(*t.Elem, g) {
 			return fmt.Sprintf("Array.from(%s || [], (item) => %s)", expr, g.fromJS("item", *t.Elem))
@@ -695,7 +775,7 @@ func needsConversion(t Type, g *generator) bool {
 		return true
 	case Class:
 		return g.classes[t.Name]
-	case Array, Func, Struct:
+	case Array, Func, Struct, Typed, Map:
 		return true
 	}
 
@@ -878,6 +958,16 @@ func (g *generator) goParamType(t Type) (string, bool) {
 		if g.classes[t.Name] && g.hasKinds[t.Name] {
 			return exportName(t.Name) + "Like", true
 		}
+	case Map:
+		if t.Elem != nil {
+			elem, ok := g.goParamType(*t.Elem)
+
+			if !ok || elem == "" {
+				return "", false
+			}
+
+			return "map[string]" + elem, true
+		}
 	case Array:
 		if t.Elem != nil {
 			elem, ok := g.goParamType(*t.Elem)
@@ -927,7 +1017,7 @@ func (g *generator) zero(t Type) string {
 		return `""`
 	case Boolean:
 		return "false"
-	case Array:
+	case Array, Typed:
 		return "[]"
 	case Struct:
 		if info, ok := g.structs[t.Name]; ok {
