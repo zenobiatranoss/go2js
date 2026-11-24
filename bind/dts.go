@@ -36,6 +36,10 @@ type dtsClass struct {
 	decl    ClassDecl
 	extends []string
 	isClass bool
+	// singleton is an object of the library that is one thing, not a kind of thing
+	singleton bool
+	// anonymous is a type written in place, as in (options: { size: number })
+	anonymous bool
 }
 
 type dtsParser struct {
@@ -50,6 +54,11 @@ type dtsParser struct {
 	generic map[string]bool
 	// resolving holds the aliases being replaced, so one that names itself ends
 	resolving map[string]bool
+	// where is the names of what is being read, which is what an object type
+	// written in place is named after
+	where []string
+	// structs are the interfaces that are plain data
+	structs map[string]bool
 }
 
 func (p *dtsParser) peek() lexeme { return p.tokens[p.at] }
@@ -250,6 +259,9 @@ func (p *dtsParser) signature(name string) (Function, bool) {
 		return fn, false
 	}
 
+	p.where = append(p.where, name)
+	defer func() { p.where = p.where[:len(p.where)-1] }()
+
 	fn.Params = p.parameters()
 
 	if p.accept(":") {
@@ -293,7 +305,9 @@ func (p *dtsParser) parameters() []Param {
 		param.Type = Type{Kind: Any}
 
 		if p.accept(":") {
+			p.where = append(p.where, param.Name)
 			param.Type = p.parseType()
+			p.where = p.where[:len(p.where)-1]
 		}
 
 		if p.accept("=") {
@@ -335,7 +349,7 @@ func (p *dtsParser) variableDecl() {
 				// an object with members is a thing of its own: its members are what a program uses
 				p.next()
 
-				class := &dtsClass{}
+				class := &dtsClass{singleton: true}
 				class.decl.Name = name + "Type"
 				class.decl.NoConstruct = true
 
@@ -451,6 +465,11 @@ func (p *dtsParser) classDecl(isClass bool) {
 	class := &dtsClass{isClass: isClass}
 	class.decl.Name = name
 	class.decl.NoConstruct = !isClass
+
+	savedWhere := p.where
+	p.where = []string{name}
+
+	defer func() { p.where = savedWhere }()
 
 	for p.is("extends") || p.is("implements") {
 		p.next()
@@ -585,7 +604,7 @@ func (p *dtsParser) members(class *dtsClass) {
 			continue
 		}
 
-		p.accept("?")
+		optional := p.accept("?")
 
 		if p.is("<") {
 			p.generic = merge(p.generic, p.typeParameters())
@@ -644,7 +663,9 @@ func (p *dtsParser) members(class *dtsClass) {
 		kind := Type{Kind: Any}
 
 		if p.accept(":") {
+			p.where = append(p.where, name)
 			kind = p.parseType()
+			p.where = p.where[:len(p.where)-1]
 		}
 
 		if p.accept("=") {
@@ -667,7 +688,7 @@ func (p *dtsParser) members(class *dtsClass) {
 				continue
 			}
 
-			class.decl.Properties = append(class.decl.Properties, Property{Name: name, Type: kind, ReadOnly: readonly})
+			class.decl.Properties = append(class.decl.Properties, Property{Name: name, Type: kind, ReadOnly: readonly, Optional: optional})
 		}
 	}
 
@@ -747,7 +768,7 @@ func (p *dtsParser) namespaceDecl() {
 		return
 	}
 
-	class := &dtsClass{}
+	class := &dtsClass{singleton: true}
 	class.decl.Name = name + "Type"
 	class.decl.NoConstruct = true
 

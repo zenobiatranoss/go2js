@@ -1,6 +1,9 @@
 package bind
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // parseType reads a type of TypeScript as the description has it.
 func (p *dtsParser) parseType() Type {
@@ -123,10 +126,7 @@ func (p *dtsParser) primaryType() Type {
 
 			return inner
 		case "{":
-			p.next()
-			p.skipBalanced("{", "}")
-
-			return Type{Kind: Any}
+			return p.objectType()
 		case "[":
 			p.next()
 			p.skipBalanced("[", "]")
@@ -151,6 +151,56 @@ func (p *dtsParser) primaryType() Type {
 	p.next()
 
 	return Type{Kind: Any}
+}
+
+// objectType reads a type written in place, { size: number; label?: string }.
+// What it has is data, so it is kept as an interface of its own, named after the
+// place it stands in; whether it ends as a struct is settled when all is read.
+func (p *dtsParser) objectType() Type {
+	p.next()
+
+	name := p.anonymousName()
+
+	class := &dtsClass{anonymous: true}
+	class.decl.Name = name
+	class.decl.NoConstruct = true
+
+	p.members(class)
+	p.accept("}")
+
+	if len(class.decl.Properties) == 0 && len(class.decl.Methods) == 0 {
+		return Type{Kind: Any}
+	}
+
+	p.register(class)
+
+	return Type{Kind: Class, Name: name}
+}
+
+// anonymousName names an object type after where it stands: the options of
+// the constructor of Renderer are RendererOptions.
+func (p *dtsParser) anonymousName() string {
+	name := ""
+
+	for _, part := range p.where {
+		name += exportName(part)
+	}
+
+	if name == "" {
+		name = "Options"
+	}
+
+	base := name
+
+	for n := 2; ; n++ {
+		if _, taken := p.classes[name]; !taken {
+			if _, alias := p.aliases[name]; !alias {
+				return name
+			}
+		}
+
+		name = fmt.Sprintf("%s%d", base, n)
+	}
 }
 
 // functionTypeAhead says whether the bracket that starts here opens the
@@ -294,8 +344,27 @@ func (p *dtsParser) finish() {
 		p.inherit(name, map[string]bool{})
 	}
 
+	p.findStructs()
+
 	for _, name := range p.order {
 		class := p.classes[name]
+
+		if p.structs[name] {
+			decl := StructDecl{Name: name}
+
+			for _, prop := range class.decl.Properties {
+				decl.Fields = append(decl.Fields, Field{Name: prop.Name, Type: prop.Type, Optional: prop.Optional})
+			}
+
+			p.module.Structs = append(p.module.Structs, decl)
+
+			continue
+		}
+
+		if class.anonymous {
+			// a type written in place that is not plain data is whatever it is
+			continue
+		}
 
 		if !class.isClass && len(class.decl.Methods) == 0 && len(class.decl.Properties) == 0 {
 			// an interface with nothing a program could use of it
@@ -306,6 +375,12 @@ func (p *dtsParser) finish() {
 	}
 
 	p.resolveTypeof()
+
+	for i := range p.module.Structs {
+		for j := range p.module.Structs[i].Fields {
+			p.resolve(&p.module.Structs[i].Fields[j].Type)
+		}
+	}
 
 	for i := range p.module.Classes {
 		c := &p.module.Classes[i]
@@ -339,6 +414,42 @@ func (p *dtsParser) finish() {
 
 	for i := range p.module.Constants {
 		p.resolve(&p.module.Constants[i].Type)
+	}
+}
+
+// findStructs finds the interfaces that are plain data: they have fields and no
+// methods, and no class is a kind of them (a class a parameter takes any kind of
+// must stay a class). A program fills such a struct in and the library gets an
+// object with the same fields; what the library gives of one comes back as one.
+func (p *dtsParser) findStructs() {
+	p.structs = map[string]bool{}
+
+	for _, name := range p.order {
+		c := p.classes[name]
+
+		if !c.isClass && !c.singleton && len(c.decl.Methods) == 0 && len(c.decl.Properties) > 0 {
+			p.structs[name] = true
+		}
+	}
+
+	for changed := true; changed; {
+		changed = false
+
+		for _, name := range p.order {
+			if p.structs[name] {
+				continue
+			}
+
+			for _, parent := range p.classes[name].extends {
+				parent = parent[strings.LastIndex(parent, ".")+1:]
+
+				if p.structs[parent] {
+					delete(p.structs, parent)
+
+					changed = true
+				}
+			}
+		}
 	}
 }
 
@@ -421,7 +532,13 @@ func (p *dtsParser) resolve(t *Type) {
 	case Class:
 		name := t.Name
 
-		if class, ok := p.classes[name]; ok {
+		if p.structs[name] {
+			*t = Type{Kind: Struct, Name: name}
+
+			return
+		}
+
+		if class, ok := p.classes[name]; ok && !class.anonymous {
 			if class.isClass || len(class.decl.Methods) > 0 || len(class.decl.Properties) > 0 {
 				return
 			}
@@ -467,6 +584,12 @@ func (p *dtsParser) resolveTypeof() {
 			} else {
 				*t = Type{Kind: Any}
 			}
+		}
+	}
+
+	for i := range p.module.Structs {
+		for j := range p.module.Structs[i].Fields {
+			fix(&p.module.Structs[i].Fields[j].Type)
 		}
 	}
 

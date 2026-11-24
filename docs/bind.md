@@ -109,6 +109,25 @@ When they are of different types it is `...any`.
 are an object that has functions and values, so Go has a value that has them as
 methods: `three.MathUtils.DegToRad(180)`.
 
+## Options objects
+
+An interface that is only data (fields, no methods) and an object type written in a signature
+(`{ size?: number }`) are Go structs, and the library gets an object with the same fields:
+
+```go
+r := three.NewWebGLRenderer(three.WebGLRendererParameters{Antialias: true, Alpha: true})
+```
+
+- A field left at its zero value (`false`, `0`, `""`, a nil slice or pointer) is left out of the object, so the
+  library uses its own default. To send a zero on purpose, name the field in `Explicit`:
+  `three.WebGLRendererParameters{Depth: false, Explicit: []string{"Depth"}}` sends `depth: false`.
+- Fields can be other structs, slices, library classes and callbacks (`OnDone: func(n float64) {...}`).
+- What the library gives back as such an object (`renderer.Size()`) comes back as the struct.
+- An object type written in a signature is named after where it stands: the `size` parameter of
+  `Renderer.resize` is `RendererResizeSize`.
+- An interface that a class implements or extends stays a class, since a parameter that takes it must take
+  that class too. Types built with generics or mapped types (`Partial<...>`) stay `any`.
+
 ## Promises
 
 A function that gives a `Promise<T>` is a Go function that waits for it and gives `(T, error)`

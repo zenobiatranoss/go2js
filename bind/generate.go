@@ -48,6 +48,7 @@ func Generate(module *Module) (*Output, error) {
 	}
 
 	g.lineage()
+	g.findStructs()
 
 	g.write()
 
@@ -68,6 +69,21 @@ type generator struct {
 	ancestors    map[string][]string // every class a class is a kind of, itself not included
 	hasKinds     map[string]bool     // classes that some other class is a kind of
 	descendants  map[string][]string
+	structs      map[string]*structInfo // the structs of the module that Go can say
+}
+
+// structInfo is a struct as it is written: its fields as they are in Go.
+type structInfo struct {
+	decl   StructDecl
+	goName string
+	fields []structField
+}
+
+type structField struct {
+	js     string // the name in JavaScript
+	goName string
+	typ    Type
+	goType string
 }
 
 func (g *generator) write() {
@@ -75,7 +91,13 @@ func (g *generator) write() {
 	fmt.Fprintf(&g.stub, "// Declarations of the JavaScript library %q, written by go2js bind.\n", g.module.Name)
 	fmt.Fprintf(&g.stub, "package %s\n", g.pkg)
 
-	var classText []string
+	var classText, structText []string
+
+	for _, s := range g.module.Structs {
+		if info, ok := g.structs[s.Name]; ok {
+			structText = append(structText, g.structShim(info))
+		}
+	}
 
 	for _, class := range g.module.Classes {
 		classText = append(classText, g.class(class))
@@ -108,7 +130,15 @@ func (g *generator) write() {
 		g.shim.WriteString(g.awaitHelpers())
 	}
 
+	for _, info := range g.orderedStructs() {
+		g.shim.WriteString(g.structConverters(info))
+	}
+
 	fmt.Fprintf(&g.shim, "const %s = {\n", g.pkg)
+
+	for _, text := range structText {
+		g.shim.WriteString(text)
+	}
 
 	for _, text := range members {
 		g.shim.WriteString(text)
@@ -552,6 +582,12 @@ func (g *generator) goType(t Type) (string, bool) {
 		}
 
 		return "*" + exportName(t.Name), true
+	case Struct:
+		if info, ok := g.structs[t.Name]; ok {
+			return info.goName, true
+		}
+
+		return "any", true
 	case Func:
 		var params []string
 
@@ -592,6 +628,12 @@ func (g *generator) toJS(expr string, t Type) string {
 		if g.classes[t.Name] {
 			return fmt.Sprintf("%s_unwrap(%s)", g.pkg, expr)
 		}
+	case Struct:
+		if info, ok := g.structs[t.Name]; ok {
+			return fmt.Sprintf("%s_to%s(%s)", g.pkg, info.goName, expr)
+		}
+
+		return fmt.Sprintf("%s_unwrapAny(%s)", g.pkg, expr)
 	case Array:
 		if t.Elem != nil && needsConversion(*t.Elem, g) {
 			return fmt.Sprintf("Array.from(%s || [], (item) => %s)", expr, g.toJS("item", *t.Elem))
@@ -624,6 +666,10 @@ func (g *generator) fromJS(expr string, t Type) string {
 		if g.classes[t.Name] {
 			return fmt.Sprintf("%s_wrap(%s.%s, %s)", g.pkg, g.pkg, exportName(t.Name), expr)
 		}
+	case Struct:
+		if info, ok := g.structs[t.Name]; ok {
+			return fmt.Sprintf("%s_from%s(%s)", g.pkg, info.goName, expr)
+		}
 	case Array:
 		if t.Elem != nil && needsConversion(*t.Elem, g) {
 			return fmt.Sprintf("Array.from(%s || [], (item) => %s)", expr, g.fromJS("item", *t.Elem))
@@ -641,7 +687,7 @@ func needsConversion(t Type, g *generator) bool {
 		return true
 	case Class:
 		return g.classes[t.Name]
-	case Array, Func:
+	case Array, Func, Struct:
 		return true
 	}
 
@@ -875,6 +921,10 @@ func (g *generator) zero(t Type) string {
 		return "false"
 	case Array:
 		return "[]"
+	case Struct:
+		if info, ok := g.structs[t.Name]; ok {
+			return fmt.Sprintf("new %s.%s()", g.pkg, info.goName)
+		}
 	}
 
 	return "null"

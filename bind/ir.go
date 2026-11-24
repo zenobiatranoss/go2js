@@ -26,6 +26,7 @@ const (
 	Array   Kind = "array"   // Elem[], a []Elem in Go
 	Class   Kind = "class"   // a class of the module, named by Name, a *Name in Go
 	Func    Kind = "func"    // a callback taking Params and giving Result
+	Struct  Kind = "struct"  // an object of plain data the library takes or gives, such as an options object; a struct of the module, named by Name
 	Promise Kind = "promise" // a value that arrives later, Elem being what it comes to; as a result it is a (value, error) the goroutine waits for
 )
 
@@ -48,6 +49,21 @@ type Param struct {
 	Optional bool `json:"optional,omitempty"`
 }
 
+// Field is one field of a Struct. A field a program leaves out is left out of the
+// object the library gets, so the library uses what it has when it is missing.
+type Field struct {
+	Name     string `json:"name"`
+	Type     Type   `json:"type"`
+	Optional bool   `json:"optional,omitempty"`
+}
+
+// StructDecl is an object of plain data, such as the options a constructor takes.
+// It is a struct in Go and an object with the same fields in JavaScript.
+type StructDecl struct {
+	Name   string  `json:"name"`
+	Fields []Field `json:"fields,omitempty"`
+}
+
 // Function is a function of the module, or a method of one of its classes.
 type Function struct {
 	Name   string  `json:"name"` // the name in JavaScript
@@ -61,6 +77,7 @@ type Property struct {
 	Name     string `json:"name"`
 	Type     Type   `json:"type"`
 	ReadOnly bool   `json:"readonly,omitempty"`
+	Optional bool   `json:"optional,omitempty"`
 }
 
 // ClassDecl is a class of the module.
@@ -91,10 +108,11 @@ type Module struct {
 	// Package is the name of the Go package; the last part of Import when empty.
 	Package string `json:"package,omitempty"`
 	// Import is the import path the Go program uses for it.
-	Import    string      `json:"import,omitempty"`
-	Functions []Function  `json:"functions,omitempty"`
-	Constants []Constant  `json:"constants,omitempty"`
-	Classes   []ClassDecl `json:"classes,omitempty"`
+	Import    string       `json:"import,omitempty"`
+	Functions []Function   `json:"functions,omitempty"`
+	Constants []Constant   `json:"constants,omitempty"`
+	Classes   []ClassDecl  `json:"classes,omitempty"`
+	Structs   []StructDecl `json:"structs,omitempty"`
 }
 
 // ReadModule reads the description of a module from a JSON file.
