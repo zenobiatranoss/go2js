@@ -2,6 +2,7 @@ package bind
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -46,6 +47,25 @@ func (p *dtsParser) unionType() Type {
 		return Type{Kind: Void}
 	}
 
+	// a union of classes is told when the classes are known: a callback or an
+	// object that has one is the callback
+	allClasses := true
+	var names []string
+
+	for _, m := range kept {
+		if m.Kind != Class {
+			allClasses = false
+
+			break
+		}
+
+		names = append(names, m.Name)
+	}
+
+	if allClasses {
+		return Type{Kind: Any, Name: "union:" + strings.Join(names, ",")}
+	}
+
 	// a union of literals of one sort is that sort
 	same := kept[0].Kind
 
@@ -69,10 +89,11 @@ func (p *dtsParser) intersectionType() Type {
 		joined = true
 	}
 
-	if joined {
+	if joined && first.Kind != Class {
 		return Type{Kind: Any}
 	}
 
+	// A & B has everything of A, which is what a program can use of it
 	return first
 }
 
@@ -379,6 +400,7 @@ func (p *dtsParser) finish() {
 	}
 
 	p.placeNamespaces()
+	p.addEventMethods()
 	p.findStructs()
 
 	for _, name := range p.order {
@@ -454,6 +476,63 @@ func (p *dtsParser) finish() {
 	for i := range p.module.Constants {
 		p.resolve(&p.module.Constants[i].Type)
 	}
+}
+
+// addEventMethods gives a class that takes listeners by event name a method for
+// each event, since the type of the event is what the name says it is in the
+// interface of its events: OnKeydown(func(ev *KeyboardEvent)) is addEventListener("keydown", ...).
+func (p *dtsParser) addEventMethods() {
+	for _, name := range p.order {
+		class := p.classes[name]
+
+		_, ok := p.classes[class.eventMap]
+
+		if class.eventMap == "" || !ok {
+			continue
+		}
+
+		have := map[string]bool{}
+
+		for _, m := range class.decl.Methods {
+			have[m.Name] = true
+		}
+
+		for _, event := range p.eventsOf(class.eventMap, map[string]bool{}) {
+			method := "On" + exportName(event.Name)
+
+			if have[method] || !validName(method) {
+				continue
+			}
+
+			listener := Type{Kind: Func, Params: []Param{{Name: "ev", Type: event.Type}}}
+
+			class.decl.Methods = append(class.decl.Methods, Function{
+				Name:   method,
+				JS:     "addEventListener",
+				Lead:   []string{strconv.Quote(event.Name)},
+				Params: []Param{{Name: "listener", Type: listener}},
+			})
+		}
+	}
+}
+
+// eventsOf is the events an interface of events names, its parents' too.
+func (p *dtsParser) eventsOf(name string, seen map[string]bool) []Property {
+	class, ok := p.classes[name]
+
+	if !ok || seen[name] {
+		return nil
+	}
+
+	seen[name] = true
+
+	events := append(append([]Property(nil), class.keyed...), class.decl.Properties...)
+
+	for _, parent := range class.extends {
+		events = append(events, p.eventsOf(parent[strings.LastIndex(parent, ".")+1:], seen)...)
+	}
+
+	return events
 }
 
 // placeNamespaces settles what the namespaces hold. The namespace that `export =`
@@ -648,11 +727,39 @@ func (p *dtsParser) resolve(t *Type) {
 		if t.Result != nil {
 			p.resolve(t.Result)
 		}
+	case Any:
+		if strings.HasPrefix(t.Name, "union:") {
+			names := strings.Split(strings.TrimPrefix(t.Name, "union:"), ",")
+
+			*t = Type{Kind: Any}
+
+			// a callback, or an object that has one, is the callback
+			for _, name := range names {
+				member := Type{Kind: Class, Name: name}
+
+				p.resolve(&member)
+
+				if member.Kind == Func {
+					*t = member
+
+					return
+				}
+			}
+		}
 	case Class:
 		name := t.Name
 
 		if p.structs[name] {
 			*t = Type{Kind: Struct, Name: name}
+
+			return
+		}
+
+		if class, ok := p.classes[name]; ok && class.callable != nil && !class.isClass && len(class.decl.Methods) == 0 && len(class.decl.Properties) == 0 {
+			// an interface that is only a call signature is a callback
+			*t = Type{Kind: Func, Params: append([]Param(nil), class.callable.Params...), Result: class.callable.Result}
+
+			p.resolve(t)
 
 			return
 		}

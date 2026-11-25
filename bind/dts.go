@@ -41,6 +41,12 @@ type dtsClass struct {
 	singleton bool
 	// anonymous is a type written in place, as in (options: { size: number })
 	anonymous bool
+	// callable is the call signature of an interface that is a callback type
+	callable *Function
+	// eventMap is the interface that names its events, which addEventListener is generic over
+	eventMap string
+	// keyed are the members whose names are in quotes
+	keyed []Property
 }
 
 type dtsParser struct {
@@ -66,6 +72,8 @@ type dtsParser struct {
 	exportEquals  string
 	defaultExport string
 	namespaces    []*dtsNamespace
+	// lastKeyof is the interface whose keys the first type parameter just read is held to
+	lastKeyof string
 }
 
 // dtsNamespace is what a namespace holds that is a value: its functions and its constants.
@@ -270,6 +278,13 @@ func (p *dtsParser) typeParameters() map[string]bool {
 
 				delete(p.bound, t.text)
 
+				if p.is("extends") && p.peekAt(1).text == "keyof" && p.peekAt(2).kind == tokName && p.lastKeyof == "" {
+					p.lastKeyof = p.peekAt(2).text
+
+					// the keys of an interface are strings
+					p.bound[t.text] = Type{Kind: String}
+				}
+
 				// <T extends string> is a string wherever T stands
 				if p.is("extends") {
 					limit, after := p.peekAt(1), p.peekAt(2)
@@ -282,6 +297,12 @@ func (p *dtsParser) typeParameters() map[string]bool {
 							p.bound[t.text] = Type{Kind: Number}
 						case "boolean":
 							p.bound[t.text] = Type{Kind: Boolean}
+						case "any", "unknown", "object", "keyof", "never", "readonly", "typeof":
+						default:
+							// <T extends Node> is a Node wherever T stands
+							if p.peekAt(2).text != "<" && p.peekAt(2).text != "." {
+								p.bound[t.text] = Type{Kind: Class, Name: limit.text}
+							}
 						}
 					}
 				}
@@ -346,6 +367,19 @@ func (p *dtsParser) parameters() []Param {
 
 	for !p.is(")") && p.peek().kind != tokEOF {
 		param := Param{}
+
+		if p.is("this") && p.peekAt(1).text == ":" {
+			// the type of this is no argument
+			p.next()
+			p.next()
+			p.parseType()
+
+			if !p.accept(",") {
+				break
+			}
+
+			continue
+		}
 
 		for p.is("public") || p.is("private") || p.is("protected") || p.is("readonly") {
 			p.next()
@@ -651,8 +685,14 @@ func (p *dtsParser) members(class *dtsClass) {
 
 			continue
 		case p.is("("):
-			// a call signature
-			p.skipMember()
+			// a call signature: an interface that has one and nothing else is a callback
+			fn, ok := p.signature("")
+
+			p.accept(";")
+
+			if ok && class.callable == nil {
+				class.callable = &fn
+			}
 
 			continue
 		}
@@ -674,8 +714,14 @@ func (p *dtsParser) members(class *dtsClass) {
 
 		optional := p.accept("?")
 
+		p.lastKeyof = ""
+
 		if p.is("<") {
 			p.generic = merge(p.generic, p.typeParameters())
+		}
+
+		if name == "addEventListener" && p.lastKeyof != "" && class.eventMap == "" {
+			class.eventMap = p.lastKeyof
 		}
 
 		if p.is("(") {
@@ -742,6 +788,11 @@ func (p *dtsParser) members(class *dtsClass) {
 
 		p.accept(";")
 
+		if nameToken.kind == tokString && !hidden {
+			// a name in quotes is no field of Go, but it is what an event map is made of
+			class.keyed = append(class.keyed, Property{Name: name, Type: kind})
+		}
+
 		if hidden || strings.HasPrefix(name, "#") || nameToken.kind == tokString {
 			continue
 		}
@@ -795,14 +846,52 @@ func merge(a, b map[string]bool) map[string]bool {
 	return out
 }
 
+// appendOnce adds a function to a list, and where the list has one of that name
+// already, which is an overload, keeps the one that says more: the one that has
+// fewer parameters and results that are any.
 func appendOnce(list []Function, fn Function) []Function {
-	for _, existing := range list {
+	for i, existing := range list {
 		if existing.Name == fn.Name {
+			if looseness(fn) < looseness(existing) {
+				list[i] = fn
+			}
+
 			return list
 		}
 	}
 
 	return append(list, fn)
+}
+
+func looseness(f Function) int {
+	count := 0
+
+	var walk func(t *Type)
+
+	walk = func(t *Type) {
+		if t == nil {
+			return
+		}
+
+		if t.Kind == Any {
+			count++
+		}
+
+		walk(t.Elem)
+		walk(t.Result)
+
+		for i := range t.Params {
+			walk(&t.Params[i].Type)
+		}
+	}
+
+	for i := range f.Params {
+		walk(&f.Params[i].Type)
+	}
+
+	walk(f.Result)
+
+	return count
 }
 
 func (p *dtsParser) register(class *dtsClass) {

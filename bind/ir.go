@@ -68,9 +68,14 @@ type StructDecl struct {
 
 // Function is a function of the module, or a method of one of its classes.
 type Function struct {
-	Name   string  `json:"name"` // the name in JavaScript
-	Params []Param `json:"params,omitempty"`
-	Result *Type   `json:"result,omitempty"`
+	// JS is the name the library has for it when that is not Name, and Lead
+	// the arguments (as JavaScript) it is called with before the others, which is
+	// how OnKeydown(listener) is addEventListener("keydown", listener).
+	JS     string   `json:"js,omitempty"`
+	Lead   []string `json:"lead,omitempty"`
+	Name   string   `json:"name"` // the name in JavaScript
+	Params []Param  `json:"params,omitempty"`
+	Result *Type    `json:"result,omitempty"`
 }
 
 // Property is a field of an instance of a class. Go has no properties, so it is
@@ -114,6 +119,9 @@ type Module struct {
 	// ESM loads the library with an import declaration, for a program compiled
 	// with -module esm; otherwise it is loaded with require().
 	ESM bool `json:"esm,omitempty"`
+	// Global says the library is not loaded at all: what it declares is already
+	// there, as the browser's document and canvas are.
+	Global bool `json:"global,omitempty"`
 	// Callable is what a library is when it is itself a function, as dayjs is
 	// (`export = dayjs`): a Go program calls it as Call(...).
 	Callable  *Function    `json:"callable,omitempty"`

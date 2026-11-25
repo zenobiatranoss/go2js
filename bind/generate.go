@@ -70,6 +70,10 @@ type generator struct {
 	hasKinds     map[string]bool     // classes that some other class is a kind of
 	descendants  map[string][]string
 	structs      map[string]*structInfo // the structs of the module that Go can say
+
+	// the JavaScript a class has once what its parent class has is left out of it
+	visible    map[string]map[string]string
+	classDecls []string
 }
 
 // structInfo is a struct as it is written: its fields as they are in Go.
@@ -99,7 +103,9 @@ func (g *generator) write() {
 		}
 	}
 
-	for _, class := range g.module.Classes {
+	g.visible = map[string]map[string]string{}
+
+	for _, class := range g.parentsFirst() {
 		classText = append(classText, g.class(class))
 	}
 
@@ -123,7 +129,10 @@ func (g *generator) write() {
 
 	fmt.Fprintf(&g.shim, "// JavaScript behind the library %q, written by go2js bind.\n", g.module.Name)
 
-	if g.module.ESM {
+	if g.module.Global {
+		fmt.Fprintf(&g.shim, "// It is not loaded: what it declares is global.\n")
+		fmt.Fprintf(&g.shim, "function %s_load() {\n\treturn globalThis;\n}\n\n", g.pkg)
+	} else if g.module.ESM {
 		fmt.Fprintf(&g.shim, "// It is imported with import, so the program is compiled with -module esm.\n")
 		fmt.Fprintf(&g.shim, "import * as %s_namespace from %q;\n", g.pkg, g.module.Name)
 		fmt.Fprintf(&g.shim, "function %s_load() {\n\treturn %s_namespace;\n}\n\n", g.pkg, g.pkg)
@@ -139,13 +148,19 @@ func (g *generator) write() {
 	fmt.Fprintf(&g.shim, "// whether an object of the library is the class of that name, or a kind of it\nfunction %s_is(value, name) {\n\tconst kind = value.handle && value.handle.constructor ? %s_kinds[value.handle.constructor.name] : undefined;\n\n\treturn kind !== undefined && kind.lineage.includes(name);\n}\n\n", g.pkg, g.pkg)
 	fmt.Fprintf(&g.shim, "// a value Go holds in an interface is boxed; the library gets what is inside\nfunction %s_open(value) {\n\treturn value !== null && typeof value === \"object\" && value.__go2js_interface === true ? value.value : value;\n}\n\n", g.pkg)
 	fmt.Fprintf(&g.shim, "// a value of any type that is one of the library's objects as Go holds it goes back as the object itself\nfunction %s_unwrapAny(value) {\n\tvalue = %s_open(value);\n\n\tif (value !== null && typeof value === \"object\" && value.handle !== undefined && value.handle !== null && %s_wrapped.get(value.handle) === value) {\n\t\treturn value.handle;\n\t}\n\n\treturn value;\n}\n\n", g.pkg, g.pkg, g.pkg)
-	fmt.Fprintf(&g.shim, "function %s_wrap(Class, handle) {\n\tif (handle === null || handle === undefined) {\n\t\treturn null;\n\t}\n\n\tlet value = %s_wrapped.get(handle);\n\n\tif (value === undefined) {\n\t\t// a Mesh the library gives where an Object3D was declared is a Mesh\n\t\tconst kind = handle.constructor ? %s_kinds[handle.constructor.name] : undefined;\n\n\t\tif (kind !== undefined && kind.lineage.includes(Class.name)) {\n\t\t\tClass = kind.Class();\n\t\t}\n\n\t\tvalue = new Class();\n\t\tvalue.handle = handle;\n\t\t%s_wrapped.set(handle, value);\n\t}\n\n\treturn value;\n}\n\n", g.pkg, g.pkg, g.pkg, g.pkg)
+	fmt.Fprintf(&g.shim, "function %s_wrap(Class, handle) {\n\tif (handle === null || handle === undefined) {\n\t\treturn null;\n\t}\n\n\tlet value = %s_wrapped.get(handle);\n\n\tif (value === undefined) {\n\t\t// a Mesh the library gives where an Object3D was declared is a Mesh\n\t\tconst kind = handle.constructor ? %s_kinds[handle.constructor.name] : undefined;\n\n\t\tif (kind !== undefined && kind.lineage.includes(Class.name.slice(%d))) {\n\t\t\tClass = kind.Class();\n\t\t}\n\n\t\tvalue = new Class();\n\t\tvalue.handle = handle;\n\t\t%s_wrapped.set(handle, value);\n\t}\n\n\treturn value;\n}\n\n", g.pkg, g.pkg, g.pkg, len(g.pkg)+3, g.pkg)
 	if g.usesAwait {
 		g.shim.WriteString(g.awaitHelpers())
 	}
 
 	for _, info := range g.orderedStructs() {
 		g.shim.WriteString(g.structConverters(info))
+	}
+
+	g.shim.WriteString(g.baseClass())
+
+	for _, text := range g.classDecls {
+		g.shim.WriteString(text)
 	}
 
 	fmt.Fprintf(&g.shim, "const %s = {\n", g.pkg)
@@ -391,7 +406,13 @@ func (g *generator) function(f Function, owner string, mode string) (member, boo
 	case "method":
 		fmt.Fprintf(&g.stub, "%s\nfunc (self *%s) %s(%s)%s\n", marker, owner, goName, params, result)
 
-		call = "this.handle." + f.Name
+		jsName := f.Name
+
+		if f.JS != "" {
+			jsName = f.JS
+		}
+
+		call = "this.handle." + jsName
 	case "static":
 		goName = owner + goName
 		fmt.Fprintf(&g.stub, "%s\nfunc %s(%s)%s\n", marker, goName, params, result)
@@ -407,7 +428,13 @@ func (g *generator) function(f Function, owner string, mode string) (member, boo
 		call = fmt.Sprintf("%s_load().%s", g.pkg, f.Name)
 	}
 
-	invoke := fmt.Sprintf("%s(%s)", call, g.arguments(f.Params))
+	arguments := g.arguments(f.Params)
+
+	if len(f.Lead) > 0 {
+		arguments = strings.Join(f.Lead, ", ") + ", " + arguments
+	}
+
+	invoke := fmt.Sprintf("%s(%s)", call, arguments)
 
 	if waits {
 		body := g.restFix(f.Params) + fmt.Sprintf("const outcome = yield* %s_await(() => %s);\n\n", g.pkg, invoke)
@@ -481,6 +508,29 @@ func (g *generator) class(c ClassDecl) string {
 
 	methods.WriteString(markers.String())
 
+	// what the class a class is a kind of has is not written again: the class extends it
+	parent := g.jsParent(c)
+	visible := map[string]string{}
+
+	for have, code := range g.visible[parent] {
+		visible[have] = code
+	}
+
+	g.visible[c.Name] = visible
+
+	emit := func(m member) {
+		code := m.method()
+
+		// what the parent class has, exactly, is not written again
+		if visible[m.name] == code {
+			return
+		}
+
+		visible[m.name] = code
+
+		methods.WriteString(code)
+	}
+
 	if !c.NoConstruct {
 		params, names, ok := g.parameters(c.Constructor)
 
@@ -499,7 +549,7 @@ func (g *generator) class(c ClassDecl) string {
 
 	for _, method := range c.Methods {
 		if m, ok := g.function(method, name, "method"); ok {
-			methods.WriteString(m.method())
+			emit(m)
 		}
 	}
 
@@ -527,13 +577,13 @@ func (g *generator) class(c ClassDecl) string {
 		}
 
 		fmt.Fprintf(&g.stub, "\nfunc (self *%s) %s() %s\n", name, goName, goType)
-		methods.WriteString(member{name: goName, body: "return " + g.fromJS("this.handle."+property.Name, property.Type) + ";\n"}.method())
+		emit(member{name: goName, body: "return " + g.fromJS("this.handle."+property.Name, property.Type) + ";\n"})
 
 		if !property.ReadOnly && g.claim(name+".Set"+goName) {
 			setType, _ := g.goParamType(property.Type)
 
 			fmt.Fprintf(&g.stub, "\nfunc (self *%s) Set%s(value %s)\n", name, goName, setType)
-			methods.WriteString(member{name: "Set" + goName, params: "value", body: "this.handle." + property.Name + " = " + g.toJS("value", property.Type) + ";\n"}.method())
+			emit(member{name: "Set" + goName, params: "value", body: "this.handle." + property.Name + " = " + g.toJS("value", property.Type) + ";\n"})
 		}
 	}
 
@@ -545,7 +595,13 @@ func (g *generator) class(c ClassDecl) string {
 
 	var out strings.Builder
 
-	fmt.Fprintf(&out, "\t%s: class {\n\t\tconstructor() {\n\t\t\tthis.handle = null;\n\t\t}\n%s\t},\n", name, methods.String())
+	if parent == "" {
+		g.classDecls = append(g.classDecls, fmt.Sprintf("class %s_C_%s extends %s_base {\n\tconstructor() {\n\t\tsuper();\n\t\tthis.handle = null;\n\t}\n%s}\n\n", g.pkg, name, g.pkg, methods.String()))
+	} else {
+		g.classDecls = append(g.classDecls, fmt.Sprintf("class %s_C_%s extends %s_C_%s {\n%s}\n\n", g.pkg, name, g.pkg, exportName(parent), methods.String()))
+	}
+
+	fmt.Fprintf(&out, "\t%s: %s_C_%s,\n", name, g.pkg, name)
 
 	for _, m := range others {
 		out.WriteString(m.object())

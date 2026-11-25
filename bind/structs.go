@@ -2,6 +2,7 @@ package bind
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -209,4 +210,92 @@ function %[1]s_from%[2]s(object) {
 }
 
 `, g.pkg, info.goName, to.String(), from.String())
+}
+
+// baseClass is what every class of the library has behind it: the means to be
+// told as any class it may be, so that an object that is a more specific class
+// than the one Go has it as answers to AsThatClass().
+func (g *generator) baseClass() string {
+	seen := map[string]bool{}
+
+	var names []string
+
+	for _, list := range g.descendants {
+		for _, name := range list {
+			if g.classes[name] && !seen[name] {
+				seen[name] = true
+
+				names = append(names, name)
+			}
+		}
+	}
+
+	sort.Strings(names)
+
+	var out strings.Builder
+
+	fmt.Fprintf(&out, "class %s_base {\n", g.pkg)
+
+	for _, name := range names {
+		fmt.Fprintf(&out, "\tAs%s() {\n\t\treturn %s_is(this, %s) ? this : null;\n\t}\n", exportName(name), g.pkg, strconv.Quote(exportName(name)))
+	}
+
+	out.WriteString("}\n\n")
+
+	return out.String()
+}
+
+// parentsFirst orders the classes so that a class comes after the class it extends.
+func (g *generator) parentsFirst() []ClassDecl {
+	byName := map[string]ClassDecl{}
+
+	for _, c := range g.module.Classes {
+		byName[c.Name] = c
+	}
+
+	var out []ClassDecl
+
+	done := map[string]bool{}
+
+	var visit func(name string)
+
+	visit = func(name string) {
+		if done[name] {
+			return
+		}
+
+		done[name] = true
+
+		c, ok := byName[name]
+
+		if !ok {
+			return
+		}
+
+		for _, parent := range c.Extends {
+			visit(parent)
+		}
+
+		out = append(out, c)
+	}
+
+	for _, c := range g.module.Classes {
+		visit(c.Name)
+	}
+
+	return out
+}
+
+// jsParent is the class that the JavaScript of a class extends: the first class
+// it is a kind of that the package has.
+func (g *generator) jsParent(c ClassDecl) string {
+	for _, parent := range c.Extends {
+		if g.classes[parent] && !g.skippedClass[parent] {
+			if _, ok := g.visible[parent]; ok {
+				return parent
+			}
+		}
+	}
+
+	return ""
 }

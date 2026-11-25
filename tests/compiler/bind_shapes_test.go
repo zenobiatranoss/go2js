@@ -152,3 +152,94 @@ export default tool;
 
 	t.Fatalf("the constant is not read from default: %+v", module.Constants)
 }
+
+const globalLibrary = `"use strict";
+
+globalThis.box = {
+	handlers: {},
+	addEventListener(type, listener) { (this.handlers[type] = this.handlers[type] || []).push(listener); },
+	fire() { for (const h of this.handlers.click || []) { h({ x: 7 }); } },
+};
+
+globalThis.later = (callback) => { callback(16); return 1; };
+`
+
+// What a browser has is there without being loaded: it is declared, not required.
+const globalTypes = `interface ClickEvent { x: number }
+interface BoxEventMap { "click": ClickEvent; "hover": ClickEvent }
+interface FrameCallback { (time: number): void }
+interface Box {
+	addEventListener<K extends keyof BoxEventMap>(type: K, listener: (this: Box, ev: BoxEventMap[K]) => any): void;
+	addEventListener(type: string, listener: any): void;
+	fire(): void;
+}
+declare function later(callback: FrameCallback): number;
+declare var box: Box & typeof globalThis;
+`
+
+const globalApp = `package main
+
+import (
+	"fmt"
+
+	"npm/world"
+)
+
+func main() {
+	fmt.Println(world.Later(func(t float64) { fmt.Println("frame", t) }))
+
+	world.BoxValue.OnClick(func(e world.ClickEvent) { fmt.Println("click", e.X) })
+	world.BoxValue.Fire()
+}
+`
+
+func TestWhatTheBrowserHasIsBoundWithoutLoadingIt(t *testing.T) {
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("node is not installed")
+	}
+
+	module, _ := bind.ParseDeclarations(globalTypes)
+	module.Name = "world"
+	module.Import = "npm/world"
+	module.Global = true
+
+	if missing := bind.Prune(module, []string{"box", "later"}, 0); len(missing) != 0 {
+		t.Fatalf("missing %v", missing)
+	}
+
+	out, err := bind.Generate(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(out.Skipped) != 0 {
+		t.Fatalf("something was left out: %v\n%s", out.Skipped, out.Stub)
+	}
+
+	root := t.TempDir()
+
+	writeTree(t, root, map[string]string{
+		"app/go.mod":  "module example.com/app\n\ngo 1.22\n",
+		"app/main.go": globalApp,
+	})
+
+	stubs := filepath.Join(root, "stubs")
+
+	writeTree(t, stubs, map[string]string{"world.stub": out.Stub, "world.js": globalLibrary + "\n" + out.Shim})
+
+	if _, err := compiler.LoadStubs(stubs); err != nil {
+		t.Fatalf("%v\n%s", err, out.Stub)
+	}
+
+	if err := compiler.LoadShims([]string{filepath.Join(stubs, "world.js")}); err != nil {
+		t.Fatal(err)
+	}
+
+	defer javascript.SetShimSource("")
+
+	want := "frame 16\n1\nclick 7\n"
+
+	if got := runModule(t, filepath.Join(root, "app")); got != want {
+		t.Fatalf("got\n%s\nwant\n%s\n--- stub\n%s", got, want, out.Stub)
+	}
+}
