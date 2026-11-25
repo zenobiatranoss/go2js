@@ -192,8 +192,11 @@ go2js -with dom -o game.html main.go
   `addEventListener("keydown", ...)`, and the event comes as the class it is.
 - A callback (`requestAnimationFrame`) is a Go function.
 - `AsHTMLCanvasElement()` is how an element is told as the element it is; it gives nil for another.
-- Not there yet: WebGL (`getContext("webgl")` gives a different kind of object than the 2D one has), and
-  the arguments that are typed arrays or buffers of the browser's.
+- **WebGL** works: `canvas.GetContextWebgl()` and `GetContextWebgl2()` give the context (an overload of a function that
+  is told apart by a string, `getContext("webgl")`, is a method named after it: `GetContextX2d`, `GetContextWebgl`).
+  Where the browser takes bytes, there is one function for each kind of array: `gl.BufferDataFloat32(target, []float32{...}, usage)`,
+  `BufferDataUint16` for indices. The array is copied, so a function the browser writes into (`readPixels`) does not
+  fill the slice it was given. Shaders, programs and buffers are `any`.
 - It is cut from TypeScript's `lib.dom.d.ts` by `scripts/gen-bindings.sh`, so a cut of another size is made
   the same way as any other library:
 

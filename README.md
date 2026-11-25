@@ -383,8 +383,8 @@ JavaScript behind them, so a Go program can call the library with types: classes
 properties, callbacks, optional parameters, namespaces. A Go program that does vector math, builds a scene
 and adds a mesh runs against the real three.js, and a Matter.js physics world steps from Go.
 A binding of the browser ships with the tool (`go2js -with dom -o game.html main.go`: document, 2D canvas,
-keyboard, mouse and touch events, images, audio), so a game or an app that draws is Go from the first line.
-Tried so far: three.js, Matter.js, dayjs, nanoid in Node, and a canvas loop with keyboard events in Chromium;
+keyboard, mouse and touch events, images, audio, WebGL), so a game or an app that draws is Go from the first line.
+Tried so far: three.js, Matter.js, dayjs, nanoid in Node, and in Chromium a canvas loop with keyboard events and a WebGL triangle drawn from Go;
 the declarations of uuid, axios, zod, Howler, p5 and Chart.js are read but programs on them were not run.
 See [docs/bind.md](docs/bind.md).
 

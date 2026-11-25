@@ -769,6 +769,21 @@ func (p *dtsParser) members(class *dtsClass) {
 				class.decl.Statics = appendOnce(class.decl.Statics, fn)
 			} else {
 				class.decl.Methods = appendOnce(class.decl.Methods, fn)
+
+				// getContext("webgl") and getContext("2d") are different things, so each is a method of its own
+				if len(fn.Params) > 0 && fn.Params[0].Type.Kind == String && fn.Params[0].Type.Name != "" {
+					literal := fn.Params[0].Type.Name
+
+					if variant := exportName(literal); variant != "" && validName(fn.Name+variant) {
+						class.decl.Methods = appendOnce(class.decl.Methods, Function{
+							Name:   fn.Name + variant,
+							JS:     fn.Name,
+							Lead:   []string{strconv.Quote(literal)},
+							Params: fn.Params[1:],
+							Result: fn.Result,
+						})
+					}
+				}
 			}
 
 			continue
@@ -851,7 +866,8 @@ func merge(a, b map[string]bool) map[string]bool {
 // fewer parameters and results that are any.
 func appendOnce(list []Function, fn Function) []Function {
 	for i, existing := range list {
-		if existing.Name == fn.Name {
+		// a function that takes bytes is another overload than one that takes a size
+		if existing.Name == fn.Name && hasBuffer(existing) == hasBuffer(fn) {
 			if looseness(fn) < looseness(existing) {
 				list[i] = fn
 			}

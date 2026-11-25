@@ -39,6 +39,10 @@ type Type struct {
 	Name   string  `json:"name,omitempty"`
 	Params []Param `json:"params,omitempty"`
 	Result *Type   `json:"result,omitempty"`
+	// Buffer says a typed array stands for any of the kinds of one that the
+	// library takes where it is given bytes (BufferSource): a function that has one
+	// is given a variant for each element type.
+	Buffer bool `json:"buffer,omitempty"`
 }
 
 // Param is one parameter of a function, a method or a callback.

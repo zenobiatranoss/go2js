@@ -24,6 +24,8 @@ func Generate(module *Module) (*Output, error) {
 		return nil, fmt.Errorf("bind: the module has no name")
 	}
 
+	expandBuffers(module)
+
 	g := &generator{module: module, classes: map[string]bool{}, taken: map[string]bool{}, skippedClass: map[string]bool{}}
 
 	g.pkg = module.Package
@@ -402,22 +404,22 @@ func (g *generator) function(f Function, owner string, mode string) (member, boo
 
 	var call string
 
+	jsName := f.Name
+
+	if f.JS != "" {
+		jsName = f.JS
+	}
+
 	switch mode {
 	case "method":
 		fmt.Fprintf(&g.stub, "%s\nfunc (self *%s) %s(%s)%s\n", marker, owner, goName, params, result)
-
-		jsName := f.Name
-
-		if f.JS != "" {
-			jsName = f.JS
-		}
 
 		call = "this.handle." + jsName
 	case "static":
 		goName = owner + goName
 		fmt.Fprintf(&g.stub, "%s\nfunc %s(%s)%s\n", marker, goName, params, result)
 
-		call = fmt.Sprintf("%s_load().%s.%s", g.pkg, owner, f.Name)
+		call = fmt.Sprintf("%s_load().%s.%s", g.pkg, owner, jsName)
 	case "callable":
 		fmt.Fprintf(&g.stub, "%s\nfunc %s(%s)%s\n", marker, goName, params, result)
 
@@ -425,7 +427,7 @@ func (g *generator) function(f Function, owner string, mode string) (member, boo
 	default:
 		fmt.Fprintf(&g.stub, "%s\nfunc %s(%s)%s\n", marker, goName, params, result)
 
-		call = fmt.Sprintf("%s_load().%s", g.pkg, f.Name)
+		call = fmt.Sprintf("%s_load().%s", g.pkg, jsName)
 	}
 
 	arguments := g.arguments(f.Params)

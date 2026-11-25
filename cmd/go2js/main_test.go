@@ -736,6 +736,8 @@ func main() {
 	canvas := dom.DocumentValue.CreateElement("canvas").AsHTMLCanvasElement()
 	canvas.SetWidth(10)
 	dom.RequestAnimationFrame(func(t float64) {})
+	gl := canvas.GetContextWebgl(dom.WebGLContextAttributes{PreserveDrawingBuffer: true})
+	gl.BufferDataFloat32(gl.ARRAY_BUFFER(), []float32{1, 2}, gl.STATIC_DRAW())
 	dom.WindowValue.OnKeydown(func(e *dom.KeyboardEvent) { println(e.Key()) })
 }
 `

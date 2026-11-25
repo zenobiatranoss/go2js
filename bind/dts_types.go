@@ -47,6 +47,13 @@ func (p *dtsParser) unionType() Type {
 		return Type{Kind: Void}
 	}
 
+	// a typed array or anything else that is a list of numbers is the typed array: Float32Array | Iterable<number>
+	for _, m := range kept {
+		if m.Kind == Typed {
+			return m
+		}
+	}
+
 	// a union of classes is told when the classes are known: a callback or an
 	// object that has one is the callback
 	allClasses := true
@@ -75,7 +82,11 @@ func (p *dtsParser) unionType() Type {
 		}
 	}
 
-	return kept[0]
+	// "a" | "b" is a string, whatever it says
+	literal := kept[0]
+	literal.Name = ""
+
+	return literal
 }
 
 func (p *dtsParser) intersectionType() Type {
@@ -128,7 +139,8 @@ func (p *dtsParser) primaryType() Type {
 	case tokString:
 		p.next()
 
-		return Type{Kind: String}
+		// the text is kept, which tells apart the overloads of a function by it
+		return Type{Kind: String, Name: t.text}
 	case tokNumber:
 		p.next()
 
@@ -375,6 +387,8 @@ func (p *dtsParser) namedType() Type {
 		return Type{Kind: Typed, Name: name}
 	case "ArrayBuffer":
 		return Type{Kind: Typed, Name: "Uint8Array"}
+	case "BufferSource", "AllowSharedBufferSource", "ArrayBufferView", "ArrayBufferLike", "SharedArrayBuffer":
+		return Type{Kind: Typed, Name: "Uint8Array", Buffer: true}
 	}
 
 	return Type{Kind: Class, Name: name}

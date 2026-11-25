@@ -96,3 +96,47 @@ declare class Pad {
 
 	t.Fatal("no Pad")
 }
+
+func TestOverloadsToldApartByAStringAndFunctionsThatTakeBytes(t *testing.T) {
+	module, _ := ParseDeclarations(`
+declare class Ctx2 { fill(): void }
+declare class Ctx3 { bufferData(size: number): void; bufferData(data: BufferSource | null, usage: number): void; uniform(v: Float32Array | Iterable<number>): void }
+declare class Canvas {
+	getContext(id: "2d", options?: number): Ctx2 | null;
+	getContext(id: "webgl", options?: number): Ctx3 | null;
+	getContext(id: string): any;
+}
+`)
+
+	expandBuffers(module)
+
+	names := map[string]Function{}
+
+	for _, c := range module.Classes {
+		for _, m := range c.Methods {
+			names[c.Name+"."+m.Name] = m
+		}
+	}
+
+	webgl, ok := names["Canvas.getContextWebgl"]
+
+	if !ok || webgl.JS != "getContext" || len(webgl.Lead) != 1 || webgl.Lead[0] != `"webgl"` || len(webgl.Params) != 1 {
+		t.Fatalf("getContextWebgl: %+v", webgl)
+	}
+
+	if _, ok := names["Canvas.getContextX2d"]; !ok {
+		t.Errorf("no getContextX2d: %v", names)
+	}
+
+	if f, ok := names["Ctx3.bufferDataFloat32"]; !ok || f.JS != "bufferData" || f.Params[0].Type.Name != "Float32Array" || f.Params[0].Type.Buffer {
+		t.Errorf("bufferDataFloat32: %+v", f)
+	}
+
+	if _, ok := names["Ctx3.bufferData"]; !ok {
+		t.Errorf("the overload that takes a size was lost")
+	}
+
+	if f := names["Ctx3.uniform"]; f.Params[0].Type.Kind != Typed || f.Params[0].Type.Name != "Float32Array" {
+		t.Errorf("a typed array or a list of numbers is %+v", f.Params[0].Type)
+	}
+}

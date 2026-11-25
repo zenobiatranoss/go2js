@@ -11,6 +11,6 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 DTS="${1:-node_modules/typescript/lib/lib.dom.d.ts}"
-ROOTS=document,window,requestAnimationFrame,cancelAnimationFrame,HTMLCanvasElement,CanvasRenderingContext2D,KeyboardEvent,MouseEvent,TouchEvent,WheelEvent,PointerEvent,HTMLImageElement,HTMLAudioElement,ImageData,Path2D,localStorage,performance,navigator,location,fetch,AudioContext
+ROOTS=document,window,requestAnimationFrame,cancelAnimationFrame,HTMLCanvasElement,CanvasRenderingContext2D,KeyboardEvent,MouseEvent,TouchEvent,WheelEvent,PointerEvent,HTMLImageElement,HTMLAudioElement,ImageData,Path2D,WebGLRenderingContext,WebGL2RenderingContext,localStorage,performance,navigator,location,fetch,AudioContext
 
 go run ./cmd/go2js bind -global -import dom -dts "$DTS" -name dom -only "$ROOTS" -depth 2 -o bindings/dom dom

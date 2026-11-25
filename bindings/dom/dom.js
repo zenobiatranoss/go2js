@@ -910,6 +910,38 @@ function dom_fromImageBitmapOptions(object) {
 	return value;
 }
 
+// the object the library gets for a ImageBitmapRenderingContextSettings
+function dom_toImageBitmapRenderingContextSettings(value) {
+	const out = {};
+
+	if (value === null || value === undefined) {
+		return out;
+	}
+
+	const explicit = new Set(value.Explicit || []);
+
+	if (explicit.has("Alpha") || !(value.Alpha === false)) {
+		out["alpha"] = value.Alpha;
+	}
+
+	return out;
+}
+
+// a ImageBitmapRenderingContextSettings of what the library gives
+function dom_fromImageBitmapRenderingContextSettings(object) {
+	const value = new dom.ImageBitmapRenderingContextSettings();
+
+	if (object === null || typeof object !== "object") {
+		return value;
+	}
+
+	if (object["alpha"] !== undefined && object["alpha"] !== null) {
+		value.Alpha = object["alpha"];
+	}
+
+	return value;
+}
+
 // the object the library gets for a ImageDataSettings
 function dom_toImageDataSettings(value) {
 	const out = {};
@@ -1479,7 +1511,7 @@ function dom_toStructuredSerializeOptions(value) {
 	const explicit = new Set(value.Explicit || []);
 
 	if (explicit.has("Transfer") || !(value.Transfer === null || value.Transfer === undefined || value.Transfer.length === 0)) {
-		out["transfer"] = Array.from(value.Transfer || [], (item) => dom_unwrapAny(item));
+		out["transfer"] = Array.from(value.Transfer || [], (item) => Uint8Array.from(item || []));
 	}
 
 	return out;
@@ -1494,7 +1526,7 @@ function dom_fromStructuredSerializeOptions(object) {
 	}
 
 	if (object["transfer"] !== undefined && object["transfer"] !== null) {
-		value.Transfer = Array.from(object["transfer"] || [], (item) => item);
+		value.Transfer = Array.from(object["transfer"] || [], (item) => Array.from(item || []));
 	}
 
 	return value;
@@ -1581,6 +1613,86 @@ function dom_fromValidityStateFlags(object) {
 	}
 	if (object["valueMissing"] !== undefined && object["valueMissing"] !== null) {
 		value.ValueMissing = object["valueMissing"];
+	}
+
+	return value;
+}
+
+// the object the library gets for a WebGLContextAttributes
+function dom_toWebGLContextAttributes(value) {
+	const out = {};
+
+	if (value === null || value === undefined) {
+		return out;
+	}
+
+	const explicit = new Set(value.Explicit || []);
+
+	if (explicit.has("Alpha") || !(value.Alpha === false)) {
+		out["alpha"] = value.Alpha;
+	}
+	if (explicit.has("Antialias") || !(value.Antialias === false)) {
+		out["antialias"] = value.Antialias;
+	}
+	if (explicit.has("Depth") || !(value.Depth === false)) {
+		out["depth"] = value.Depth;
+	}
+	if (explicit.has("Desynchronized") || !(value.Desynchronized === false)) {
+		out["desynchronized"] = value.Desynchronized;
+	}
+	if (explicit.has("FailIfMajorPerformanceCaveat") || !(value.FailIfMajorPerformanceCaveat === false)) {
+		out["failIfMajorPerformanceCaveat"] = value.FailIfMajorPerformanceCaveat;
+	}
+	if (explicit.has("PowerPreference") || !(value.PowerPreference === "")) {
+		out["powerPreference"] = value.PowerPreference;
+	}
+	if (explicit.has("PremultipliedAlpha") || !(value.PremultipliedAlpha === false)) {
+		out["premultipliedAlpha"] = value.PremultipliedAlpha;
+	}
+	if (explicit.has("PreserveDrawingBuffer") || !(value.PreserveDrawingBuffer === false)) {
+		out["preserveDrawingBuffer"] = value.PreserveDrawingBuffer;
+	}
+	if (explicit.has("Stencil") || !(value.Stencil === false)) {
+		out["stencil"] = value.Stencil;
+	}
+
+	return out;
+}
+
+// a WebGLContextAttributes of what the library gives
+function dom_fromWebGLContextAttributes(object) {
+	const value = new dom.WebGLContextAttributes();
+
+	if (object === null || typeof object !== "object") {
+		return value;
+	}
+
+	if (object["alpha"] !== undefined && object["alpha"] !== null) {
+		value.Alpha = object["alpha"];
+	}
+	if (object["antialias"] !== undefined && object["antialias"] !== null) {
+		value.Antialias = object["antialias"];
+	}
+	if (object["depth"] !== undefined && object["depth"] !== null) {
+		value.Depth = object["depth"];
+	}
+	if (object["desynchronized"] !== undefined && object["desynchronized"] !== null) {
+		value.Desynchronized = object["desynchronized"];
+	}
+	if (object["failIfMajorPerformanceCaveat"] !== undefined && object["failIfMajorPerformanceCaveat"] !== null) {
+		value.FailIfMajorPerformanceCaveat = object["failIfMajorPerformanceCaveat"];
+	}
+	if (object["powerPreference"] !== undefined && object["powerPreference"] !== null) {
+		value.PowerPreference = object["powerPreference"];
+	}
+	if (object["premultipliedAlpha"] !== undefined && object["premultipliedAlpha"] !== null) {
+		value.PremultipliedAlpha = object["premultipliedAlpha"];
+	}
+	if (object["preserveDrawingBuffer"] !== undefined && object["preserveDrawingBuffer"] !== null) {
+		value.PreserveDrawingBuffer = object["preserveDrawingBuffer"];
+	}
+	if (object["stencil"] !== undefined && object["stencil"] !== null) {
+		value.Stencil = object["stencil"];
 	}
 
 	return value;
@@ -1908,6 +2020,282 @@ function dom_fromDocumentTimeline(object) {
 	return value;
 }
 
+// the object the library gets for a EXT_blend_minmax
+function dom_toEXT_blend_minmax(value) {
+	const out = {};
+
+	if (value === null || value === undefined) {
+		return out;
+	}
+
+	const explicit = new Set(value.Explicit || []);
+
+	if (explicit.has("MIN_EXT") || !(value.MIN_EXT === 0)) {
+		out["MIN_EXT"] = value.MIN_EXT;
+	}
+	if (explicit.has("MAX_EXT") || !(value.MAX_EXT === 0)) {
+		out["MAX_EXT"] = value.MAX_EXT;
+	}
+
+	return out;
+}
+
+// a EXT_blend_minmax of what the library gives
+function dom_fromEXT_blend_minmax(object) {
+	const value = new dom.EXT_blend_minmax();
+
+	if (object === null || typeof object !== "object") {
+		return value;
+	}
+
+	if (object["MIN_EXT"] !== undefined && object["MIN_EXT"] !== null) {
+		value.MIN_EXT = object["MIN_EXT"];
+	}
+	if (object["MAX_EXT"] !== undefined && object["MAX_EXT"] !== null) {
+		value.MAX_EXT = object["MAX_EXT"];
+	}
+
+	return value;
+}
+
+// the object the library gets for a EXT_color_buffer_half_float
+function dom_toEXT_color_buffer_half_float(value) {
+	const out = {};
+
+	if (value === null || value === undefined) {
+		return out;
+	}
+
+	const explicit = new Set(value.Explicit || []);
+
+	if (explicit.has("RGBA16F_EXT") || !(value.RGBA16F_EXT === 0)) {
+		out["RGBA16F_EXT"] = value.RGBA16F_EXT;
+	}
+	if (explicit.has("RGB16F_EXT") || !(value.RGB16F_EXT === 0)) {
+		out["RGB16F_EXT"] = value.RGB16F_EXT;
+	}
+	if (explicit.has("FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE_EXT") || !(value.FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE_EXT === 0)) {
+		out["FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE_EXT"] = value.FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE_EXT;
+	}
+	if (explicit.has("UNSIGNED_NORMALIZED_EXT") || !(value.UNSIGNED_NORMALIZED_EXT === 0)) {
+		out["UNSIGNED_NORMALIZED_EXT"] = value.UNSIGNED_NORMALIZED_EXT;
+	}
+
+	return out;
+}
+
+// a EXT_color_buffer_half_float of what the library gives
+function dom_fromEXT_color_buffer_half_float(object) {
+	const value = new dom.EXT_color_buffer_half_float();
+
+	if (object === null || typeof object !== "object") {
+		return value;
+	}
+
+	if (object["RGBA16F_EXT"] !== undefined && object["RGBA16F_EXT"] !== null) {
+		value.RGBA16F_EXT = object["RGBA16F_EXT"];
+	}
+	if (object["RGB16F_EXT"] !== undefined && object["RGB16F_EXT"] !== null) {
+		value.RGB16F_EXT = object["RGB16F_EXT"];
+	}
+	if (object["FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE_EXT"] !== undefined && object["FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE_EXT"] !== null) {
+		value.FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE_EXT = object["FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE_EXT"];
+	}
+	if (object["UNSIGNED_NORMALIZED_EXT"] !== undefined && object["UNSIGNED_NORMALIZED_EXT"] !== null) {
+		value.UNSIGNED_NORMALIZED_EXT = object["UNSIGNED_NORMALIZED_EXT"];
+	}
+
+	return value;
+}
+
+// the object the library gets for a EXT_sRGB
+function dom_toEXT_sRGB(value) {
+	const out = {};
+
+	if (value === null || value === undefined) {
+		return out;
+	}
+
+	const explicit = new Set(value.Explicit || []);
+
+	if (explicit.has("SRGB_EXT") || !(value.SRGB_EXT === 0)) {
+		out["SRGB_EXT"] = value.SRGB_EXT;
+	}
+	if (explicit.has("SRGB_ALPHA_EXT") || !(value.SRGB_ALPHA_EXT === 0)) {
+		out["SRGB_ALPHA_EXT"] = value.SRGB_ALPHA_EXT;
+	}
+	if (explicit.has("SRGB8_ALPHA8_EXT") || !(value.SRGB8_ALPHA8_EXT === 0)) {
+		out["SRGB8_ALPHA8_EXT"] = value.SRGB8_ALPHA8_EXT;
+	}
+	if (explicit.has("FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT") || !(value.FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT === 0)) {
+		out["FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT"] = value.FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT;
+	}
+
+	return out;
+}
+
+// a EXT_sRGB of what the library gives
+function dom_fromEXT_sRGB(object) {
+	const value = new dom.EXT_sRGB();
+
+	if (object === null || typeof object !== "object") {
+		return value;
+	}
+
+	if (object["SRGB_EXT"] !== undefined && object["SRGB_EXT"] !== null) {
+		value.SRGB_EXT = object["SRGB_EXT"];
+	}
+	if (object["SRGB_ALPHA_EXT"] !== undefined && object["SRGB_ALPHA_EXT"] !== null) {
+		value.SRGB_ALPHA_EXT = object["SRGB_ALPHA_EXT"];
+	}
+	if (object["SRGB8_ALPHA8_EXT"] !== undefined && object["SRGB8_ALPHA8_EXT"] !== null) {
+		value.SRGB8_ALPHA8_EXT = object["SRGB8_ALPHA8_EXT"];
+	}
+	if (object["FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT"] !== undefined && object["FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT"] !== null) {
+		value.FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT = object["FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT"];
+	}
+
+	return value;
+}
+
+// the object the library gets for a EXT_texture_compression_bptc
+function dom_toEXT_texture_compression_bptc(value) {
+	const out = {};
+
+	if (value === null || value === undefined) {
+		return out;
+	}
+
+	const explicit = new Set(value.Explicit || []);
+
+	if (explicit.has("COMPRESSED_RGBA_BPTC_UNORM_EXT") || !(value.COMPRESSED_RGBA_BPTC_UNORM_EXT === 0)) {
+		out["COMPRESSED_RGBA_BPTC_UNORM_EXT"] = value.COMPRESSED_RGBA_BPTC_UNORM_EXT;
+	}
+	if (explicit.has("COMPRESSED_SRGB_ALPHA_BPTC_UNORM_EXT") || !(value.COMPRESSED_SRGB_ALPHA_BPTC_UNORM_EXT === 0)) {
+		out["COMPRESSED_SRGB_ALPHA_BPTC_UNORM_EXT"] = value.COMPRESSED_SRGB_ALPHA_BPTC_UNORM_EXT;
+	}
+	if (explicit.has("COMPRESSED_RGB_BPTC_SIGNED_FLOAT_EXT") || !(value.COMPRESSED_RGB_BPTC_SIGNED_FLOAT_EXT === 0)) {
+		out["COMPRESSED_RGB_BPTC_SIGNED_FLOAT_EXT"] = value.COMPRESSED_RGB_BPTC_SIGNED_FLOAT_EXT;
+	}
+	if (explicit.has("COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT_EXT") || !(value.COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT_EXT === 0)) {
+		out["COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT_EXT"] = value.COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT_EXT;
+	}
+
+	return out;
+}
+
+// a EXT_texture_compression_bptc of what the library gives
+function dom_fromEXT_texture_compression_bptc(object) {
+	const value = new dom.EXT_texture_compression_bptc();
+
+	if (object === null || typeof object !== "object") {
+		return value;
+	}
+
+	if (object["COMPRESSED_RGBA_BPTC_UNORM_EXT"] !== undefined && object["COMPRESSED_RGBA_BPTC_UNORM_EXT"] !== null) {
+		value.COMPRESSED_RGBA_BPTC_UNORM_EXT = object["COMPRESSED_RGBA_BPTC_UNORM_EXT"];
+	}
+	if (object["COMPRESSED_SRGB_ALPHA_BPTC_UNORM_EXT"] !== undefined && object["COMPRESSED_SRGB_ALPHA_BPTC_UNORM_EXT"] !== null) {
+		value.COMPRESSED_SRGB_ALPHA_BPTC_UNORM_EXT = object["COMPRESSED_SRGB_ALPHA_BPTC_UNORM_EXT"];
+	}
+	if (object["COMPRESSED_RGB_BPTC_SIGNED_FLOAT_EXT"] !== undefined && object["COMPRESSED_RGB_BPTC_SIGNED_FLOAT_EXT"] !== null) {
+		value.COMPRESSED_RGB_BPTC_SIGNED_FLOAT_EXT = object["COMPRESSED_RGB_BPTC_SIGNED_FLOAT_EXT"];
+	}
+	if (object["COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT_EXT"] !== undefined && object["COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT_EXT"] !== null) {
+		value.COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT_EXT = object["COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT_EXT"];
+	}
+
+	return value;
+}
+
+// the object the library gets for a EXT_texture_compression_rgtc
+function dom_toEXT_texture_compression_rgtc(value) {
+	const out = {};
+
+	if (value === null || value === undefined) {
+		return out;
+	}
+
+	const explicit = new Set(value.Explicit || []);
+
+	if (explicit.has("COMPRESSED_RED_RGTC1_EXT") || !(value.COMPRESSED_RED_RGTC1_EXT === 0)) {
+		out["COMPRESSED_RED_RGTC1_EXT"] = value.COMPRESSED_RED_RGTC1_EXT;
+	}
+	if (explicit.has("COMPRESSED_SIGNED_RED_RGTC1_EXT") || !(value.COMPRESSED_SIGNED_RED_RGTC1_EXT === 0)) {
+		out["COMPRESSED_SIGNED_RED_RGTC1_EXT"] = value.COMPRESSED_SIGNED_RED_RGTC1_EXT;
+	}
+	if (explicit.has("COMPRESSED_RED_GREEN_RGTC2_EXT") || !(value.COMPRESSED_RED_GREEN_RGTC2_EXT === 0)) {
+		out["COMPRESSED_RED_GREEN_RGTC2_EXT"] = value.COMPRESSED_RED_GREEN_RGTC2_EXT;
+	}
+	if (explicit.has("COMPRESSED_SIGNED_RED_GREEN_RGTC2_EXT") || !(value.COMPRESSED_SIGNED_RED_GREEN_RGTC2_EXT === 0)) {
+		out["COMPRESSED_SIGNED_RED_GREEN_RGTC2_EXT"] = value.COMPRESSED_SIGNED_RED_GREEN_RGTC2_EXT;
+	}
+
+	return out;
+}
+
+// a EXT_texture_compression_rgtc of what the library gives
+function dom_fromEXT_texture_compression_rgtc(object) {
+	const value = new dom.EXT_texture_compression_rgtc();
+
+	if (object === null || typeof object !== "object") {
+		return value;
+	}
+
+	if (object["COMPRESSED_RED_RGTC1_EXT"] !== undefined && object["COMPRESSED_RED_RGTC1_EXT"] !== null) {
+		value.COMPRESSED_RED_RGTC1_EXT = object["COMPRESSED_RED_RGTC1_EXT"];
+	}
+	if (object["COMPRESSED_SIGNED_RED_RGTC1_EXT"] !== undefined && object["COMPRESSED_SIGNED_RED_RGTC1_EXT"] !== null) {
+		value.COMPRESSED_SIGNED_RED_RGTC1_EXT = object["COMPRESSED_SIGNED_RED_RGTC1_EXT"];
+	}
+	if (object["COMPRESSED_RED_GREEN_RGTC2_EXT"] !== undefined && object["COMPRESSED_RED_GREEN_RGTC2_EXT"] !== null) {
+		value.COMPRESSED_RED_GREEN_RGTC2_EXT = object["COMPRESSED_RED_GREEN_RGTC2_EXT"];
+	}
+	if (object["COMPRESSED_SIGNED_RED_GREEN_RGTC2_EXT"] !== undefined && object["COMPRESSED_SIGNED_RED_GREEN_RGTC2_EXT"] !== null) {
+		value.COMPRESSED_SIGNED_RED_GREEN_RGTC2_EXT = object["COMPRESSED_SIGNED_RED_GREEN_RGTC2_EXT"];
+	}
+
+	return value;
+}
+
+// the object the library gets for a EXT_texture_filter_anisotropic
+function dom_toEXT_texture_filter_anisotropic(value) {
+	const out = {};
+
+	if (value === null || value === undefined) {
+		return out;
+	}
+
+	const explicit = new Set(value.Explicit || []);
+
+	if (explicit.has("TEXTURE_MAX_ANISOTROPY_EXT") || !(value.TEXTURE_MAX_ANISOTROPY_EXT === 0)) {
+		out["TEXTURE_MAX_ANISOTROPY_EXT"] = value.TEXTURE_MAX_ANISOTROPY_EXT;
+	}
+	if (explicit.has("MAX_TEXTURE_MAX_ANISOTROPY_EXT") || !(value.MAX_TEXTURE_MAX_ANISOTROPY_EXT === 0)) {
+		out["MAX_TEXTURE_MAX_ANISOTROPY_EXT"] = value.MAX_TEXTURE_MAX_ANISOTROPY_EXT;
+	}
+
+	return out;
+}
+
+// a EXT_texture_filter_anisotropic of what the library gives
+function dom_fromEXT_texture_filter_anisotropic(object) {
+	const value = new dom.EXT_texture_filter_anisotropic();
+
+	if (object === null || typeof object !== "object") {
+		return value;
+	}
+
+	if (object["TEXTURE_MAX_ANISOTROPY_EXT"] !== undefined && object["TEXTURE_MAX_ANISOTROPY_EXT"] !== null) {
+		value.TEXTURE_MAX_ANISOTROPY_EXT = object["TEXTURE_MAX_ANISOTROPY_EXT"];
+	}
+	if (object["MAX_TEXTURE_MAX_ANISOTROPY_EXT"] !== undefined && object["MAX_TEXTURE_MAX_ANISOTROPY_EXT"] !== null) {
+		value.MAX_TEXTURE_MAX_ANISOTROPY_EXT = object["MAX_TEXTURE_MAX_ANISOTROPY_EXT"];
+	}
+
+	return value;
+}
+
 // the object the library gets for a Gamepad
 function dom_toGamepad(value) {
 	const out = {};
@@ -2032,6 +2420,38 @@ function dom_fromImageData(object) {
 	return value;
 }
 
+// the object the library gets for a KHR_parallel_shader_compile
+function dom_toKHR_parallel_shader_compile(value) {
+	const out = {};
+
+	if (value === null || value === undefined) {
+		return out;
+	}
+
+	const explicit = new Set(value.Explicit || []);
+
+	if (explicit.has("COMPLETION_STATUS_KHR") || !(value.COMPLETION_STATUS_KHR === 0)) {
+		out["COMPLETION_STATUS_KHR"] = value.COMPLETION_STATUS_KHR;
+	}
+
+	return out;
+}
+
+// a KHR_parallel_shader_compile of what the library gives
+function dom_fromKHR_parallel_shader_compile(object) {
+	const value = new dom.KHR_parallel_shader_compile();
+
+	if (object === null || typeof object !== "object") {
+		return value;
+	}
+
+	if (object["COMPLETION_STATUS_KHR"] !== undefined && object["COMPLETION_STATUS_KHR"] !== null) {
+		value.COMPLETION_STATUS_KHR = object["COMPLETION_STATUS_KHR"];
+	}
+
+	return value;
+}
+
 // the object the library gets for a MediaError
 function dom_toMediaError(value) {
 	const out = {};
@@ -2089,6 +2509,70 @@ function dom_fromMediaError(object) {
 	}
 	if (object["MEDIA_ERR_SRC_NOT_SUPPORTED"] !== undefined && object["MEDIA_ERR_SRC_NOT_SUPPORTED"] !== null) {
 		value.MEDIA_ERR_SRC_NOT_SUPPORTED = object["MEDIA_ERR_SRC_NOT_SUPPORTED"];
+	}
+
+	return value;
+}
+
+// the object the library gets for a OES_standard_derivatives
+function dom_toOES_standard_derivatives(value) {
+	const out = {};
+
+	if (value === null || value === undefined) {
+		return out;
+	}
+
+	const explicit = new Set(value.Explicit || []);
+
+	if (explicit.has("FRAGMENT_SHADER_DERIVATIVE_HINT_OES") || !(value.FRAGMENT_SHADER_DERIVATIVE_HINT_OES === 0)) {
+		out["FRAGMENT_SHADER_DERIVATIVE_HINT_OES"] = value.FRAGMENT_SHADER_DERIVATIVE_HINT_OES;
+	}
+
+	return out;
+}
+
+// a OES_standard_derivatives of what the library gives
+function dom_fromOES_standard_derivatives(object) {
+	const value = new dom.OES_standard_derivatives();
+
+	if (object === null || typeof object !== "object") {
+		return value;
+	}
+
+	if (object["FRAGMENT_SHADER_DERIVATIVE_HINT_OES"] !== undefined && object["FRAGMENT_SHADER_DERIVATIVE_HINT_OES"] !== null) {
+		value.FRAGMENT_SHADER_DERIVATIVE_HINT_OES = object["FRAGMENT_SHADER_DERIVATIVE_HINT_OES"];
+	}
+
+	return value;
+}
+
+// the object the library gets for a OES_texture_half_float
+function dom_toOES_texture_half_float(value) {
+	const out = {};
+
+	if (value === null || value === undefined) {
+		return out;
+	}
+
+	const explicit = new Set(value.Explicit || []);
+
+	if (explicit.has("HALF_FLOAT_OES") || !(value.HALF_FLOAT_OES === 0)) {
+		out["HALF_FLOAT_OES"] = value.HALF_FLOAT_OES;
+	}
+
+	return out;
+}
+
+// a OES_texture_half_float of what the library gives
+function dom_fromOES_texture_half_float(object) {
+	const value = new dom.OES_texture_half_float();
+
+	if (object === null || typeof object !== "object") {
+		return value;
+	}
+
+	if (object["HALF_FLOAT_OES"] !== undefined && object["HALF_FLOAT_OES"] !== null) {
+		value.HALF_FLOAT_OES = object["HALF_FLOAT_OES"];
 	}
 
 	return value;
@@ -2544,6 +3028,476 @@ function dom_fromValidityState(object) {
 	return value;
 }
 
+// the object the library gets for a WEBGL_color_buffer_float
+function dom_toWEBGL_color_buffer_float(value) {
+	const out = {};
+
+	if (value === null || value === undefined) {
+		return out;
+	}
+
+	const explicit = new Set(value.Explicit || []);
+
+	if (explicit.has("RGBA32F_EXT") || !(value.RGBA32F_EXT === 0)) {
+		out["RGBA32F_EXT"] = value.RGBA32F_EXT;
+	}
+	if (explicit.has("FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE_EXT") || !(value.FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE_EXT === 0)) {
+		out["FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE_EXT"] = value.FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE_EXT;
+	}
+	if (explicit.has("UNSIGNED_NORMALIZED_EXT") || !(value.UNSIGNED_NORMALIZED_EXT === 0)) {
+		out["UNSIGNED_NORMALIZED_EXT"] = value.UNSIGNED_NORMALIZED_EXT;
+	}
+
+	return out;
+}
+
+// a WEBGL_color_buffer_float of what the library gives
+function dom_fromWEBGL_color_buffer_float(object) {
+	const value = new dom.WEBGL_color_buffer_float();
+
+	if (object === null || typeof object !== "object") {
+		return value;
+	}
+
+	if (object["RGBA32F_EXT"] !== undefined && object["RGBA32F_EXT"] !== null) {
+		value.RGBA32F_EXT = object["RGBA32F_EXT"];
+	}
+	if (object["FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE_EXT"] !== undefined && object["FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE_EXT"] !== null) {
+		value.FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE_EXT = object["FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE_EXT"];
+	}
+	if (object["UNSIGNED_NORMALIZED_EXT"] !== undefined && object["UNSIGNED_NORMALIZED_EXT"] !== null) {
+		value.UNSIGNED_NORMALIZED_EXT = object["UNSIGNED_NORMALIZED_EXT"];
+	}
+
+	return value;
+}
+
+// the object the library gets for a WEBGL_compressed_texture_etc
+function dom_toWEBGL_compressed_texture_etc(value) {
+	const out = {};
+
+	if (value === null || value === undefined) {
+		return out;
+	}
+
+	const explicit = new Set(value.Explicit || []);
+
+	if (explicit.has("COMPRESSED_R11_EAC") || !(value.COMPRESSED_R11_EAC === 0)) {
+		out["COMPRESSED_R11_EAC"] = value.COMPRESSED_R11_EAC;
+	}
+	if (explicit.has("COMPRESSED_SIGNED_R11_EAC") || !(value.COMPRESSED_SIGNED_R11_EAC === 0)) {
+		out["COMPRESSED_SIGNED_R11_EAC"] = value.COMPRESSED_SIGNED_R11_EAC;
+	}
+	if (explicit.has("COMPRESSED_RG11_EAC") || !(value.COMPRESSED_RG11_EAC === 0)) {
+		out["COMPRESSED_RG11_EAC"] = value.COMPRESSED_RG11_EAC;
+	}
+	if (explicit.has("COMPRESSED_SIGNED_RG11_EAC") || !(value.COMPRESSED_SIGNED_RG11_EAC === 0)) {
+		out["COMPRESSED_SIGNED_RG11_EAC"] = value.COMPRESSED_SIGNED_RG11_EAC;
+	}
+	if (explicit.has("COMPRESSED_RGB8_ETC2") || !(value.COMPRESSED_RGB8_ETC2 === 0)) {
+		out["COMPRESSED_RGB8_ETC2"] = value.COMPRESSED_RGB8_ETC2;
+	}
+	if (explicit.has("COMPRESSED_SRGB8_ETC2") || !(value.COMPRESSED_SRGB8_ETC2 === 0)) {
+		out["COMPRESSED_SRGB8_ETC2"] = value.COMPRESSED_SRGB8_ETC2;
+	}
+	if (explicit.has("COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2") || !(value.COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2 === 0)) {
+		out["COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2"] = value.COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2;
+	}
+	if (explicit.has("COMPRESSED_SRGB8_PUNCHTHROUGH_ALPHA1_ETC2") || !(value.COMPRESSED_SRGB8_PUNCHTHROUGH_ALPHA1_ETC2 === 0)) {
+		out["COMPRESSED_SRGB8_PUNCHTHROUGH_ALPHA1_ETC2"] = value.COMPRESSED_SRGB8_PUNCHTHROUGH_ALPHA1_ETC2;
+	}
+	if (explicit.has("COMPRESSED_RGBA8_ETC2_EAC") || !(value.COMPRESSED_RGBA8_ETC2_EAC === 0)) {
+		out["COMPRESSED_RGBA8_ETC2_EAC"] = value.COMPRESSED_RGBA8_ETC2_EAC;
+	}
+	if (explicit.has("COMPRESSED_SRGB8_ALPHA8_ETC2_EAC") || !(value.COMPRESSED_SRGB8_ALPHA8_ETC2_EAC === 0)) {
+		out["COMPRESSED_SRGB8_ALPHA8_ETC2_EAC"] = value.COMPRESSED_SRGB8_ALPHA8_ETC2_EAC;
+	}
+
+	return out;
+}
+
+// a WEBGL_compressed_texture_etc of what the library gives
+function dom_fromWEBGL_compressed_texture_etc(object) {
+	const value = new dom.WEBGL_compressed_texture_etc();
+
+	if (object === null || typeof object !== "object") {
+		return value;
+	}
+
+	if (object["COMPRESSED_R11_EAC"] !== undefined && object["COMPRESSED_R11_EAC"] !== null) {
+		value.COMPRESSED_R11_EAC = object["COMPRESSED_R11_EAC"];
+	}
+	if (object["COMPRESSED_SIGNED_R11_EAC"] !== undefined && object["COMPRESSED_SIGNED_R11_EAC"] !== null) {
+		value.COMPRESSED_SIGNED_R11_EAC = object["COMPRESSED_SIGNED_R11_EAC"];
+	}
+	if (object["COMPRESSED_RG11_EAC"] !== undefined && object["COMPRESSED_RG11_EAC"] !== null) {
+		value.COMPRESSED_RG11_EAC = object["COMPRESSED_RG11_EAC"];
+	}
+	if (object["COMPRESSED_SIGNED_RG11_EAC"] !== undefined && object["COMPRESSED_SIGNED_RG11_EAC"] !== null) {
+		value.COMPRESSED_SIGNED_RG11_EAC = object["COMPRESSED_SIGNED_RG11_EAC"];
+	}
+	if (object["COMPRESSED_RGB8_ETC2"] !== undefined && object["COMPRESSED_RGB8_ETC2"] !== null) {
+		value.COMPRESSED_RGB8_ETC2 = object["COMPRESSED_RGB8_ETC2"];
+	}
+	if (object["COMPRESSED_SRGB8_ETC2"] !== undefined && object["COMPRESSED_SRGB8_ETC2"] !== null) {
+		value.COMPRESSED_SRGB8_ETC2 = object["COMPRESSED_SRGB8_ETC2"];
+	}
+	if (object["COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2"] !== undefined && object["COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2"] !== null) {
+		value.COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2 = object["COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2"];
+	}
+	if (object["COMPRESSED_SRGB8_PUNCHTHROUGH_ALPHA1_ETC2"] !== undefined && object["COMPRESSED_SRGB8_PUNCHTHROUGH_ALPHA1_ETC2"] !== null) {
+		value.COMPRESSED_SRGB8_PUNCHTHROUGH_ALPHA1_ETC2 = object["COMPRESSED_SRGB8_PUNCHTHROUGH_ALPHA1_ETC2"];
+	}
+	if (object["COMPRESSED_RGBA8_ETC2_EAC"] !== undefined && object["COMPRESSED_RGBA8_ETC2_EAC"] !== null) {
+		value.COMPRESSED_RGBA8_ETC2_EAC = object["COMPRESSED_RGBA8_ETC2_EAC"];
+	}
+	if (object["COMPRESSED_SRGB8_ALPHA8_ETC2_EAC"] !== undefined && object["COMPRESSED_SRGB8_ALPHA8_ETC2_EAC"] !== null) {
+		value.COMPRESSED_SRGB8_ALPHA8_ETC2_EAC = object["COMPRESSED_SRGB8_ALPHA8_ETC2_EAC"];
+	}
+
+	return value;
+}
+
+// the object the library gets for a WEBGL_compressed_texture_etc1
+function dom_toWEBGL_compressed_texture_etc1(value) {
+	const out = {};
+
+	if (value === null || value === undefined) {
+		return out;
+	}
+
+	const explicit = new Set(value.Explicit || []);
+
+	if (explicit.has("COMPRESSED_RGB_ETC1_WEBGL") || !(value.COMPRESSED_RGB_ETC1_WEBGL === 0)) {
+		out["COMPRESSED_RGB_ETC1_WEBGL"] = value.COMPRESSED_RGB_ETC1_WEBGL;
+	}
+
+	return out;
+}
+
+// a WEBGL_compressed_texture_etc1 of what the library gives
+function dom_fromWEBGL_compressed_texture_etc1(object) {
+	const value = new dom.WEBGL_compressed_texture_etc1();
+
+	if (object === null || typeof object !== "object") {
+		return value;
+	}
+
+	if (object["COMPRESSED_RGB_ETC1_WEBGL"] !== undefined && object["COMPRESSED_RGB_ETC1_WEBGL"] !== null) {
+		value.COMPRESSED_RGB_ETC1_WEBGL = object["COMPRESSED_RGB_ETC1_WEBGL"];
+	}
+
+	return value;
+}
+
+// the object the library gets for a WEBGL_compressed_texture_pvrtc
+function dom_toWEBGL_compressed_texture_pvrtc(value) {
+	const out = {};
+
+	if (value === null || value === undefined) {
+		return out;
+	}
+
+	const explicit = new Set(value.Explicit || []);
+
+	if (explicit.has("COMPRESSED_RGB_PVRTC_4BPPV1_IMG") || !(value.COMPRESSED_RGB_PVRTC_4BPPV1_IMG === 0)) {
+		out["COMPRESSED_RGB_PVRTC_4BPPV1_IMG"] = value.COMPRESSED_RGB_PVRTC_4BPPV1_IMG;
+	}
+	if (explicit.has("COMPRESSED_RGB_PVRTC_2BPPV1_IMG") || !(value.COMPRESSED_RGB_PVRTC_2BPPV1_IMG === 0)) {
+		out["COMPRESSED_RGB_PVRTC_2BPPV1_IMG"] = value.COMPRESSED_RGB_PVRTC_2BPPV1_IMG;
+	}
+	if (explicit.has("COMPRESSED_RGBA_PVRTC_4BPPV1_IMG") || !(value.COMPRESSED_RGBA_PVRTC_4BPPV1_IMG === 0)) {
+		out["COMPRESSED_RGBA_PVRTC_4BPPV1_IMG"] = value.COMPRESSED_RGBA_PVRTC_4BPPV1_IMG;
+	}
+	if (explicit.has("COMPRESSED_RGBA_PVRTC_2BPPV1_IMG") || !(value.COMPRESSED_RGBA_PVRTC_2BPPV1_IMG === 0)) {
+		out["COMPRESSED_RGBA_PVRTC_2BPPV1_IMG"] = value.COMPRESSED_RGBA_PVRTC_2BPPV1_IMG;
+	}
+
+	return out;
+}
+
+// a WEBGL_compressed_texture_pvrtc of what the library gives
+function dom_fromWEBGL_compressed_texture_pvrtc(object) {
+	const value = new dom.WEBGL_compressed_texture_pvrtc();
+
+	if (object === null || typeof object !== "object") {
+		return value;
+	}
+
+	if (object["COMPRESSED_RGB_PVRTC_4BPPV1_IMG"] !== undefined && object["COMPRESSED_RGB_PVRTC_4BPPV1_IMG"] !== null) {
+		value.COMPRESSED_RGB_PVRTC_4BPPV1_IMG = object["COMPRESSED_RGB_PVRTC_4BPPV1_IMG"];
+	}
+	if (object["COMPRESSED_RGB_PVRTC_2BPPV1_IMG"] !== undefined && object["COMPRESSED_RGB_PVRTC_2BPPV1_IMG"] !== null) {
+		value.COMPRESSED_RGB_PVRTC_2BPPV1_IMG = object["COMPRESSED_RGB_PVRTC_2BPPV1_IMG"];
+	}
+	if (object["COMPRESSED_RGBA_PVRTC_4BPPV1_IMG"] !== undefined && object["COMPRESSED_RGBA_PVRTC_4BPPV1_IMG"] !== null) {
+		value.COMPRESSED_RGBA_PVRTC_4BPPV1_IMG = object["COMPRESSED_RGBA_PVRTC_4BPPV1_IMG"];
+	}
+	if (object["COMPRESSED_RGBA_PVRTC_2BPPV1_IMG"] !== undefined && object["COMPRESSED_RGBA_PVRTC_2BPPV1_IMG"] !== null) {
+		value.COMPRESSED_RGBA_PVRTC_2BPPV1_IMG = object["COMPRESSED_RGBA_PVRTC_2BPPV1_IMG"];
+	}
+
+	return value;
+}
+
+// the object the library gets for a WEBGL_compressed_texture_s3tc
+function dom_toWEBGL_compressed_texture_s3tc(value) {
+	const out = {};
+
+	if (value === null || value === undefined) {
+		return out;
+	}
+
+	const explicit = new Set(value.Explicit || []);
+
+	if (explicit.has("COMPRESSED_RGB_S3TC_DXT1_EXT") || !(value.COMPRESSED_RGB_S3TC_DXT1_EXT === 0)) {
+		out["COMPRESSED_RGB_S3TC_DXT1_EXT"] = value.COMPRESSED_RGB_S3TC_DXT1_EXT;
+	}
+	if (explicit.has("COMPRESSED_RGBA_S3TC_DXT1_EXT") || !(value.COMPRESSED_RGBA_S3TC_DXT1_EXT === 0)) {
+		out["COMPRESSED_RGBA_S3TC_DXT1_EXT"] = value.COMPRESSED_RGBA_S3TC_DXT1_EXT;
+	}
+	if (explicit.has("COMPRESSED_RGBA_S3TC_DXT3_EXT") || !(value.COMPRESSED_RGBA_S3TC_DXT3_EXT === 0)) {
+		out["COMPRESSED_RGBA_S3TC_DXT3_EXT"] = value.COMPRESSED_RGBA_S3TC_DXT3_EXT;
+	}
+	if (explicit.has("COMPRESSED_RGBA_S3TC_DXT5_EXT") || !(value.COMPRESSED_RGBA_S3TC_DXT5_EXT === 0)) {
+		out["COMPRESSED_RGBA_S3TC_DXT5_EXT"] = value.COMPRESSED_RGBA_S3TC_DXT5_EXT;
+	}
+
+	return out;
+}
+
+// a WEBGL_compressed_texture_s3tc of what the library gives
+function dom_fromWEBGL_compressed_texture_s3tc(object) {
+	const value = new dom.WEBGL_compressed_texture_s3tc();
+
+	if (object === null || typeof object !== "object") {
+		return value;
+	}
+
+	if (object["COMPRESSED_RGB_S3TC_DXT1_EXT"] !== undefined && object["COMPRESSED_RGB_S3TC_DXT1_EXT"] !== null) {
+		value.COMPRESSED_RGB_S3TC_DXT1_EXT = object["COMPRESSED_RGB_S3TC_DXT1_EXT"];
+	}
+	if (object["COMPRESSED_RGBA_S3TC_DXT1_EXT"] !== undefined && object["COMPRESSED_RGBA_S3TC_DXT1_EXT"] !== null) {
+		value.COMPRESSED_RGBA_S3TC_DXT1_EXT = object["COMPRESSED_RGBA_S3TC_DXT1_EXT"];
+	}
+	if (object["COMPRESSED_RGBA_S3TC_DXT3_EXT"] !== undefined && object["COMPRESSED_RGBA_S3TC_DXT3_EXT"] !== null) {
+		value.COMPRESSED_RGBA_S3TC_DXT3_EXT = object["COMPRESSED_RGBA_S3TC_DXT3_EXT"];
+	}
+	if (object["COMPRESSED_RGBA_S3TC_DXT5_EXT"] !== undefined && object["COMPRESSED_RGBA_S3TC_DXT5_EXT"] !== null) {
+		value.COMPRESSED_RGBA_S3TC_DXT5_EXT = object["COMPRESSED_RGBA_S3TC_DXT5_EXT"];
+	}
+
+	return value;
+}
+
+// the object the library gets for a WEBGL_compressed_texture_s3tc_srgb
+function dom_toWEBGL_compressed_texture_s3tc_srgb(value) {
+	const out = {};
+
+	if (value === null || value === undefined) {
+		return out;
+	}
+
+	const explicit = new Set(value.Explicit || []);
+
+	if (explicit.has("COMPRESSED_SRGB_S3TC_DXT1_EXT") || !(value.COMPRESSED_SRGB_S3TC_DXT1_EXT === 0)) {
+		out["COMPRESSED_SRGB_S3TC_DXT1_EXT"] = value.COMPRESSED_SRGB_S3TC_DXT1_EXT;
+	}
+	if (explicit.has("COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT") || !(value.COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT === 0)) {
+		out["COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT"] = value.COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT;
+	}
+	if (explicit.has("COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT") || !(value.COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT === 0)) {
+		out["COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT"] = value.COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT;
+	}
+	if (explicit.has("COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT") || !(value.COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT === 0)) {
+		out["COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT"] = value.COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT;
+	}
+
+	return out;
+}
+
+// a WEBGL_compressed_texture_s3tc_srgb of what the library gives
+function dom_fromWEBGL_compressed_texture_s3tc_srgb(object) {
+	const value = new dom.WEBGL_compressed_texture_s3tc_srgb();
+
+	if (object === null || typeof object !== "object") {
+		return value;
+	}
+
+	if (object["COMPRESSED_SRGB_S3TC_DXT1_EXT"] !== undefined && object["COMPRESSED_SRGB_S3TC_DXT1_EXT"] !== null) {
+		value.COMPRESSED_SRGB_S3TC_DXT1_EXT = object["COMPRESSED_SRGB_S3TC_DXT1_EXT"];
+	}
+	if (object["COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT"] !== undefined && object["COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT"] !== null) {
+		value.COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT = object["COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT"];
+	}
+	if (object["COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT"] !== undefined && object["COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT"] !== null) {
+		value.COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT = object["COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT"];
+	}
+	if (object["COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT"] !== undefined && object["COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT"] !== null) {
+		value.COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT = object["COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT"];
+	}
+
+	return value;
+}
+
+// the object the library gets for a WEBGL_debug_renderer_info
+function dom_toWEBGL_debug_renderer_info(value) {
+	const out = {};
+
+	if (value === null || value === undefined) {
+		return out;
+	}
+
+	const explicit = new Set(value.Explicit || []);
+
+	if (explicit.has("UNMASKED_VENDOR_WEBGL") || !(value.UNMASKED_VENDOR_WEBGL === 0)) {
+		out["UNMASKED_VENDOR_WEBGL"] = value.UNMASKED_VENDOR_WEBGL;
+	}
+	if (explicit.has("UNMASKED_RENDERER_WEBGL") || !(value.UNMASKED_RENDERER_WEBGL === 0)) {
+		out["UNMASKED_RENDERER_WEBGL"] = value.UNMASKED_RENDERER_WEBGL;
+	}
+
+	return out;
+}
+
+// a WEBGL_debug_renderer_info of what the library gives
+function dom_fromWEBGL_debug_renderer_info(object) {
+	const value = new dom.WEBGL_debug_renderer_info();
+
+	if (object === null || typeof object !== "object") {
+		return value;
+	}
+
+	if (object["UNMASKED_VENDOR_WEBGL"] !== undefined && object["UNMASKED_VENDOR_WEBGL"] !== null) {
+		value.UNMASKED_VENDOR_WEBGL = object["UNMASKED_VENDOR_WEBGL"];
+	}
+	if (object["UNMASKED_RENDERER_WEBGL"] !== undefined && object["UNMASKED_RENDERER_WEBGL"] !== null) {
+		value.UNMASKED_RENDERER_WEBGL = object["UNMASKED_RENDERER_WEBGL"];
+	}
+
+	return value;
+}
+
+// the object the library gets for a WEBGL_depth_texture
+function dom_toWEBGL_depth_texture(value) {
+	const out = {};
+
+	if (value === null || value === undefined) {
+		return out;
+	}
+
+	const explicit = new Set(value.Explicit || []);
+
+	if (explicit.has("UNSIGNED_INT_24_8_WEBGL") || !(value.UNSIGNED_INT_24_8_WEBGL === 0)) {
+		out["UNSIGNED_INT_24_8_WEBGL"] = value.UNSIGNED_INT_24_8_WEBGL;
+	}
+
+	return out;
+}
+
+// a WEBGL_depth_texture of what the library gives
+function dom_fromWEBGL_depth_texture(object) {
+	const value = new dom.WEBGL_depth_texture();
+
+	if (object === null || typeof object !== "object") {
+		return value;
+	}
+
+	if (object["UNSIGNED_INT_24_8_WEBGL"] !== undefined && object["UNSIGNED_INT_24_8_WEBGL"] !== null) {
+		value.UNSIGNED_INT_24_8_WEBGL = object["UNSIGNED_INT_24_8_WEBGL"];
+	}
+
+	return value;
+}
+
+// the object the library gets for a WebGLActiveInfo
+function dom_toWebGLActiveInfo(value) {
+	const out = {};
+
+	if (value === null || value === undefined) {
+		return out;
+	}
+
+	const explicit = new Set(value.Explicit || []);
+
+	if (explicit.has("Name") || !(value.Name === "")) {
+		out["name"] = value.Name;
+	}
+	if (explicit.has("Size") || !(value.Size === 0)) {
+		out["size"] = value.Size;
+	}
+	if (explicit.has("Type") || !(value.Type === 0)) {
+		out["type"] = value.Type;
+	}
+
+	return out;
+}
+
+// a WebGLActiveInfo of what the library gives
+function dom_fromWebGLActiveInfo(object) {
+	const value = new dom.WebGLActiveInfo();
+
+	if (object === null || typeof object !== "object") {
+		return value;
+	}
+
+	if (object["name"] !== undefined && object["name"] !== null) {
+		value.Name = object["name"];
+	}
+	if (object["size"] !== undefined && object["size"] !== null) {
+		value.Size = object["size"];
+	}
+	if (object["type"] !== undefined && object["type"] !== null) {
+		value.Type = object["type"];
+	}
+
+	return value;
+}
+
+// the object the library gets for a WebGLShaderPrecisionFormat
+function dom_toWebGLShaderPrecisionFormat(value) {
+	const out = {};
+
+	if (value === null || value === undefined) {
+		return out;
+	}
+
+	const explicit = new Set(value.Explicit || []);
+
+	if (explicit.has("Precision") || !(value.Precision === 0)) {
+		out["precision"] = value.Precision;
+	}
+	if (explicit.has("RangeMax") || !(value.RangeMax === 0)) {
+		out["rangeMax"] = value.RangeMax;
+	}
+	if (explicit.has("RangeMin") || !(value.RangeMin === 0)) {
+		out["rangeMin"] = value.RangeMin;
+	}
+
+	return out;
+}
+
+// a WebGLShaderPrecisionFormat of what the library gives
+function dom_fromWebGLShaderPrecisionFormat(object) {
+	const value = new dom.WebGLShaderPrecisionFormat();
+
+	if (object === null || typeof object !== "object") {
+		return value;
+	}
+
+	if (object["precision"] !== undefined && object["precision"] !== null) {
+		value.Precision = object["precision"];
+	}
+	if (object["rangeMax"] !== undefined && object["rangeMax"] !== null) {
+		value.RangeMax = object["rangeMax"];
+	}
+	if (object["rangeMin"] !== undefined && object["rangeMin"] !== null) {
+		value.RangeMin = object["rangeMin"];
+	}
+
+	return value;
+}
+
 class dom_base {
 	AsAbortSignal() {
 		return dom_is(this, "AbortSignal") ? this : null;
@@ -2593,6 +3547,9 @@ class dom_base {
 	AsBiquadFilterNode() {
 		return dom_is(this, "BiquadFilterNode") ? this : null;
 	}
+	AsBlobEvent() {
+		return dom_is(this, "BlobEvent") ? this : null;
+	}
 	AsCDATASection() {
 		return dom_is(this, "CDATASection") ? this : null;
 	}
@@ -2620,6 +3577,9 @@ class dom_base {
 	AsClipboardEvent() {
 		return dom_is(this, "ClipboardEvent") ? this : null;
 	}
+	AsCloseEvent() {
+		return dom_is(this, "CloseEvent") ? this : null;
+	}
 	AsComment() {
 		return dom_is(this, "Comment") ? this : null;
 	}
@@ -2629,8 +3589,14 @@ class dom_base {
 	AsConstantSourceNode() {
 		return dom_is(this, "ConstantSourceNode") ? this : null;
 	}
+	AsContentVisibilityAutoStateChangeEvent() {
+		return dom_is(this, "ContentVisibilityAutoStateChangeEvent") ? this : null;
+	}
 	AsConvolverNode() {
 		return dom_is(this, "ConvolverNode") ? this : null;
+	}
+	AsCustomEvent() {
+		return dom_is(this, "CustomEvent") ? this : null;
 	}
 	AsDOMMatrix() {
 		return dom_is(this, "DOMMatrix") ? this : null;
@@ -2680,6 +3646,9 @@ class dom_base {
 	AsFontFaceSet() {
 		return dom_is(this, "FontFaceSet") ? this : null;
 	}
+	AsFontFaceSetLoadEvent() {
+		return dom_is(this, "FontFaceSetLoadEvent") ? this : null;
+	}
 	AsFormDataEvent() {
 		return dom_is(this, "FormDataEvent") ? this : null;
 	}
@@ -2722,6 +3691,9 @@ class dom_base {
 	AsHashChangeEvent() {
 		return dom_is(this, "HashChangeEvent") ? this : null;
 	}
+	AsIDBVersionChangeEvent() {
+		return dom_is(this, "IDBVersionChangeEvent") ? this : null;
+	}
 	AsIIRFilterNode() {
 		return dom_is(this, "IIRFilterNode") ? this : null;
 	}
@@ -2734,6 +3706,15 @@ class dom_base {
 	AsMIDIAccess() {
 		return dom_is(this, "MIDIAccess") ? this : null;
 	}
+	AsMIDIConnectionEvent() {
+		return dom_is(this, "MIDIConnectionEvent") ? this : null;
+	}
+	AsMIDIMessageEvent() {
+		return dom_is(this, "MIDIMessageEvent") ? this : null;
+	}
+	AsMathMLElement() {
+		return dom_is(this, "MathMLElement") ? this : null;
+	}
 	AsMediaDevices() {
 		return dom_is(this, "MediaDevices") ? this : null;
 	}
@@ -2743,11 +3724,17 @@ class dom_base {
 	AsMediaEncryptedEvent() {
 		return dom_is(this, "MediaEncryptedEvent") ? this : null;
 	}
+	AsMediaKeyMessageEvent() {
+		return dom_is(this, "MediaKeyMessageEvent") ? this : null;
+	}
 	AsMediaKeySession() {
 		return dom_is(this, "MediaKeySession") ? this : null;
 	}
 	AsMediaQueryList() {
 		return dom_is(this, "MediaQueryList") ? this : null;
+	}
+	AsMediaQueryListEvent() {
+		return dom_is(this, "MediaQueryListEvent") ? this : null;
 	}
 	AsMediaStream() {
 		return dom_is(this, "MediaStream") ? this : null;
@@ -2770,6 +3757,9 @@ class dom_base {
 	AsMouseEvent() {
 		return dom_is(this, "MouseEvent") ? this : null;
 	}
+	AsMutationEvent() {
+		return dom_is(this, "MutationEvent") ? this : null;
+	}
 	AsNavigator() {
 		return dom_is(this, "Navigator") ? this : null;
 	}
@@ -2778,6 +3768,9 @@ class dom_base {
 	}
 	AsNodeListOf() {
 		return dom_is(this, "NodeListOf") ? this : null;
+	}
+	AsOfflineAudioCompletionEvent() {
+		return dom_is(this, "OfflineAudioCompletionEvent") ? this : null;
 	}
 	AsOffscreenCanvas() {
 		return dom_is(this, "OffscreenCanvas") ? this : null;
@@ -2800,6 +3793,12 @@ class dom_base {
 	AsPath2D() {
 		return dom_is(this, "Path2D") ? this : null;
 	}
+	AsPaymentMethodChangeEvent() {
+		return dom_is(this, "PaymentMethodChangeEvent") ? this : null;
+	}
+	AsPaymentRequestUpdateEvent() {
+		return dom_is(this, "PaymentRequestUpdateEvent") ? this : null;
+	}
 	AsPerformance() {
 		return dom_is(this, "Performance") ? this : null;
 	}
@@ -2808,6 +3807,9 @@ class dom_base {
 	}
 	AsPerformanceMeasure() {
 		return dom_is(this, "PerformanceMeasure") ? this : null;
+	}
+	AsPictureInPictureEvent() {
+		return dom_is(this, "PictureInPictureEvent") ? this : null;
 	}
 	AsPointerEvent() {
 		return dom_is(this, "PointerEvent") ? this : null;
@@ -2823,6 +3825,24 @@ class dom_base {
 	}
 	AsPromiseRejectionEvent() {
 		return dom_is(this, "PromiseRejectionEvent") ? this : null;
+	}
+	AsRTCDTMFToneChangeEvent() {
+		return dom_is(this, "RTCDTMFToneChangeEvent") ? this : null;
+	}
+	AsRTCDataChannelEvent() {
+		return dom_is(this, "RTCDataChannelEvent") ? this : null;
+	}
+	AsRTCErrorEvent() {
+		return dom_is(this, "RTCErrorEvent") ? this : null;
+	}
+	AsRTCPeerConnectionIceErrorEvent() {
+		return dom_is(this, "RTCPeerConnectionIceErrorEvent") ? this : null;
+	}
+	AsRTCPeerConnectionIceEvent() {
+		return dom_is(this, "RTCPeerConnectionIceEvent") ? this : null;
+	}
+	AsRTCTrackEvent() {
+		return dom_is(this, "RTCTrackEvent") ? this : null;
 	}
 	AsRange() {
 		return dom_is(this, "Range") ? this : null;
@@ -2857,6 +3877,12 @@ class dom_base {
 	AsSpeechSynthesis() {
 		return dom_is(this, "SpeechSynthesis") ? this : null;
 	}
+	AsSpeechSynthesisErrorEvent() {
+		return dom_is(this, "SpeechSynthesisErrorEvent") ? this : null;
+	}
+	AsSpeechSynthesisEvent() {
+		return dom_is(this, "SpeechSynthesisEvent") ? this : null;
+	}
 	AsStereoPannerNode() {
 		return dom_is(this, "StereoPannerNode") ? this : null;
 	}
@@ -2872,6 +3898,9 @@ class dom_base {
 	AsText() {
 		return dom_is(this, "Text") ? this : null;
 	}
+	AsTextEvent() {
+		return dom_is(this, "TextEvent") ? this : null;
+	}
 	AsTextTrack() {
 		return dom_is(this, "TextTrack") ? this : null;
 	}
@@ -2880,6 +3909,9 @@ class dom_base {
 	}
 	AsTextTrackList() {
 		return dom_is(this, "TextTrackList") ? this : null;
+	}
+	AsToggleEvent() {
+		return dom_is(this, "ToggleEvent") ? this : null;
 	}
 	AsTouchEvent() {
 		return dom_is(this, "TouchEvent") ? this : null;
@@ -2899,12 +3931,48 @@ class dom_base {
 	AsWaveShaperNode() {
 		return dom_is(this, "WaveShaperNode") ? this : null;
 	}
+	AsWebGL2RenderingContext() {
+		return dom_is(this, "WebGL2RenderingContext") ? this : null;
+	}
+	AsWebGLContextEvent() {
+		return dom_is(this, "WebGLContextEvent") ? this : null;
+	}
+	AsWebGLRenderingContext() {
+		return dom_is(this, "WebGLRenderingContext") ? this : null;
+	}
 	AsWheelEvent() {
 		return dom_is(this, "WheelEvent") ? this : null;
 	}
 	AsWindow() {
 		return dom_is(this, "Window") ? this : null;
 	}
+}
+
+class dom_C_ANGLE_instanced_arrays extends dom_base {
+	constructor() {
+		super();
+		this.handle = null;
+	}
+
+		KindOfANGLE_instanced_arrays() {
+			
+		}
+
+		DrawArraysInstancedANGLE(p0, p1, p2, p3) {
+			this.handle.drawArraysInstancedANGLE(p0, p1, p2, p3);
+		}
+
+		DrawElementsInstancedANGLE(p0, p1, p2, p3, p4) {
+			this.handle.drawElementsInstancedANGLE(p0, p1, p2, p3, p4);
+		}
+
+		VertexAttribDivisorANGLE(p0, p1) {
+			this.handle.vertexAttribDivisorANGLE(p0, p1);
+		}
+
+		VERTEX_ATTRIB_ARRAY_DIVISOR_ANGLE() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_DIVISOR_ANGLE;
+		}
 }
 
 class dom_C_ARIAMixin extends dom_base {
@@ -2955,6 +4023,10 @@ class dom_C_ARIAMixin extends dom_base {
 
 		AsHTMLSlotElement() {
 			return dom_is(this, "HTMLSlotElement") ? this : null;
+		}
+
+		AsMathMLElement() {
+			return dom_is(this, "MathMLElement") ? this : null;
 		}
 
 		AsSVGElement() {
@@ -3460,6 +4532,10 @@ class dom_C_EventTarget extends dom_base {
 			return dom_is(this, "MIDIAccess") ? this : null;
 		}
 
+		AsMathMLElement() {
+			return dom_is(this, "MathMLElement") ? this : null;
+		}
+
 		AsMediaDevices() {
 			return dom_is(this, "MediaDevices") ? this : null;
 		}
@@ -3935,6 +5011,10 @@ class dom_C_Animatable extends dom_base {
 			return dom_is(this, "HTMLSlotElement") ? this : null;
 		}
 
+		AsMathMLElement() {
+			return dom_is(this, "MathMLElement") ? this : null;
+		}
+
 		AsSVGElement() {
 			return dom_is(this, "SVGElement") ? this : null;
 		}
@@ -4140,12 +5220,28 @@ class dom_C_Event extends dom_base {
 			return dom_is(this, "BeforeUnloadEvent") ? this : null;
 		}
 
+		AsBlobEvent() {
+			return dom_is(this, "BlobEvent") ? this : null;
+		}
+
 		AsClipboardEvent() {
 			return dom_is(this, "ClipboardEvent") ? this : null;
 		}
 
+		AsCloseEvent() {
+			return dom_is(this, "CloseEvent") ? this : null;
+		}
+
 		AsCompositionEvent() {
 			return dom_is(this, "CompositionEvent") ? this : null;
+		}
+
+		AsContentVisibilityAutoStateChangeEvent() {
+			return dom_is(this, "ContentVisibilityAutoStateChangeEvent") ? this : null;
+		}
+
+		AsCustomEvent() {
+			return dom_is(this, "CustomEvent") ? this : null;
 		}
 
 		AsDeviceMotionEvent() {
@@ -4168,6 +5264,10 @@ class dom_C_Event extends dom_base {
 			return dom_is(this, "FocusEvent") ? this : null;
 		}
 
+		AsFontFaceSetLoadEvent() {
+			return dom_is(this, "FontFaceSetLoadEvent") ? this : null;
+		}
+
 		AsFormDataEvent() {
 			return dom_is(this, "FormDataEvent") ? this : null;
 		}
@@ -4180,6 +5280,10 @@ class dom_C_Event extends dom_base {
 			return dom_is(this, "HashChangeEvent") ? this : null;
 		}
 
+		AsIDBVersionChangeEvent() {
+			return dom_is(this, "IDBVersionChangeEvent") ? this : null;
+		}
+
 		AsInputEvent() {
 			return dom_is(this, "InputEvent") ? this : null;
 		}
@@ -4188,8 +5292,24 @@ class dom_C_Event extends dom_base {
 			return dom_is(this, "KeyboardEvent") ? this : null;
 		}
 
+		AsMIDIConnectionEvent() {
+			return dom_is(this, "MIDIConnectionEvent") ? this : null;
+		}
+
+		AsMIDIMessageEvent() {
+			return dom_is(this, "MIDIMessageEvent") ? this : null;
+		}
+
 		AsMediaEncryptedEvent() {
 			return dom_is(this, "MediaEncryptedEvent") ? this : null;
+		}
+
+		AsMediaKeyMessageEvent() {
+			return dom_is(this, "MediaKeyMessageEvent") ? this : null;
+		}
+
+		AsMediaQueryListEvent() {
+			return dom_is(this, "MediaQueryListEvent") ? this : null;
 		}
 
 		AsMediaStreamTrackEvent() {
@@ -4204,8 +5324,28 @@ class dom_C_Event extends dom_base {
 			return dom_is(this, "MouseEvent") ? this : null;
 		}
 
+		AsMutationEvent() {
+			return dom_is(this, "MutationEvent") ? this : null;
+		}
+
+		AsOfflineAudioCompletionEvent() {
+			return dom_is(this, "OfflineAudioCompletionEvent") ? this : null;
+		}
+
 		AsPageTransitionEvent() {
 			return dom_is(this, "PageTransitionEvent") ? this : null;
+		}
+
+		AsPaymentMethodChangeEvent() {
+			return dom_is(this, "PaymentMethodChangeEvent") ? this : null;
+		}
+
+		AsPaymentRequestUpdateEvent() {
+			return dom_is(this, "PaymentRequestUpdateEvent") ? this : null;
+		}
+
+		AsPictureInPictureEvent() {
+			return dom_is(this, "PictureInPictureEvent") ? this : null;
 		}
 
 		AsPointerEvent() {
@@ -4224,8 +5364,40 @@ class dom_C_Event extends dom_base {
 			return dom_is(this, "PromiseRejectionEvent") ? this : null;
 		}
 
+		AsRTCDTMFToneChangeEvent() {
+			return dom_is(this, "RTCDTMFToneChangeEvent") ? this : null;
+		}
+
+		AsRTCDataChannelEvent() {
+			return dom_is(this, "RTCDataChannelEvent") ? this : null;
+		}
+
+		AsRTCErrorEvent() {
+			return dom_is(this, "RTCErrorEvent") ? this : null;
+		}
+
+		AsRTCPeerConnectionIceErrorEvent() {
+			return dom_is(this, "RTCPeerConnectionIceErrorEvent") ? this : null;
+		}
+
+		AsRTCPeerConnectionIceEvent() {
+			return dom_is(this, "RTCPeerConnectionIceEvent") ? this : null;
+		}
+
+		AsRTCTrackEvent() {
+			return dom_is(this, "RTCTrackEvent") ? this : null;
+		}
+
 		AsSecurityPolicyViolationEvent() {
 			return dom_is(this, "SecurityPolicyViolationEvent") ? this : null;
+		}
+
+		AsSpeechSynthesisErrorEvent() {
+			return dom_is(this, "SpeechSynthesisErrorEvent") ? this : null;
+		}
+
+		AsSpeechSynthesisEvent() {
+			return dom_is(this, "SpeechSynthesisEvent") ? this : null;
 		}
 
 		AsStorageEvent() {
@@ -4234,6 +5406,14 @@ class dom_C_Event extends dom_base {
 
 		AsSubmitEvent() {
 			return dom_is(this, "SubmitEvent") ? this : null;
+		}
+
+		AsTextEvent() {
+			return dom_is(this, "TextEvent") ? this : null;
+		}
+
+		AsToggleEvent() {
+			return dom_is(this, "ToggleEvent") ? this : null;
 		}
 
 		AsTouchEvent() {
@@ -4250,6 +5430,10 @@ class dom_C_Event extends dom_base {
 
 		AsUIEvent() {
 			return dom_is(this, "UIEvent") ? this : null;
+		}
+
+		AsWebGLContextEvent() {
+			return dom_is(this, "WebGLContextEvent") ? this : null;
 		}
 
 		AsWheelEvent() {
@@ -4510,6 +5694,10 @@ class dom_C_Node extends dom_C_EventTarget {
 
 		AsHTMLSlotElement() {
 			return dom_is(this, "HTMLSlotElement") ? this : null;
+		}
+
+		AsMathMLElement() {
+			return dom_is(this, "MathMLElement") ? this : null;
 		}
 
 		AsParentNode() {
@@ -5068,7 +6256,7 @@ class dom_C_BaseAudioContext extends dom_C_EventTarget {
 				p2 = [];
 			}
 			
-			return this.handle.createPeriodicWave(dom_unwrapAny(p0), dom_unwrapAny(p1), ...p2.map((item) => dom_toPeriodicWaveConstraints(item)));
+			return this.handle.createPeriodicWave(Float32Array.from(p0 || []), Float32Array.from(p1 || []), ...p2.map((item) => dom_toPeriodicWaveConstraints(item)));
 		}
 
 		CreateScriptProcessor(...p0) {
@@ -5327,7 +6515,7 @@ class dom_C_AudioParam extends dom_base {
 		}
 
 		SetValueCurveAtTime(p0, p1, p2) {
-			return dom_wrap(dom.AudioParam, this.handle.setValueCurveAtTime(dom_unwrapAny(p0), p1, p2));
+			return dom_wrap(dom.AudioParam, this.handle.setValueCurveAtTime(Float32Array.from(p0 || []), p1, p2));
 		}
 
 		AutomationRate() {
@@ -5535,6 +6723,29 @@ class dom_C_Blob extends dom_base {
 		}
 }
 
+class dom_C_BlobEvent extends dom_C_Event {
+
+		KindOfBlobEvent() {
+			
+		}
+
+		KindOfEvent() {
+			
+		}
+
+		AsEvent() {
+			return this;
+		}
+
+		Data() {
+			return dom_wrap(dom.Blob, this.handle.data);
+		}
+
+		Timecode() {
+			return this.handle.timecode;
+		}
+}
+
 class dom_C_Body extends dom_base {
 	constructor() {
 		super();
@@ -5662,6 +6873,10 @@ class dom_C_ChildNode extends dom_C_Node {
 			return dom_is(this, "HTMLSlotElement") ? this : null;
 		}
 
+		AsMathMLElement() {
+			return dom_is(this, "MathMLElement") ? this : null;
+		}
+
 		AsProcessingInstruction() {
 			return dom_is(this, "ProcessingInstruction") ? this : null;
 		}
@@ -5755,6 +6970,10 @@ class dom_C_NonDocumentTypeChildNode extends dom_base {
 
 		AsHTMLSlotElement() {
 			return dom_is(this, "HTMLSlotElement") ? this : null;
+		}
+
+		AsMathMLElement() {
+			return dom_is(this, "MathMLElement") ? this : null;
 		}
 
 		AsProcessingInstruction() {
@@ -5945,6 +7164,10 @@ class dom_C_Slottable extends dom_base {
 
 		AsHTMLSlotElement() {
 			return dom_is(this, "HTMLSlotElement") ? this : null;
+		}
+
+		AsMathMLElement() {
+			return dom_is(this, "MathMLElement") ? this : null;
 		}
 
 		AsSVGElement() {
@@ -11800,6 +13023,33 @@ class dom_C_ClipboardEvent extends dom_C_Event {
 		}
 }
 
+class dom_C_CloseEvent extends dom_C_Event {
+
+		KindOfCloseEvent() {
+			
+		}
+
+		KindOfEvent() {
+			
+		}
+
+		AsEvent() {
+			return this;
+		}
+
+		Code() {
+			return this.handle.code;
+		}
+
+		Reason() {
+			return this.handle.reason;
+		}
+
+		WasClean() {
+			return this.handle.wasClean;
+		}
+}
+
 class dom_C_Comment extends dom_C_CharacterData {
 
 		KindOfComment() {
@@ -11887,6 +13137,10 @@ class dom_C_UIEvent extends dom_C_Event {
 
 		AsPointerEvent() {
 			return dom_is(this, "PointerEvent") ? this : null;
+		}
+
+		AsTextEvent() {
+			return dom_is(this, "TextEvent") ? this : null;
 		}
 
 		AsTouchEvent() {
@@ -11977,6 +13231,25 @@ class dom_C_ConstantSourceNode extends dom_C_AudioScheduledSourceNode {
 
 		Offset() {
 			return dom_wrap(dom.AudioParam, this.handle.offset);
+		}
+}
+
+class dom_C_ContentVisibilityAutoStateChangeEvent extends dom_C_Event {
+
+		KindOfContentVisibilityAutoStateChangeEvent() {
+			
+		}
+
+		KindOfEvent() {
+			
+		}
+
+		AsEvent() {
+			return this;
+		}
+
+		Skipped() {
+			return this.handle.skipped;
 		}
 }
 
@@ -12107,6 +13380,29 @@ class dom_C_CustomElementRegistry extends dom_base {
 			const outcome = yield* dom_await(() => this.handle.whenDefined(p0));
 			
 			return outcome.ok ? [outcome.value, null] : [null, outcome.error];
+		}
+}
+
+class dom_C_CustomEvent extends dom_C_Event {
+
+		KindOfCustomEvent() {
+			
+		}
+
+		KindOfEvent() {
+			
+		}
+
+		AsEvent() {
+			return this;
+		}
+
+		InitCustomEvent(p0, ...p1) {
+			this.handle.initCustomEvent(p0, ...p1.map((item) => dom_unwrapAny(item)));
+		}
+
+		Detail() {
+			return this.handle.detail;
 		}
 }
 
@@ -13119,6 +14415,10 @@ class dom_C_GlobalEventHandlers extends dom_base {
 			return dom_is(this, "HTMLSlotElement") ? this : null;
 		}
 
+		AsMathMLElement() {
+			return dom_is(this, "MathMLElement") ? this : null;
+		}
+
 		AsSVGElement() {
 			return dom_is(this, "SVGElement") ? this : null;
 		}
@@ -14045,6 +15345,10 @@ class dom_C_ParentNode extends dom_C_Node {
 			return dom_is(this, "HTMLSlotElement") ? this : null;
 		}
 
+		AsMathMLElement() {
+			return dom_is(this, "MathMLElement") ? this : null;
+		}
+
 		AsSVGElement() {
 			return dom_is(this, "SVGElement") ? this : null;
 		}
@@ -14247,8 +15551,276 @@ class dom_C_Document extends dom_C_Node {
 			return dom_wrap(dom.HTMLElement, this.handle.createElementNS(p0, p1));
 		}
 
+		CreateElementNSHttp___www_w3_org_1999_xhtml(p0) {
+			return dom_wrap(dom.HTMLElement, this.handle.createElementNS("http://www.w3.org/1999/xhtml", p0));
+		}
+
+		CreateElementNSHttp___www_w3_org_2000_svg(p0) {
+			return dom_wrap(dom.SVGElement, this.handle.createElementNS("http://www.w3.org/2000/svg", p0));
+		}
+
+		CreateElementNSHttp___www_w3_org_1998_Math_MathML(p0) {
+			return dom_wrap(dom.MathMLElement, this.handle.createElementNS("http://www.w3.org/1998/Math/MathML", p0));
+		}
+
 		CreateEvent(p0) {
 			return dom_wrap(dom.AnimationEvent, this.handle.createEvent(p0));
+		}
+
+		CreateEventAnimationEvent() {
+			return dom_wrap(dom.AnimationEvent, this.handle.createEvent("AnimationEvent", ));
+		}
+
+		CreateEventAnimationPlaybackEvent() {
+			return dom_wrap(dom.AnimationPlaybackEvent, this.handle.createEvent("AnimationPlaybackEvent", ));
+		}
+
+		CreateEventAudioProcessingEvent() {
+			return dom_wrap(dom.AudioProcessingEvent, this.handle.createEvent("AudioProcessingEvent", ));
+		}
+
+		CreateEventBeforeUnloadEvent() {
+			return dom_wrap(dom.BeforeUnloadEvent, this.handle.createEvent("BeforeUnloadEvent", ));
+		}
+
+		CreateEventBlobEvent() {
+			return dom_wrap(dom.BlobEvent, this.handle.createEvent("BlobEvent", ));
+		}
+
+		CreateEventClipboardEvent() {
+			return dom_wrap(dom.ClipboardEvent, this.handle.createEvent("ClipboardEvent", ));
+		}
+
+		CreateEventCloseEvent() {
+			return dom_wrap(dom.CloseEvent, this.handle.createEvent("CloseEvent", ));
+		}
+
+		CreateEventCompositionEvent() {
+			return dom_wrap(dom.CompositionEvent, this.handle.createEvent("CompositionEvent", ));
+		}
+
+		CreateEventContentVisibilityAutoStateChangeEvent() {
+			return dom_wrap(dom.ContentVisibilityAutoStateChangeEvent, this.handle.createEvent("ContentVisibilityAutoStateChangeEvent", ));
+		}
+
+		CreateEventCustomEvent() {
+			return dom_wrap(dom.CustomEvent, this.handle.createEvent("CustomEvent", ));
+		}
+
+		CreateEventDeviceMotionEvent() {
+			return dom_wrap(dom.DeviceMotionEvent, this.handle.createEvent("DeviceMotionEvent", ));
+		}
+
+		CreateEventDeviceOrientationEvent() {
+			return dom_wrap(dom.DeviceOrientationEvent, this.handle.createEvent("DeviceOrientationEvent", ));
+		}
+
+		CreateEventDragEvent() {
+			return dom_wrap(dom.DragEvent, this.handle.createEvent("DragEvent", ));
+		}
+
+		CreateEventErrorEvent() {
+			return dom_wrap(dom.ErrorEvent, this.handle.createEvent("ErrorEvent", ));
+		}
+
+		CreateEventEvent() {
+			return dom_wrap(dom.Event, this.handle.createEvent("Event", ));
+		}
+
+		CreateEventEvents() {
+			return dom_wrap(dom.Event, this.handle.createEvent("Events", ));
+		}
+
+		CreateEventFocusEvent() {
+			return dom_wrap(dom.FocusEvent, this.handle.createEvent("FocusEvent", ));
+		}
+
+		CreateEventFontFaceSetLoadEvent() {
+			return dom_wrap(dom.FontFaceSetLoadEvent, this.handle.createEvent("FontFaceSetLoadEvent", ));
+		}
+
+		CreateEventFormDataEvent() {
+			return dom_wrap(dom.FormDataEvent, this.handle.createEvent("FormDataEvent", ));
+		}
+
+		CreateEventGamepadEvent() {
+			return dom_wrap(dom.GamepadEvent, this.handle.createEvent("GamepadEvent", ));
+		}
+
+		CreateEventHashChangeEvent() {
+			return dom_wrap(dom.HashChangeEvent, this.handle.createEvent("HashChangeEvent", ));
+		}
+
+		CreateEventIDBVersionChangeEvent() {
+			return dom_wrap(dom.IDBVersionChangeEvent, this.handle.createEvent("IDBVersionChangeEvent", ));
+		}
+
+		CreateEventInputEvent() {
+			return dom_wrap(dom.InputEvent, this.handle.createEvent("InputEvent", ));
+		}
+
+		CreateEventKeyboardEvent() {
+			return dom_wrap(dom.KeyboardEvent, this.handle.createEvent("KeyboardEvent", ));
+		}
+
+		CreateEventMIDIConnectionEvent() {
+			return dom_wrap(dom.MIDIConnectionEvent, this.handle.createEvent("MIDIConnectionEvent", ));
+		}
+
+		CreateEventMIDIMessageEvent() {
+			return dom_wrap(dom.MIDIMessageEvent, this.handle.createEvent("MIDIMessageEvent", ));
+		}
+
+		CreateEventMediaEncryptedEvent() {
+			return dom_wrap(dom.MediaEncryptedEvent, this.handle.createEvent("MediaEncryptedEvent", ));
+		}
+
+		CreateEventMediaKeyMessageEvent() {
+			return dom_wrap(dom.MediaKeyMessageEvent, this.handle.createEvent("MediaKeyMessageEvent", ));
+		}
+
+		CreateEventMediaQueryListEvent() {
+			return dom_wrap(dom.MediaQueryListEvent, this.handle.createEvent("MediaQueryListEvent", ));
+		}
+
+		CreateEventMediaStreamTrackEvent() {
+			return dom_wrap(dom.MediaStreamTrackEvent, this.handle.createEvent("MediaStreamTrackEvent", ));
+		}
+
+		CreateEventMessageEvent() {
+			return dom_wrap(dom.MessageEvent, this.handle.createEvent("MessageEvent", ));
+		}
+
+		CreateEventMouseEvent() {
+			return dom_wrap(dom.MouseEvent, this.handle.createEvent("MouseEvent", ));
+		}
+
+		CreateEventMouseEvents() {
+			return dom_wrap(dom.MouseEvent, this.handle.createEvent("MouseEvents", ));
+		}
+
+		CreateEventMutationEvent() {
+			return dom_wrap(dom.MutationEvent, this.handle.createEvent("MutationEvent", ));
+		}
+
+		CreateEventMutationEvents() {
+			return dom_wrap(dom.MutationEvent, this.handle.createEvent("MutationEvents", ));
+		}
+
+		CreateEventOfflineAudioCompletionEvent() {
+			return dom_wrap(dom.OfflineAudioCompletionEvent, this.handle.createEvent("OfflineAudioCompletionEvent", ));
+		}
+
+		CreateEventPageTransitionEvent() {
+			return dom_wrap(dom.PageTransitionEvent, this.handle.createEvent("PageTransitionEvent", ));
+		}
+
+		CreateEventPaymentMethodChangeEvent() {
+			return dom_wrap(dom.PaymentMethodChangeEvent, this.handle.createEvent("PaymentMethodChangeEvent", ));
+		}
+
+		CreateEventPaymentRequestUpdateEvent() {
+			return dom_wrap(dom.PaymentRequestUpdateEvent, this.handle.createEvent("PaymentRequestUpdateEvent", ));
+		}
+
+		CreateEventPictureInPictureEvent() {
+			return dom_wrap(dom.PictureInPictureEvent, this.handle.createEvent("PictureInPictureEvent", ));
+		}
+
+		CreateEventPointerEvent() {
+			return dom_wrap(dom.PointerEvent, this.handle.createEvent("PointerEvent", ));
+		}
+
+		CreateEventPopStateEvent() {
+			return dom_wrap(dom.PopStateEvent, this.handle.createEvent("PopStateEvent", ));
+		}
+
+		CreateEventProgressEvent() {
+			return dom_wrap(dom.ProgressEvent, this.handle.createEvent("ProgressEvent", ));
+		}
+
+		CreateEventPromiseRejectionEvent() {
+			return dom_wrap(dom.PromiseRejectionEvent, this.handle.createEvent("PromiseRejectionEvent", ));
+		}
+
+		CreateEventRTCDTMFToneChangeEvent() {
+			return dom_wrap(dom.RTCDTMFToneChangeEvent, this.handle.createEvent("RTCDTMFToneChangeEvent", ));
+		}
+
+		CreateEventRTCDataChannelEvent() {
+			return dom_wrap(dom.RTCDataChannelEvent, this.handle.createEvent("RTCDataChannelEvent", ));
+		}
+
+		CreateEventRTCErrorEvent() {
+			return dom_wrap(dom.RTCErrorEvent, this.handle.createEvent("RTCErrorEvent", ));
+		}
+
+		CreateEventRTCPeerConnectionIceErrorEvent() {
+			return dom_wrap(dom.RTCPeerConnectionIceErrorEvent, this.handle.createEvent("RTCPeerConnectionIceErrorEvent", ));
+		}
+
+		CreateEventRTCPeerConnectionIceEvent() {
+			return dom_wrap(dom.RTCPeerConnectionIceEvent, this.handle.createEvent("RTCPeerConnectionIceEvent", ));
+		}
+
+		CreateEventRTCTrackEvent() {
+			return dom_wrap(dom.RTCTrackEvent, this.handle.createEvent("RTCTrackEvent", ));
+		}
+
+		CreateEventSecurityPolicyViolationEvent() {
+			return dom_wrap(dom.SecurityPolicyViolationEvent, this.handle.createEvent("SecurityPolicyViolationEvent", ));
+		}
+
+		CreateEventSpeechSynthesisErrorEvent() {
+			return dom_wrap(dom.SpeechSynthesisErrorEvent, this.handle.createEvent("SpeechSynthesisErrorEvent", ));
+		}
+
+		CreateEventSpeechSynthesisEvent() {
+			return dom_wrap(dom.SpeechSynthesisEvent, this.handle.createEvent("SpeechSynthesisEvent", ));
+		}
+
+		CreateEventStorageEvent() {
+			return dom_wrap(dom.StorageEvent, this.handle.createEvent("StorageEvent", ));
+		}
+
+		CreateEventSubmitEvent() {
+			return dom_wrap(dom.SubmitEvent, this.handle.createEvent("SubmitEvent", ));
+		}
+
+		CreateEventTextEvent() {
+			return dom_wrap(dom.TextEvent, this.handle.createEvent("TextEvent", ));
+		}
+
+		CreateEventToggleEvent() {
+			return dom_wrap(dom.ToggleEvent, this.handle.createEvent("ToggleEvent", ));
+		}
+
+		CreateEventTouchEvent() {
+			return dom_wrap(dom.TouchEvent, this.handle.createEvent("TouchEvent", ));
+		}
+
+		CreateEventTrackEvent() {
+			return dom_wrap(dom.TrackEvent, this.handle.createEvent("TrackEvent", ));
+		}
+
+		CreateEventTransitionEvent() {
+			return dom_wrap(dom.TransitionEvent, this.handle.createEvent("TransitionEvent", ));
+		}
+
+		CreateEventUIEvent() {
+			return dom_wrap(dom.UIEvent, this.handle.createEvent("UIEvent", ));
+		}
+
+		CreateEventUIEvents() {
+			return dom_wrap(dom.UIEvent, this.handle.createEvent("UIEvents", ));
+		}
+
+		CreateEventWebGLContextEvent() {
+			return dom_wrap(dom.WebGLContextEvent, this.handle.createEvent("WebGLContextEvent", ));
+		}
+
+		CreateEventWheelEvent() {
+			return dom_wrap(dom.WheelEvent, this.handle.createEvent("WheelEvent", ));
 		}
 
 		CreateNodeIterator(p0, ...p1) {
@@ -14309,6 +15881,18 @@ class dom_C_Document extends dom_C_Node {
 
 		GetElementsByTagNameNS(p0, p1) {
 			return dom_wrap(dom.HTMLCollectionOf, this.handle.getElementsByTagNameNS(p0, p1));
+		}
+
+		GetElementsByTagNameNSHttp___www_w3_org_1999_xhtml(p0) {
+			return dom_wrap(dom.HTMLCollectionOf, this.handle.getElementsByTagNameNS("http://www.w3.org/1999/xhtml", p0));
+		}
+
+		GetElementsByTagNameNSHttp___www_w3_org_2000_svg(p0) {
+			return dom_wrap(dom.HTMLCollectionOf, this.handle.getElementsByTagNameNS("http://www.w3.org/2000/svg", p0));
+		}
+
+		GetElementsByTagNameNSHttp___www_w3_org_1998_Math_MathML(p0) {
+			return dom_wrap(dom.HTMLCollectionOf, this.handle.getElementsByTagNameNS("http://www.w3.org/1998/Math/MathML", p0));
 		}
 
 		GetSelection() {
@@ -16041,6 +17625,10 @@ class dom_C_Element extends dom_C_Node {
 			return dom_is(this, "HTMLSlotElement") ? this : null;
 		}
 
+		AsMathMLElement() {
+			return dom_is(this, "MathMLElement") ? this : null;
+		}
+
 		AsSVGElement() {
 			return dom_is(this, "SVGElement") ? this : null;
 		}
@@ -16111,6 +17699,18 @@ class dom_C_Element extends dom_C_Node {
 
 		GetElementsByTagNameNS(p0, p1) {
 			return dom_wrap(dom.HTMLCollectionOf, this.handle.getElementsByTagNameNS(p0, p1));
+		}
+
+		GetElementsByTagNameNSHttp___www_w3_org_1999_xhtml(p0) {
+			return dom_wrap(dom.HTMLCollectionOf, this.handle.getElementsByTagNameNS("http://www.w3.org/1999/xhtml", p0));
+		}
+
+		GetElementsByTagNameNSHttp___www_w3_org_2000_svg(p0) {
+			return dom_wrap(dom.HTMLCollectionOf, this.handle.getElementsByTagNameNS("http://www.w3.org/2000/svg", p0));
+		}
+
+		GetElementsByTagNameNSHttp___www_w3_org_1998_Math_MathML(p0) {
+			return dom_wrap(dom.HTMLCollectionOf, this.handle.getElementsByTagNameNS("http://www.w3.org/1998/Math/MathML", p0));
 		}
 
 		GetHTML(...p0) {
@@ -16828,6 +18428,10 @@ class dom_C_ElementCSSInlineStyle extends dom_base {
 			return dom_is(this, "HTMLSlotElement") ? this : null;
 		}
 
+		AsMathMLElement() {
+			return dom_is(this, "MathMLElement") ? this : null;
+		}
+
 		AsSVGElement() {
 			return dom_is(this, "SVGElement") ? this : null;
 		}
@@ -17140,6 +18744,25 @@ class dom_C_FontFaceSet extends dom_C_EventTarget {
 		}
 }
 
+class dom_C_FontFaceSetLoadEvent extends dom_C_Event {
+
+		KindOfFontFaceSetLoadEvent() {
+			
+		}
+
+		KindOfEvent() {
+			
+		}
+
+		AsEvent() {
+			return this;
+		}
+
+		Fontfaces() {
+			return Array.from(this.handle.fontfaces || [], (item) => item);
+		}
+}
+
 class dom_C_FormData extends dom_base {
 	constructor() {
 		super();
@@ -17334,6 +18957,10 @@ class dom_C_HTMLOrSVGElement extends dom_base {
 
 		AsHTMLSlotElement() {
 			return dom_is(this, "HTMLSlotElement") ? this : null;
+		}
+
+		AsMathMLElement() {
+			return dom_is(this, "MathMLElement") ? this : null;
 		}
 
 		AsSVGElement() {
@@ -19241,6 +20868,38 @@ class dom_C_HTMLCanvasElement extends dom_C_HTMLElement {
 			return dom_wrap(dom.CanvasRenderingContext2D, this.handle.getContext(p0, ...p1.map((item) => dom_toCanvasRenderingContext2DSettings(item))));
 		}
 
+		GetContextX2d(...p0) {
+			if (p0.length === 1 && Array.isArray(p0[0]) && p0[0].length === 0) {
+				p0 = [];
+			}
+			
+			return dom_wrap(dom.CanvasRenderingContext2D, this.handle.getContext("2d", ...p0.map((item) => dom_toCanvasRenderingContext2DSettings(item))));
+		}
+
+		GetContextBitmaprenderer(...p0) {
+			if (p0.length === 1 && Array.isArray(p0[0]) && p0[0].length === 0) {
+				p0 = [];
+			}
+			
+			return dom_wrap(dom.ImageBitmapRenderingContext, this.handle.getContext("bitmaprenderer", ...p0.map((item) => dom_toImageBitmapRenderingContextSettings(item))));
+		}
+
+		GetContextWebgl(...p0) {
+			if (p0.length === 1 && Array.isArray(p0[0]) && p0[0].length === 0) {
+				p0 = [];
+			}
+			
+			return dom_wrap(dom.WebGLRenderingContext, this.handle.getContext("webgl", ...p0.map((item) => dom_toWebGLContextAttributes(item))));
+		}
+
+		GetContextWebgl2(...p0) {
+			if (p0.length === 1 && Array.isArray(p0[0]) && p0[0].length === 0) {
+				p0 = [];
+			}
+			
+			return dom_wrap(dom.WebGL2RenderingContext, this.handle.getContext("webgl2", ...p0.map((item) => dom_toWebGLContextAttributes(item))));
+		}
+
 		ToBlob(p0, ...p1) {
 			this.handle.toBlob((p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Blob, a[0])])), ...p1.map((item) => dom_unwrapAny(item)));
 		}
@@ -20329,6 +21988,29 @@ class dom_C_IDBFactory extends dom_base {
 		}
 }
 
+class dom_C_IDBVersionChangeEvent extends dom_C_Event {
+
+		KindOfIDBVersionChangeEvent() {
+			
+		}
+
+		KindOfEvent() {
+			
+		}
+
+		AsEvent() {
+			return this;
+		}
+
+		NewVersion() {
+			return this.handle.newVersion;
+		}
+
+		OldVersion() {
+			return this.handle.oldVersion;
+		}
+}
+
 class dom_C_IIRFilterNode extends dom_C_AudioNode {
 
 		KindOfIIRFilterNode() {
@@ -20395,6 +22077,25 @@ class dom_C_ImageBitmap extends dom_base {
 
 		Width() {
 			return this.handle.width;
+		}
+}
+
+class dom_C_ImageBitmapRenderingContext extends dom_base {
+	constructor() {
+		super();
+		this.handle = null;
+	}
+
+		KindOfImageBitmapRenderingContext() {
+			
+		}
+
+		TransferFromImageBitmap(p0) {
+			this.handle.transferFromImageBitmap(dom_unwrap(p0));
+		}
+
+		Canvas() {
+			return this.handle.canvas;
 		}
 }
 
@@ -20762,6 +22463,1003 @@ class dom_C_MIDIAccess extends dom_C_EventTarget {
 		}
 }
 
+class dom_C_MIDIConnectionEvent extends dom_C_Event {
+
+		KindOfMIDIConnectionEvent() {
+			
+		}
+
+		KindOfEvent() {
+			
+		}
+
+		AsEvent() {
+			return this;
+		}
+
+		Port() {
+			return this.handle.port;
+		}
+}
+
+class dom_C_MIDIMessageEvent extends dom_C_Event {
+
+		KindOfMIDIMessageEvent() {
+			
+		}
+
+		KindOfEvent() {
+			
+		}
+
+		AsEvent() {
+			return this;
+		}
+
+		Data() {
+			return Array.from(this.handle.data || []);
+		}
+}
+
+class dom_C_MathMLElement extends dom_C_Element {
+
+		KindOfMathMLElement() {
+			
+		}
+
+		KindOfElement() {
+			
+		}
+
+		KindOfElementCSSInlineStyle() {
+			
+		}
+
+		KindOfGlobalEventHandlers() {
+			
+		}
+
+		KindOfHTMLOrSVGElement() {
+			
+		}
+
+		KindOfNode() {
+			
+		}
+
+		KindOfARIAMixin() {
+			
+		}
+
+		KindOfAnimatable() {
+			
+		}
+
+		KindOfChildNode() {
+			
+		}
+
+		KindOfNonDocumentTypeChildNode() {
+			
+		}
+
+		KindOfParentNode() {
+			
+		}
+
+		KindOfSlottable() {
+			
+		}
+
+		KindOfEventTarget() {
+			
+		}
+
+		AsElement() {
+			return this;
+		}
+
+		AsElementCSSInlineStyle() {
+			return this;
+		}
+
+		AsGlobalEventHandlers() {
+			return this;
+		}
+
+		AsHTMLOrSVGElement() {
+			return this;
+		}
+
+		AsNode() {
+			return this;
+		}
+
+		AsARIAMixin() {
+			return this;
+		}
+
+		AsAnimatable() {
+			return this;
+		}
+
+		AsChildNode() {
+			return this;
+		}
+
+		AsNonDocumentTypeChildNode() {
+			return this;
+		}
+
+		AsParentNode() {
+			return this;
+		}
+
+		AsSlottable() {
+			return this;
+		}
+
+		AsEventTarget() {
+			return this;
+		}
+
+		Blur() {
+			this.handle.blur();
+		}
+
+		Focus(...p0) {
+			if (p0.length === 1 && Array.isArray(p0[0]) && p0[0].length === 0) {
+				p0 = [];
+			}
+			
+			this.handle.focus(...p0.map((item) => dom_toFocusOptions(item)));
+		}
+
+		OnAbort(p0) {
+			this.handle.addEventListener("abort", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.UIEvent, a[0])])));
+		}
+
+		OnAnimationcancel(p0) {
+			this.handle.addEventListener("animationcancel", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.AnimationEvent, a[0])])));
+		}
+
+		OnAnimationend(p0) {
+			this.handle.addEventListener("animationend", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.AnimationEvent, a[0])])));
+		}
+
+		OnAnimationiteration(p0) {
+			this.handle.addEventListener("animationiteration", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.AnimationEvent, a[0])])));
+		}
+
+		OnAnimationstart(p0) {
+			this.handle.addEventListener("animationstart", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.AnimationEvent, a[0])])));
+		}
+
+		OnAuxclick(p0) {
+			this.handle.addEventListener("auxclick", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.MouseEvent, a[0])])));
+		}
+
+		OnBeforeinput(p0) {
+			this.handle.addEventListener("beforeinput", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.InputEvent, a[0])])));
+		}
+
+		OnBeforetoggle(p0) {
+			this.handle.addEventListener("beforetoggle", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnBlur(p0) {
+			this.handle.addEventListener("blur", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.FocusEvent, a[0])])));
+		}
+
+		OnCancel(p0) {
+			this.handle.addEventListener("cancel", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnCanplay(p0) {
+			this.handle.addEventListener("canplay", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnCanplaythrough(p0) {
+			this.handle.addEventListener("canplaythrough", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnChange(p0) {
+			this.handle.addEventListener("change", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnClick(p0) {
+			this.handle.addEventListener("click", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.MouseEvent, a[0])])));
+		}
+
+		OnClose(p0) {
+			this.handle.addEventListener("close", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnCompositionend(p0) {
+			this.handle.addEventListener("compositionend", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.CompositionEvent, a[0])])));
+		}
+
+		OnCompositionstart(p0) {
+			this.handle.addEventListener("compositionstart", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.CompositionEvent, a[0])])));
+		}
+
+		OnCompositionupdate(p0) {
+			this.handle.addEventListener("compositionupdate", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.CompositionEvent, a[0])])));
+		}
+
+		OnContextlost(p0) {
+			this.handle.addEventListener("contextlost", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnContextmenu(p0) {
+			this.handle.addEventListener("contextmenu", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.MouseEvent, a[0])])));
+		}
+
+		OnContextrestored(p0) {
+			this.handle.addEventListener("contextrestored", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnCopy(p0) {
+			this.handle.addEventListener("copy", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.ClipboardEvent, a[0])])));
+		}
+
+		OnCuechange(p0) {
+			this.handle.addEventListener("cuechange", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnCut(p0) {
+			this.handle.addEventListener("cut", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.ClipboardEvent, a[0])])));
+		}
+
+		OnDblclick(p0) {
+			this.handle.addEventListener("dblclick", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.MouseEvent, a[0])])));
+		}
+
+		OnDrag(p0) {
+			this.handle.addEventListener("drag", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.DragEvent, a[0])])));
+		}
+
+		OnDragend(p0) {
+			this.handle.addEventListener("dragend", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.DragEvent, a[0])])));
+		}
+
+		OnDragenter(p0) {
+			this.handle.addEventListener("dragenter", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.DragEvent, a[0])])));
+		}
+
+		OnDragleave(p0) {
+			this.handle.addEventListener("dragleave", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.DragEvent, a[0])])));
+		}
+
+		OnDragover(p0) {
+			this.handle.addEventListener("dragover", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.DragEvent, a[0])])));
+		}
+
+		OnDragstart(p0) {
+			this.handle.addEventListener("dragstart", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.DragEvent, a[0])])));
+		}
+
+		OnDrop(p0) {
+			this.handle.addEventListener("drop", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.DragEvent, a[0])])));
+		}
+
+		OnDurationchange(p0) {
+			this.handle.addEventListener("durationchange", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnEmptied(p0) {
+			this.handle.addEventListener("emptied", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnEnded(p0) {
+			this.handle.addEventListener("ended", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnError(p0) {
+			this.handle.addEventListener("error", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.ErrorEvent, a[0])])));
+		}
+
+		OnFocus(p0) {
+			this.handle.addEventListener("focus", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.FocusEvent, a[0])])));
+		}
+
+		OnFocusin(p0) {
+			this.handle.addEventListener("focusin", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.FocusEvent, a[0])])));
+		}
+
+		OnFocusout(p0) {
+			this.handle.addEventListener("focusout", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.FocusEvent, a[0])])));
+		}
+
+		OnFormdata(p0) {
+			this.handle.addEventListener("formdata", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.FormDataEvent, a[0])])));
+		}
+
+		OnGotpointercapture(p0) {
+			this.handle.addEventListener("gotpointercapture", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.PointerEvent, a[0])])));
+		}
+
+		OnInput(p0) {
+			this.handle.addEventListener("input", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnInvalid(p0) {
+			this.handle.addEventListener("invalid", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnKeydown(p0) {
+			this.handle.addEventListener("keydown", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.KeyboardEvent, a[0])])));
+		}
+
+		OnKeypress(p0) {
+			this.handle.addEventListener("keypress", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.KeyboardEvent, a[0])])));
+		}
+
+		OnKeyup(p0) {
+			this.handle.addEventListener("keyup", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.KeyboardEvent, a[0])])));
+		}
+
+		OnLoad(p0) {
+			this.handle.addEventListener("load", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnLoadeddata(p0) {
+			this.handle.addEventListener("loadeddata", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnLoadedmetadata(p0) {
+			this.handle.addEventListener("loadedmetadata", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnLoadstart(p0) {
+			this.handle.addEventListener("loadstart", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnLostpointercapture(p0) {
+			this.handle.addEventListener("lostpointercapture", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.PointerEvent, a[0])])));
+		}
+
+		OnMousedown(p0) {
+			this.handle.addEventListener("mousedown", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.MouseEvent, a[0])])));
+		}
+
+		OnMouseenter(p0) {
+			this.handle.addEventListener("mouseenter", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.MouseEvent, a[0])])));
+		}
+
+		OnMouseleave(p0) {
+			this.handle.addEventListener("mouseleave", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.MouseEvent, a[0])])));
+		}
+
+		OnMousemove(p0) {
+			this.handle.addEventListener("mousemove", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.MouseEvent, a[0])])));
+		}
+
+		OnMouseout(p0) {
+			this.handle.addEventListener("mouseout", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.MouseEvent, a[0])])));
+		}
+
+		OnMouseover(p0) {
+			this.handle.addEventListener("mouseover", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.MouseEvent, a[0])])));
+		}
+
+		OnMouseup(p0) {
+			this.handle.addEventListener("mouseup", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.MouseEvent, a[0])])));
+		}
+
+		OnPaste(p0) {
+			this.handle.addEventListener("paste", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.ClipboardEvent, a[0])])));
+		}
+
+		OnPause(p0) {
+			this.handle.addEventListener("pause", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnPlay(p0) {
+			this.handle.addEventListener("play", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnPlaying(p0) {
+			this.handle.addEventListener("playing", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnPointercancel(p0) {
+			this.handle.addEventListener("pointercancel", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.PointerEvent, a[0])])));
+		}
+
+		OnPointerdown(p0) {
+			this.handle.addEventListener("pointerdown", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.PointerEvent, a[0])])));
+		}
+
+		OnPointerenter(p0) {
+			this.handle.addEventListener("pointerenter", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.PointerEvent, a[0])])));
+		}
+
+		OnPointerleave(p0) {
+			this.handle.addEventListener("pointerleave", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.PointerEvent, a[0])])));
+		}
+
+		OnPointermove(p0) {
+			this.handle.addEventListener("pointermove", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.PointerEvent, a[0])])));
+		}
+
+		OnPointerout(p0) {
+			this.handle.addEventListener("pointerout", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.PointerEvent, a[0])])));
+		}
+
+		OnPointerover(p0) {
+			this.handle.addEventListener("pointerover", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.PointerEvent, a[0])])));
+		}
+
+		OnPointerup(p0) {
+			this.handle.addEventListener("pointerup", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.PointerEvent, a[0])])));
+		}
+
+		OnProgress(p0) {
+			this.handle.addEventListener("progress", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.ProgressEvent, a[0])])));
+		}
+
+		OnRatechange(p0) {
+			this.handle.addEventListener("ratechange", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnReset(p0) {
+			this.handle.addEventListener("reset", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnResize(p0) {
+			this.handle.addEventListener("resize", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.UIEvent, a[0])])));
+		}
+
+		OnScroll(p0) {
+			this.handle.addEventListener("scroll", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnScrollend(p0) {
+			this.handle.addEventListener("scrollend", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnSecuritypolicyviolation(p0) {
+			this.handle.addEventListener("securitypolicyviolation", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.SecurityPolicyViolationEvent, a[0])])));
+		}
+
+		OnSeeked(p0) {
+			this.handle.addEventListener("seeked", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnSeeking(p0) {
+			this.handle.addEventListener("seeking", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnSelect(p0) {
+			this.handle.addEventListener("select", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnSelectionchange(p0) {
+			this.handle.addEventListener("selectionchange", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnSelectstart(p0) {
+			this.handle.addEventListener("selectstart", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnSlotchange(p0) {
+			this.handle.addEventListener("slotchange", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnStalled(p0) {
+			this.handle.addEventListener("stalled", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnSubmit(p0) {
+			this.handle.addEventListener("submit", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.SubmitEvent, a[0])])));
+		}
+
+		OnSuspend(p0) {
+			this.handle.addEventListener("suspend", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnTimeupdate(p0) {
+			this.handle.addEventListener("timeupdate", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnToggle(p0) {
+			this.handle.addEventListener("toggle", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnTouchcancel(p0) {
+			this.handle.addEventListener("touchcancel", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.TouchEvent, a[0])])));
+		}
+
+		OnTouchend(p0) {
+			this.handle.addEventListener("touchend", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.TouchEvent, a[0])])));
+		}
+
+		OnTouchmove(p0) {
+			this.handle.addEventListener("touchmove", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.TouchEvent, a[0])])));
+		}
+
+		OnTouchstart(p0) {
+			this.handle.addEventListener("touchstart", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.TouchEvent, a[0])])));
+		}
+
+		OnTransitioncancel(p0) {
+			this.handle.addEventListener("transitioncancel", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.TransitionEvent, a[0])])));
+		}
+
+		OnTransitionend(p0) {
+			this.handle.addEventListener("transitionend", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.TransitionEvent, a[0])])));
+		}
+
+		OnTransitionrun(p0) {
+			this.handle.addEventListener("transitionrun", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.TransitionEvent, a[0])])));
+		}
+
+		OnTransitionstart(p0) {
+			this.handle.addEventListener("transitionstart", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.TransitionEvent, a[0])])));
+		}
+
+		OnVolumechange(p0) {
+			this.handle.addEventListener("volumechange", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnWaiting(p0) {
+			this.handle.addEventListener("waiting", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnWebkitanimationend(p0) {
+			this.handle.addEventListener("webkitanimationend", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnWebkitanimationiteration(p0) {
+			this.handle.addEventListener("webkitanimationiteration", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnWebkitanimationstart(p0) {
+			this.handle.addEventListener("webkitanimationstart", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnWebkittransitionend(p0) {
+			this.handle.addEventListener("webkittransitionend", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.Event, a[0])])));
+		}
+
+		OnWheel(p0) {
+			this.handle.addEventListener("wheel", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.WheelEvent, a[0])])));
+		}
+
+		Onabort(p0) {
+			return this.handle.onabort(dom_unwrap(p0));
+		}
+
+		Onanimationcancel(p0) {
+			return this.handle.onanimationcancel(dom_unwrap(p0));
+		}
+
+		Onanimationend(p0) {
+			return this.handle.onanimationend(dom_unwrap(p0));
+		}
+
+		Onanimationiteration(p0) {
+			return this.handle.onanimationiteration(dom_unwrap(p0));
+		}
+
+		Onanimationstart(p0) {
+			return this.handle.onanimationstart(dom_unwrap(p0));
+		}
+
+		Onauxclick(p0) {
+			return this.handle.onauxclick(dom_unwrap(p0));
+		}
+
+		Onbeforeinput(p0) {
+			return this.handle.onbeforeinput(dom_unwrap(p0));
+		}
+
+		Onbeforetoggle(p0) {
+			return this.handle.onbeforetoggle(dom_unwrap(p0));
+		}
+
+		Onblur(p0) {
+			return this.handle.onblur(dom_unwrap(p0));
+		}
+
+		Oncancel(p0) {
+			return this.handle.oncancel(dom_unwrap(p0));
+		}
+
+		Oncanplay(p0) {
+			return this.handle.oncanplay(dom_unwrap(p0));
+		}
+
+		Oncanplaythrough(p0) {
+			return this.handle.oncanplaythrough(dom_unwrap(p0));
+		}
+
+		Onchange(p0) {
+			return this.handle.onchange(dom_unwrap(p0));
+		}
+
+		Onclick(p0) {
+			return this.handle.onclick(dom_unwrap(p0));
+		}
+
+		Onclose(p0) {
+			return this.handle.onclose(dom_unwrap(p0));
+		}
+
+		Oncontextlost(p0) {
+			return this.handle.oncontextlost(dom_unwrap(p0));
+		}
+
+		Oncontextmenu(p0) {
+			return this.handle.oncontextmenu(dom_unwrap(p0));
+		}
+
+		Oncontextrestored(p0) {
+			return this.handle.oncontextrestored(dom_unwrap(p0));
+		}
+
+		Oncopy(p0) {
+			return this.handle.oncopy(dom_unwrap(p0));
+		}
+
+		Oncuechange(p0) {
+			return this.handle.oncuechange(dom_unwrap(p0));
+		}
+
+		Oncut(p0) {
+			return this.handle.oncut(dom_unwrap(p0));
+		}
+
+		Ondblclick(p0) {
+			return this.handle.ondblclick(dom_unwrap(p0));
+		}
+
+		Ondrag(p0) {
+			return this.handle.ondrag(dom_unwrap(p0));
+		}
+
+		Ondragend(p0) {
+			return this.handle.ondragend(dom_unwrap(p0));
+		}
+
+		Ondragenter(p0) {
+			return this.handle.ondragenter(dom_unwrap(p0));
+		}
+
+		Ondragleave(p0) {
+			return this.handle.ondragleave(dom_unwrap(p0));
+		}
+
+		Ondragover(p0) {
+			return this.handle.ondragover(dom_unwrap(p0));
+		}
+
+		Ondragstart(p0) {
+			return this.handle.ondragstart(dom_unwrap(p0));
+		}
+
+		Ondrop(p0) {
+			return this.handle.ondrop(dom_unwrap(p0));
+		}
+
+		Ondurationchange(p0) {
+			return this.handle.ondurationchange(dom_unwrap(p0));
+		}
+
+		Onemptied(p0) {
+			return this.handle.onemptied(dom_unwrap(p0));
+		}
+
+		Onended(p0) {
+			return this.handle.onended(dom_unwrap(p0));
+		}
+
+		Onfocus(p0) {
+			return this.handle.onfocus(dom_unwrap(p0));
+		}
+
+		Onformdata(p0) {
+			return this.handle.onformdata(dom_unwrap(p0));
+		}
+
+		Ongotpointercapture(p0) {
+			return this.handle.ongotpointercapture(dom_unwrap(p0));
+		}
+
+		Oninput(p0) {
+			return this.handle.oninput(dom_unwrap(p0));
+		}
+
+		Oninvalid(p0) {
+			return this.handle.oninvalid(dom_unwrap(p0));
+		}
+
+		Onkeydown(p0) {
+			return this.handle.onkeydown(dom_unwrap(p0));
+		}
+
+		Onkeypress(p0) {
+			return this.handle.onkeypress(dom_unwrap(p0));
+		}
+
+		Onkeyup(p0) {
+			return this.handle.onkeyup(dom_unwrap(p0));
+		}
+
+		Onload(p0) {
+			return this.handle.onload(dom_unwrap(p0));
+		}
+
+		Onloadeddata(p0) {
+			return this.handle.onloadeddata(dom_unwrap(p0));
+		}
+
+		Onloadedmetadata(p0) {
+			return this.handle.onloadedmetadata(dom_unwrap(p0));
+		}
+
+		Onloadstart(p0) {
+			return this.handle.onloadstart(dom_unwrap(p0));
+		}
+
+		Onlostpointercapture(p0) {
+			return this.handle.onlostpointercapture(dom_unwrap(p0));
+		}
+
+		Onmousedown(p0) {
+			return this.handle.onmousedown(dom_unwrap(p0));
+		}
+
+		Onmouseenter(p0) {
+			return this.handle.onmouseenter(dom_unwrap(p0));
+		}
+
+		Onmouseleave(p0) {
+			return this.handle.onmouseleave(dom_unwrap(p0));
+		}
+
+		Onmousemove(p0) {
+			return this.handle.onmousemove(dom_unwrap(p0));
+		}
+
+		Onmouseout(p0) {
+			return this.handle.onmouseout(dom_unwrap(p0));
+		}
+
+		Onmouseover(p0) {
+			return this.handle.onmouseover(dom_unwrap(p0));
+		}
+
+		Onmouseup(p0) {
+			return this.handle.onmouseup(dom_unwrap(p0));
+		}
+
+		Onpaste(p0) {
+			return this.handle.onpaste(dom_unwrap(p0));
+		}
+
+		Onpause(p0) {
+			return this.handle.onpause(dom_unwrap(p0));
+		}
+
+		Onplay(p0) {
+			return this.handle.onplay(dom_unwrap(p0));
+		}
+
+		Onplaying(p0) {
+			return this.handle.onplaying(dom_unwrap(p0));
+		}
+
+		Onpointercancel(p0) {
+			return this.handle.onpointercancel(dom_unwrap(p0));
+		}
+
+		Onpointerdown(p0) {
+			return this.handle.onpointerdown(dom_unwrap(p0));
+		}
+
+		Onpointerenter(p0) {
+			return this.handle.onpointerenter(dom_unwrap(p0));
+		}
+
+		Onpointerleave(p0) {
+			return this.handle.onpointerleave(dom_unwrap(p0));
+		}
+
+		Onpointermove(p0) {
+			return this.handle.onpointermove(dom_unwrap(p0));
+		}
+
+		Onpointerout(p0) {
+			return this.handle.onpointerout(dom_unwrap(p0));
+		}
+
+		Onpointerover(p0) {
+			return this.handle.onpointerover(dom_unwrap(p0));
+		}
+
+		Onpointerup(p0) {
+			return this.handle.onpointerup(dom_unwrap(p0));
+		}
+
+		Onprogress(p0) {
+			return this.handle.onprogress(dom_unwrap(p0));
+		}
+
+		Onratechange(p0) {
+			return this.handle.onratechange(dom_unwrap(p0));
+		}
+
+		Onreset(p0) {
+			return this.handle.onreset(dom_unwrap(p0));
+		}
+
+		Onresize(p0) {
+			return this.handle.onresize(dom_unwrap(p0));
+		}
+
+		Onscroll(p0) {
+			return this.handle.onscroll(dom_unwrap(p0));
+		}
+
+		Onscrollend(p0) {
+			return this.handle.onscrollend(dom_unwrap(p0));
+		}
+
+		Onsecuritypolicyviolation(p0) {
+			return this.handle.onsecuritypolicyviolation(dom_unwrap(p0));
+		}
+
+		Onseeked(p0) {
+			return this.handle.onseeked(dom_unwrap(p0));
+		}
+
+		Onseeking(p0) {
+			return this.handle.onseeking(dom_unwrap(p0));
+		}
+
+		Onselect(p0) {
+			return this.handle.onselect(dom_unwrap(p0));
+		}
+
+		Onselectionchange(p0) {
+			return this.handle.onselectionchange(dom_unwrap(p0));
+		}
+
+		Onselectstart(p0) {
+			return this.handle.onselectstart(dom_unwrap(p0));
+		}
+
+		Onslotchange(p0) {
+			return this.handle.onslotchange(dom_unwrap(p0));
+		}
+
+		Onstalled(p0) {
+			return this.handle.onstalled(dom_unwrap(p0));
+		}
+
+		Onsubmit(p0) {
+			return this.handle.onsubmit(dom_unwrap(p0));
+		}
+
+		Onsuspend(p0) {
+			return this.handle.onsuspend(dom_unwrap(p0));
+		}
+
+		Ontimeupdate(p0) {
+			return this.handle.ontimeupdate(dom_unwrap(p0));
+		}
+
+		Ontoggle(p0) {
+			return this.handle.ontoggle(dom_unwrap(p0));
+		}
+
+		Ontouchcancel(p0) {
+			return this.handle.ontouchcancel(dom_unwrap(p0));
+		}
+
+		Ontouchend(p0) {
+			return this.handle.ontouchend(dom_unwrap(p0));
+		}
+
+		Ontouchmove(p0) {
+			return this.handle.ontouchmove(dom_unwrap(p0));
+		}
+
+		Ontouchstart(p0) {
+			return this.handle.ontouchstart(dom_unwrap(p0));
+		}
+
+		Ontransitioncancel(p0) {
+			return this.handle.ontransitioncancel(dom_unwrap(p0));
+		}
+
+		Ontransitionend(p0) {
+			return this.handle.ontransitionend(dom_unwrap(p0));
+		}
+
+		Ontransitionrun(p0) {
+			return this.handle.ontransitionrun(dom_unwrap(p0));
+		}
+
+		Ontransitionstart(p0) {
+			return this.handle.ontransitionstart(dom_unwrap(p0));
+		}
+
+		Onvolumechange(p0) {
+			return this.handle.onvolumechange(dom_unwrap(p0));
+		}
+
+		Onwaiting(p0) {
+			return this.handle.onwaiting(dom_unwrap(p0));
+		}
+
+		Onwebkitanimationend(p0) {
+			return this.handle.onwebkitanimationend(dom_unwrap(p0));
+		}
+
+		Onwebkitanimationiteration(p0) {
+			return this.handle.onwebkitanimationiteration(dom_unwrap(p0));
+		}
+
+		Onwebkitanimationstart(p0) {
+			return this.handle.onwebkitanimationstart(dom_unwrap(p0));
+		}
+
+		Onwebkittransitionend(p0) {
+			return this.handle.onwebkittransitionend(dom_unwrap(p0));
+		}
+
+		Onwheel(p0) {
+			return this.handle.onwheel(dom_unwrap(p0));
+		}
+
+		AttributeStyleMap() {
+			return dom_wrap(dom.StylePropertyMap, this.handle.attributeStyleMap);
+		}
+
+		Style() {
+			return dom_wrap(dom.CSSStyleDeclaration, this.handle.style);
+		}
+
+		Onerror() {
+			return this.handle.onerror;
+		}
+
+		SetOnerror(value) {
+			this.handle.onerror = (value === null || value === undefined ? null : (...a) => dom_unwrapAny(go2jsCallNow(value, null, [a[0], a[1], a[2], a[3], a[4]])));
+		}
+
+		Autofocus() {
+			return this.handle.autofocus;
+		}
+
+		SetAutofocus(value) {
+			this.handle.autofocus = value;
+		}
+
+		Dataset() {
+			return this.handle.dataset;
+		}
+
+		Nonce() {
+			return this.handle.nonce;
+		}
+
+		SetNonce(value) {
+			this.handle.nonce = value;
+		}
+
+		TabIndex() {
+			return this.handle.tabIndex;
+		}
+
+		SetTabIndex(value) {
+			this.handle.tabIndex = value;
+		}
+}
+
 class dom_C_MediaCapabilities extends dom_base {
 	constructor() {
 		super();
@@ -20880,6 +23578,29 @@ class dom_C_MediaEncryptedEvent extends dom_C_Event {
 		}
 }
 
+class dom_C_MediaKeyMessageEvent extends dom_C_Event {
+
+		KindOfMediaKeyMessageEvent() {
+			
+		}
+
+		KindOfEvent() {
+			
+		}
+
+		AsEvent() {
+			return this;
+		}
+
+		Message() {
+			return Array.from(this.handle.message || []);
+		}
+
+		MessageType() {
+			return this.handle.messageType;
+		}
+}
+
 class dom_C_MediaKeySession extends dom_C_EventTarget {
 
 		KindOfMediaKeySession() {
@@ -20900,8 +23621,32 @@ class dom_C_MediaKeySession extends dom_C_EventTarget {
 			return outcome.ok ? null : outcome.error;
 		}
 
-		*GenerateRequest(p0, p1) {
-			const outcome = yield* dom_await(() => this.handle.generateRequest(p0, dom_unwrapAny(p1)));
+		*GenerateRequestFloat32(p0, p1) {
+			const outcome = yield* dom_await(() => this.handle.generateRequest(p0, Float32Array.from(p1 || [])));
+			
+			return outcome.ok ? null : outcome.error;
+		}
+
+		*GenerateRequestUint16(p0, p1) {
+			const outcome = yield* dom_await(() => this.handle.generateRequest(p0, Uint16Array.from(p1 || [])));
+			
+			return outcome.ok ? null : outcome.error;
+		}
+
+		*GenerateRequestUint32(p0, p1) {
+			const outcome = yield* dom_await(() => this.handle.generateRequest(p0, Uint32Array.from(p1 || [])));
+			
+			return outcome.ok ? null : outcome.error;
+		}
+
+		*GenerateRequestUint8(p0, p1) {
+			const outcome = yield* dom_await(() => this.handle.generateRequest(p0, Uint8Array.from(p1 || [])));
+			
+			return outcome.ok ? null : outcome.error;
+		}
+
+		*GenerateRequestInt32(p0, p1) {
+			const outcome = yield* dom_await(() => this.handle.generateRequest(p0, Int32Array.from(p1 || [])));
 			
 			return outcome.ok ? null : outcome.error;
 		}
@@ -20918,8 +23663,32 @@ class dom_C_MediaKeySession extends dom_C_EventTarget {
 			return outcome.ok ? null : outcome.error;
 		}
 
-		*Update(p0) {
-			const outcome = yield* dom_await(() => this.handle.update(dom_unwrapAny(p0)));
+		*UpdateFloat32(p0) {
+			const outcome = yield* dom_await(() => this.handle.update(Float32Array.from(p0 || [])));
+			
+			return outcome.ok ? null : outcome.error;
+		}
+
+		*UpdateUint16(p0) {
+			const outcome = yield* dom_await(() => this.handle.update(Uint16Array.from(p0 || [])));
+			
+			return outcome.ok ? null : outcome.error;
+		}
+
+		*UpdateUint32(p0) {
+			const outcome = yield* dom_await(() => this.handle.update(Uint32Array.from(p0 || [])));
+			
+			return outcome.ok ? null : outcome.error;
+		}
+
+		*UpdateUint8(p0) {
+			const outcome = yield* dom_await(() => this.handle.update(Uint8Array.from(p0 || [])));
+			
+			return outcome.ok ? null : outcome.error;
+		}
+
+		*UpdateInt32(p0) {
+			const outcome = yield* dom_await(() => this.handle.update(Int32Array.from(p0 || [])));
 			
 			return outcome.ok ? null : outcome.error;
 		}
@@ -20929,7 +23698,7 @@ class dom_C_MediaKeySession extends dom_C_EventTarget {
 		}
 
 		OnMessage(p0) {
-			this.handle.addEventListener("message", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [a[0]])));
+			this.handle.addEventListener("message", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.MediaKeyMessageEvent, a[0])])));
 		}
 
 		Onkeystatuseschange(p0) {
@@ -20937,7 +23706,7 @@ class dom_C_MediaKeySession extends dom_C_EventTarget {
 		}
 
 		Onmessage(p0) {
-			return this.handle.onmessage(dom_unwrapAny(p0));
+			return this.handle.onmessage(dom_unwrap(p0));
 		}
 
 		Expiration() {
@@ -21025,8 +23794,32 @@ class dom_C_MediaKeys extends dom_base {
 			return outcome.ok ? [outcome.value, null] : ["", outcome.error];
 		}
 
-		*SetServerCertificate(p0) {
-			const outcome = yield* dom_await(() => this.handle.setServerCertificate(dom_unwrapAny(p0)));
+		*SetServerCertificateFloat32(p0) {
+			const outcome = yield* dom_await(() => this.handle.setServerCertificate(Float32Array.from(p0 || [])));
+			
+			return outcome.ok ? [outcome.value, null] : [false, outcome.error];
+		}
+
+		*SetServerCertificateUint16(p0) {
+			const outcome = yield* dom_await(() => this.handle.setServerCertificate(Uint16Array.from(p0 || [])));
+			
+			return outcome.ok ? [outcome.value, null] : [false, outcome.error];
+		}
+
+		*SetServerCertificateUint32(p0) {
+			const outcome = yield* dom_await(() => this.handle.setServerCertificate(Uint32Array.from(p0 || [])));
+			
+			return outcome.ok ? [outcome.value, null] : [false, outcome.error];
+		}
+
+		*SetServerCertificateUint8(p0) {
+			const outcome = yield* dom_await(() => this.handle.setServerCertificate(Uint8Array.from(p0 || [])));
+			
+			return outcome.ok ? [outcome.value, null] : [false, outcome.error];
+		}
+
+		*SetServerCertificateInt32(p0) {
+			const outcome = yield* dom_await(() => this.handle.setServerCertificate(Int32Array.from(p0 || [])));
 			
 			return outcome.ok ? [outcome.value, null] : [false, outcome.error];
 		}
@@ -21047,19 +23840,42 @@ class dom_C_MediaQueryList extends dom_C_EventTarget {
 		}
 
 		AddListener(p0) {
-			this.handle.addListener((p0 === null || p0 === undefined ? null : (...a) => dom_unwrapAny(go2jsCallNow(p0, null, [a[0]]))));
+			this.handle.addListener((p0 === null || p0 === undefined ? null : (...a) => dom_unwrapAny(go2jsCallNow(p0, null, [dom_wrap(dom.MediaQueryListEvent, a[0])]))));
 		}
 
 		RemoveListener(p0) {
-			this.handle.removeListener((p0 === null || p0 === undefined ? null : (...a) => dom_unwrapAny(go2jsCallNow(p0, null, [a[0]]))));
+			this.handle.removeListener((p0 === null || p0 === undefined ? null : (...a) => dom_unwrapAny(go2jsCallNow(p0, null, [dom_wrap(dom.MediaQueryListEvent, a[0])]))));
 		}
 
 		OnChange(p0) {
-			this.handle.addEventListener("change", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [a[0]])));
+			this.handle.addEventListener("change", (p0 === null || p0 === undefined ? null : (...a) => go2jsCallNow(p0, null, [dom_wrap(dom.MediaQueryListEvent, a[0])])));
 		}
 
 		Onchange(p0) {
-			return this.handle.onchange(dom_unwrapAny(p0));
+			return this.handle.onchange(dom_unwrap(p0));
+		}
+
+		Matches() {
+			return this.handle.matches;
+		}
+
+		Media() {
+			return this.handle.media;
+		}
+}
+
+class dom_C_MediaQueryListEvent extends dom_C_Event {
+
+		KindOfMediaQueryListEvent() {
+			
+		}
+
+		KindOfEvent() {
+			
+		}
+
+		AsEvent() {
+			return this;
 		}
 
 		Matches() {
@@ -21425,6 +24241,57 @@ class dom_C_MouseEventType extends dom_base {
 
 		SetPrototype(value) {
 			this.handle.prototype = dom_unwrap(value);
+		}
+}
+
+class dom_C_MutationEvent extends dom_C_Event {
+
+		KindOfMutationEvent() {
+			
+		}
+
+		KindOfEvent() {
+			
+		}
+
+		AsEvent() {
+			return this;
+		}
+
+		InitMutationEvent(p0, ...p1) {
+			this.handle.initMutationEvent(p0, ...p1.map((item) => dom_unwrapAny(item)));
+		}
+
+		AttrChange() {
+			return this.handle.attrChange;
+		}
+
+		AttrName() {
+			return this.handle.attrName;
+		}
+
+		NewValue() {
+			return this.handle.newValue;
+		}
+
+		PrevValue() {
+			return this.handle.prevValue;
+		}
+
+		RelatedNode() {
+			return dom_wrap(dom.Node, this.handle.relatedNode);
+		}
+
+		MODIFICATION() {
+			return this.handle.MODIFICATION;
+		}
+
+		ADDITION() {
+			return this.handle.ADDITION;
+		}
+
+		REMOVAL() {
+			return this.handle.REMOVAL;
 		}
 }
 
@@ -22118,6 +24985,87 @@ class dom_C_NodeListOf extends dom_C_NodeList {
 		}
 }
 
+class dom_C_OES_vertex_array_object extends dom_base {
+	constructor() {
+		super();
+		this.handle = null;
+	}
+
+		KindOfOES_vertex_array_object() {
+			
+		}
+
+		BindVertexArrayOES(p0) {
+			this.handle.bindVertexArrayOES(dom_unwrapAny(p0));
+		}
+
+		CreateVertexArrayOES() {
+			return this.handle.createVertexArrayOES();
+		}
+
+		DeleteVertexArrayOES(p0) {
+			this.handle.deleteVertexArrayOES(dom_unwrapAny(p0));
+		}
+
+		IsVertexArrayOES(p0) {
+			return this.handle.isVertexArrayOES(dom_unwrapAny(p0));
+		}
+
+		VERTEX_ARRAY_BINDING_OES() {
+			return this.handle.VERTEX_ARRAY_BINDING_OES;
+		}
+}
+
+class dom_C_OVR_multiview2 extends dom_base {
+	constructor() {
+		super();
+		this.handle = null;
+	}
+
+		KindOfOVR_multiview2() {
+			
+		}
+
+		FramebufferTextureMultiviewOVR(p0, p1, p2, p3, p4, p5) {
+			this.handle.framebufferTextureMultiviewOVR(p0, p1, dom_unwrapAny(p2), p3, p4, p5);
+		}
+
+		FRAMEBUFFER_ATTACHMENT_TEXTURE_NUM_VIEWS_OVR() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_TEXTURE_NUM_VIEWS_OVR;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_TEXTURE_BASE_VIEW_INDEX_OVR() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_TEXTURE_BASE_VIEW_INDEX_OVR;
+		}
+
+		MAX_VIEWS_OVR() {
+			return this.handle.MAX_VIEWS_OVR;
+		}
+
+		FRAMEBUFFER_INCOMPLETE_VIEW_TARGETS_OVR() {
+			return this.handle.FRAMEBUFFER_INCOMPLETE_VIEW_TARGETS_OVR;
+		}
+}
+
+class dom_C_OfflineAudioCompletionEvent extends dom_C_Event {
+
+		KindOfOfflineAudioCompletionEvent() {
+			
+		}
+
+		KindOfEvent() {
+			
+		}
+
+		AsEvent() {
+			return this;
+		}
+
+		RenderedBuffer() {
+			return dom_wrap(dom.AudioBuffer, this.handle.renderedBuffer);
+		}
+}
+
 class dom_C_OffscreenCanvas extends dom_C_EventTarget {
 
 		KindOfOffscreenCanvas() {
@@ -22144,6 +25092,22 @@ class dom_C_OffscreenCanvas extends dom_C_EventTarget {
 
 		GetContext(p0, ...p1) {
 			return dom_wrap(dom.OffscreenCanvasRenderingContext2D, this.handle.getContext(p0, ...p1.map((item) => dom_unwrapAny(item))));
+		}
+
+		GetContextX2d(...p0) {
+			return dom_wrap(dom.OffscreenCanvasRenderingContext2D, this.handle.getContext("2d", ...p0.map((item) => dom_unwrapAny(item))));
+		}
+
+		GetContextBitmaprenderer(...p0) {
+			return dom_wrap(dom.ImageBitmapRenderingContext, this.handle.getContext("bitmaprenderer", ...p0.map((item) => dom_unwrapAny(item))));
+		}
+
+		GetContextWebgl(...p0) {
+			return dom_wrap(dom.WebGLRenderingContext, this.handle.getContext("webgl", ...p0.map((item) => dom_unwrapAny(item))));
+		}
+
+		GetContextWebgl2(...p0) {
+			return dom_wrap(dom.WebGL2RenderingContext, this.handle.getContext("webgl2", ...p0.map((item) => dom_unwrapAny(item))));
 		}
 
 		TransferToImageBitmap() {
@@ -22945,6 +25909,60 @@ class dom_C_Path2DType extends dom_base {
 		}
 }
 
+class dom_C_PaymentRequestUpdateEvent extends dom_C_Event {
+
+		KindOfPaymentRequestUpdateEvent() {
+			
+		}
+
+		KindOfEvent() {
+			
+		}
+
+		AsEvent() {
+			return this;
+		}
+
+		AsPaymentMethodChangeEvent() {
+			return dom_is(this, "PaymentMethodChangeEvent") ? this : null;
+		}
+
+		UpdateWith(p0) {
+			this.handle.updateWith(dom_unwrapAny(p0));
+		}
+}
+
+class dom_C_PaymentMethodChangeEvent extends dom_C_PaymentRequestUpdateEvent {
+
+		KindOfPaymentMethodChangeEvent() {
+			
+		}
+
+		KindOfPaymentRequestUpdateEvent() {
+			
+		}
+
+		KindOfEvent() {
+			
+		}
+
+		AsPaymentRequestUpdateEvent() {
+			return this;
+		}
+
+		AsEvent() {
+			return this;
+		}
+
+		MethodDetails() {
+			return this.handle.methodDetails;
+		}
+
+		MethodName() {
+			return this.handle.methodName;
+		}
+}
+
 class dom_C_Performance extends dom_C_EventTarget {
 
 		KindOfPerformance() {
@@ -23276,6 +26294,25 @@ class dom_C_Permissions extends dom_base {
 		}
 }
 
+class dom_C_PictureInPictureEvent extends dom_C_Event {
+
+		KindOfPictureInPictureEvent() {
+			
+		}
+
+		KindOfEvent() {
+			
+		}
+
+		AsEvent() {
+			return this;
+		}
+
+		PictureInPictureWindow() {
+			return this.handle.pictureInPictureWindow;
+		}
+}
+
 class dom_C_PluginArray extends dom_base {
 	constructor() {
 		super();
@@ -23530,6 +26567,148 @@ class dom_C_PromiseRejectionEvent extends dom_C_Event {
 
 		Reason() {
 			return this.handle.reason;
+		}
+}
+
+class dom_C_RTCDTMFToneChangeEvent extends dom_C_Event {
+
+		KindOfRTCDTMFToneChangeEvent() {
+			
+		}
+
+		KindOfEvent() {
+			
+		}
+
+		AsEvent() {
+			return this;
+		}
+
+		Tone() {
+			return this.handle.tone;
+		}
+}
+
+class dom_C_RTCDataChannelEvent extends dom_C_Event {
+
+		KindOfRTCDataChannelEvent() {
+			
+		}
+
+		KindOfEvent() {
+			
+		}
+
+		AsEvent() {
+			return this;
+		}
+
+		Channel() {
+			return this.handle.channel;
+		}
+}
+
+class dom_C_RTCErrorEvent extends dom_C_Event {
+
+		KindOfRTCErrorEvent() {
+			
+		}
+
+		KindOfEvent() {
+			
+		}
+
+		AsEvent() {
+			return this;
+		}
+
+		Error() {
+			return this.handle.error;
+		}
+}
+
+class dom_C_RTCPeerConnectionIceErrorEvent extends dom_C_Event {
+
+		KindOfRTCPeerConnectionIceErrorEvent() {
+			
+		}
+
+		KindOfEvent() {
+			
+		}
+
+		AsEvent() {
+			return this;
+		}
+
+		Address() {
+			return this.handle.address;
+		}
+
+		ErrorCode() {
+			return this.handle.errorCode;
+		}
+
+		ErrorText() {
+			return this.handle.errorText;
+		}
+
+		Port() {
+			return this.handle.port;
+		}
+
+		Url() {
+			return this.handle.url;
+		}
+}
+
+class dom_C_RTCPeerConnectionIceEvent extends dom_C_Event {
+
+		KindOfRTCPeerConnectionIceEvent() {
+			
+		}
+
+		KindOfEvent() {
+			
+		}
+
+		AsEvent() {
+			return this;
+		}
+
+		Candidate() {
+			return this.handle.candidate;
+		}
+}
+
+class dom_C_RTCTrackEvent extends dom_C_Event {
+
+		KindOfRTCTrackEvent() {
+			
+		}
+
+		KindOfEvent() {
+			
+		}
+
+		AsEvent() {
+			return this;
+		}
+
+		Receiver() {
+			return this.handle.receiver;
+		}
+
+		Streams() {
+			return Array.from(this.handle.streams || [], (item) => dom_wrap(dom.MediaStream, item));
+		}
+
+		Track() {
+			return dom_wrap(dom.MediaStreamTrack, this.handle.track);
+		}
+
+		Transceiver() {
+			return this.handle.transceiver;
 		}
 }
 
@@ -26108,6 +29287,72 @@ class dom_C_SpeechSynthesis extends dom_C_EventTarget {
 		}
 }
 
+class dom_C_SpeechSynthesisEvent extends dom_C_Event {
+
+		KindOfSpeechSynthesisEvent() {
+			
+		}
+
+		KindOfEvent() {
+			
+		}
+
+		AsEvent() {
+			return this;
+		}
+
+		AsSpeechSynthesisErrorEvent() {
+			return dom_is(this, "SpeechSynthesisErrorEvent") ? this : null;
+		}
+
+		CharIndex() {
+			return this.handle.charIndex;
+		}
+
+		CharLength() {
+			return this.handle.charLength;
+		}
+
+		ElapsedTime() {
+			return this.handle.elapsedTime;
+		}
+
+		Name() {
+			return this.handle.name;
+		}
+
+		Utterance() {
+			return this.handle.utterance;
+		}
+}
+
+class dom_C_SpeechSynthesisErrorEvent extends dom_C_SpeechSynthesisEvent {
+
+		KindOfSpeechSynthesisErrorEvent() {
+			
+		}
+
+		KindOfSpeechSynthesisEvent() {
+			
+		}
+
+		KindOfEvent() {
+			
+		}
+
+		AsSpeechSynthesisEvent() {
+			return this;
+		}
+
+		AsEvent() {
+			return this;
+		}
+
+		Error() {
+			return this.handle.error;
+		}
+}
+
 class dom_C_StereoPannerNode extends dom_C_AudioNode {
 
 		KindOfStereoPannerNode() {
@@ -26348,6 +29593,37 @@ class dom_C_SubmitEvent extends dom_C_Event {
 		}
 }
 
+class dom_C_TextEvent extends dom_C_UIEvent {
+
+		KindOfTextEvent() {
+			
+		}
+
+		KindOfUIEvent() {
+			
+		}
+
+		KindOfEvent() {
+			
+		}
+
+		AsUIEvent() {
+			return this;
+		}
+
+		AsEvent() {
+			return this;
+		}
+
+		InitTextEvent(p0, ...p1) {
+			this.handle.initTextEvent(p0, ...p1.map((item) => dom_unwrapAny(item)));
+		}
+
+		Data() {
+			return this.handle.data;
+		}
+}
+
 class dom_C_TextTrack extends dom_C_EventTarget {
 
 		KindOfTextTrack() {
@@ -26568,6 +29844,29 @@ class dom_C_TimeRanges extends dom_base {
 
 		Length() {
 			return this.handle.length;
+		}
+}
+
+class dom_C_ToggleEvent extends dom_C_Event {
+
+		KindOfToggleEvent() {
+			
+		}
+
+		KindOfEvent() {
+			
+		}
+
+		AsEvent() {
+			return this;
+		}
+
+		NewState() {
+			return this.handle.newState;
+		}
+
+		OldState() {
+			return this.handle.oldState;
 		}
 }
 
@@ -26839,6 +30138,345 @@ class dom_C_VisualViewport extends dom_C_EventTarget {
 		}
 }
 
+class dom_C_WEBGL_compressed_texture_astc extends dom_base {
+	constructor() {
+		super();
+		this.handle = null;
+	}
+
+		KindOfWEBGL_compressed_texture_astc() {
+			
+		}
+
+		GetSupportedProfiles() {
+			return Array.from(this.handle.getSupportedProfiles() || []);
+		}
+
+		COMPRESSED_RGBA_ASTC_4x4_KHR() {
+			return this.handle.COMPRESSED_RGBA_ASTC_4x4_KHR;
+		}
+
+		COMPRESSED_RGBA_ASTC_5x4_KHR() {
+			return this.handle.COMPRESSED_RGBA_ASTC_5x4_KHR;
+		}
+
+		COMPRESSED_RGBA_ASTC_5x5_KHR() {
+			return this.handle.COMPRESSED_RGBA_ASTC_5x5_KHR;
+		}
+
+		COMPRESSED_RGBA_ASTC_6x5_KHR() {
+			return this.handle.COMPRESSED_RGBA_ASTC_6x5_KHR;
+		}
+
+		COMPRESSED_RGBA_ASTC_6x6_KHR() {
+			return this.handle.COMPRESSED_RGBA_ASTC_6x6_KHR;
+		}
+
+		COMPRESSED_RGBA_ASTC_8x5_KHR() {
+			return this.handle.COMPRESSED_RGBA_ASTC_8x5_KHR;
+		}
+
+		COMPRESSED_RGBA_ASTC_8x6_KHR() {
+			return this.handle.COMPRESSED_RGBA_ASTC_8x6_KHR;
+		}
+
+		COMPRESSED_RGBA_ASTC_8x8_KHR() {
+			return this.handle.COMPRESSED_RGBA_ASTC_8x8_KHR;
+		}
+
+		COMPRESSED_RGBA_ASTC_10x5_KHR() {
+			return this.handle.COMPRESSED_RGBA_ASTC_10x5_KHR;
+		}
+
+		COMPRESSED_RGBA_ASTC_10x6_KHR() {
+			return this.handle.COMPRESSED_RGBA_ASTC_10x6_KHR;
+		}
+
+		COMPRESSED_RGBA_ASTC_10x8_KHR() {
+			return this.handle.COMPRESSED_RGBA_ASTC_10x8_KHR;
+		}
+
+		COMPRESSED_RGBA_ASTC_10x10_KHR() {
+			return this.handle.COMPRESSED_RGBA_ASTC_10x10_KHR;
+		}
+
+		COMPRESSED_RGBA_ASTC_12x10_KHR() {
+			return this.handle.COMPRESSED_RGBA_ASTC_12x10_KHR;
+		}
+
+		COMPRESSED_RGBA_ASTC_12x12_KHR() {
+			return this.handle.COMPRESSED_RGBA_ASTC_12x12_KHR;
+		}
+
+		COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR() {
+			return this.handle.COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR;
+		}
+
+		COMPRESSED_SRGB8_ALPHA8_ASTC_5x4_KHR() {
+			return this.handle.COMPRESSED_SRGB8_ALPHA8_ASTC_5x4_KHR;
+		}
+
+		COMPRESSED_SRGB8_ALPHA8_ASTC_5x5_KHR() {
+			return this.handle.COMPRESSED_SRGB8_ALPHA8_ASTC_5x5_KHR;
+		}
+
+		COMPRESSED_SRGB8_ALPHA8_ASTC_6x5_KHR() {
+			return this.handle.COMPRESSED_SRGB8_ALPHA8_ASTC_6x5_KHR;
+		}
+
+		COMPRESSED_SRGB8_ALPHA8_ASTC_6x6_KHR() {
+			return this.handle.COMPRESSED_SRGB8_ALPHA8_ASTC_6x6_KHR;
+		}
+
+		COMPRESSED_SRGB8_ALPHA8_ASTC_8x5_KHR() {
+			return this.handle.COMPRESSED_SRGB8_ALPHA8_ASTC_8x5_KHR;
+		}
+
+		COMPRESSED_SRGB8_ALPHA8_ASTC_8x6_KHR() {
+			return this.handle.COMPRESSED_SRGB8_ALPHA8_ASTC_8x6_KHR;
+		}
+
+		COMPRESSED_SRGB8_ALPHA8_ASTC_8x8_KHR() {
+			return this.handle.COMPRESSED_SRGB8_ALPHA8_ASTC_8x8_KHR;
+		}
+
+		COMPRESSED_SRGB8_ALPHA8_ASTC_10x5_KHR() {
+			return this.handle.COMPRESSED_SRGB8_ALPHA8_ASTC_10x5_KHR;
+		}
+
+		COMPRESSED_SRGB8_ALPHA8_ASTC_10x6_KHR() {
+			return this.handle.COMPRESSED_SRGB8_ALPHA8_ASTC_10x6_KHR;
+		}
+
+		COMPRESSED_SRGB8_ALPHA8_ASTC_10x8_KHR() {
+			return this.handle.COMPRESSED_SRGB8_ALPHA8_ASTC_10x8_KHR;
+		}
+
+		COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR() {
+			return this.handle.COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR;
+		}
+
+		COMPRESSED_SRGB8_ALPHA8_ASTC_12x10_KHR() {
+			return this.handle.COMPRESSED_SRGB8_ALPHA8_ASTC_12x10_KHR;
+		}
+
+		COMPRESSED_SRGB8_ALPHA8_ASTC_12x12_KHR() {
+			return this.handle.COMPRESSED_SRGB8_ALPHA8_ASTC_12x12_KHR;
+		}
+}
+
+class dom_C_WEBGL_debug_shaders extends dom_base {
+	constructor() {
+		super();
+		this.handle = null;
+	}
+
+		KindOfWEBGL_debug_shaders() {
+			
+		}
+
+		GetTranslatedShaderSource(p0) {
+			return this.handle.getTranslatedShaderSource(dom_unwrapAny(p0));
+		}
+}
+
+class dom_C_WEBGL_draw_buffers extends dom_base {
+	constructor() {
+		super();
+		this.handle = null;
+	}
+
+		KindOfWEBGL_draw_buffers() {
+			
+		}
+
+		DrawBuffersWEBGL(p0) {
+			this.handle.drawBuffersWEBGL(Array.from(p0 || []));
+		}
+
+		COLOR_ATTACHMENT0_WEBGL() {
+			return this.handle.COLOR_ATTACHMENT0_WEBGL;
+		}
+
+		COLOR_ATTACHMENT1_WEBGL() {
+			return this.handle.COLOR_ATTACHMENT1_WEBGL;
+		}
+
+		COLOR_ATTACHMENT2_WEBGL() {
+			return this.handle.COLOR_ATTACHMENT2_WEBGL;
+		}
+
+		COLOR_ATTACHMENT3_WEBGL() {
+			return this.handle.COLOR_ATTACHMENT3_WEBGL;
+		}
+
+		COLOR_ATTACHMENT4_WEBGL() {
+			return this.handle.COLOR_ATTACHMENT4_WEBGL;
+		}
+
+		COLOR_ATTACHMENT5_WEBGL() {
+			return this.handle.COLOR_ATTACHMENT5_WEBGL;
+		}
+
+		COLOR_ATTACHMENT6_WEBGL() {
+			return this.handle.COLOR_ATTACHMENT6_WEBGL;
+		}
+
+		COLOR_ATTACHMENT7_WEBGL() {
+			return this.handle.COLOR_ATTACHMENT7_WEBGL;
+		}
+
+		COLOR_ATTACHMENT8_WEBGL() {
+			return this.handle.COLOR_ATTACHMENT8_WEBGL;
+		}
+
+		COLOR_ATTACHMENT9_WEBGL() {
+			return this.handle.COLOR_ATTACHMENT9_WEBGL;
+		}
+
+		COLOR_ATTACHMENT10_WEBGL() {
+			return this.handle.COLOR_ATTACHMENT10_WEBGL;
+		}
+
+		COLOR_ATTACHMENT11_WEBGL() {
+			return this.handle.COLOR_ATTACHMENT11_WEBGL;
+		}
+
+		COLOR_ATTACHMENT12_WEBGL() {
+			return this.handle.COLOR_ATTACHMENT12_WEBGL;
+		}
+
+		COLOR_ATTACHMENT13_WEBGL() {
+			return this.handle.COLOR_ATTACHMENT13_WEBGL;
+		}
+
+		COLOR_ATTACHMENT14_WEBGL() {
+			return this.handle.COLOR_ATTACHMENT14_WEBGL;
+		}
+
+		COLOR_ATTACHMENT15_WEBGL() {
+			return this.handle.COLOR_ATTACHMENT15_WEBGL;
+		}
+
+		DRAW_BUFFER0_WEBGL() {
+			return this.handle.DRAW_BUFFER0_WEBGL;
+		}
+
+		DRAW_BUFFER1_WEBGL() {
+			return this.handle.DRAW_BUFFER1_WEBGL;
+		}
+
+		DRAW_BUFFER2_WEBGL() {
+			return this.handle.DRAW_BUFFER2_WEBGL;
+		}
+
+		DRAW_BUFFER3_WEBGL() {
+			return this.handle.DRAW_BUFFER3_WEBGL;
+		}
+
+		DRAW_BUFFER4_WEBGL() {
+			return this.handle.DRAW_BUFFER4_WEBGL;
+		}
+
+		DRAW_BUFFER5_WEBGL() {
+			return this.handle.DRAW_BUFFER5_WEBGL;
+		}
+
+		DRAW_BUFFER6_WEBGL() {
+			return this.handle.DRAW_BUFFER6_WEBGL;
+		}
+
+		DRAW_BUFFER7_WEBGL() {
+			return this.handle.DRAW_BUFFER7_WEBGL;
+		}
+
+		DRAW_BUFFER8_WEBGL() {
+			return this.handle.DRAW_BUFFER8_WEBGL;
+		}
+
+		DRAW_BUFFER9_WEBGL() {
+			return this.handle.DRAW_BUFFER9_WEBGL;
+		}
+
+		DRAW_BUFFER10_WEBGL() {
+			return this.handle.DRAW_BUFFER10_WEBGL;
+		}
+
+		DRAW_BUFFER11_WEBGL() {
+			return this.handle.DRAW_BUFFER11_WEBGL;
+		}
+
+		DRAW_BUFFER12_WEBGL() {
+			return this.handle.DRAW_BUFFER12_WEBGL;
+		}
+
+		DRAW_BUFFER13_WEBGL() {
+			return this.handle.DRAW_BUFFER13_WEBGL;
+		}
+
+		DRAW_BUFFER14_WEBGL() {
+			return this.handle.DRAW_BUFFER14_WEBGL;
+		}
+
+		DRAW_BUFFER15_WEBGL() {
+			return this.handle.DRAW_BUFFER15_WEBGL;
+		}
+
+		MAX_COLOR_ATTACHMENTS_WEBGL() {
+			return this.handle.MAX_COLOR_ATTACHMENTS_WEBGL;
+		}
+
+		MAX_DRAW_BUFFERS_WEBGL() {
+			return this.handle.MAX_DRAW_BUFFERS_WEBGL;
+		}
+}
+
+class dom_C_WEBGL_lose_context extends dom_base {
+	constructor() {
+		super();
+		this.handle = null;
+	}
+
+		KindOfWEBGL_lose_context() {
+			
+		}
+
+		LoseContext() {
+			this.handle.loseContext();
+		}
+
+		RestoreContext() {
+			this.handle.restoreContext();
+		}
+}
+
+class dom_C_WEBGL_multi_draw extends dom_base {
+	constructor() {
+		super();
+		this.handle = null;
+	}
+
+		KindOfWEBGL_multi_draw() {
+			
+		}
+
+		MultiDrawArraysInstancedWEBGL(p0, p1, p2, p3, p4, p5, p6, p7) {
+			this.handle.multiDrawArraysInstancedWEBGL(p0, Int32Array.from(p1 || []), p2, Int32Array.from(p3 || []), p4, Int32Array.from(p5 || []), p6, p7);
+		}
+
+		MultiDrawArraysWEBGL(p0, p1, p2, p3, p4, p5) {
+			this.handle.multiDrawArraysWEBGL(p0, Int32Array.from(p1 || []), p2, Int32Array.from(p3 || []), p4, p5);
+		}
+
+		MultiDrawElementsInstancedWEBGL(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.multiDrawElementsInstancedWEBGL(p0, Int32Array.from(p1 || []), p2, p3, Int32Array.from(p4 || []), p5, Int32Array.from(p6 || []), p7, p8);
+		}
+
+		MultiDrawElementsWEBGL(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.multiDrawElementsWEBGL(p0, Int32Array.from(p1 || []), p2, p3, Int32Array.from(p4 || []), p5, p6);
+		}
+}
+
 class dom_C_WakeLock extends dom_base {
 	constructor() {
 		super();
@@ -26892,6 +30530,9841 @@ class dom_C_WaveShaperNode extends dom_C_AudioNode {
 
 		SetOversample(value) {
 			this.handle.oversample = value;
+		}
+}
+
+class dom_C_WebGL2RenderingContextBase extends dom_base {
+	constructor() {
+		super();
+		this.handle = null;
+	}
+
+		KindOfWebGL2RenderingContextBase() {
+			
+		}
+
+		AsWebGL2RenderingContext() {
+			return dom_is(this, "WebGL2RenderingContext") ? this : null;
+		}
+
+		BeginQuery(p0, p1) {
+			this.handle.beginQuery(p0, dom_unwrapAny(p1));
+		}
+
+		BeginTransformFeedback(p0) {
+			this.handle.beginTransformFeedback(p0);
+		}
+
+		BindBufferBase(p0, p1, p2) {
+			this.handle.bindBufferBase(p0, p1, dom_unwrapAny(p2));
+		}
+
+		BindBufferRange(p0, p1, p2, p3, p4) {
+			this.handle.bindBufferRange(p0, p1, dom_unwrapAny(p2), p3, p4);
+		}
+
+		BindSampler(p0, p1) {
+			this.handle.bindSampler(p0, dom_unwrapAny(p1));
+		}
+
+		BindTransformFeedback(p0, p1) {
+			this.handle.bindTransformFeedback(p0, dom_unwrapAny(p1));
+		}
+
+		BindVertexArray(p0) {
+			this.handle.bindVertexArray(dom_unwrapAny(p0));
+		}
+
+		BlitFramebuffer(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9) {
+			this.handle.blitFramebuffer(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9);
+		}
+
+		ClearBufferfi(p0, p1, p2, p3) {
+			this.handle.clearBufferfi(p0, p1, p2, p3);
+		}
+
+		ClearBufferfv(p0, p1, p2, ...p3) {
+			if (p3.length === 1 && Array.isArray(p3[0]) && p3[0].length === 0) {
+				p3 = [];
+			}
+			
+			this.handle.clearBufferfv(p0, p1, Float32Array.from(p2 || []), ...p3.map((item) => item));
+		}
+
+		ClearBufferiv(p0, p1, p2, ...p3) {
+			if (p3.length === 1 && Array.isArray(p3[0]) && p3[0].length === 0) {
+				p3 = [];
+			}
+			
+			this.handle.clearBufferiv(p0, p1, Int32Array.from(p2 || []), ...p3.map((item) => item));
+		}
+
+		ClearBufferuiv(p0, p1, p2, ...p3) {
+			if (p3.length === 1 && Array.isArray(p3[0]) && p3[0].length === 0) {
+				p3 = [];
+			}
+			
+			this.handle.clearBufferuiv(p0, p1, Uint32Array.from(p2 || []), ...p3.map((item) => item));
+		}
+
+		ClientWaitSync(p0, p1, p2) {
+			return this.handle.clientWaitSync(dom_unwrapAny(p0), p1, p2);
+		}
+
+		CompressedTexImage3D(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.compressedTexImage3D(p0, p1, p2, p3, p4, p5, p6, p7, p8);
+		}
+
+		CompressedTexImage3DFloat32(p0, p1, p2, p3, p4, p5, p6, p7, ...p8) {
+			if (p8.length === 1 && Array.isArray(p8[0]) && p8[0].length === 0) {
+				p8 = [];
+			}
+			
+			this.handle.compressedTexImage3D(p0, p1, p2, p3, p4, p5, p6, Float32Array.from(p7 || []), ...p8.map((item) => item));
+		}
+
+		CompressedTexImage3DUint16(p0, p1, p2, p3, p4, p5, p6, p7, ...p8) {
+			if (p8.length === 1 && Array.isArray(p8[0]) && p8[0].length === 0) {
+				p8 = [];
+			}
+			
+			this.handle.compressedTexImage3D(p0, p1, p2, p3, p4, p5, p6, Uint16Array.from(p7 || []), ...p8.map((item) => item));
+		}
+
+		CompressedTexImage3DUint32(p0, p1, p2, p3, p4, p5, p6, p7, ...p8) {
+			if (p8.length === 1 && Array.isArray(p8[0]) && p8[0].length === 0) {
+				p8 = [];
+			}
+			
+			this.handle.compressedTexImage3D(p0, p1, p2, p3, p4, p5, p6, Uint32Array.from(p7 || []), ...p8.map((item) => item));
+		}
+
+		CompressedTexImage3DUint8(p0, p1, p2, p3, p4, p5, p6, p7, ...p8) {
+			if (p8.length === 1 && Array.isArray(p8[0]) && p8[0].length === 0) {
+				p8 = [];
+			}
+			
+			this.handle.compressedTexImage3D(p0, p1, p2, p3, p4, p5, p6, Uint8Array.from(p7 || []), ...p8.map((item) => item));
+		}
+
+		CompressedTexImage3DInt32(p0, p1, p2, p3, p4, p5, p6, p7, ...p8) {
+			if (p8.length === 1 && Array.isArray(p8[0]) && p8[0].length === 0) {
+				p8 = [];
+			}
+			
+			this.handle.compressedTexImage3D(p0, p1, p2, p3, p4, p5, p6, Int32Array.from(p7 || []), ...p8.map((item) => item));
+		}
+
+		CompressedTexSubImage3D(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10) {
+			this.handle.compressedTexSubImage3D(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10);
+		}
+
+		CompressedTexSubImage3DFloat32(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, ...p10) {
+			if (p10.length === 1 && Array.isArray(p10[0]) && p10[0].length === 0) {
+				p10 = [];
+			}
+			
+			this.handle.compressedTexSubImage3D(p0, p1, p2, p3, p4, p5, p6, p7, p8, Float32Array.from(p9 || []), ...p10.map((item) => item));
+		}
+
+		CompressedTexSubImage3DUint16(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, ...p10) {
+			if (p10.length === 1 && Array.isArray(p10[0]) && p10[0].length === 0) {
+				p10 = [];
+			}
+			
+			this.handle.compressedTexSubImage3D(p0, p1, p2, p3, p4, p5, p6, p7, p8, Uint16Array.from(p9 || []), ...p10.map((item) => item));
+		}
+
+		CompressedTexSubImage3DUint32(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, ...p10) {
+			if (p10.length === 1 && Array.isArray(p10[0]) && p10[0].length === 0) {
+				p10 = [];
+			}
+			
+			this.handle.compressedTexSubImage3D(p0, p1, p2, p3, p4, p5, p6, p7, p8, Uint32Array.from(p9 || []), ...p10.map((item) => item));
+		}
+
+		CompressedTexSubImage3DUint8(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, ...p10) {
+			if (p10.length === 1 && Array.isArray(p10[0]) && p10[0].length === 0) {
+				p10 = [];
+			}
+			
+			this.handle.compressedTexSubImage3D(p0, p1, p2, p3, p4, p5, p6, p7, p8, Uint8Array.from(p9 || []), ...p10.map((item) => item));
+		}
+
+		CompressedTexSubImage3DInt32(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, ...p10) {
+			if (p10.length === 1 && Array.isArray(p10[0]) && p10[0].length === 0) {
+				p10 = [];
+			}
+			
+			this.handle.compressedTexSubImage3D(p0, p1, p2, p3, p4, p5, p6, p7, p8, Int32Array.from(p9 || []), ...p10.map((item) => item));
+		}
+
+		CopyBufferSubData(p0, p1, p2, p3, p4) {
+			this.handle.copyBufferSubData(p0, p1, p2, p3, p4);
+		}
+
+		CopyTexSubImage3D(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.copyTexSubImage3D(p0, p1, p2, p3, p4, p5, p6, p7, p8);
+		}
+
+		CreateQuery() {
+			return this.handle.createQuery();
+		}
+
+		CreateSampler() {
+			return this.handle.createSampler();
+		}
+
+		CreateTransformFeedback() {
+			return this.handle.createTransformFeedback();
+		}
+
+		CreateVertexArray() {
+			return this.handle.createVertexArray();
+		}
+
+		DeleteQuery(p0) {
+			this.handle.deleteQuery(dom_unwrapAny(p0));
+		}
+
+		DeleteSampler(p0) {
+			this.handle.deleteSampler(dom_unwrapAny(p0));
+		}
+
+		DeleteSync(p0) {
+			this.handle.deleteSync(dom_unwrapAny(p0));
+		}
+
+		DeleteTransformFeedback(p0) {
+			this.handle.deleteTransformFeedback(dom_unwrapAny(p0));
+		}
+
+		DeleteVertexArray(p0) {
+			this.handle.deleteVertexArray(dom_unwrapAny(p0));
+		}
+
+		DrawArraysInstanced(p0, p1, p2, p3) {
+			this.handle.drawArraysInstanced(p0, p1, p2, p3);
+		}
+
+		DrawBuffers(p0) {
+			this.handle.drawBuffers(Array.from(p0 || []));
+		}
+
+		DrawElementsInstanced(p0, p1, p2, p3, p4) {
+			this.handle.drawElementsInstanced(p0, p1, p2, p3, p4);
+		}
+
+		DrawRangeElements(p0, p1, p2, p3, p4, p5) {
+			this.handle.drawRangeElements(p0, p1, p2, p3, p4, p5);
+		}
+
+		EndQuery(p0) {
+			this.handle.endQuery(p0);
+		}
+
+		EndTransformFeedback() {
+			this.handle.endTransformFeedback();
+		}
+
+		FenceSync(p0, p1) {
+			return this.handle.fenceSync(p0, p1);
+		}
+
+		FramebufferTextureLayer(p0, p1, p2, p3, p4) {
+			this.handle.framebufferTextureLayer(p0, p1, dom_unwrapAny(p2), p3, p4);
+		}
+
+		GetActiveUniformBlockName(p0, p1) {
+			return this.handle.getActiveUniformBlockName(dom_unwrapAny(p0), p1);
+		}
+
+		GetActiveUniformBlockParameter(p0, p1, p2) {
+			return this.handle.getActiveUniformBlockParameter(dom_unwrapAny(p0), p1, p2);
+		}
+
+		GetActiveUniforms(p0, p1, p2) {
+			return this.handle.getActiveUniforms(dom_unwrapAny(p0), Array.from(p1 || []), p2);
+		}
+
+		GetBufferSubDataFloat32(p0, p1, p2, ...p3) {
+			if (p3.length === 1 && Array.isArray(p3[0]) && p3[0].length === 0) {
+				p3 = [];
+			}
+			
+			this.handle.getBufferSubData(p0, p1, Float32Array.from(p2 || []), ...p3.map((item) => item));
+		}
+
+		GetBufferSubDataUint16(p0, p1, p2, ...p3) {
+			if (p3.length === 1 && Array.isArray(p3[0]) && p3[0].length === 0) {
+				p3 = [];
+			}
+			
+			this.handle.getBufferSubData(p0, p1, Uint16Array.from(p2 || []), ...p3.map((item) => item));
+		}
+
+		GetBufferSubDataUint32(p0, p1, p2, ...p3) {
+			if (p3.length === 1 && Array.isArray(p3[0]) && p3[0].length === 0) {
+				p3 = [];
+			}
+			
+			this.handle.getBufferSubData(p0, p1, Uint32Array.from(p2 || []), ...p3.map((item) => item));
+		}
+
+		GetBufferSubDataUint8(p0, p1, p2, ...p3) {
+			if (p3.length === 1 && Array.isArray(p3[0]) && p3[0].length === 0) {
+				p3 = [];
+			}
+			
+			this.handle.getBufferSubData(p0, p1, Uint8Array.from(p2 || []), ...p3.map((item) => item));
+		}
+
+		GetBufferSubDataInt32(p0, p1, p2, ...p3) {
+			if (p3.length === 1 && Array.isArray(p3[0]) && p3[0].length === 0) {
+				p3 = [];
+			}
+			
+			this.handle.getBufferSubData(p0, p1, Int32Array.from(p2 || []), ...p3.map((item) => item));
+		}
+
+		GetFragDataLocation(p0, p1) {
+			return this.handle.getFragDataLocation(dom_unwrapAny(p0), p1);
+		}
+
+		GetIndexedParameter(p0, p1) {
+			return this.handle.getIndexedParameter(p0, p1);
+		}
+
+		GetInternalformatParameter(p0, p1, p2) {
+			return this.handle.getInternalformatParameter(p0, p1, p2);
+		}
+
+		GetQuery(p0, p1) {
+			return this.handle.getQuery(p0, p1);
+		}
+
+		GetQueryParameter(p0, p1) {
+			return this.handle.getQueryParameter(dom_unwrapAny(p0), p1);
+		}
+
+		GetSamplerParameter(p0, p1) {
+			return this.handle.getSamplerParameter(dom_unwrapAny(p0), p1);
+		}
+
+		GetSyncParameter(p0, p1) {
+			return this.handle.getSyncParameter(dom_unwrapAny(p0), p1);
+		}
+
+		GetTransformFeedbackVarying(p0, p1) {
+			return dom_fromWebGLActiveInfo(this.handle.getTransformFeedbackVarying(dom_unwrapAny(p0), p1));
+		}
+
+		GetUniformBlockIndex(p0, p1) {
+			return this.handle.getUniformBlockIndex(dom_unwrapAny(p0), p1);
+		}
+
+		GetUniformIndices(p0, p1) {
+			return Array.from(this.handle.getUniformIndices(dom_unwrapAny(p0), Array.from(p1 || [])) || []);
+		}
+
+		InvalidateFramebuffer(p0, p1) {
+			this.handle.invalidateFramebuffer(p0, Array.from(p1 || []));
+		}
+
+		InvalidateSubFramebuffer(p0, p1, p2, p3, p4, p5) {
+			this.handle.invalidateSubFramebuffer(p0, Array.from(p1 || []), p2, p3, p4, p5);
+		}
+
+		IsQuery(p0) {
+			return this.handle.isQuery(dom_unwrapAny(p0));
+		}
+
+		IsSampler(p0) {
+			return this.handle.isSampler(dom_unwrapAny(p0));
+		}
+
+		IsSync(p0) {
+			return this.handle.isSync(dom_unwrapAny(p0));
+		}
+
+		IsTransformFeedback(p0) {
+			return this.handle.isTransformFeedback(dom_unwrapAny(p0));
+		}
+
+		IsVertexArray(p0) {
+			return this.handle.isVertexArray(dom_unwrapAny(p0));
+		}
+
+		PauseTransformFeedback() {
+			this.handle.pauseTransformFeedback();
+		}
+
+		ReadBuffer(p0) {
+			this.handle.readBuffer(p0);
+		}
+
+		RenderbufferStorageMultisample(p0, p1, p2, p3, p4) {
+			this.handle.renderbufferStorageMultisample(p0, p1, p2, p3, p4);
+		}
+
+		ResumeTransformFeedback() {
+			this.handle.resumeTransformFeedback();
+		}
+
+		SamplerParameterf(p0, p1, p2) {
+			this.handle.samplerParameterf(dom_unwrapAny(p0), p1, p2);
+		}
+
+		SamplerParameteri(p0, p1, p2) {
+			this.handle.samplerParameteri(dom_unwrapAny(p0), p1, p2);
+		}
+
+		TexImage3D(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9) {
+			this.handle.texImage3D(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9);
+		}
+
+		TexImage3DFloat32(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9) {
+			this.handle.texImage3D(p0, p1, p2, p3, p4, p5, p6, p7, p8, Float32Array.from(p9 || []));
+		}
+
+		TexImage3DUint16(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9) {
+			this.handle.texImage3D(p0, p1, p2, p3, p4, p5, p6, p7, p8, Uint16Array.from(p9 || []));
+		}
+
+		TexImage3DUint32(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9) {
+			this.handle.texImage3D(p0, p1, p2, p3, p4, p5, p6, p7, p8, Uint32Array.from(p9 || []));
+		}
+
+		TexImage3DUint8(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9) {
+			this.handle.texImage3D(p0, p1, p2, p3, p4, p5, p6, p7, p8, Uint8Array.from(p9 || []));
+		}
+
+		TexImage3DInt32(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9) {
+			this.handle.texImage3D(p0, p1, p2, p3, p4, p5, p6, p7, p8, Int32Array.from(p9 || []));
+		}
+
+		TexStorage2D(p0, p1, p2, p3, p4) {
+			this.handle.texStorage2D(p0, p1, p2, p3, p4);
+		}
+
+		TexStorage3D(p0, p1, p2, p3, p4, p5) {
+			this.handle.texStorage3D(p0, p1, p2, p3, p4, p5);
+		}
+
+		TexSubImage3D(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10) {
+			this.handle.texSubImage3D(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10);
+		}
+
+		TexSubImage3DFloat32(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, ...p11) {
+			if (p11.length === 1 && Array.isArray(p11[0]) && p11[0].length === 0) {
+				p11 = [];
+			}
+			
+			this.handle.texSubImage3D(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, Float32Array.from(p10 || []), ...p11.map((item) => item));
+		}
+
+		TexSubImage3DUint16(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, ...p11) {
+			if (p11.length === 1 && Array.isArray(p11[0]) && p11[0].length === 0) {
+				p11 = [];
+			}
+			
+			this.handle.texSubImage3D(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, Uint16Array.from(p10 || []), ...p11.map((item) => item));
+		}
+
+		TexSubImage3DUint32(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, ...p11) {
+			if (p11.length === 1 && Array.isArray(p11[0]) && p11[0].length === 0) {
+				p11 = [];
+			}
+			
+			this.handle.texSubImage3D(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, Uint32Array.from(p10 || []), ...p11.map((item) => item));
+		}
+
+		TexSubImage3DUint8(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, ...p11) {
+			if (p11.length === 1 && Array.isArray(p11[0]) && p11[0].length === 0) {
+				p11 = [];
+			}
+			
+			this.handle.texSubImage3D(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, Uint8Array.from(p10 || []), ...p11.map((item) => item));
+		}
+
+		TexSubImage3DInt32(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, ...p11) {
+			if (p11.length === 1 && Array.isArray(p11[0]) && p11[0].length === 0) {
+				p11 = [];
+			}
+			
+			this.handle.texSubImage3D(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, Int32Array.from(p10 || []), ...p11.map((item) => item));
+		}
+
+		TransformFeedbackVaryings(p0, p1, p2) {
+			this.handle.transformFeedbackVaryings(dom_unwrapAny(p0), Array.from(p1 || []), p2);
+		}
+
+		Uniform1ui(p0, p1) {
+			this.handle.uniform1ui(dom_unwrapAny(p0), p1);
+		}
+
+		Uniform1uiv(p0, p1, ...p2) {
+			if (p2.length === 1 && Array.isArray(p2[0]) && p2[0].length === 0) {
+				p2 = [];
+			}
+			
+			this.handle.uniform1uiv(dom_unwrapAny(p0), Uint32Array.from(p1 || []), ...p2.map((item) => item));
+		}
+
+		Uniform2ui(p0, p1, p2) {
+			this.handle.uniform2ui(dom_unwrapAny(p0), p1, p2);
+		}
+
+		Uniform2uiv(p0, p1, ...p2) {
+			if (p2.length === 1 && Array.isArray(p2[0]) && p2[0].length === 0) {
+				p2 = [];
+			}
+			
+			this.handle.uniform2uiv(dom_unwrapAny(p0), Uint32Array.from(p1 || []), ...p2.map((item) => item));
+		}
+
+		Uniform3ui(p0, p1, p2, p3) {
+			this.handle.uniform3ui(dom_unwrapAny(p0), p1, p2, p3);
+		}
+
+		Uniform3uiv(p0, p1, ...p2) {
+			if (p2.length === 1 && Array.isArray(p2[0]) && p2[0].length === 0) {
+				p2 = [];
+			}
+			
+			this.handle.uniform3uiv(dom_unwrapAny(p0), Uint32Array.from(p1 || []), ...p2.map((item) => item));
+		}
+
+		Uniform4ui(p0, p1, p2, p3, p4) {
+			this.handle.uniform4ui(dom_unwrapAny(p0), p1, p2, p3, p4);
+		}
+
+		Uniform4uiv(p0, p1, ...p2) {
+			if (p2.length === 1 && Array.isArray(p2[0]) && p2[0].length === 0) {
+				p2 = [];
+			}
+			
+			this.handle.uniform4uiv(dom_unwrapAny(p0), Uint32Array.from(p1 || []), ...p2.map((item) => item));
+		}
+
+		UniformBlockBinding(p0, p1, p2) {
+			this.handle.uniformBlockBinding(dom_unwrapAny(p0), p1, p2);
+		}
+
+		UniformMatrix2x3fv(p0, p1, p2, ...p3) {
+			if (p3.length === 1 && Array.isArray(p3[0]) && p3[0].length === 0) {
+				p3 = [];
+			}
+			
+			this.handle.uniformMatrix2x3fv(dom_unwrapAny(p0), p1, Float32Array.from(p2 || []), ...p3.map((item) => item));
+		}
+
+		UniformMatrix2x4fv(p0, p1, p2, ...p3) {
+			if (p3.length === 1 && Array.isArray(p3[0]) && p3[0].length === 0) {
+				p3 = [];
+			}
+			
+			this.handle.uniformMatrix2x4fv(dom_unwrapAny(p0), p1, Float32Array.from(p2 || []), ...p3.map((item) => item));
+		}
+
+		UniformMatrix3x2fv(p0, p1, p2, ...p3) {
+			if (p3.length === 1 && Array.isArray(p3[0]) && p3[0].length === 0) {
+				p3 = [];
+			}
+			
+			this.handle.uniformMatrix3x2fv(dom_unwrapAny(p0), p1, Float32Array.from(p2 || []), ...p3.map((item) => item));
+		}
+
+		UniformMatrix3x4fv(p0, p1, p2, ...p3) {
+			if (p3.length === 1 && Array.isArray(p3[0]) && p3[0].length === 0) {
+				p3 = [];
+			}
+			
+			this.handle.uniformMatrix3x4fv(dom_unwrapAny(p0), p1, Float32Array.from(p2 || []), ...p3.map((item) => item));
+		}
+
+		UniformMatrix4x2fv(p0, p1, p2, ...p3) {
+			if (p3.length === 1 && Array.isArray(p3[0]) && p3[0].length === 0) {
+				p3 = [];
+			}
+			
+			this.handle.uniformMatrix4x2fv(dom_unwrapAny(p0), p1, Float32Array.from(p2 || []), ...p3.map((item) => item));
+		}
+
+		UniformMatrix4x3fv(p0, p1, p2, ...p3) {
+			if (p3.length === 1 && Array.isArray(p3[0]) && p3[0].length === 0) {
+				p3 = [];
+			}
+			
+			this.handle.uniformMatrix4x3fv(dom_unwrapAny(p0), p1, Float32Array.from(p2 || []), ...p3.map((item) => item));
+		}
+
+		VertexAttribDivisor(p0, p1) {
+			this.handle.vertexAttribDivisor(p0, p1);
+		}
+
+		VertexAttribI4i(p0, p1, p2, p3, p4) {
+			this.handle.vertexAttribI4i(p0, p1, p2, p3, p4);
+		}
+
+		VertexAttribI4iv(p0, p1) {
+			this.handle.vertexAttribI4iv(p0, Int32Array.from(p1 || []));
+		}
+
+		VertexAttribI4ui(p0, p1, p2, p3, p4) {
+			this.handle.vertexAttribI4ui(p0, p1, p2, p3, p4);
+		}
+
+		VertexAttribI4uiv(p0, p1) {
+			this.handle.vertexAttribI4uiv(p0, Uint32Array.from(p1 || []));
+		}
+
+		VertexAttribIPointer(p0, p1, p2, p3, p4) {
+			this.handle.vertexAttribIPointer(p0, p1, p2, p3, p4);
+		}
+
+		WaitSync(p0, p1, p2) {
+			this.handle.waitSync(dom_unwrapAny(p0), p1, p2);
+		}
+
+		READ_BUFFER() {
+			return this.handle.READ_BUFFER;
+		}
+
+		UNPACK_ROW_LENGTH() {
+			return this.handle.UNPACK_ROW_LENGTH;
+		}
+
+		UNPACK_SKIP_ROWS() {
+			return this.handle.UNPACK_SKIP_ROWS;
+		}
+
+		UNPACK_SKIP_PIXELS() {
+			return this.handle.UNPACK_SKIP_PIXELS;
+		}
+
+		PACK_ROW_LENGTH() {
+			return this.handle.PACK_ROW_LENGTH;
+		}
+
+		PACK_SKIP_ROWS() {
+			return this.handle.PACK_SKIP_ROWS;
+		}
+
+		PACK_SKIP_PIXELS() {
+			return this.handle.PACK_SKIP_PIXELS;
+		}
+
+		COLOR() {
+			return this.handle.COLOR;
+		}
+
+		DEPTH() {
+			return this.handle.DEPTH;
+		}
+
+		STENCIL() {
+			return this.handle.STENCIL;
+		}
+
+		RED() {
+			return this.handle.RED;
+		}
+
+		RGB8() {
+			return this.handle.RGB8;
+		}
+
+		RGB10_A2() {
+			return this.handle.RGB10_A2;
+		}
+
+		TEXTURE_BINDING_3D() {
+			return this.handle.TEXTURE_BINDING_3D;
+		}
+
+		UNPACK_SKIP_IMAGES() {
+			return this.handle.UNPACK_SKIP_IMAGES;
+		}
+
+		UNPACK_IMAGE_HEIGHT() {
+			return this.handle.UNPACK_IMAGE_HEIGHT;
+		}
+
+		TEXTURE_3D() {
+			return this.handle.TEXTURE_3D;
+		}
+
+		TEXTURE_WRAP_R() {
+			return this.handle.TEXTURE_WRAP_R;
+		}
+
+		MAX_3D_TEXTURE_SIZE() {
+			return this.handle.MAX_3D_TEXTURE_SIZE;
+		}
+
+		UNSIGNED_INT_2_10_10_10_REV() {
+			return this.handle.UNSIGNED_INT_2_10_10_10_REV;
+		}
+
+		MAX_ELEMENTS_VERTICES() {
+			return this.handle.MAX_ELEMENTS_VERTICES;
+		}
+
+		MAX_ELEMENTS_INDICES() {
+			return this.handle.MAX_ELEMENTS_INDICES;
+		}
+
+		TEXTURE_MIN_LOD() {
+			return this.handle.TEXTURE_MIN_LOD;
+		}
+
+		TEXTURE_MAX_LOD() {
+			return this.handle.TEXTURE_MAX_LOD;
+		}
+
+		TEXTURE_BASE_LEVEL() {
+			return this.handle.TEXTURE_BASE_LEVEL;
+		}
+
+		TEXTURE_MAX_LEVEL() {
+			return this.handle.TEXTURE_MAX_LEVEL;
+		}
+
+		MIN() {
+			return this.handle.MIN;
+		}
+
+		MAX() {
+			return this.handle.MAX;
+		}
+
+		DEPTH_COMPONENT24() {
+			return this.handle.DEPTH_COMPONENT24;
+		}
+
+		MAX_TEXTURE_LOD_BIAS() {
+			return this.handle.MAX_TEXTURE_LOD_BIAS;
+		}
+
+		TEXTURE_COMPARE_MODE() {
+			return this.handle.TEXTURE_COMPARE_MODE;
+		}
+
+		TEXTURE_COMPARE_FUNC() {
+			return this.handle.TEXTURE_COMPARE_FUNC;
+		}
+
+		CURRENT_QUERY() {
+			return this.handle.CURRENT_QUERY;
+		}
+
+		QUERY_RESULT() {
+			return this.handle.QUERY_RESULT;
+		}
+
+		QUERY_RESULT_AVAILABLE() {
+			return this.handle.QUERY_RESULT_AVAILABLE;
+		}
+
+		STREAM_READ() {
+			return this.handle.STREAM_READ;
+		}
+
+		STREAM_COPY() {
+			return this.handle.STREAM_COPY;
+		}
+
+		STATIC_READ() {
+			return this.handle.STATIC_READ;
+		}
+
+		STATIC_COPY() {
+			return this.handle.STATIC_COPY;
+		}
+
+		DYNAMIC_READ() {
+			return this.handle.DYNAMIC_READ;
+		}
+
+		DYNAMIC_COPY() {
+			return this.handle.DYNAMIC_COPY;
+		}
+
+		MAX_DRAW_BUFFERS() {
+			return this.handle.MAX_DRAW_BUFFERS;
+		}
+
+		DRAW_BUFFER0() {
+			return this.handle.DRAW_BUFFER0;
+		}
+
+		DRAW_BUFFER1() {
+			return this.handle.DRAW_BUFFER1;
+		}
+
+		DRAW_BUFFER2() {
+			return this.handle.DRAW_BUFFER2;
+		}
+
+		DRAW_BUFFER3() {
+			return this.handle.DRAW_BUFFER3;
+		}
+
+		DRAW_BUFFER4() {
+			return this.handle.DRAW_BUFFER4;
+		}
+
+		DRAW_BUFFER5() {
+			return this.handle.DRAW_BUFFER5;
+		}
+
+		DRAW_BUFFER6() {
+			return this.handle.DRAW_BUFFER6;
+		}
+
+		DRAW_BUFFER7() {
+			return this.handle.DRAW_BUFFER7;
+		}
+
+		DRAW_BUFFER8() {
+			return this.handle.DRAW_BUFFER8;
+		}
+
+		DRAW_BUFFER9() {
+			return this.handle.DRAW_BUFFER9;
+		}
+
+		DRAW_BUFFER10() {
+			return this.handle.DRAW_BUFFER10;
+		}
+
+		DRAW_BUFFER11() {
+			return this.handle.DRAW_BUFFER11;
+		}
+
+		DRAW_BUFFER12() {
+			return this.handle.DRAW_BUFFER12;
+		}
+
+		DRAW_BUFFER13() {
+			return this.handle.DRAW_BUFFER13;
+		}
+
+		DRAW_BUFFER14() {
+			return this.handle.DRAW_BUFFER14;
+		}
+
+		DRAW_BUFFER15() {
+			return this.handle.DRAW_BUFFER15;
+		}
+
+		MAX_FRAGMENT_UNIFORM_COMPONENTS() {
+			return this.handle.MAX_FRAGMENT_UNIFORM_COMPONENTS;
+		}
+
+		MAX_VERTEX_UNIFORM_COMPONENTS() {
+			return this.handle.MAX_VERTEX_UNIFORM_COMPONENTS;
+		}
+
+		SAMPLER_3D() {
+			return this.handle.SAMPLER_3D;
+		}
+
+		SAMPLER_2D_SHADOW() {
+			return this.handle.SAMPLER_2D_SHADOW;
+		}
+
+		FRAGMENT_SHADER_DERIVATIVE_HINT() {
+			return this.handle.FRAGMENT_SHADER_DERIVATIVE_HINT;
+		}
+
+		PIXEL_PACK_BUFFER() {
+			return this.handle.PIXEL_PACK_BUFFER;
+		}
+
+		PIXEL_UNPACK_BUFFER() {
+			return this.handle.PIXEL_UNPACK_BUFFER;
+		}
+
+		PIXEL_PACK_BUFFER_BINDING() {
+			return this.handle.PIXEL_PACK_BUFFER_BINDING;
+		}
+
+		PIXEL_UNPACK_BUFFER_BINDING() {
+			return this.handle.PIXEL_UNPACK_BUFFER_BINDING;
+		}
+
+		FLOAT_MAT2x3() {
+			return this.handle.FLOAT_MAT2x3;
+		}
+
+		FLOAT_MAT2x4() {
+			return this.handle.FLOAT_MAT2x4;
+		}
+
+		FLOAT_MAT3x2() {
+			return this.handle.FLOAT_MAT3x2;
+		}
+
+		FLOAT_MAT3x4() {
+			return this.handle.FLOAT_MAT3x4;
+		}
+
+		FLOAT_MAT4x2() {
+			return this.handle.FLOAT_MAT4x2;
+		}
+
+		FLOAT_MAT4x3() {
+			return this.handle.FLOAT_MAT4x3;
+		}
+
+		SRGB() {
+			return this.handle.SRGB;
+		}
+
+		SRGB8() {
+			return this.handle.SRGB8;
+		}
+
+		SRGB8_ALPHA8() {
+			return this.handle.SRGB8_ALPHA8;
+		}
+
+		COMPARE_REF_TO_TEXTURE() {
+			return this.handle.COMPARE_REF_TO_TEXTURE;
+		}
+
+		RGBA32F() {
+			return this.handle.RGBA32F;
+		}
+
+		RGB32F() {
+			return this.handle.RGB32F;
+		}
+
+		RGBA16F() {
+			return this.handle.RGBA16F;
+		}
+
+		RGB16F() {
+			return this.handle.RGB16F;
+		}
+
+		VERTEX_ATTRIB_ARRAY_INTEGER() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_INTEGER;
+		}
+
+		MAX_ARRAY_TEXTURE_LAYERS() {
+			return this.handle.MAX_ARRAY_TEXTURE_LAYERS;
+		}
+
+		MIN_PROGRAM_TEXEL_OFFSET() {
+			return this.handle.MIN_PROGRAM_TEXEL_OFFSET;
+		}
+
+		MAX_PROGRAM_TEXEL_OFFSET() {
+			return this.handle.MAX_PROGRAM_TEXEL_OFFSET;
+		}
+
+		MAX_VARYING_COMPONENTS() {
+			return this.handle.MAX_VARYING_COMPONENTS;
+		}
+
+		TEXTURE_2D_ARRAY() {
+			return this.handle.TEXTURE_2D_ARRAY;
+		}
+
+		TEXTURE_BINDING_2D_ARRAY() {
+			return this.handle.TEXTURE_BINDING_2D_ARRAY;
+		}
+
+		R11F_G11F_B10F() {
+			return this.handle.R11F_G11F_B10F;
+		}
+
+		UNSIGNED_INT_10F_11F_11F_REV() {
+			return this.handle.UNSIGNED_INT_10F_11F_11F_REV;
+		}
+
+		RGB9_E5() {
+			return this.handle.RGB9_E5;
+		}
+
+		UNSIGNED_INT_5_9_9_9_REV() {
+			return this.handle.UNSIGNED_INT_5_9_9_9_REV;
+		}
+
+		TRANSFORM_FEEDBACK_BUFFER_MODE() {
+			return this.handle.TRANSFORM_FEEDBACK_BUFFER_MODE;
+		}
+
+		MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS() {
+			return this.handle.MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS;
+		}
+
+		TRANSFORM_FEEDBACK_VARYINGS() {
+			return this.handle.TRANSFORM_FEEDBACK_VARYINGS;
+		}
+
+		TRANSFORM_FEEDBACK_BUFFER_START() {
+			return this.handle.TRANSFORM_FEEDBACK_BUFFER_START;
+		}
+
+		TRANSFORM_FEEDBACK_BUFFER_SIZE() {
+			return this.handle.TRANSFORM_FEEDBACK_BUFFER_SIZE;
+		}
+
+		TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN() {
+			return this.handle.TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN;
+		}
+
+		RASTERIZER_DISCARD() {
+			return this.handle.RASTERIZER_DISCARD;
+		}
+
+		MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS() {
+			return this.handle.MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS;
+		}
+
+		MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS() {
+			return this.handle.MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS;
+		}
+
+		INTERLEAVED_ATTRIBS() {
+			return this.handle.INTERLEAVED_ATTRIBS;
+		}
+
+		SEPARATE_ATTRIBS() {
+			return this.handle.SEPARATE_ATTRIBS;
+		}
+
+		TRANSFORM_FEEDBACK_BUFFER() {
+			return this.handle.TRANSFORM_FEEDBACK_BUFFER;
+		}
+
+		TRANSFORM_FEEDBACK_BUFFER_BINDING() {
+			return this.handle.TRANSFORM_FEEDBACK_BUFFER_BINDING;
+		}
+
+		RGBA32UI() {
+			return this.handle.RGBA32UI;
+		}
+
+		RGB32UI() {
+			return this.handle.RGB32UI;
+		}
+
+		RGBA16UI() {
+			return this.handle.RGBA16UI;
+		}
+
+		RGB16UI() {
+			return this.handle.RGB16UI;
+		}
+
+		RGBA8UI() {
+			return this.handle.RGBA8UI;
+		}
+
+		RGB8UI() {
+			return this.handle.RGB8UI;
+		}
+
+		RGBA32I() {
+			return this.handle.RGBA32I;
+		}
+
+		RGB32I() {
+			return this.handle.RGB32I;
+		}
+
+		RGBA16I() {
+			return this.handle.RGBA16I;
+		}
+
+		RGB16I() {
+			return this.handle.RGB16I;
+		}
+
+		RGBA8I() {
+			return this.handle.RGBA8I;
+		}
+
+		RGB8I() {
+			return this.handle.RGB8I;
+		}
+
+		RED_INTEGER() {
+			return this.handle.RED_INTEGER;
+		}
+
+		RGB_INTEGER() {
+			return this.handle.RGB_INTEGER;
+		}
+
+		RGBA_INTEGER() {
+			return this.handle.RGBA_INTEGER;
+		}
+
+		SAMPLER_2D_ARRAY() {
+			return this.handle.SAMPLER_2D_ARRAY;
+		}
+
+		SAMPLER_2D_ARRAY_SHADOW() {
+			return this.handle.SAMPLER_2D_ARRAY_SHADOW;
+		}
+
+		SAMPLER_CUBE_SHADOW() {
+			return this.handle.SAMPLER_CUBE_SHADOW;
+		}
+
+		UNSIGNED_INT_VEC2() {
+			return this.handle.UNSIGNED_INT_VEC2;
+		}
+
+		UNSIGNED_INT_VEC3() {
+			return this.handle.UNSIGNED_INT_VEC3;
+		}
+
+		UNSIGNED_INT_VEC4() {
+			return this.handle.UNSIGNED_INT_VEC4;
+		}
+
+		INT_SAMPLER_2D() {
+			return this.handle.INT_SAMPLER_2D;
+		}
+
+		INT_SAMPLER_3D() {
+			return this.handle.INT_SAMPLER_3D;
+		}
+
+		INT_SAMPLER_CUBE() {
+			return this.handle.INT_SAMPLER_CUBE;
+		}
+
+		INT_SAMPLER_2D_ARRAY() {
+			return this.handle.INT_SAMPLER_2D_ARRAY;
+		}
+
+		UNSIGNED_INT_SAMPLER_2D() {
+			return this.handle.UNSIGNED_INT_SAMPLER_2D;
+		}
+
+		UNSIGNED_INT_SAMPLER_3D() {
+			return this.handle.UNSIGNED_INT_SAMPLER_3D;
+		}
+
+		UNSIGNED_INT_SAMPLER_CUBE() {
+			return this.handle.UNSIGNED_INT_SAMPLER_CUBE;
+		}
+
+		UNSIGNED_INT_SAMPLER_2D_ARRAY() {
+			return this.handle.UNSIGNED_INT_SAMPLER_2D_ARRAY;
+		}
+
+		DEPTH_COMPONENT32F() {
+			return this.handle.DEPTH_COMPONENT32F;
+		}
+
+		DEPTH32F_STENCIL8() {
+			return this.handle.DEPTH32F_STENCIL8;
+		}
+
+		FLOAT_32_UNSIGNED_INT_24_8_REV() {
+			return this.handle.FLOAT_32_UNSIGNED_INT_24_8_REV;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_RED_SIZE() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_RED_SIZE;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_GREEN_SIZE() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_GREEN_SIZE;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_BLUE_SIZE() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_BLUE_SIZE;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_ALPHA_SIZE() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_ALPHA_SIZE;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE;
+		}
+
+		FRAMEBUFFER_DEFAULT() {
+			return this.handle.FRAMEBUFFER_DEFAULT;
+		}
+
+		UNSIGNED_INT_24_8() {
+			return this.handle.UNSIGNED_INT_24_8;
+		}
+
+		DEPTH24_STENCIL8() {
+			return this.handle.DEPTH24_STENCIL8;
+		}
+
+		UNSIGNED_NORMALIZED() {
+			return this.handle.UNSIGNED_NORMALIZED;
+		}
+
+		DRAW_FRAMEBUFFER_BINDING() {
+			return this.handle.DRAW_FRAMEBUFFER_BINDING;
+		}
+
+		READ_FRAMEBUFFER() {
+			return this.handle.READ_FRAMEBUFFER;
+		}
+
+		DRAW_FRAMEBUFFER() {
+			return this.handle.DRAW_FRAMEBUFFER;
+		}
+
+		READ_FRAMEBUFFER_BINDING() {
+			return this.handle.READ_FRAMEBUFFER_BINDING;
+		}
+
+		RENDERBUFFER_SAMPLES() {
+			return this.handle.RENDERBUFFER_SAMPLES;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_TEXTURE_LAYER() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_TEXTURE_LAYER;
+		}
+
+		MAX_COLOR_ATTACHMENTS() {
+			return this.handle.MAX_COLOR_ATTACHMENTS;
+		}
+
+		COLOR_ATTACHMENT1() {
+			return this.handle.COLOR_ATTACHMENT1;
+		}
+
+		COLOR_ATTACHMENT2() {
+			return this.handle.COLOR_ATTACHMENT2;
+		}
+
+		COLOR_ATTACHMENT3() {
+			return this.handle.COLOR_ATTACHMENT3;
+		}
+
+		COLOR_ATTACHMENT4() {
+			return this.handle.COLOR_ATTACHMENT4;
+		}
+
+		COLOR_ATTACHMENT5() {
+			return this.handle.COLOR_ATTACHMENT5;
+		}
+
+		COLOR_ATTACHMENT6() {
+			return this.handle.COLOR_ATTACHMENT6;
+		}
+
+		COLOR_ATTACHMENT7() {
+			return this.handle.COLOR_ATTACHMENT7;
+		}
+
+		COLOR_ATTACHMENT8() {
+			return this.handle.COLOR_ATTACHMENT8;
+		}
+
+		COLOR_ATTACHMENT9() {
+			return this.handle.COLOR_ATTACHMENT9;
+		}
+
+		COLOR_ATTACHMENT10() {
+			return this.handle.COLOR_ATTACHMENT10;
+		}
+
+		COLOR_ATTACHMENT11() {
+			return this.handle.COLOR_ATTACHMENT11;
+		}
+
+		COLOR_ATTACHMENT12() {
+			return this.handle.COLOR_ATTACHMENT12;
+		}
+
+		COLOR_ATTACHMENT13() {
+			return this.handle.COLOR_ATTACHMENT13;
+		}
+
+		COLOR_ATTACHMENT14() {
+			return this.handle.COLOR_ATTACHMENT14;
+		}
+
+		COLOR_ATTACHMENT15() {
+			return this.handle.COLOR_ATTACHMENT15;
+		}
+
+		FRAMEBUFFER_INCOMPLETE_MULTISAMPLE() {
+			return this.handle.FRAMEBUFFER_INCOMPLETE_MULTISAMPLE;
+		}
+
+		MAX_SAMPLES() {
+			return this.handle.MAX_SAMPLES;
+		}
+
+		HALF_FLOAT() {
+			return this.handle.HALF_FLOAT;
+		}
+
+		RG() {
+			return this.handle.RG;
+		}
+
+		RG_INTEGER() {
+			return this.handle.RG_INTEGER;
+		}
+
+		R8() {
+			return this.handle.R8;
+		}
+
+		RG8() {
+			return this.handle.RG8;
+		}
+
+		R16F() {
+			return this.handle.R16F;
+		}
+
+		R32F() {
+			return this.handle.R32F;
+		}
+
+		RG16F() {
+			return this.handle.RG16F;
+		}
+
+		RG32F() {
+			return this.handle.RG32F;
+		}
+
+		R8I() {
+			return this.handle.R8I;
+		}
+
+		R8UI() {
+			return this.handle.R8UI;
+		}
+
+		R16I() {
+			return this.handle.R16I;
+		}
+
+		R16UI() {
+			return this.handle.R16UI;
+		}
+
+		R32I() {
+			return this.handle.R32I;
+		}
+
+		R32UI() {
+			return this.handle.R32UI;
+		}
+
+		RG8I() {
+			return this.handle.RG8I;
+		}
+
+		RG8UI() {
+			return this.handle.RG8UI;
+		}
+
+		RG16I() {
+			return this.handle.RG16I;
+		}
+
+		RG16UI() {
+			return this.handle.RG16UI;
+		}
+
+		RG32I() {
+			return this.handle.RG32I;
+		}
+
+		RG32UI() {
+			return this.handle.RG32UI;
+		}
+
+		VERTEX_ARRAY_BINDING() {
+			return this.handle.VERTEX_ARRAY_BINDING;
+		}
+
+		R8_SNORM() {
+			return this.handle.R8_SNORM;
+		}
+
+		RG8_SNORM() {
+			return this.handle.RG8_SNORM;
+		}
+
+		RGB8_SNORM() {
+			return this.handle.RGB8_SNORM;
+		}
+
+		RGBA8_SNORM() {
+			return this.handle.RGBA8_SNORM;
+		}
+
+		SIGNED_NORMALIZED() {
+			return this.handle.SIGNED_NORMALIZED;
+		}
+
+		COPY_READ_BUFFER() {
+			return this.handle.COPY_READ_BUFFER;
+		}
+
+		COPY_WRITE_BUFFER() {
+			return this.handle.COPY_WRITE_BUFFER;
+		}
+
+		COPY_READ_BUFFER_BINDING() {
+			return this.handle.COPY_READ_BUFFER_BINDING;
+		}
+
+		COPY_WRITE_BUFFER_BINDING() {
+			return this.handle.COPY_WRITE_BUFFER_BINDING;
+		}
+
+		UNIFORM_BUFFER() {
+			return this.handle.UNIFORM_BUFFER;
+		}
+
+		UNIFORM_BUFFER_BINDING() {
+			return this.handle.UNIFORM_BUFFER_BINDING;
+		}
+
+		UNIFORM_BUFFER_START() {
+			return this.handle.UNIFORM_BUFFER_START;
+		}
+
+		UNIFORM_BUFFER_SIZE() {
+			return this.handle.UNIFORM_BUFFER_SIZE;
+		}
+
+		MAX_VERTEX_UNIFORM_BLOCKS() {
+			return this.handle.MAX_VERTEX_UNIFORM_BLOCKS;
+		}
+
+		MAX_FRAGMENT_UNIFORM_BLOCKS() {
+			return this.handle.MAX_FRAGMENT_UNIFORM_BLOCKS;
+		}
+
+		MAX_COMBINED_UNIFORM_BLOCKS() {
+			return this.handle.MAX_COMBINED_UNIFORM_BLOCKS;
+		}
+
+		MAX_UNIFORM_BUFFER_BINDINGS() {
+			return this.handle.MAX_UNIFORM_BUFFER_BINDINGS;
+		}
+
+		MAX_UNIFORM_BLOCK_SIZE() {
+			return this.handle.MAX_UNIFORM_BLOCK_SIZE;
+		}
+
+		MAX_COMBINED_VERTEX_UNIFORM_COMPONENTS() {
+			return this.handle.MAX_COMBINED_VERTEX_UNIFORM_COMPONENTS;
+		}
+
+		MAX_COMBINED_FRAGMENT_UNIFORM_COMPONENTS() {
+			return this.handle.MAX_COMBINED_FRAGMENT_UNIFORM_COMPONENTS;
+		}
+
+		UNIFORM_BUFFER_OFFSET_ALIGNMENT() {
+			return this.handle.UNIFORM_BUFFER_OFFSET_ALIGNMENT;
+		}
+
+		ACTIVE_UNIFORM_BLOCKS() {
+			return this.handle.ACTIVE_UNIFORM_BLOCKS;
+		}
+
+		UNIFORM_TYPE() {
+			return this.handle.UNIFORM_TYPE;
+		}
+
+		UNIFORM_SIZE() {
+			return this.handle.UNIFORM_SIZE;
+		}
+
+		UNIFORM_BLOCK_INDEX() {
+			return this.handle.UNIFORM_BLOCK_INDEX;
+		}
+
+		UNIFORM_OFFSET() {
+			return this.handle.UNIFORM_OFFSET;
+		}
+
+		UNIFORM_ARRAY_STRIDE() {
+			return this.handle.UNIFORM_ARRAY_STRIDE;
+		}
+
+		UNIFORM_MATRIX_STRIDE() {
+			return this.handle.UNIFORM_MATRIX_STRIDE;
+		}
+
+		UNIFORM_IS_ROW_MAJOR() {
+			return this.handle.UNIFORM_IS_ROW_MAJOR;
+		}
+
+		UNIFORM_BLOCK_BINDING() {
+			return this.handle.UNIFORM_BLOCK_BINDING;
+		}
+
+		UNIFORM_BLOCK_DATA_SIZE() {
+			return this.handle.UNIFORM_BLOCK_DATA_SIZE;
+		}
+
+		UNIFORM_BLOCK_ACTIVE_UNIFORMS() {
+			return this.handle.UNIFORM_BLOCK_ACTIVE_UNIFORMS;
+		}
+
+		UNIFORM_BLOCK_ACTIVE_UNIFORM_INDICES() {
+			return this.handle.UNIFORM_BLOCK_ACTIVE_UNIFORM_INDICES;
+		}
+
+		UNIFORM_BLOCK_REFERENCED_BY_VERTEX_SHADER() {
+			return this.handle.UNIFORM_BLOCK_REFERENCED_BY_VERTEX_SHADER;
+		}
+
+		UNIFORM_BLOCK_REFERENCED_BY_FRAGMENT_SHADER() {
+			return this.handle.UNIFORM_BLOCK_REFERENCED_BY_FRAGMENT_SHADER;
+		}
+
+		INVALID_INDEX() {
+			return this.handle.INVALID_INDEX;
+		}
+
+		MAX_VERTEX_OUTPUT_COMPONENTS() {
+			return this.handle.MAX_VERTEX_OUTPUT_COMPONENTS;
+		}
+
+		MAX_FRAGMENT_INPUT_COMPONENTS() {
+			return this.handle.MAX_FRAGMENT_INPUT_COMPONENTS;
+		}
+
+		MAX_SERVER_WAIT_TIMEOUT() {
+			return this.handle.MAX_SERVER_WAIT_TIMEOUT;
+		}
+
+		OBJECT_TYPE() {
+			return this.handle.OBJECT_TYPE;
+		}
+
+		SYNC_CONDITION() {
+			return this.handle.SYNC_CONDITION;
+		}
+
+		SYNC_STATUS() {
+			return this.handle.SYNC_STATUS;
+		}
+
+		SYNC_FLAGS() {
+			return this.handle.SYNC_FLAGS;
+		}
+
+		SYNC_FENCE() {
+			return this.handle.SYNC_FENCE;
+		}
+
+		SYNC_GPU_COMMANDS_COMPLETE() {
+			return this.handle.SYNC_GPU_COMMANDS_COMPLETE;
+		}
+
+		UNSIGNALED() {
+			return this.handle.UNSIGNALED;
+		}
+
+		SIGNALED() {
+			return this.handle.SIGNALED;
+		}
+
+		ALREADY_SIGNALED() {
+			return this.handle.ALREADY_SIGNALED;
+		}
+
+		TIMEOUT_EXPIRED() {
+			return this.handle.TIMEOUT_EXPIRED;
+		}
+
+		CONDITION_SATISFIED() {
+			return this.handle.CONDITION_SATISFIED;
+		}
+
+		WAIT_FAILED() {
+			return this.handle.WAIT_FAILED;
+		}
+
+		SYNC_FLUSH_COMMANDS_BIT() {
+			return this.handle.SYNC_FLUSH_COMMANDS_BIT;
+		}
+
+		VERTEX_ATTRIB_ARRAY_DIVISOR() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_DIVISOR;
+		}
+
+		ANY_SAMPLES_PASSED() {
+			return this.handle.ANY_SAMPLES_PASSED;
+		}
+
+		ANY_SAMPLES_PASSED_CONSERVATIVE() {
+			return this.handle.ANY_SAMPLES_PASSED_CONSERVATIVE;
+		}
+
+		SAMPLER_BINDING() {
+			return this.handle.SAMPLER_BINDING;
+		}
+
+		RGB10_A2UI() {
+			return this.handle.RGB10_A2UI;
+		}
+
+		INT_2_10_10_10_REV() {
+			return this.handle.INT_2_10_10_10_REV;
+		}
+
+		TRANSFORM_FEEDBACK() {
+			return this.handle.TRANSFORM_FEEDBACK;
+		}
+
+		TRANSFORM_FEEDBACK_PAUSED() {
+			return this.handle.TRANSFORM_FEEDBACK_PAUSED;
+		}
+
+		TRANSFORM_FEEDBACK_ACTIVE() {
+			return this.handle.TRANSFORM_FEEDBACK_ACTIVE;
+		}
+
+		TRANSFORM_FEEDBACK_BINDING() {
+			return this.handle.TRANSFORM_FEEDBACK_BINDING;
+		}
+
+		TEXTURE_IMMUTABLE_FORMAT() {
+			return this.handle.TEXTURE_IMMUTABLE_FORMAT;
+		}
+
+		MAX_ELEMENT_INDEX() {
+			return this.handle.MAX_ELEMENT_INDEX;
+		}
+
+		TEXTURE_IMMUTABLE_LEVELS() {
+			return this.handle.TEXTURE_IMMUTABLE_LEVELS;
+		}
+
+		TIMEOUT_IGNORED() {
+			return this.handle.TIMEOUT_IGNORED;
+		}
+
+		MAX_CLIENT_WAIT_TIMEOUT_WEBGL() {
+			return this.handle.MAX_CLIENT_WAIT_TIMEOUT_WEBGL;
+		}
+}
+
+class dom_C_WebGL2RenderingContextOverloads extends dom_base {
+	constructor() {
+		super();
+		this.handle = null;
+	}
+
+		KindOfWebGL2RenderingContextOverloads() {
+			
+		}
+
+		AsWebGL2RenderingContext() {
+			return dom_is(this, "WebGL2RenderingContext") ? this : null;
+		}
+
+		BufferData(p0, p1, p2) {
+			this.handle.bufferData(p0, p1, p2);
+		}
+
+		BufferDataFloat32(p0, p1, p2) {
+			this.handle.bufferData(p0, Float32Array.from(p1 || []), p2);
+		}
+
+		BufferDataUint16(p0, p1, p2) {
+			this.handle.bufferData(p0, Uint16Array.from(p1 || []), p2);
+		}
+
+		BufferDataUint32(p0, p1, p2) {
+			this.handle.bufferData(p0, Uint32Array.from(p1 || []), p2);
+		}
+
+		BufferDataUint8(p0, p1, p2) {
+			this.handle.bufferData(p0, Uint8Array.from(p1 || []), p2);
+		}
+
+		BufferDataInt32(p0, p1, p2) {
+			this.handle.bufferData(p0, Int32Array.from(p1 || []), p2);
+		}
+
+		BufferSubDataFloat32(p0, p1, p2) {
+			this.handle.bufferSubData(p0, p1, Float32Array.from(p2 || []));
+		}
+
+		BufferSubDataUint16(p0, p1, p2) {
+			this.handle.bufferSubData(p0, p1, Uint16Array.from(p2 || []));
+		}
+
+		BufferSubDataUint32(p0, p1, p2) {
+			this.handle.bufferSubData(p0, p1, Uint32Array.from(p2 || []));
+		}
+
+		BufferSubDataUint8(p0, p1, p2) {
+			this.handle.bufferSubData(p0, p1, Uint8Array.from(p2 || []));
+		}
+
+		BufferSubDataInt32(p0, p1, p2) {
+			this.handle.bufferSubData(p0, p1, Int32Array.from(p2 || []));
+		}
+
+		CompressedTexImage2D(p0, p1, p2, p3, p4, p5, p6, p7) {
+			this.handle.compressedTexImage2D(p0, p1, p2, p3, p4, p5, p6, p7);
+		}
+
+		CompressedTexImage2DFloat32(p0, p1, p2, p3, p4, p5, p6, ...p7) {
+			if (p7.length === 1 && Array.isArray(p7[0]) && p7[0].length === 0) {
+				p7 = [];
+			}
+			
+			this.handle.compressedTexImage2D(p0, p1, p2, p3, p4, p5, Float32Array.from(p6 || []), ...p7.map((item) => item));
+		}
+
+		CompressedTexImage2DUint16(p0, p1, p2, p3, p4, p5, p6, ...p7) {
+			if (p7.length === 1 && Array.isArray(p7[0]) && p7[0].length === 0) {
+				p7 = [];
+			}
+			
+			this.handle.compressedTexImage2D(p0, p1, p2, p3, p4, p5, Uint16Array.from(p6 || []), ...p7.map((item) => item));
+		}
+
+		CompressedTexImage2DUint32(p0, p1, p2, p3, p4, p5, p6, ...p7) {
+			if (p7.length === 1 && Array.isArray(p7[0]) && p7[0].length === 0) {
+				p7 = [];
+			}
+			
+			this.handle.compressedTexImage2D(p0, p1, p2, p3, p4, p5, Uint32Array.from(p6 || []), ...p7.map((item) => item));
+		}
+
+		CompressedTexImage2DUint8(p0, p1, p2, p3, p4, p5, p6, ...p7) {
+			if (p7.length === 1 && Array.isArray(p7[0]) && p7[0].length === 0) {
+				p7 = [];
+			}
+			
+			this.handle.compressedTexImage2D(p0, p1, p2, p3, p4, p5, Uint8Array.from(p6 || []), ...p7.map((item) => item));
+		}
+
+		CompressedTexImage2DInt32(p0, p1, p2, p3, p4, p5, p6, ...p7) {
+			if (p7.length === 1 && Array.isArray(p7[0]) && p7[0].length === 0) {
+				p7 = [];
+			}
+			
+			this.handle.compressedTexImage2D(p0, p1, p2, p3, p4, p5, Int32Array.from(p6 || []), ...p7.map((item) => item));
+		}
+
+		CompressedTexSubImage2D(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.compressedTexSubImage2D(p0, p1, p2, p3, p4, p5, p6, p7, p8);
+		}
+
+		CompressedTexSubImage2DFloat32(p0, p1, p2, p3, p4, p5, p6, p7, ...p8) {
+			if (p8.length === 1 && Array.isArray(p8[0]) && p8[0].length === 0) {
+				p8 = [];
+			}
+			
+			this.handle.compressedTexSubImage2D(p0, p1, p2, p3, p4, p5, p6, Float32Array.from(p7 || []), ...p8.map((item) => item));
+		}
+
+		CompressedTexSubImage2DUint16(p0, p1, p2, p3, p4, p5, p6, p7, ...p8) {
+			if (p8.length === 1 && Array.isArray(p8[0]) && p8[0].length === 0) {
+				p8 = [];
+			}
+			
+			this.handle.compressedTexSubImage2D(p0, p1, p2, p3, p4, p5, p6, Uint16Array.from(p7 || []), ...p8.map((item) => item));
+		}
+
+		CompressedTexSubImage2DUint32(p0, p1, p2, p3, p4, p5, p6, p7, ...p8) {
+			if (p8.length === 1 && Array.isArray(p8[0]) && p8[0].length === 0) {
+				p8 = [];
+			}
+			
+			this.handle.compressedTexSubImage2D(p0, p1, p2, p3, p4, p5, p6, Uint32Array.from(p7 || []), ...p8.map((item) => item));
+		}
+
+		CompressedTexSubImage2DUint8(p0, p1, p2, p3, p4, p5, p6, p7, ...p8) {
+			if (p8.length === 1 && Array.isArray(p8[0]) && p8[0].length === 0) {
+				p8 = [];
+			}
+			
+			this.handle.compressedTexSubImage2D(p0, p1, p2, p3, p4, p5, p6, Uint8Array.from(p7 || []), ...p8.map((item) => item));
+		}
+
+		CompressedTexSubImage2DInt32(p0, p1, p2, p3, p4, p5, p6, p7, ...p8) {
+			if (p8.length === 1 && Array.isArray(p8[0]) && p8[0].length === 0) {
+				p8 = [];
+			}
+			
+			this.handle.compressedTexSubImage2D(p0, p1, p2, p3, p4, p5, p6, Int32Array.from(p7 || []), ...p8.map((item) => item));
+		}
+
+		ReadPixelsFloat32(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.readPixels(p0, p1, p2, p3, p4, p5, Float32Array.from(p6 || []));
+		}
+
+		ReadPixelsUint16(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.readPixels(p0, p1, p2, p3, p4, p5, Uint16Array.from(p6 || []));
+		}
+
+		ReadPixelsUint32(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.readPixels(p0, p1, p2, p3, p4, p5, Uint32Array.from(p6 || []));
+		}
+
+		ReadPixelsUint8(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.readPixels(p0, p1, p2, p3, p4, p5, Uint8Array.from(p6 || []));
+		}
+
+		ReadPixelsInt32(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.readPixels(p0, p1, p2, p3, p4, p5, Int32Array.from(p6 || []));
+		}
+
+		ReadPixels(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.readPixels(p0, p1, p2, p3, p4, p5, p6);
+		}
+
+		TexImage2DFloat32(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Float32Array.from(p8 || []));
+		}
+
+		TexImage2DUint16(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Uint16Array.from(p8 || []));
+		}
+
+		TexImage2DUint32(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Uint32Array.from(p8 || []));
+		}
+
+		TexImage2DUint8(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Uint8Array.from(p8 || []));
+		}
+
+		TexImage2DInt32(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Int32Array.from(p8 || []));
+		}
+
+		TexImage2D(p0, p1, p2, p3, p4, p5) {
+			this.handle.texImage2D(p0, p1, p2, p3, p4, dom_unwrapAny(p5));
+		}
+
+		TexSubImage2DFloat32(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texSubImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Float32Array.from(p8 || []));
+		}
+
+		TexSubImage2DUint16(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texSubImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Uint16Array.from(p8 || []));
+		}
+
+		TexSubImage2DUint32(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texSubImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Uint32Array.from(p8 || []));
+		}
+
+		TexSubImage2DUint8(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texSubImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Uint8Array.from(p8 || []));
+		}
+
+		TexSubImage2DInt32(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texSubImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Int32Array.from(p8 || []));
+		}
+
+		TexSubImage2D(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.texSubImage2D(p0, p1, p2, p3, p4, p5, dom_unwrapAny(p6));
+		}
+
+		Uniform1fv(p0, p1, ...p2) {
+			if (p2.length === 1 && Array.isArray(p2[0]) && p2[0].length === 0) {
+				p2 = [];
+			}
+			
+			this.handle.uniform1fv(dom_unwrapAny(p0), Float32Array.from(p1 || []), ...p2.map((item) => item));
+		}
+
+		Uniform1iv(p0, p1, ...p2) {
+			if (p2.length === 1 && Array.isArray(p2[0]) && p2[0].length === 0) {
+				p2 = [];
+			}
+			
+			this.handle.uniform1iv(dom_unwrapAny(p0), Int32Array.from(p1 || []), ...p2.map((item) => item));
+		}
+
+		Uniform2fv(p0, p1, ...p2) {
+			if (p2.length === 1 && Array.isArray(p2[0]) && p2[0].length === 0) {
+				p2 = [];
+			}
+			
+			this.handle.uniform2fv(dom_unwrapAny(p0), Float32Array.from(p1 || []), ...p2.map((item) => item));
+		}
+
+		Uniform2iv(p0, p1, ...p2) {
+			if (p2.length === 1 && Array.isArray(p2[0]) && p2[0].length === 0) {
+				p2 = [];
+			}
+			
+			this.handle.uniform2iv(dom_unwrapAny(p0), Int32Array.from(p1 || []), ...p2.map((item) => item));
+		}
+
+		Uniform3fv(p0, p1, ...p2) {
+			if (p2.length === 1 && Array.isArray(p2[0]) && p2[0].length === 0) {
+				p2 = [];
+			}
+			
+			this.handle.uniform3fv(dom_unwrapAny(p0), Float32Array.from(p1 || []), ...p2.map((item) => item));
+		}
+
+		Uniform3iv(p0, p1, ...p2) {
+			if (p2.length === 1 && Array.isArray(p2[0]) && p2[0].length === 0) {
+				p2 = [];
+			}
+			
+			this.handle.uniform3iv(dom_unwrapAny(p0), Int32Array.from(p1 || []), ...p2.map((item) => item));
+		}
+
+		Uniform4fv(p0, p1, ...p2) {
+			if (p2.length === 1 && Array.isArray(p2[0]) && p2[0].length === 0) {
+				p2 = [];
+			}
+			
+			this.handle.uniform4fv(dom_unwrapAny(p0), Float32Array.from(p1 || []), ...p2.map((item) => item));
+		}
+
+		Uniform4iv(p0, p1, ...p2) {
+			if (p2.length === 1 && Array.isArray(p2[0]) && p2[0].length === 0) {
+				p2 = [];
+			}
+			
+			this.handle.uniform4iv(dom_unwrapAny(p0), Int32Array.from(p1 || []), ...p2.map((item) => item));
+		}
+
+		UniformMatrix2fv(p0, p1, p2, ...p3) {
+			if (p3.length === 1 && Array.isArray(p3[0]) && p3[0].length === 0) {
+				p3 = [];
+			}
+			
+			this.handle.uniformMatrix2fv(dom_unwrapAny(p0), p1, Float32Array.from(p2 || []), ...p3.map((item) => item));
+		}
+
+		UniformMatrix3fv(p0, p1, p2, ...p3) {
+			if (p3.length === 1 && Array.isArray(p3[0]) && p3[0].length === 0) {
+				p3 = [];
+			}
+			
+			this.handle.uniformMatrix3fv(dom_unwrapAny(p0), p1, Float32Array.from(p2 || []), ...p3.map((item) => item));
+		}
+
+		UniformMatrix4fv(p0, p1, p2, ...p3) {
+			if (p3.length === 1 && Array.isArray(p3[0]) && p3[0].length === 0) {
+				p3 = [];
+			}
+			
+			this.handle.uniformMatrix4fv(dom_unwrapAny(p0), p1, Float32Array.from(p2 || []), ...p3.map((item) => item));
+		}
+}
+
+class dom_C_WebGLRenderingContextBase extends dom_base {
+	constructor() {
+		super();
+		this.handle = null;
+	}
+
+		KindOfWebGLRenderingContextBase() {
+			
+		}
+
+		AsWebGL2RenderingContext() {
+			return dom_is(this, "WebGL2RenderingContext") ? this : null;
+		}
+
+		AsWebGLRenderingContext() {
+			return dom_is(this, "WebGLRenderingContext") ? this : null;
+		}
+
+		ActiveTexture(p0) {
+			this.handle.activeTexture(p0);
+		}
+
+		AttachShader(p0, p1) {
+			this.handle.attachShader(dom_unwrapAny(p0), dom_unwrapAny(p1));
+		}
+
+		BindAttribLocation(p0, p1, p2) {
+			this.handle.bindAttribLocation(dom_unwrapAny(p0), p1, p2);
+		}
+
+		BindBuffer(p0, p1) {
+			this.handle.bindBuffer(p0, dom_unwrapAny(p1));
+		}
+
+		BindFramebuffer(p0, p1) {
+			this.handle.bindFramebuffer(p0, dom_unwrapAny(p1));
+		}
+
+		BindRenderbuffer(p0, p1) {
+			this.handle.bindRenderbuffer(p0, dom_unwrapAny(p1));
+		}
+
+		BindTexture(p0, p1) {
+			this.handle.bindTexture(p0, dom_unwrapAny(p1));
+		}
+
+		BlendColor(p0, p1, p2, p3) {
+			this.handle.blendColor(p0, p1, p2, p3);
+		}
+
+		BlendEquation(p0) {
+			this.handle.blendEquation(p0);
+		}
+
+		BlendEquationSeparate(p0, p1) {
+			this.handle.blendEquationSeparate(p0, p1);
+		}
+
+		BlendFunc(p0, p1) {
+			this.handle.blendFunc(p0, p1);
+		}
+
+		BlendFuncSeparate(p0, p1, p2, p3) {
+			this.handle.blendFuncSeparate(p0, p1, p2, p3);
+		}
+
+		CheckFramebufferStatus(p0) {
+			return this.handle.checkFramebufferStatus(p0);
+		}
+
+		Clear(p0) {
+			this.handle.clear(p0);
+		}
+
+		ClearColor(p0, p1, p2, p3) {
+			this.handle.clearColor(p0, p1, p2, p3);
+		}
+
+		ClearDepth(p0) {
+			this.handle.clearDepth(p0);
+		}
+
+		ClearStencil(p0) {
+			this.handle.clearStencil(p0);
+		}
+
+		ColorMask(p0, p1, p2, p3) {
+			this.handle.colorMask(p0, p1, p2, p3);
+		}
+
+		CompileShader(p0) {
+			this.handle.compileShader(dom_unwrapAny(p0));
+		}
+
+		CopyTexImage2D(p0, p1, p2, p3, p4, p5, p6, p7) {
+			this.handle.copyTexImage2D(p0, p1, p2, p3, p4, p5, p6, p7);
+		}
+
+		CopyTexSubImage2D(p0, p1, p2, p3, p4, p5, p6, p7) {
+			this.handle.copyTexSubImage2D(p0, p1, p2, p3, p4, p5, p6, p7);
+		}
+
+		CreateBuffer() {
+			return this.handle.createBuffer();
+		}
+
+		CreateFramebuffer() {
+			return this.handle.createFramebuffer();
+		}
+
+		CreateProgram() {
+			return this.handle.createProgram();
+		}
+
+		CreateRenderbuffer() {
+			return this.handle.createRenderbuffer();
+		}
+
+		CreateShader(p0) {
+			return this.handle.createShader(p0);
+		}
+
+		CreateTexture() {
+			return this.handle.createTexture();
+		}
+
+		CullFace(p0) {
+			this.handle.cullFace(p0);
+		}
+
+		DeleteBuffer(p0) {
+			this.handle.deleteBuffer(dom_unwrapAny(p0));
+		}
+
+		DeleteFramebuffer(p0) {
+			this.handle.deleteFramebuffer(dom_unwrapAny(p0));
+		}
+
+		DeleteProgram(p0) {
+			this.handle.deleteProgram(dom_unwrapAny(p0));
+		}
+
+		DeleteRenderbuffer(p0) {
+			this.handle.deleteRenderbuffer(dom_unwrapAny(p0));
+		}
+
+		DeleteShader(p0) {
+			this.handle.deleteShader(dom_unwrapAny(p0));
+		}
+
+		DeleteTexture(p0) {
+			this.handle.deleteTexture(dom_unwrapAny(p0));
+		}
+
+		DepthFunc(p0) {
+			this.handle.depthFunc(p0);
+		}
+
+		DepthMask(p0) {
+			this.handle.depthMask(p0);
+		}
+
+		DepthRange(p0, p1) {
+			this.handle.depthRange(p0, p1);
+		}
+
+		DetachShader(p0, p1) {
+			this.handle.detachShader(dom_unwrapAny(p0), dom_unwrapAny(p1));
+		}
+
+		Disable(p0) {
+			this.handle.disable(p0);
+		}
+
+		DisableVertexAttribArray(p0) {
+			this.handle.disableVertexAttribArray(p0);
+		}
+
+		DrawArrays(p0, p1, p2) {
+			this.handle.drawArrays(p0, p1, p2);
+		}
+
+		DrawElements(p0, p1, p2, p3) {
+			this.handle.drawElements(p0, p1, p2, p3);
+		}
+
+		Enable(p0) {
+			this.handle.enable(p0);
+		}
+
+		EnableVertexAttribArray(p0) {
+			this.handle.enableVertexAttribArray(p0);
+		}
+
+		Finish() {
+			this.handle.finish();
+		}
+
+		Flush() {
+			this.handle.flush();
+		}
+
+		FramebufferRenderbuffer(p0, p1, p2, p3) {
+			this.handle.framebufferRenderbuffer(p0, p1, p2, dom_unwrapAny(p3));
+		}
+
+		FramebufferTexture2D(p0, p1, p2, p3, p4) {
+			this.handle.framebufferTexture2D(p0, p1, p2, dom_unwrapAny(p3), p4);
+		}
+
+		FrontFace(p0) {
+			this.handle.frontFace(p0);
+		}
+
+		GenerateMipmap(p0) {
+			this.handle.generateMipmap(p0);
+		}
+
+		GetActiveAttrib(p0, p1) {
+			return dom_fromWebGLActiveInfo(this.handle.getActiveAttrib(dom_unwrapAny(p0), p1));
+		}
+
+		GetActiveUniform(p0, p1) {
+			return dom_fromWebGLActiveInfo(this.handle.getActiveUniform(dom_unwrapAny(p0), p1));
+		}
+
+		GetAttachedShaders(p0) {
+			return Array.from(this.handle.getAttachedShaders(dom_unwrapAny(p0)) || [], (item) => item);
+		}
+
+		GetAttribLocation(p0, p1) {
+			return this.handle.getAttribLocation(dom_unwrapAny(p0), p1);
+		}
+
+		GetBufferParameter(p0, p1) {
+			return this.handle.getBufferParameter(p0, p1);
+		}
+
+		GetContextAttributes() {
+			return dom_fromWebGLContextAttributes(this.handle.getContextAttributes());
+		}
+
+		GetError() {
+			return this.handle.getError();
+		}
+
+		GetExtension(p0) {
+			return dom_wrap(dom.ANGLE_instanced_arrays, this.handle.getExtension(p0));
+		}
+
+		GetExtensionANGLE_instanced_arrays() {
+			return dom_wrap(dom.ANGLE_instanced_arrays, this.handle.getExtension("ANGLE_instanced_arrays", ));
+		}
+
+		GetExtensionEXT_blend_minmax() {
+			return dom_fromEXT_blend_minmax(this.handle.getExtension("EXT_blend_minmax", ));
+		}
+
+		GetExtensionEXT_color_buffer_float() {
+			return this.handle.getExtension("EXT_color_buffer_float", );
+		}
+
+		GetExtensionEXT_color_buffer_half_float() {
+			return dom_fromEXT_color_buffer_half_float(this.handle.getExtension("EXT_color_buffer_half_float", ));
+		}
+
+		GetExtensionEXT_float_blend() {
+			return this.handle.getExtension("EXT_float_blend", );
+		}
+
+		GetExtensionEXT_frag_depth() {
+			return this.handle.getExtension("EXT_frag_depth", );
+		}
+
+		GetExtensionEXT_sRGB() {
+			return dom_fromEXT_sRGB(this.handle.getExtension("EXT_sRGB", ));
+		}
+
+		GetExtensionEXT_shader_texture_lod() {
+			return this.handle.getExtension("EXT_shader_texture_lod", );
+		}
+
+		GetExtensionEXT_texture_compression_bptc() {
+			return dom_fromEXT_texture_compression_bptc(this.handle.getExtension("EXT_texture_compression_bptc", ));
+		}
+
+		GetExtensionEXT_texture_compression_rgtc() {
+			return dom_fromEXT_texture_compression_rgtc(this.handle.getExtension("EXT_texture_compression_rgtc", ));
+		}
+
+		GetExtensionEXT_texture_filter_anisotropic() {
+			return dom_fromEXT_texture_filter_anisotropic(this.handle.getExtension("EXT_texture_filter_anisotropic", ));
+		}
+
+		GetExtensionKHR_parallel_shader_compile() {
+			return dom_fromKHR_parallel_shader_compile(this.handle.getExtension("KHR_parallel_shader_compile", ));
+		}
+
+		GetExtensionOES_element_index_uint() {
+			return this.handle.getExtension("OES_element_index_uint", );
+		}
+
+		GetExtensionOES_fbo_render_mipmap() {
+			return this.handle.getExtension("OES_fbo_render_mipmap", );
+		}
+
+		GetExtensionOES_standard_derivatives() {
+			return dom_fromOES_standard_derivatives(this.handle.getExtension("OES_standard_derivatives", ));
+		}
+
+		GetExtensionOES_texture_float() {
+			return this.handle.getExtension("OES_texture_float", );
+		}
+
+		GetExtensionOES_texture_float_linear() {
+			return this.handle.getExtension("OES_texture_float_linear", );
+		}
+
+		GetExtensionOES_texture_half_float() {
+			return dom_fromOES_texture_half_float(this.handle.getExtension("OES_texture_half_float", ));
+		}
+
+		GetExtensionOES_texture_half_float_linear() {
+			return this.handle.getExtension("OES_texture_half_float_linear", );
+		}
+
+		GetExtensionOES_vertex_array_object() {
+			return dom_wrap(dom.OES_vertex_array_object, this.handle.getExtension("OES_vertex_array_object", ));
+		}
+
+		GetExtensionOVR_multiview2() {
+			return dom_wrap(dom.OVR_multiview2, this.handle.getExtension("OVR_multiview2", ));
+		}
+
+		GetExtensionWEBGL_color_buffer_float() {
+			return dom_fromWEBGL_color_buffer_float(this.handle.getExtension("WEBGL_color_buffer_float", ));
+		}
+
+		GetExtensionWEBGL_compressed_texture_astc() {
+			return dom_wrap(dom.WEBGL_compressed_texture_astc, this.handle.getExtension("WEBGL_compressed_texture_astc", ));
+		}
+
+		GetExtensionWEBGL_compressed_texture_etc() {
+			return dom_fromWEBGL_compressed_texture_etc(this.handle.getExtension("WEBGL_compressed_texture_etc", ));
+		}
+
+		GetExtensionWEBGL_compressed_texture_etc1() {
+			return dom_fromWEBGL_compressed_texture_etc1(this.handle.getExtension("WEBGL_compressed_texture_etc1", ));
+		}
+
+		GetExtensionWEBGL_compressed_texture_pvrtc() {
+			return dom_fromWEBGL_compressed_texture_pvrtc(this.handle.getExtension("WEBGL_compressed_texture_pvrtc", ));
+		}
+
+		GetExtensionWEBGL_compressed_texture_s3tc() {
+			return dom_fromWEBGL_compressed_texture_s3tc(this.handle.getExtension("WEBGL_compressed_texture_s3tc", ));
+		}
+
+		GetExtensionWEBGL_compressed_texture_s3tc_srgb() {
+			return dom_fromWEBGL_compressed_texture_s3tc_srgb(this.handle.getExtension("WEBGL_compressed_texture_s3tc_srgb", ));
+		}
+
+		GetExtensionWEBGL_debug_renderer_info() {
+			return dom_fromWEBGL_debug_renderer_info(this.handle.getExtension("WEBGL_debug_renderer_info", ));
+		}
+
+		GetExtensionWEBGL_debug_shaders() {
+			return dom_wrap(dom.WEBGL_debug_shaders, this.handle.getExtension("WEBGL_debug_shaders", ));
+		}
+
+		GetExtensionWEBGL_depth_texture() {
+			return dom_fromWEBGL_depth_texture(this.handle.getExtension("WEBGL_depth_texture", ));
+		}
+
+		GetExtensionWEBGL_draw_buffers() {
+			return dom_wrap(dom.WEBGL_draw_buffers, this.handle.getExtension("WEBGL_draw_buffers", ));
+		}
+
+		GetExtensionWEBGL_lose_context() {
+			return dom_wrap(dom.WEBGL_lose_context, this.handle.getExtension("WEBGL_lose_context", ));
+		}
+
+		GetExtensionWEBGL_multi_draw() {
+			return dom_wrap(dom.WEBGL_multi_draw, this.handle.getExtension("WEBGL_multi_draw", ));
+		}
+
+		GetFramebufferAttachmentParameter(p0, p1, p2) {
+			return this.handle.getFramebufferAttachmentParameter(p0, p1, p2);
+		}
+
+		GetParameter(p0) {
+			return this.handle.getParameter(p0);
+		}
+
+		GetProgramInfoLog(p0) {
+			return this.handle.getProgramInfoLog(dom_unwrapAny(p0));
+		}
+
+		GetProgramParameter(p0, p1) {
+			return this.handle.getProgramParameter(dom_unwrapAny(p0), p1);
+		}
+
+		GetRenderbufferParameter(p0, p1) {
+			return this.handle.getRenderbufferParameter(p0, p1);
+		}
+
+		GetShaderInfoLog(p0) {
+			return this.handle.getShaderInfoLog(dom_unwrapAny(p0));
+		}
+
+		GetShaderParameter(p0, p1) {
+			return this.handle.getShaderParameter(dom_unwrapAny(p0), p1);
+		}
+
+		GetShaderPrecisionFormat(p0, p1) {
+			return dom_fromWebGLShaderPrecisionFormat(this.handle.getShaderPrecisionFormat(p0, p1));
+		}
+
+		GetShaderSource(p0) {
+			return this.handle.getShaderSource(dom_unwrapAny(p0));
+		}
+
+		GetSupportedExtensions() {
+			return Array.from(this.handle.getSupportedExtensions() || []);
+		}
+
+		GetTexParameter(p0, p1) {
+			return this.handle.getTexParameter(p0, p1);
+		}
+
+		GetUniform(p0, p1) {
+			return this.handle.getUniform(dom_unwrapAny(p0), dom_unwrapAny(p1));
+		}
+
+		GetUniformLocation(p0, p1) {
+			return this.handle.getUniformLocation(dom_unwrapAny(p0), p1);
+		}
+
+		GetVertexAttrib(p0, p1) {
+			return this.handle.getVertexAttrib(p0, p1);
+		}
+
+		GetVertexAttribOffset(p0, p1) {
+			return this.handle.getVertexAttribOffset(p0, p1);
+		}
+
+		Hint(p0, p1) {
+			this.handle.hint(p0, p1);
+		}
+
+		IsBuffer(p0) {
+			return this.handle.isBuffer(dom_unwrapAny(p0));
+		}
+
+		IsContextLost() {
+			return this.handle.isContextLost();
+		}
+
+		IsEnabled(p0) {
+			return this.handle.isEnabled(p0);
+		}
+
+		IsFramebuffer(p0) {
+			return this.handle.isFramebuffer(dom_unwrapAny(p0));
+		}
+
+		IsProgram(p0) {
+			return this.handle.isProgram(dom_unwrapAny(p0));
+		}
+
+		IsRenderbuffer(p0) {
+			return this.handle.isRenderbuffer(dom_unwrapAny(p0));
+		}
+
+		IsShader(p0) {
+			return this.handle.isShader(dom_unwrapAny(p0));
+		}
+
+		IsTexture(p0) {
+			return this.handle.isTexture(dom_unwrapAny(p0));
+		}
+
+		LineWidth(p0) {
+			this.handle.lineWidth(p0);
+		}
+
+		LinkProgram(p0) {
+			this.handle.linkProgram(dom_unwrapAny(p0));
+		}
+
+		PixelStorei(p0, p1) {
+			this.handle.pixelStorei(p0, dom_unwrapAny(p1));
+		}
+
+		PolygonOffset(p0, p1) {
+			this.handle.polygonOffset(p0, p1);
+		}
+
+		RenderbufferStorage(p0, p1, p2, p3) {
+			this.handle.renderbufferStorage(p0, p1, p2, p3);
+		}
+
+		SampleCoverage(p0, p1) {
+			this.handle.sampleCoverage(p0, p1);
+		}
+
+		Scissor(p0, p1, p2, p3) {
+			this.handle.scissor(p0, p1, p2, p3);
+		}
+
+		ShaderSource(p0, p1) {
+			this.handle.shaderSource(dom_unwrapAny(p0), p1);
+		}
+
+		StencilFunc(p0, p1, p2) {
+			this.handle.stencilFunc(p0, p1, p2);
+		}
+
+		StencilFuncSeparate(p0, p1, p2, p3) {
+			this.handle.stencilFuncSeparate(p0, p1, p2, p3);
+		}
+
+		StencilMask(p0) {
+			this.handle.stencilMask(p0);
+		}
+
+		StencilMaskSeparate(p0, p1) {
+			this.handle.stencilMaskSeparate(p0, p1);
+		}
+
+		StencilOp(p0, p1, p2) {
+			this.handle.stencilOp(p0, p1, p2);
+		}
+
+		StencilOpSeparate(p0, p1, p2, p3) {
+			this.handle.stencilOpSeparate(p0, p1, p2, p3);
+		}
+
+		TexParameterf(p0, p1, p2) {
+			this.handle.texParameterf(p0, p1, p2);
+		}
+
+		TexParameteri(p0, p1, p2) {
+			this.handle.texParameteri(p0, p1, p2);
+		}
+
+		Uniform1f(p0, p1) {
+			this.handle.uniform1f(dom_unwrapAny(p0), p1);
+		}
+
+		Uniform1i(p0, p1) {
+			this.handle.uniform1i(dom_unwrapAny(p0), p1);
+		}
+
+		Uniform2f(p0, p1, p2) {
+			this.handle.uniform2f(dom_unwrapAny(p0), p1, p2);
+		}
+
+		Uniform2i(p0, p1, p2) {
+			this.handle.uniform2i(dom_unwrapAny(p0), p1, p2);
+		}
+
+		Uniform3f(p0, p1, p2, p3) {
+			this.handle.uniform3f(dom_unwrapAny(p0), p1, p2, p3);
+		}
+
+		Uniform3i(p0, p1, p2, p3) {
+			this.handle.uniform3i(dom_unwrapAny(p0), p1, p2, p3);
+		}
+
+		Uniform4f(p0, p1, p2, p3, p4) {
+			this.handle.uniform4f(dom_unwrapAny(p0), p1, p2, p3, p4);
+		}
+
+		Uniform4i(p0, p1, p2, p3, p4) {
+			this.handle.uniform4i(dom_unwrapAny(p0), p1, p2, p3, p4);
+		}
+
+		UseProgram(p0) {
+			this.handle.useProgram(dom_unwrapAny(p0));
+		}
+
+		ValidateProgram(p0) {
+			this.handle.validateProgram(dom_unwrapAny(p0));
+		}
+
+		VertexAttrib1f(p0, p1) {
+			this.handle.vertexAttrib1f(p0, p1);
+		}
+
+		VertexAttrib1fv(p0, p1) {
+			this.handle.vertexAttrib1fv(p0, Float32Array.from(p1 || []));
+		}
+
+		VertexAttrib2f(p0, p1, p2) {
+			this.handle.vertexAttrib2f(p0, p1, p2);
+		}
+
+		VertexAttrib2fv(p0, p1) {
+			this.handle.vertexAttrib2fv(p0, Float32Array.from(p1 || []));
+		}
+
+		VertexAttrib3f(p0, p1, p2, p3) {
+			this.handle.vertexAttrib3f(p0, p1, p2, p3);
+		}
+
+		VertexAttrib3fv(p0, p1) {
+			this.handle.vertexAttrib3fv(p0, Float32Array.from(p1 || []));
+		}
+
+		VertexAttrib4f(p0, p1, p2, p3, p4) {
+			this.handle.vertexAttrib4f(p0, p1, p2, p3, p4);
+		}
+
+		VertexAttrib4fv(p0, p1) {
+			this.handle.vertexAttrib4fv(p0, Float32Array.from(p1 || []));
+		}
+
+		VertexAttribPointer(p0, p1, p2, p3, p4, p5) {
+			this.handle.vertexAttribPointer(p0, p1, p2, p3, p4, p5);
+		}
+
+		Viewport(p0, p1, p2, p3) {
+			this.handle.viewport(p0, p1, p2, p3);
+		}
+
+		Canvas() {
+			return this.handle.canvas;
+		}
+
+		DrawingBufferColorSpace() {
+			return this.handle.drawingBufferColorSpace;
+		}
+
+		SetDrawingBufferColorSpace(value) {
+			this.handle.drawingBufferColorSpace = value;
+		}
+
+		DrawingBufferHeight() {
+			return this.handle.drawingBufferHeight;
+		}
+
+		DrawingBufferWidth() {
+			return this.handle.drawingBufferWidth;
+		}
+
+		DEPTH_BUFFER_BIT() {
+			return this.handle.DEPTH_BUFFER_BIT;
+		}
+
+		STENCIL_BUFFER_BIT() {
+			return this.handle.STENCIL_BUFFER_BIT;
+		}
+
+		COLOR_BUFFER_BIT() {
+			return this.handle.COLOR_BUFFER_BIT;
+		}
+
+		POINTS() {
+			return this.handle.POINTS;
+		}
+
+		LINES() {
+			return this.handle.LINES;
+		}
+
+		LINE_LOOP() {
+			return this.handle.LINE_LOOP;
+		}
+
+		LINE_STRIP() {
+			return this.handle.LINE_STRIP;
+		}
+
+		TRIANGLES() {
+			return this.handle.TRIANGLES;
+		}
+
+		TRIANGLE_STRIP() {
+			return this.handle.TRIANGLE_STRIP;
+		}
+
+		TRIANGLE_FAN() {
+			return this.handle.TRIANGLE_FAN;
+		}
+
+		ZERO() {
+			return this.handle.ZERO;
+		}
+
+		ONE() {
+			return this.handle.ONE;
+		}
+
+		SRC_COLOR() {
+			return this.handle.SRC_COLOR;
+		}
+
+		ONE_MINUS_SRC_COLOR() {
+			return this.handle.ONE_MINUS_SRC_COLOR;
+		}
+
+		SRC_ALPHA() {
+			return this.handle.SRC_ALPHA;
+		}
+
+		ONE_MINUS_SRC_ALPHA() {
+			return this.handle.ONE_MINUS_SRC_ALPHA;
+		}
+
+		DST_ALPHA() {
+			return this.handle.DST_ALPHA;
+		}
+
+		ONE_MINUS_DST_ALPHA() {
+			return this.handle.ONE_MINUS_DST_ALPHA;
+		}
+
+		DST_COLOR() {
+			return this.handle.DST_COLOR;
+		}
+
+		ONE_MINUS_DST_COLOR() {
+			return this.handle.ONE_MINUS_DST_COLOR;
+		}
+
+		SRC_ALPHA_SATURATE() {
+			return this.handle.SRC_ALPHA_SATURATE;
+		}
+
+		FUNC_ADD() {
+			return this.handle.FUNC_ADD;
+		}
+
+		BLEND_EQUATION() {
+			return this.handle.BLEND_EQUATION;
+		}
+
+		BLEND_EQUATION_RGB() {
+			return this.handle.BLEND_EQUATION_RGB;
+		}
+
+		BLEND_EQUATION_ALPHA() {
+			return this.handle.BLEND_EQUATION_ALPHA;
+		}
+
+		FUNC_SUBTRACT() {
+			return this.handle.FUNC_SUBTRACT;
+		}
+
+		FUNC_REVERSE_SUBTRACT() {
+			return this.handle.FUNC_REVERSE_SUBTRACT;
+		}
+
+		BLEND_DST_RGB() {
+			return this.handle.BLEND_DST_RGB;
+		}
+
+		BLEND_SRC_RGB() {
+			return this.handle.BLEND_SRC_RGB;
+		}
+
+		BLEND_DST_ALPHA() {
+			return this.handle.BLEND_DST_ALPHA;
+		}
+
+		BLEND_SRC_ALPHA() {
+			return this.handle.BLEND_SRC_ALPHA;
+		}
+
+		CONSTANT_COLOR() {
+			return this.handle.CONSTANT_COLOR;
+		}
+
+		ONE_MINUS_CONSTANT_COLOR() {
+			return this.handle.ONE_MINUS_CONSTANT_COLOR;
+		}
+
+		CONSTANT_ALPHA() {
+			return this.handle.CONSTANT_ALPHA;
+		}
+
+		ONE_MINUS_CONSTANT_ALPHA() {
+			return this.handle.ONE_MINUS_CONSTANT_ALPHA;
+		}
+
+		BLEND_COLOR() {
+			return this.handle.BLEND_COLOR;
+		}
+
+		ARRAY_BUFFER() {
+			return this.handle.ARRAY_BUFFER;
+		}
+
+		ELEMENT_ARRAY_BUFFER() {
+			return this.handle.ELEMENT_ARRAY_BUFFER;
+		}
+
+		ARRAY_BUFFER_BINDING() {
+			return this.handle.ARRAY_BUFFER_BINDING;
+		}
+
+		ELEMENT_ARRAY_BUFFER_BINDING() {
+			return this.handle.ELEMENT_ARRAY_BUFFER_BINDING;
+		}
+
+		STREAM_DRAW() {
+			return this.handle.STREAM_DRAW;
+		}
+
+		STATIC_DRAW() {
+			return this.handle.STATIC_DRAW;
+		}
+
+		DYNAMIC_DRAW() {
+			return this.handle.DYNAMIC_DRAW;
+		}
+
+		BUFFER_SIZE() {
+			return this.handle.BUFFER_SIZE;
+		}
+
+		BUFFER_USAGE() {
+			return this.handle.BUFFER_USAGE;
+		}
+
+		CURRENT_VERTEX_ATTRIB() {
+			return this.handle.CURRENT_VERTEX_ATTRIB;
+		}
+
+		FRONT() {
+			return this.handle.FRONT;
+		}
+
+		BACK() {
+			return this.handle.BACK;
+		}
+
+		FRONT_AND_BACK() {
+			return this.handle.FRONT_AND_BACK;
+		}
+
+		CULL_FACE() {
+			return this.handle.CULL_FACE;
+		}
+
+		BLEND() {
+			return this.handle.BLEND;
+		}
+
+		DITHER() {
+			return this.handle.DITHER;
+		}
+
+		STENCIL_TEST() {
+			return this.handle.STENCIL_TEST;
+		}
+
+		DEPTH_TEST() {
+			return this.handle.DEPTH_TEST;
+		}
+
+		SCISSOR_TEST() {
+			return this.handle.SCISSOR_TEST;
+		}
+
+		POLYGON_OFFSET_FILL() {
+			return this.handle.POLYGON_OFFSET_FILL;
+		}
+
+		SAMPLE_ALPHA_TO_COVERAGE() {
+			return this.handle.SAMPLE_ALPHA_TO_COVERAGE;
+		}
+
+		SAMPLE_COVERAGE() {
+			return this.handle.SAMPLE_COVERAGE;
+		}
+
+		NO_ERROR() {
+			return this.handle.NO_ERROR;
+		}
+
+		INVALID_ENUM() {
+			return this.handle.INVALID_ENUM;
+		}
+
+		INVALID_VALUE() {
+			return this.handle.INVALID_VALUE;
+		}
+
+		INVALID_OPERATION() {
+			return this.handle.INVALID_OPERATION;
+		}
+
+		OUT_OF_MEMORY() {
+			return this.handle.OUT_OF_MEMORY;
+		}
+
+		CW() {
+			return this.handle.CW;
+		}
+
+		CCW() {
+			return this.handle.CCW;
+		}
+
+		LINE_WIDTH() {
+			return this.handle.LINE_WIDTH;
+		}
+
+		ALIASED_POINT_SIZE_RANGE() {
+			return this.handle.ALIASED_POINT_SIZE_RANGE;
+		}
+
+		ALIASED_LINE_WIDTH_RANGE() {
+			return this.handle.ALIASED_LINE_WIDTH_RANGE;
+		}
+
+		CULL_FACE_MODE() {
+			return this.handle.CULL_FACE_MODE;
+		}
+
+		FRONT_FACE() {
+			return this.handle.FRONT_FACE;
+		}
+
+		DEPTH_RANGE() {
+			return this.handle.DEPTH_RANGE;
+		}
+
+		DEPTH_WRITEMASK() {
+			return this.handle.DEPTH_WRITEMASK;
+		}
+
+		DEPTH_CLEAR_VALUE() {
+			return this.handle.DEPTH_CLEAR_VALUE;
+		}
+
+		DEPTH_FUNC() {
+			return this.handle.DEPTH_FUNC;
+		}
+
+		STENCIL_CLEAR_VALUE() {
+			return this.handle.STENCIL_CLEAR_VALUE;
+		}
+
+		STENCIL_FUNC() {
+			return this.handle.STENCIL_FUNC;
+		}
+
+		STENCIL_FAIL() {
+			return this.handle.STENCIL_FAIL;
+		}
+
+		STENCIL_PASS_DEPTH_FAIL() {
+			return this.handle.STENCIL_PASS_DEPTH_FAIL;
+		}
+
+		STENCIL_PASS_DEPTH_PASS() {
+			return this.handle.STENCIL_PASS_DEPTH_PASS;
+		}
+
+		STENCIL_REF() {
+			return this.handle.STENCIL_REF;
+		}
+
+		STENCIL_VALUE_MASK() {
+			return this.handle.STENCIL_VALUE_MASK;
+		}
+
+		STENCIL_WRITEMASK() {
+			return this.handle.STENCIL_WRITEMASK;
+		}
+
+		STENCIL_BACK_FUNC() {
+			return this.handle.STENCIL_BACK_FUNC;
+		}
+
+		STENCIL_BACK_FAIL() {
+			return this.handle.STENCIL_BACK_FAIL;
+		}
+
+		STENCIL_BACK_PASS_DEPTH_FAIL() {
+			return this.handle.STENCIL_BACK_PASS_DEPTH_FAIL;
+		}
+
+		STENCIL_BACK_PASS_DEPTH_PASS() {
+			return this.handle.STENCIL_BACK_PASS_DEPTH_PASS;
+		}
+
+		STENCIL_BACK_REF() {
+			return this.handle.STENCIL_BACK_REF;
+		}
+
+		STENCIL_BACK_VALUE_MASK() {
+			return this.handle.STENCIL_BACK_VALUE_MASK;
+		}
+
+		STENCIL_BACK_WRITEMASK() {
+			return this.handle.STENCIL_BACK_WRITEMASK;
+		}
+
+		VIEWPORT() {
+			return this.handle.VIEWPORT;
+		}
+
+		SCISSOR_BOX() {
+			return this.handle.SCISSOR_BOX;
+		}
+
+		COLOR_CLEAR_VALUE() {
+			return this.handle.COLOR_CLEAR_VALUE;
+		}
+
+		COLOR_WRITEMASK() {
+			return this.handle.COLOR_WRITEMASK;
+		}
+
+		UNPACK_ALIGNMENT() {
+			return this.handle.UNPACK_ALIGNMENT;
+		}
+
+		PACK_ALIGNMENT() {
+			return this.handle.PACK_ALIGNMENT;
+		}
+
+		MAX_TEXTURE_SIZE() {
+			return this.handle.MAX_TEXTURE_SIZE;
+		}
+
+		MAX_VIEWPORT_DIMS() {
+			return this.handle.MAX_VIEWPORT_DIMS;
+		}
+
+		SUBPIXEL_BITS() {
+			return this.handle.SUBPIXEL_BITS;
+		}
+
+		RED_BITS() {
+			return this.handle.RED_BITS;
+		}
+
+		GREEN_BITS() {
+			return this.handle.GREEN_BITS;
+		}
+
+		BLUE_BITS() {
+			return this.handle.BLUE_BITS;
+		}
+
+		ALPHA_BITS() {
+			return this.handle.ALPHA_BITS;
+		}
+
+		DEPTH_BITS() {
+			return this.handle.DEPTH_BITS;
+		}
+
+		STENCIL_BITS() {
+			return this.handle.STENCIL_BITS;
+		}
+
+		POLYGON_OFFSET_UNITS() {
+			return this.handle.POLYGON_OFFSET_UNITS;
+		}
+
+		POLYGON_OFFSET_FACTOR() {
+			return this.handle.POLYGON_OFFSET_FACTOR;
+		}
+
+		TEXTURE_BINDING_2D() {
+			return this.handle.TEXTURE_BINDING_2D;
+		}
+
+		SAMPLE_BUFFERS() {
+			return this.handle.SAMPLE_BUFFERS;
+		}
+
+		SAMPLES() {
+			return this.handle.SAMPLES;
+		}
+
+		SAMPLE_COVERAGE_VALUE() {
+			return this.handle.SAMPLE_COVERAGE_VALUE;
+		}
+
+		SAMPLE_COVERAGE_INVERT() {
+			return this.handle.SAMPLE_COVERAGE_INVERT;
+		}
+
+		COMPRESSED_TEXTURE_FORMATS() {
+			return this.handle.COMPRESSED_TEXTURE_FORMATS;
+		}
+
+		DONT_CARE() {
+			return this.handle.DONT_CARE;
+		}
+
+		FASTEST() {
+			return this.handle.FASTEST;
+		}
+
+		NICEST() {
+			return this.handle.NICEST;
+		}
+
+		GENERATE_MIPMAP_HINT() {
+			return this.handle.GENERATE_MIPMAP_HINT;
+		}
+
+		BYTE() {
+			return this.handle.BYTE;
+		}
+
+		UNSIGNED_BYTE() {
+			return this.handle.UNSIGNED_BYTE;
+		}
+
+		SHORT() {
+			return this.handle.SHORT;
+		}
+
+		UNSIGNED_SHORT() {
+			return this.handle.UNSIGNED_SHORT;
+		}
+
+		INT() {
+			return this.handle.INT;
+		}
+
+		UNSIGNED_INT() {
+			return this.handle.UNSIGNED_INT;
+		}
+
+		FLOAT() {
+			return this.handle.FLOAT;
+		}
+
+		DEPTH_COMPONENT() {
+			return this.handle.DEPTH_COMPONENT;
+		}
+
+		ALPHA() {
+			return this.handle.ALPHA;
+		}
+
+		RGB() {
+			return this.handle.RGB;
+		}
+
+		RGBA() {
+			return this.handle.RGBA;
+		}
+
+		LUMINANCE() {
+			return this.handle.LUMINANCE;
+		}
+
+		LUMINANCE_ALPHA() {
+			return this.handle.LUMINANCE_ALPHA;
+		}
+
+		UNSIGNED_SHORT_4_4_4_4() {
+			return this.handle.UNSIGNED_SHORT_4_4_4_4;
+		}
+
+		UNSIGNED_SHORT_5_5_5_1() {
+			return this.handle.UNSIGNED_SHORT_5_5_5_1;
+		}
+
+		UNSIGNED_SHORT_5_6_5() {
+			return this.handle.UNSIGNED_SHORT_5_6_5;
+		}
+
+		FRAGMENT_SHADER() {
+			return this.handle.FRAGMENT_SHADER;
+		}
+
+		VERTEX_SHADER() {
+			return this.handle.VERTEX_SHADER;
+		}
+
+		MAX_VERTEX_ATTRIBS() {
+			return this.handle.MAX_VERTEX_ATTRIBS;
+		}
+
+		MAX_VERTEX_UNIFORM_VECTORS() {
+			return this.handle.MAX_VERTEX_UNIFORM_VECTORS;
+		}
+
+		MAX_VARYING_VECTORS() {
+			return this.handle.MAX_VARYING_VECTORS;
+		}
+
+		MAX_COMBINED_TEXTURE_IMAGE_UNITS() {
+			return this.handle.MAX_COMBINED_TEXTURE_IMAGE_UNITS;
+		}
+
+		MAX_VERTEX_TEXTURE_IMAGE_UNITS() {
+			return this.handle.MAX_VERTEX_TEXTURE_IMAGE_UNITS;
+		}
+
+		MAX_TEXTURE_IMAGE_UNITS() {
+			return this.handle.MAX_TEXTURE_IMAGE_UNITS;
+		}
+
+		MAX_FRAGMENT_UNIFORM_VECTORS() {
+			return this.handle.MAX_FRAGMENT_UNIFORM_VECTORS;
+		}
+
+		SHADER_TYPE() {
+			return this.handle.SHADER_TYPE;
+		}
+
+		DELETE_STATUS() {
+			return this.handle.DELETE_STATUS;
+		}
+
+		LINK_STATUS() {
+			return this.handle.LINK_STATUS;
+		}
+
+		VALIDATE_STATUS() {
+			return this.handle.VALIDATE_STATUS;
+		}
+
+		ATTACHED_SHADERS() {
+			return this.handle.ATTACHED_SHADERS;
+		}
+
+		ACTIVE_UNIFORMS() {
+			return this.handle.ACTIVE_UNIFORMS;
+		}
+
+		ACTIVE_ATTRIBUTES() {
+			return this.handle.ACTIVE_ATTRIBUTES;
+		}
+
+		SHADING_LANGUAGE_VERSION() {
+			return this.handle.SHADING_LANGUAGE_VERSION;
+		}
+
+		CURRENT_PROGRAM() {
+			return this.handle.CURRENT_PROGRAM;
+		}
+
+		NEVER() {
+			return this.handle.NEVER;
+		}
+
+		LESS() {
+			return this.handle.LESS;
+		}
+
+		EQUAL() {
+			return this.handle.EQUAL;
+		}
+
+		LEQUAL() {
+			return this.handle.LEQUAL;
+		}
+
+		GREATER() {
+			return this.handle.GREATER;
+		}
+
+		NOTEQUAL() {
+			return this.handle.NOTEQUAL;
+		}
+
+		GEQUAL() {
+			return this.handle.GEQUAL;
+		}
+
+		ALWAYS() {
+			return this.handle.ALWAYS;
+		}
+
+		KEEP() {
+			return this.handle.KEEP;
+		}
+
+		REPLACE() {
+			return this.handle.REPLACE;
+		}
+
+		INCR() {
+			return this.handle.INCR;
+		}
+
+		DECR() {
+			return this.handle.DECR;
+		}
+
+		INVERT() {
+			return this.handle.INVERT;
+		}
+
+		INCR_WRAP() {
+			return this.handle.INCR_WRAP;
+		}
+
+		DECR_WRAP() {
+			return this.handle.DECR_WRAP;
+		}
+
+		VENDOR() {
+			return this.handle.VENDOR;
+		}
+
+		RENDERER() {
+			return this.handle.RENDERER;
+		}
+
+		VERSION() {
+			return this.handle.VERSION;
+		}
+
+		NEAREST() {
+			return this.handle.NEAREST;
+		}
+
+		LINEAR() {
+			return this.handle.LINEAR;
+		}
+
+		NEAREST_MIPMAP_NEAREST() {
+			return this.handle.NEAREST_MIPMAP_NEAREST;
+		}
+
+		LINEAR_MIPMAP_NEAREST() {
+			return this.handle.LINEAR_MIPMAP_NEAREST;
+		}
+
+		NEAREST_MIPMAP_LINEAR() {
+			return this.handle.NEAREST_MIPMAP_LINEAR;
+		}
+
+		LINEAR_MIPMAP_LINEAR() {
+			return this.handle.LINEAR_MIPMAP_LINEAR;
+		}
+
+		TEXTURE_MAG_FILTER() {
+			return this.handle.TEXTURE_MAG_FILTER;
+		}
+
+		TEXTURE_MIN_FILTER() {
+			return this.handle.TEXTURE_MIN_FILTER;
+		}
+
+		TEXTURE_WRAP_S() {
+			return this.handle.TEXTURE_WRAP_S;
+		}
+
+		TEXTURE_WRAP_T() {
+			return this.handle.TEXTURE_WRAP_T;
+		}
+
+		TEXTURE_2D() {
+			return this.handle.TEXTURE_2D;
+		}
+
+		TEXTURE() {
+			return this.handle.TEXTURE;
+		}
+
+		TEXTURE_CUBE_MAP() {
+			return this.handle.TEXTURE_CUBE_MAP;
+		}
+
+		TEXTURE_BINDING_CUBE_MAP() {
+			return this.handle.TEXTURE_BINDING_CUBE_MAP;
+		}
+
+		TEXTURE_CUBE_MAP_POSITIVE_X() {
+			return this.handle.TEXTURE_CUBE_MAP_POSITIVE_X;
+		}
+
+		TEXTURE_CUBE_MAP_NEGATIVE_X() {
+			return this.handle.TEXTURE_CUBE_MAP_NEGATIVE_X;
+		}
+
+		TEXTURE_CUBE_MAP_POSITIVE_Y() {
+			return this.handle.TEXTURE_CUBE_MAP_POSITIVE_Y;
+		}
+
+		TEXTURE_CUBE_MAP_NEGATIVE_Y() {
+			return this.handle.TEXTURE_CUBE_MAP_NEGATIVE_Y;
+		}
+
+		TEXTURE_CUBE_MAP_POSITIVE_Z() {
+			return this.handle.TEXTURE_CUBE_MAP_POSITIVE_Z;
+		}
+
+		TEXTURE_CUBE_MAP_NEGATIVE_Z() {
+			return this.handle.TEXTURE_CUBE_MAP_NEGATIVE_Z;
+		}
+
+		MAX_CUBE_MAP_TEXTURE_SIZE() {
+			return this.handle.MAX_CUBE_MAP_TEXTURE_SIZE;
+		}
+
+		TEXTURE0() {
+			return this.handle.TEXTURE0;
+		}
+
+		TEXTURE1() {
+			return this.handle.TEXTURE1;
+		}
+
+		TEXTURE2() {
+			return this.handle.TEXTURE2;
+		}
+
+		TEXTURE3() {
+			return this.handle.TEXTURE3;
+		}
+
+		TEXTURE4() {
+			return this.handle.TEXTURE4;
+		}
+
+		TEXTURE5() {
+			return this.handle.TEXTURE5;
+		}
+
+		TEXTURE6() {
+			return this.handle.TEXTURE6;
+		}
+
+		TEXTURE7() {
+			return this.handle.TEXTURE7;
+		}
+
+		TEXTURE8() {
+			return this.handle.TEXTURE8;
+		}
+
+		TEXTURE9() {
+			return this.handle.TEXTURE9;
+		}
+
+		TEXTURE10() {
+			return this.handle.TEXTURE10;
+		}
+
+		TEXTURE11() {
+			return this.handle.TEXTURE11;
+		}
+
+		TEXTURE12() {
+			return this.handle.TEXTURE12;
+		}
+
+		TEXTURE13() {
+			return this.handle.TEXTURE13;
+		}
+
+		TEXTURE14() {
+			return this.handle.TEXTURE14;
+		}
+
+		TEXTURE15() {
+			return this.handle.TEXTURE15;
+		}
+
+		TEXTURE16() {
+			return this.handle.TEXTURE16;
+		}
+
+		TEXTURE17() {
+			return this.handle.TEXTURE17;
+		}
+
+		TEXTURE18() {
+			return this.handle.TEXTURE18;
+		}
+
+		TEXTURE19() {
+			return this.handle.TEXTURE19;
+		}
+
+		TEXTURE20() {
+			return this.handle.TEXTURE20;
+		}
+
+		TEXTURE21() {
+			return this.handle.TEXTURE21;
+		}
+
+		TEXTURE22() {
+			return this.handle.TEXTURE22;
+		}
+
+		TEXTURE23() {
+			return this.handle.TEXTURE23;
+		}
+
+		TEXTURE24() {
+			return this.handle.TEXTURE24;
+		}
+
+		TEXTURE25() {
+			return this.handle.TEXTURE25;
+		}
+
+		TEXTURE26() {
+			return this.handle.TEXTURE26;
+		}
+
+		TEXTURE27() {
+			return this.handle.TEXTURE27;
+		}
+
+		TEXTURE28() {
+			return this.handle.TEXTURE28;
+		}
+
+		TEXTURE29() {
+			return this.handle.TEXTURE29;
+		}
+
+		TEXTURE30() {
+			return this.handle.TEXTURE30;
+		}
+
+		TEXTURE31() {
+			return this.handle.TEXTURE31;
+		}
+
+		ACTIVE_TEXTURE() {
+			return this.handle.ACTIVE_TEXTURE;
+		}
+
+		REPEAT() {
+			return this.handle.REPEAT;
+		}
+
+		CLAMP_TO_EDGE() {
+			return this.handle.CLAMP_TO_EDGE;
+		}
+
+		MIRRORED_REPEAT() {
+			return this.handle.MIRRORED_REPEAT;
+		}
+
+		FLOAT_VEC2() {
+			return this.handle.FLOAT_VEC2;
+		}
+
+		FLOAT_VEC3() {
+			return this.handle.FLOAT_VEC3;
+		}
+
+		FLOAT_VEC4() {
+			return this.handle.FLOAT_VEC4;
+		}
+
+		INT_VEC2() {
+			return this.handle.INT_VEC2;
+		}
+
+		INT_VEC3() {
+			return this.handle.INT_VEC3;
+		}
+
+		INT_VEC4() {
+			return this.handle.INT_VEC4;
+		}
+
+		BOOL() {
+			return this.handle.BOOL;
+		}
+
+		BOOL_VEC2() {
+			return this.handle.BOOL_VEC2;
+		}
+
+		BOOL_VEC3() {
+			return this.handle.BOOL_VEC3;
+		}
+
+		BOOL_VEC4() {
+			return this.handle.BOOL_VEC4;
+		}
+
+		FLOAT_MAT2() {
+			return this.handle.FLOAT_MAT2;
+		}
+
+		FLOAT_MAT3() {
+			return this.handle.FLOAT_MAT3;
+		}
+
+		FLOAT_MAT4() {
+			return this.handle.FLOAT_MAT4;
+		}
+
+		SAMPLER_2D() {
+			return this.handle.SAMPLER_2D;
+		}
+
+		SAMPLER_CUBE() {
+			return this.handle.SAMPLER_CUBE;
+		}
+
+		VERTEX_ATTRIB_ARRAY_ENABLED() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_ENABLED;
+		}
+
+		VERTEX_ATTRIB_ARRAY_SIZE() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_SIZE;
+		}
+
+		VERTEX_ATTRIB_ARRAY_STRIDE() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_STRIDE;
+		}
+
+		VERTEX_ATTRIB_ARRAY_TYPE() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_TYPE;
+		}
+
+		VERTEX_ATTRIB_ARRAY_NORMALIZED() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_NORMALIZED;
+		}
+
+		VERTEX_ATTRIB_ARRAY_POINTER() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_POINTER;
+		}
+
+		VERTEX_ATTRIB_ARRAY_BUFFER_BINDING() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING;
+		}
+
+		IMPLEMENTATION_COLOR_READ_TYPE() {
+			return this.handle.IMPLEMENTATION_COLOR_READ_TYPE;
+		}
+
+		IMPLEMENTATION_COLOR_READ_FORMAT() {
+			return this.handle.IMPLEMENTATION_COLOR_READ_FORMAT;
+		}
+
+		COMPILE_STATUS() {
+			return this.handle.COMPILE_STATUS;
+		}
+
+		LOW_FLOAT() {
+			return this.handle.LOW_FLOAT;
+		}
+
+		MEDIUM_FLOAT() {
+			return this.handle.MEDIUM_FLOAT;
+		}
+
+		HIGH_FLOAT() {
+			return this.handle.HIGH_FLOAT;
+		}
+
+		LOW_INT() {
+			return this.handle.LOW_INT;
+		}
+
+		MEDIUM_INT() {
+			return this.handle.MEDIUM_INT;
+		}
+
+		HIGH_INT() {
+			return this.handle.HIGH_INT;
+		}
+
+		FRAMEBUFFER() {
+			return this.handle.FRAMEBUFFER;
+		}
+
+		RENDERBUFFER() {
+			return this.handle.RENDERBUFFER;
+		}
+
+		RGBA4() {
+			return this.handle.RGBA4;
+		}
+
+		RGB5_A1() {
+			return this.handle.RGB5_A1;
+		}
+
+		RGBA8() {
+			return this.handle.RGBA8;
+		}
+
+		RGB565() {
+			return this.handle.RGB565;
+		}
+
+		DEPTH_COMPONENT16() {
+			return this.handle.DEPTH_COMPONENT16;
+		}
+
+		STENCIL_INDEX8() {
+			return this.handle.STENCIL_INDEX8;
+		}
+
+		DEPTH_STENCIL() {
+			return this.handle.DEPTH_STENCIL;
+		}
+
+		RENDERBUFFER_WIDTH() {
+			return this.handle.RENDERBUFFER_WIDTH;
+		}
+
+		RENDERBUFFER_HEIGHT() {
+			return this.handle.RENDERBUFFER_HEIGHT;
+		}
+
+		RENDERBUFFER_INTERNAL_FORMAT() {
+			return this.handle.RENDERBUFFER_INTERNAL_FORMAT;
+		}
+
+		RENDERBUFFER_RED_SIZE() {
+			return this.handle.RENDERBUFFER_RED_SIZE;
+		}
+
+		RENDERBUFFER_GREEN_SIZE() {
+			return this.handle.RENDERBUFFER_GREEN_SIZE;
+		}
+
+		RENDERBUFFER_BLUE_SIZE() {
+			return this.handle.RENDERBUFFER_BLUE_SIZE;
+		}
+
+		RENDERBUFFER_ALPHA_SIZE() {
+			return this.handle.RENDERBUFFER_ALPHA_SIZE;
+		}
+
+		RENDERBUFFER_DEPTH_SIZE() {
+			return this.handle.RENDERBUFFER_DEPTH_SIZE;
+		}
+
+		RENDERBUFFER_STENCIL_SIZE() {
+			return this.handle.RENDERBUFFER_STENCIL_SIZE;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_OBJECT_NAME() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_OBJECT_NAME;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE;
+		}
+
+		COLOR_ATTACHMENT0() {
+			return this.handle.COLOR_ATTACHMENT0;
+		}
+
+		DEPTH_ATTACHMENT() {
+			return this.handle.DEPTH_ATTACHMENT;
+		}
+
+		STENCIL_ATTACHMENT() {
+			return this.handle.STENCIL_ATTACHMENT;
+		}
+
+		DEPTH_STENCIL_ATTACHMENT() {
+			return this.handle.DEPTH_STENCIL_ATTACHMENT;
+		}
+
+		NONE() {
+			return this.handle.NONE;
+		}
+
+		FRAMEBUFFER_COMPLETE() {
+			return this.handle.FRAMEBUFFER_COMPLETE;
+		}
+
+		FRAMEBUFFER_INCOMPLETE_ATTACHMENT() {
+			return this.handle.FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
+		}
+
+		FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT() {
+			return this.handle.FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT;
+		}
+
+		FRAMEBUFFER_INCOMPLETE_DIMENSIONS() {
+			return this.handle.FRAMEBUFFER_INCOMPLETE_DIMENSIONS;
+		}
+
+		FRAMEBUFFER_UNSUPPORTED() {
+			return this.handle.FRAMEBUFFER_UNSUPPORTED;
+		}
+
+		FRAMEBUFFER_BINDING() {
+			return this.handle.FRAMEBUFFER_BINDING;
+		}
+
+		RENDERBUFFER_BINDING() {
+			return this.handle.RENDERBUFFER_BINDING;
+		}
+
+		MAX_RENDERBUFFER_SIZE() {
+			return this.handle.MAX_RENDERBUFFER_SIZE;
+		}
+
+		INVALID_FRAMEBUFFER_OPERATION() {
+			return this.handle.INVALID_FRAMEBUFFER_OPERATION;
+		}
+
+		UNPACK_FLIP_Y_WEBGL() {
+			return this.handle.UNPACK_FLIP_Y_WEBGL;
+		}
+
+		UNPACK_PREMULTIPLY_ALPHA_WEBGL() {
+			return this.handle.UNPACK_PREMULTIPLY_ALPHA_WEBGL;
+		}
+
+		CONTEXT_LOST_WEBGL() {
+			return this.handle.CONTEXT_LOST_WEBGL;
+		}
+
+		UNPACK_COLORSPACE_CONVERSION_WEBGL() {
+			return this.handle.UNPACK_COLORSPACE_CONVERSION_WEBGL;
+		}
+
+		BROWSER_DEFAULT_WEBGL() {
+			return this.handle.BROWSER_DEFAULT_WEBGL;
+		}
+}
+
+class dom_C_WebGL2RenderingContext extends dom_C_WebGL2RenderingContextBase {
+
+		KindOfWebGL2RenderingContext() {
+			
+		}
+
+		KindOfWebGL2RenderingContextBase() {
+			
+		}
+
+		KindOfWebGL2RenderingContextOverloads() {
+			
+		}
+
+		KindOfWebGLRenderingContextBase() {
+			
+		}
+
+		AsWebGL2RenderingContextBase() {
+			return this;
+		}
+
+		AsWebGL2RenderingContextOverloads() {
+			return this;
+		}
+
+		AsWebGLRenderingContextBase() {
+			return this;
+		}
+
+		BufferData(p0, p1, p2) {
+			this.handle.bufferData(p0, p1, p2);
+		}
+
+		BufferDataFloat32(p0, p1, p2) {
+			this.handle.bufferData(p0, Float32Array.from(p1 || []), p2);
+		}
+
+		BufferDataUint16(p0, p1, p2) {
+			this.handle.bufferData(p0, Uint16Array.from(p1 || []), p2);
+		}
+
+		BufferDataUint32(p0, p1, p2) {
+			this.handle.bufferData(p0, Uint32Array.from(p1 || []), p2);
+		}
+
+		BufferDataUint8(p0, p1, p2) {
+			this.handle.bufferData(p0, Uint8Array.from(p1 || []), p2);
+		}
+
+		BufferDataInt32(p0, p1, p2) {
+			this.handle.bufferData(p0, Int32Array.from(p1 || []), p2);
+		}
+
+		BufferSubDataFloat32(p0, p1, p2) {
+			this.handle.bufferSubData(p0, p1, Float32Array.from(p2 || []));
+		}
+
+		BufferSubDataUint16(p0, p1, p2) {
+			this.handle.bufferSubData(p0, p1, Uint16Array.from(p2 || []));
+		}
+
+		BufferSubDataUint32(p0, p1, p2) {
+			this.handle.bufferSubData(p0, p1, Uint32Array.from(p2 || []));
+		}
+
+		BufferSubDataUint8(p0, p1, p2) {
+			this.handle.bufferSubData(p0, p1, Uint8Array.from(p2 || []));
+		}
+
+		BufferSubDataInt32(p0, p1, p2) {
+			this.handle.bufferSubData(p0, p1, Int32Array.from(p2 || []));
+		}
+
+		CompressedTexImage2D(p0, p1, p2, p3, p4, p5, p6, p7) {
+			this.handle.compressedTexImage2D(p0, p1, p2, p3, p4, p5, p6, p7);
+		}
+
+		CompressedTexImage2DFloat32(p0, p1, p2, p3, p4, p5, p6, ...p7) {
+			if (p7.length === 1 && Array.isArray(p7[0]) && p7[0].length === 0) {
+				p7 = [];
+			}
+			
+			this.handle.compressedTexImage2D(p0, p1, p2, p3, p4, p5, Float32Array.from(p6 || []), ...p7.map((item) => item));
+		}
+
+		CompressedTexImage2DUint16(p0, p1, p2, p3, p4, p5, p6, ...p7) {
+			if (p7.length === 1 && Array.isArray(p7[0]) && p7[0].length === 0) {
+				p7 = [];
+			}
+			
+			this.handle.compressedTexImage2D(p0, p1, p2, p3, p4, p5, Uint16Array.from(p6 || []), ...p7.map((item) => item));
+		}
+
+		CompressedTexImage2DUint32(p0, p1, p2, p3, p4, p5, p6, ...p7) {
+			if (p7.length === 1 && Array.isArray(p7[0]) && p7[0].length === 0) {
+				p7 = [];
+			}
+			
+			this.handle.compressedTexImage2D(p0, p1, p2, p3, p4, p5, Uint32Array.from(p6 || []), ...p7.map((item) => item));
+		}
+
+		CompressedTexImage2DUint8(p0, p1, p2, p3, p4, p5, p6, ...p7) {
+			if (p7.length === 1 && Array.isArray(p7[0]) && p7[0].length === 0) {
+				p7 = [];
+			}
+			
+			this.handle.compressedTexImage2D(p0, p1, p2, p3, p4, p5, Uint8Array.from(p6 || []), ...p7.map((item) => item));
+		}
+
+		CompressedTexImage2DInt32(p0, p1, p2, p3, p4, p5, p6, ...p7) {
+			if (p7.length === 1 && Array.isArray(p7[0]) && p7[0].length === 0) {
+				p7 = [];
+			}
+			
+			this.handle.compressedTexImage2D(p0, p1, p2, p3, p4, p5, Int32Array.from(p6 || []), ...p7.map((item) => item));
+		}
+
+		CompressedTexSubImage2D(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.compressedTexSubImage2D(p0, p1, p2, p3, p4, p5, p6, p7, p8);
+		}
+
+		CompressedTexSubImage2DFloat32(p0, p1, p2, p3, p4, p5, p6, p7, ...p8) {
+			if (p8.length === 1 && Array.isArray(p8[0]) && p8[0].length === 0) {
+				p8 = [];
+			}
+			
+			this.handle.compressedTexSubImage2D(p0, p1, p2, p3, p4, p5, p6, Float32Array.from(p7 || []), ...p8.map((item) => item));
+		}
+
+		CompressedTexSubImage2DUint16(p0, p1, p2, p3, p4, p5, p6, p7, ...p8) {
+			if (p8.length === 1 && Array.isArray(p8[0]) && p8[0].length === 0) {
+				p8 = [];
+			}
+			
+			this.handle.compressedTexSubImage2D(p0, p1, p2, p3, p4, p5, p6, Uint16Array.from(p7 || []), ...p8.map((item) => item));
+		}
+
+		CompressedTexSubImage2DUint32(p0, p1, p2, p3, p4, p5, p6, p7, ...p8) {
+			if (p8.length === 1 && Array.isArray(p8[0]) && p8[0].length === 0) {
+				p8 = [];
+			}
+			
+			this.handle.compressedTexSubImage2D(p0, p1, p2, p3, p4, p5, p6, Uint32Array.from(p7 || []), ...p8.map((item) => item));
+		}
+
+		CompressedTexSubImage2DUint8(p0, p1, p2, p3, p4, p5, p6, p7, ...p8) {
+			if (p8.length === 1 && Array.isArray(p8[0]) && p8[0].length === 0) {
+				p8 = [];
+			}
+			
+			this.handle.compressedTexSubImage2D(p0, p1, p2, p3, p4, p5, p6, Uint8Array.from(p7 || []), ...p8.map((item) => item));
+		}
+
+		CompressedTexSubImage2DInt32(p0, p1, p2, p3, p4, p5, p6, p7, ...p8) {
+			if (p8.length === 1 && Array.isArray(p8[0]) && p8[0].length === 0) {
+				p8 = [];
+			}
+			
+			this.handle.compressedTexSubImage2D(p0, p1, p2, p3, p4, p5, p6, Int32Array.from(p7 || []), ...p8.map((item) => item));
+		}
+
+		ReadPixelsFloat32(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.readPixels(p0, p1, p2, p3, p4, p5, Float32Array.from(p6 || []));
+		}
+
+		ReadPixelsUint16(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.readPixels(p0, p1, p2, p3, p4, p5, Uint16Array.from(p6 || []));
+		}
+
+		ReadPixelsUint32(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.readPixels(p0, p1, p2, p3, p4, p5, Uint32Array.from(p6 || []));
+		}
+
+		ReadPixelsUint8(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.readPixels(p0, p1, p2, p3, p4, p5, Uint8Array.from(p6 || []));
+		}
+
+		ReadPixelsInt32(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.readPixels(p0, p1, p2, p3, p4, p5, Int32Array.from(p6 || []));
+		}
+
+		ReadPixels(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.readPixels(p0, p1, p2, p3, p4, p5, p6);
+		}
+
+		TexImage2DFloat32(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Float32Array.from(p8 || []));
+		}
+
+		TexImage2DUint16(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Uint16Array.from(p8 || []));
+		}
+
+		TexImage2DUint32(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Uint32Array.from(p8 || []));
+		}
+
+		TexImage2DUint8(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Uint8Array.from(p8 || []));
+		}
+
+		TexImage2DInt32(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Int32Array.from(p8 || []));
+		}
+
+		TexImage2D(p0, p1, p2, p3, p4, p5) {
+			this.handle.texImage2D(p0, p1, p2, p3, p4, dom_unwrapAny(p5));
+		}
+
+		TexSubImage2DFloat32(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texSubImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Float32Array.from(p8 || []));
+		}
+
+		TexSubImage2DUint16(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texSubImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Uint16Array.from(p8 || []));
+		}
+
+		TexSubImage2DUint32(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texSubImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Uint32Array.from(p8 || []));
+		}
+
+		TexSubImage2DUint8(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texSubImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Uint8Array.from(p8 || []));
+		}
+
+		TexSubImage2DInt32(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texSubImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Int32Array.from(p8 || []));
+		}
+
+		TexSubImage2D(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.texSubImage2D(p0, p1, p2, p3, p4, p5, dom_unwrapAny(p6));
+		}
+
+		Uniform1fv(p0, p1, ...p2) {
+			if (p2.length === 1 && Array.isArray(p2[0]) && p2[0].length === 0) {
+				p2 = [];
+			}
+			
+			this.handle.uniform1fv(dom_unwrapAny(p0), Float32Array.from(p1 || []), ...p2.map((item) => item));
+		}
+
+		Uniform1iv(p0, p1, ...p2) {
+			if (p2.length === 1 && Array.isArray(p2[0]) && p2[0].length === 0) {
+				p2 = [];
+			}
+			
+			this.handle.uniform1iv(dom_unwrapAny(p0), Int32Array.from(p1 || []), ...p2.map((item) => item));
+		}
+
+		Uniform2fv(p0, p1, ...p2) {
+			if (p2.length === 1 && Array.isArray(p2[0]) && p2[0].length === 0) {
+				p2 = [];
+			}
+			
+			this.handle.uniform2fv(dom_unwrapAny(p0), Float32Array.from(p1 || []), ...p2.map((item) => item));
+		}
+
+		Uniform2iv(p0, p1, ...p2) {
+			if (p2.length === 1 && Array.isArray(p2[0]) && p2[0].length === 0) {
+				p2 = [];
+			}
+			
+			this.handle.uniform2iv(dom_unwrapAny(p0), Int32Array.from(p1 || []), ...p2.map((item) => item));
+		}
+
+		Uniform3fv(p0, p1, ...p2) {
+			if (p2.length === 1 && Array.isArray(p2[0]) && p2[0].length === 0) {
+				p2 = [];
+			}
+			
+			this.handle.uniform3fv(dom_unwrapAny(p0), Float32Array.from(p1 || []), ...p2.map((item) => item));
+		}
+
+		Uniform3iv(p0, p1, ...p2) {
+			if (p2.length === 1 && Array.isArray(p2[0]) && p2[0].length === 0) {
+				p2 = [];
+			}
+			
+			this.handle.uniform3iv(dom_unwrapAny(p0), Int32Array.from(p1 || []), ...p2.map((item) => item));
+		}
+
+		Uniform4fv(p0, p1, ...p2) {
+			if (p2.length === 1 && Array.isArray(p2[0]) && p2[0].length === 0) {
+				p2 = [];
+			}
+			
+			this.handle.uniform4fv(dom_unwrapAny(p0), Float32Array.from(p1 || []), ...p2.map((item) => item));
+		}
+
+		Uniform4iv(p0, p1, ...p2) {
+			if (p2.length === 1 && Array.isArray(p2[0]) && p2[0].length === 0) {
+				p2 = [];
+			}
+			
+			this.handle.uniform4iv(dom_unwrapAny(p0), Int32Array.from(p1 || []), ...p2.map((item) => item));
+		}
+
+		UniformMatrix2fv(p0, p1, p2, ...p3) {
+			if (p3.length === 1 && Array.isArray(p3[0]) && p3[0].length === 0) {
+				p3 = [];
+			}
+			
+			this.handle.uniformMatrix2fv(dom_unwrapAny(p0), p1, Float32Array.from(p2 || []), ...p3.map((item) => item));
+		}
+
+		UniformMatrix3fv(p0, p1, p2, ...p3) {
+			if (p3.length === 1 && Array.isArray(p3[0]) && p3[0].length === 0) {
+				p3 = [];
+			}
+			
+			this.handle.uniformMatrix3fv(dom_unwrapAny(p0), p1, Float32Array.from(p2 || []), ...p3.map((item) => item));
+		}
+
+		UniformMatrix4fv(p0, p1, p2, ...p3) {
+			if (p3.length === 1 && Array.isArray(p3[0]) && p3[0].length === 0) {
+				p3 = [];
+			}
+			
+			this.handle.uniformMatrix4fv(dom_unwrapAny(p0), p1, Float32Array.from(p2 || []), ...p3.map((item) => item));
+		}
+
+		ActiveTexture(p0) {
+			this.handle.activeTexture(p0);
+		}
+
+		AttachShader(p0, p1) {
+			this.handle.attachShader(dom_unwrapAny(p0), dom_unwrapAny(p1));
+		}
+
+		BindAttribLocation(p0, p1, p2) {
+			this.handle.bindAttribLocation(dom_unwrapAny(p0), p1, p2);
+		}
+
+		BindBuffer(p0, p1) {
+			this.handle.bindBuffer(p0, dom_unwrapAny(p1));
+		}
+
+		BindFramebuffer(p0, p1) {
+			this.handle.bindFramebuffer(p0, dom_unwrapAny(p1));
+		}
+
+		BindRenderbuffer(p0, p1) {
+			this.handle.bindRenderbuffer(p0, dom_unwrapAny(p1));
+		}
+
+		BindTexture(p0, p1) {
+			this.handle.bindTexture(p0, dom_unwrapAny(p1));
+		}
+
+		BlendColor(p0, p1, p2, p3) {
+			this.handle.blendColor(p0, p1, p2, p3);
+		}
+
+		BlendEquation(p0) {
+			this.handle.blendEquation(p0);
+		}
+
+		BlendEquationSeparate(p0, p1) {
+			this.handle.blendEquationSeparate(p0, p1);
+		}
+
+		BlendFunc(p0, p1) {
+			this.handle.blendFunc(p0, p1);
+		}
+
+		BlendFuncSeparate(p0, p1, p2, p3) {
+			this.handle.blendFuncSeparate(p0, p1, p2, p3);
+		}
+
+		CheckFramebufferStatus(p0) {
+			return this.handle.checkFramebufferStatus(p0);
+		}
+
+		Clear(p0) {
+			this.handle.clear(p0);
+		}
+
+		ClearColor(p0, p1, p2, p3) {
+			this.handle.clearColor(p0, p1, p2, p3);
+		}
+
+		ClearDepth(p0) {
+			this.handle.clearDepth(p0);
+		}
+
+		ClearStencil(p0) {
+			this.handle.clearStencil(p0);
+		}
+
+		ColorMask(p0, p1, p2, p3) {
+			this.handle.colorMask(p0, p1, p2, p3);
+		}
+
+		CompileShader(p0) {
+			this.handle.compileShader(dom_unwrapAny(p0));
+		}
+
+		CopyTexImage2D(p0, p1, p2, p3, p4, p5, p6, p7) {
+			this.handle.copyTexImage2D(p0, p1, p2, p3, p4, p5, p6, p7);
+		}
+
+		CopyTexSubImage2D(p0, p1, p2, p3, p4, p5, p6, p7) {
+			this.handle.copyTexSubImage2D(p0, p1, p2, p3, p4, p5, p6, p7);
+		}
+
+		CreateBuffer() {
+			return this.handle.createBuffer();
+		}
+
+		CreateFramebuffer() {
+			return this.handle.createFramebuffer();
+		}
+
+		CreateProgram() {
+			return this.handle.createProgram();
+		}
+
+		CreateRenderbuffer() {
+			return this.handle.createRenderbuffer();
+		}
+
+		CreateShader(p0) {
+			return this.handle.createShader(p0);
+		}
+
+		CreateTexture() {
+			return this.handle.createTexture();
+		}
+
+		CullFace(p0) {
+			this.handle.cullFace(p0);
+		}
+
+		DeleteBuffer(p0) {
+			this.handle.deleteBuffer(dom_unwrapAny(p0));
+		}
+
+		DeleteFramebuffer(p0) {
+			this.handle.deleteFramebuffer(dom_unwrapAny(p0));
+		}
+
+		DeleteProgram(p0) {
+			this.handle.deleteProgram(dom_unwrapAny(p0));
+		}
+
+		DeleteRenderbuffer(p0) {
+			this.handle.deleteRenderbuffer(dom_unwrapAny(p0));
+		}
+
+		DeleteShader(p0) {
+			this.handle.deleteShader(dom_unwrapAny(p0));
+		}
+
+		DeleteTexture(p0) {
+			this.handle.deleteTexture(dom_unwrapAny(p0));
+		}
+
+		DepthFunc(p0) {
+			this.handle.depthFunc(p0);
+		}
+
+		DepthMask(p0) {
+			this.handle.depthMask(p0);
+		}
+
+		DepthRange(p0, p1) {
+			this.handle.depthRange(p0, p1);
+		}
+
+		DetachShader(p0, p1) {
+			this.handle.detachShader(dom_unwrapAny(p0), dom_unwrapAny(p1));
+		}
+
+		Disable(p0) {
+			this.handle.disable(p0);
+		}
+
+		DisableVertexAttribArray(p0) {
+			this.handle.disableVertexAttribArray(p0);
+		}
+
+		DrawArrays(p0, p1, p2) {
+			this.handle.drawArrays(p0, p1, p2);
+		}
+
+		DrawElements(p0, p1, p2, p3) {
+			this.handle.drawElements(p0, p1, p2, p3);
+		}
+
+		Enable(p0) {
+			this.handle.enable(p0);
+		}
+
+		EnableVertexAttribArray(p0) {
+			this.handle.enableVertexAttribArray(p0);
+		}
+
+		Finish() {
+			this.handle.finish();
+		}
+
+		Flush() {
+			this.handle.flush();
+		}
+
+		FramebufferRenderbuffer(p0, p1, p2, p3) {
+			this.handle.framebufferRenderbuffer(p0, p1, p2, dom_unwrapAny(p3));
+		}
+
+		FramebufferTexture2D(p0, p1, p2, p3, p4) {
+			this.handle.framebufferTexture2D(p0, p1, p2, dom_unwrapAny(p3), p4);
+		}
+
+		FrontFace(p0) {
+			this.handle.frontFace(p0);
+		}
+
+		GenerateMipmap(p0) {
+			this.handle.generateMipmap(p0);
+		}
+
+		GetActiveAttrib(p0, p1) {
+			return dom_fromWebGLActiveInfo(this.handle.getActiveAttrib(dom_unwrapAny(p0), p1));
+		}
+
+		GetActiveUniform(p0, p1) {
+			return dom_fromWebGLActiveInfo(this.handle.getActiveUniform(dom_unwrapAny(p0), p1));
+		}
+
+		GetAttachedShaders(p0) {
+			return Array.from(this.handle.getAttachedShaders(dom_unwrapAny(p0)) || [], (item) => item);
+		}
+
+		GetAttribLocation(p0, p1) {
+			return this.handle.getAttribLocation(dom_unwrapAny(p0), p1);
+		}
+
+		GetBufferParameter(p0, p1) {
+			return this.handle.getBufferParameter(p0, p1);
+		}
+
+		GetContextAttributes() {
+			return dom_fromWebGLContextAttributes(this.handle.getContextAttributes());
+		}
+
+		GetError() {
+			return this.handle.getError();
+		}
+
+		GetExtension(p0) {
+			return dom_wrap(dom.ANGLE_instanced_arrays, this.handle.getExtension(p0));
+		}
+
+		GetExtensionANGLE_instanced_arrays() {
+			return dom_wrap(dom.ANGLE_instanced_arrays, this.handle.getExtension("ANGLE_instanced_arrays", ));
+		}
+
+		GetExtensionEXT_blend_minmax() {
+			return dom_fromEXT_blend_minmax(this.handle.getExtension("EXT_blend_minmax", ));
+		}
+
+		GetExtensionEXT_color_buffer_float() {
+			return this.handle.getExtension("EXT_color_buffer_float", );
+		}
+
+		GetExtensionEXT_color_buffer_half_float() {
+			return dom_fromEXT_color_buffer_half_float(this.handle.getExtension("EXT_color_buffer_half_float", ));
+		}
+
+		GetExtensionEXT_float_blend() {
+			return this.handle.getExtension("EXT_float_blend", );
+		}
+
+		GetExtensionEXT_frag_depth() {
+			return this.handle.getExtension("EXT_frag_depth", );
+		}
+
+		GetExtensionEXT_sRGB() {
+			return dom_fromEXT_sRGB(this.handle.getExtension("EXT_sRGB", ));
+		}
+
+		GetExtensionEXT_shader_texture_lod() {
+			return this.handle.getExtension("EXT_shader_texture_lod", );
+		}
+
+		GetExtensionEXT_texture_compression_bptc() {
+			return dom_fromEXT_texture_compression_bptc(this.handle.getExtension("EXT_texture_compression_bptc", ));
+		}
+
+		GetExtensionEXT_texture_compression_rgtc() {
+			return dom_fromEXT_texture_compression_rgtc(this.handle.getExtension("EXT_texture_compression_rgtc", ));
+		}
+
+		GetExtensionEXT_texture_filter_anisotropic() {
+			return dom_fromEXT_texture_filter_anisotropic(this.handle.getExtension("EXT_texture_filter_anisotropic", ));
+		}
+
+		GetExtensionKHR_parallel_shader_compile() {
+			return dom_fromKHR_parallel_shader_compile(this.handle.getExtension("KHR_parallel_shader_compile", ));
+		}
+
+		GetExtensionOES_element_index_uint() {
+			return this.handle.getExtension("OES_element_index_uint", );
+		}
+
+		GetExtensionOES_fbo_render_mipmap() {
+			return this.handle.getExtension("OES_fbo_render_mipmap", );
+		}
+
+		GetExtensionOES_standard_derivatives() {
+			return dom_fromOES_standard_derivatives(this.handle.getExtension("OES_standard_derivatives", ));
+		}
+
+		GetExtensionOES_texture_float() {
+			return this.handle.getExtension("OES_texture_float", );
+		}
+
+		GetExtensionOES_texture_float_linear() {
+			return this.handle.getExtension("OES_texture_float_linear", );
+		}
+
+		GetExtensionOES_texture_half_float() {
+			return dom_fromOES_texture_half_float(this.handle.getExtension("OES_texture_half_float", ));
+		}
+
+		GetExtensionOES_texture_half_float_linear() {
+			return this.handle.getExtension("OES_texture_half_float_linear", );
+		}
+
+		GetExtensionOES_vertex_array_object() {
+			return dom_wrap(dom.OES_vertex_array_object, this.handle.getExtension("OES_vertex_array_object", ));
+		}
+
+		GetExtensionOVR_multiview2() {
+			return dom_wrap(dom.OVR_multiview2, this.handle.getExtension("OVR_multiview2", ));
+		}
+
+		GetExtensionWEBGL_color_buffer_float() {
+			return dom_fromWEBGL_color_buffer_float(this.handle.getExtension("WEBGL_color_buffer_float", ));
+		}
+
+		GetExtensionWEBGL_compressed_texture_astc() {
+			return dom_wrap(dom.WEBGL_compressed_texture_astc, this.handle.getExtension("WEBGL_compressed_texture_astc", ));
+		}
+
+		GetExtensionWEBGL_compressed_texture_etc() {
+			return dom_fromWEBGL_compressed_texture_etc(this.handle.getExtension("WEBGL_compressed_texture_etc", ));
+		}
+
+		GetExtensionWEBGL_compressed_texture_etc1() {
+			return dom_fromWEBGL_compressed_texture_etc1(this.handle.getExtension("WEBGL_compressed_texture_etc1", ));
+		}
+
+		GetExtensionWEBGL_compressed_texture_pvrtc() {
+			return dom_fromWEBGL_compressed_texture_pvrtc(this.handle.getExtension("WEBGL_compressed_texture_pvrtc", ));
+		}
+
+		GetExtensionWEBGL_compressed_texture_s3tc() {
+			return dom_fromWEBGL_compressed_texture_s3tc(this.handle.getExtension("WEBGL_compressed_texture_s3tc", ));
+		}
+
+		GetExtensionWEBGL_compressed_texture_s3tc_srgb() {
+			return dom_fromWEBGL_compressed_texture_s3tc_srgb(this.handle.getExtension("WEBGL_compressed_texture_s3tc_srgb", ));
+		}
+
+		GetExtensionWEBGL_debug_renderer_info() {
+			return dom_fromWEBGL_debug_renderer_info(this.handle.getExtension("WEBGL_debug_renderer_info", ));
+		}
+
+		GetExtensionWEBGL_debug_shaders() {
+			return dom_wrap(dom.WEBGL_debug_shaders, this.handle.getExtension("WEBGL_debug_shaders", ));
+		}
+
+		GetExtensionWEBGL_depth_texture() {
+			return dom_fromWEBGL_depth_texture(this.handle.getExtension("WEBGL_depth_texture", ));
+		}
+
+		GetExtensionWEBGL_draw_buffers() {
+			return dom_wrap(dom.WEBGL_draw_buffers, this.handle.getExtension("WEBGL_draw_buffers", ));
+		}
+
+		GetExtensionWEBGL_lose_context() {
+			return dom_wrap(dom.WEBGL_lose_context, this.handle.getExtension("WEBGL_lose_context", ));
+		}
+
+		GetExtensionWEBGL_multi_draw() {
+			return dom_wrap(dom.WEBGL_multi_draw, this.handle.getExtension("WEBGL_multi_draw", ));
+		}
+
+		GetFramebufferAttachmentParameter(p0, p1, p2) {
+			return this.handle.getFramebufferAttachmentParameter(p0, p1, p2);
+		}
+
+		GetParameter(p0) {
+			return this.handle.getParameter(p0);
+		}
+
+		GetProgramInfoLog(p0) {
+			return this.handle.getProgramInfoLog(dom_unwrapAny(p0));
+		}
+
+		GetProgramParameter(p0, p1) {
+			return this.handle.getProgramParameter(dom_unwrapAny(p0), p1);
+		}
+
+		GetRenderbufferParameter(p0, p1) {
+			return this.handle.getRenderbufferParameter(p0, p1);
+		}
+
+		GetShaderInfoLog(p0) {
+			return this.handle.getShaderInfoLog(dom_unwrapAny(p0));
+		}
+
+		GetShaderParameter(p0, p1) {
+			return this.handle.getShaderParameter(dom_unwrapAny(p0), p1);
+		}
+
+		GetShaderPrecisionFormat(p0, p1) {
+			return dom_fromWebGLShaderPrecisionFormat(this.handle.getShaderPrecisionFormat(p0, p1));
+		}
+
+		GetShaderSource(p0) {
+			return this.handle.getShaderSource(dom_unwrapAny(p0));
+		}
+
+		GetSupportedExtensions() {
+			return Array.from(this.handle.getSupportedExtensions() || []);
+		}
+
+		GetTexParameter(p0, p1) {
+			return this.handle.getTexParameter(p0, p1);
+		}
+
+		GetUniform(p0, p1) {
+			return this.handle.getUniform(dom_unwrapAny(p0), dom_unwrapAny(p1));
+		}
+
+		GetUniformLocation(p0, p1) {
+			return this.handle.getUniformLocation(dom_unwrapAny(p0), p1);
+		}
+
+		GetVertexAttrib(p0, p1) {
+			return this.handle.getVertexAttrib(p0, p1);
+		}
+
+		GetVertexAttribOffset(p0, p1) {
+			return this.handle.getVertexAttribOffset(p0, p1);
+		}
+
+		Hint(p0, p1) {
+			this.handle.hint(p0, p1);
+		}
+
+		IsBuffer(p0) {
+			return this.handle.isBuffer(dom_unwrapAny(p0));
+		}
+
+		IsContextLost() {
+			return this.handle.isContextLost();
+		}
+
+		IsEnabled(p0) {
+			return this.handle.isEnabled(p0);
+		}
+
+		IsFramebuffer(p0) {
+			return this.handle.isFramebuffer(dom_unwrapAny(p0));
+		}
+
+		IsProgram(p0) {
+			return this.handle.isProgram(dom_unwrapAny(p0));
+		}
+
+		IsRenderbuffer(p0) {
+			return this.handle.isRenderbuffer(dom_unwrapAny(p0));
+		}
+
+		IsShader(p0) {
+			return this.handle.isShader(dom_unwrapAny(p0));
+		}
+
+		IsTexture(p0) {
+			return this.handle.isTexture(dom_unwrapAny(p0));
+		}
+
+		LineWidth(p0) {
+			this.handle.lineWidth(p0);
+		}
+
+		LinkProgram(p0) {
+			this.handle.linkProgram(dom_unwrapAny(p0));
+		}
+
+		PixelStorei(p0, p1) {
+			this.handle.pixelStorei(p0, dom_unwrapAny(p1));
+		}
+
+		PolygonOffset(p0, p1) {
+			this.handle.polygonOffset(p0, p1);
+		}
+
+		RenderbufferStorage(p0, p1, p2, p3) {
+			this.handle.renderbufferStorage(p0, p1, p2, p3);
+		}
+
+		SampleCoverage(p0, p1) {
+			this.handle.sampleCoverage(p0, p1);
+		}
+
+		Scissor(p0, p1, p2, p3) {
+			this.handle.scissor(p0, p1, p2, p3);
+		}
+
+		ShaderSource(p0, p1) {
+			this.handle.shaderSource(dom_unwrapAny(p0), p1);
+		}
+
+		StencilFunc(p0, p1, p2) {
+			this.handle.stencilFunc(p0, p1, p2);
+		}
+
+		StencilFuncSeparate(p0, p1, p2, p3) {
+			this.handle.stencilFuncSeparate(p0, p1, p2, p3);
+		}
+
+		StencilMask(p0) {
+			this.handle.stencilMask(p0);
+		}
+
+		StencilMaskSeparate(p0, p1) {
+			this.handle.stencilMaskSeparate(p0, p1);
+		}
+
+		StencilOp(p0, p1, p2) {
+			this.handle.stencilOp(p0, p1, p2);
+		}
+
+		StencilOpSeparate(p0, p1, p2, p3) {
+			this.handle.stencilOpSeparate(p0, p1, p2, p3);
+		}
+
+		TexParameterf(p0, p1, p2) {
+			this.handle.texParameterf(p0, p1, p2);
+		}
+
+		TexParameteri(p0, p1, p2) {
+			this.handle.texParameteri(p0, p1, p2);
+		}
+
+		Uniform1f(p0, p1) {
+			this.handle.uniform1f(dom_unwrapAny(p0), p1);
+		}
+
+		Uniform1i(p0, p1) {
+			this.handle.uniform1i(dom_unwrapAny(p0), p1);
+		}
+
+		Uniform2f(p0, p1, p2) {
+			this.handle.uniform2f(dom_unwrapAny(p0), p1, p2);
+		}
+
+		Uniform2i(p0, p1, p2) {
+			this.handle.uniform2i(dom_unwrapAny(p0), p1, p2);
+		}
+
+		Uniform3f(p0, p1, p2, p3) {
+			this.handle.uniform3f(dom_unwrapAny(p0), p1, p2, p3);
+		}
+
+		Uniform3i(p0, p1, p2, p3) {
+			this.handle.uniform3i(dom_unwrapAny(p0), p1, p2, p3);
+		}
+
+		Uniform4f(p0, p1, p2, p3, p4) {
+			this.handle.uniform4f(dom_unwrapAny(p0), p1, p2, p3, p4);
+		}
+
+		Uniform4i(p0, p1, p2, p3, p4) {
+			this.handle.uniform4i(dom_unwrapAny(p0), p1, p2, p3, p4);
+		}
+
+		UseProgram(p0) {
+			this.handle.useProgram(dom_unwrapAny(p0));
+		}
+
+		ValidateProgram(p0) {
+			this.handle.validateProgram(dom_unwrapAny(p0));
+		}
+
+		VertexAttrib1f(p0, p1) {
+			this.handle.vertexAttrib1f(p0, p1);
+		}
+
+		VertexAttrib1fv(p0, p1) {
+			this.handle.vertexAttrib1fv(p0, Float32Array.from(p1 || []));
+		}
+
+		VertexAttrib2f(p0, p1, p2) {
+			this.handle.vertexAttrib2f(p0, p1, p2);
+		}
+
+		VertexAttrib2fv(p0, p1) {
+			this.handle.vertexAttrib2fv(p0, Float32Array.from(p1 || []));
+		}
+
+		VertexAttrib3f(p0, p1, p2, p3) {
+			this.handle.vertexAttrib3f(p0, p1, p2, p3);
+		}
+
+		VertexAttrib3fv(p0, p1) {
+			this.handle.vertexAttrib3fv(p0, Float32Array.from(p1 || []));
+		}
+
+		VertexAttrib4f(p0, p1, p2, p3, p4) {
+			this.handle.vertexAttrib4f(p0, p1, p2, p3, p4);
+		}
+
+		VertexAttrib4fv(p0, p1) {
+			this.handle.vertexAttrib4fv(p0, Float32Array.from(p1 || []));
+		}
+
+		VertexAttribPointer(p0, p1, p2, p3, p4, p5) {
+			this.handle.vertexAttribPointer(p0, p1, p2, p3, p4, p5);
+		}
+
+		Viewport(p0, p1, p2, p3) {
+			this.handle.viewport(p0, p1, p2, p3);
+		}
+
+		Canvas() {
+			return this.handle.canvas;
+		}
+
+		DrawingBufferColorSpace() {
+			return this.handle.drawingBufferColorSpace;
+		}
+
+		SetDrawingBufferColorSpace(value) {
+			this.handle.drawingBufferColorSpace = value;
+		}
+
+		DrawingBufferHeight() {
+			return this.handle.drawingBufferHeight;
+		}
+
+		DrawingBufferWidth() {
+			return this.handle.drawingBufferWidth;
+		}
+
+		DEPTH_BUFFER_BIT() {
+			return this.handle.DEPTH_BUFFER_BIT;
+		}
+
+		STENCIL_BUFFER_BIT() {
+			return this.handle.STENCIL_BUFFER_BIT;
+		}
+
+		COLOR_BUFFER_BIT() {
+			return this.handle.COLOR_BUFFER_BIT;
+		}
+
+		POINTS() {
+			return this.handle.POINTS;
+		}
+
+		LINES() {
+			return this.handle.LINES;
+		}
+
+		LINE_LOOP() {
+			return this.handle.LINE_LOOP;
+		}
+
+		LINE_STRIP() {
+			return this.handle.LINE_STRIP;
+		}
+
+		TRIANGLES() {
+			return this.handle.TRIANGLES;
+		}
+
+		TRIANGLE_STRIP() {
+			return this.handle.TRIANGLE_STRIP;
+		}
+
+		TRIANGLE_FAN() {
+			return this.handle.TRIANGLE_FAN;
+		}
+
+		ZERO() {
+			return this.handle.ZERO;
+		}
+
+		ONE() {
+			return this.handle.ONE;
+		}
+
+		SRC_COLOR() {
+			return this.handle.SRC_COLOR;
+		}
+
+		ONE_MINUS_SRC_COLOR() {
+			return this.handle.ONE_MINUS_SRC_COLOR;
+		}
+
+		SRC_ALPHA() {
+			return this.handle.SRC_ALPHA;
+		}
+
+		ONE_MINUS_SRC_ALPHA() {
+			return this.handle.ONE_MINUS_SRC_ALPHA;
+		}
+
+		DST_ALPHA() {
+			return this.handle.DST_ALPHA;
+		}
+
+		ONE_MINUS_DST_ALPHA() {
+			return this.handle.ONE_MINUS_DST_ALPHA;
+		}
+
+		DST_COLOR() {
+			return this.handle.DST_COLOR;
+		}
+
+		ONE_MINUS_DST_COLOR() {
+			return this.handle.ONE_MINUS_DST_COLOR;
+		}
+
+		SRC_ALPHA_SATURATE() {
+			return this.handle.SRC_ALPHA_SATURATE;
+		}
+
+		FUNC_ADD() {
+			return this.handle.FUNC_ADD;
+		}
+
+		BLEND_EQUATION() {
+			return this.handle.BLEND_EQUATION;
+		}
+
+		BLEND_EQUATION_RGB() {
+			return this.handle.BLEND_EQUATION_RGB;
+		}
+
+		BLEND_EQUATION_ALPHA() {
+			return this.handle.BLEND_EQUATION_ALPHA;
+		}
+
+		FUNC_SUBTRACT() {
+			return this.handle.FUNC_SUBTRACT;
+		}
+
+		FUNC_REVERSE_SUBTRACT() {
+			return this.handle.FUNC_REVERSE_SUBTRACT;
+		}
+
+		BLEND_DST_RGB() {
+			return this.handle.BLEND_DST_RGB;
+		}
+
+		BLEND_SRC_RGB() {
+			return this.handle.BLEND_SRC_RGB;
+		}
+
+		BLEND_DST_ALPHA() {
+			return this.handle.BLEND_DST_ALPHA;
+		}
+
+		BLEND_SRC_ALPHA() {
+			return this.handle.BLEND_SRC_ALPHA;
+		}
+
+		CONSTANT_COLOR() {
+			return this.handle.CONSTANT_COLOR;
+		}
+
+		ONE_MINUS_CONSTANT_COLOR() {
+			return this.handle.ONE_MINUS_CONSTANT_COLOR;
+		}
+
+		CONSTANT_ALPHA() {
+			return this.handle.CONSTANT_ALPHA;
+		}
+
+		ONE_MINUS_CONSTANT_ALPHA() {
+			return this.handle.ONE_MINUS_CONSTANT_ALPHA;
+		}
+
+		BLEND_COLOR() {
+			return this.handle.BLEND_COLOR;
+		}
+
+		ARRAY_BUFFER() {
+			return this.handle.ARRAY_BUFFER;
+		}
+
+		ELEMENT_ARRAY_BUFFER() {
+			return this.handle.ELEMENT_ARRAY_BUFFER;
+		}
+
+		ARRAY_BUFFER_BINDING() {
+			return this.handle.ARRAY_BUFFER_BINDING;
+		}
+
+		ELEMENT_ARRAY_BUFFER_BINDING() {
+			return this.handle.ELEMENT_ARRAY_BUFFER_BINDING;
+		}
+
+		STREAM_DRAW() {
+			return this.handle.STREAM_DRAW;
+		}
+
+		STATIC_DRAW() {
+			return this.handle.STATIC_DRAW;
+		}
+
+		DYNAMIC_DRAW() {
+			return this.handle.DYNAMIC_DRAW;
+		}
+
+		BUFFER_SIZE() {
+			return this.handle.BUFFER_SIZE;
+		}
+
+		BUFFER_USAGE() {
+			return this.handle.BUFFER_USAGE;
+		}
+
+		CURRENT_VERTEX_ATTRIB() {
+			return this.handle.CURRENT_VERTEX_ATTRIB;
+		}
+
+		FRONT() {
+			return this.handle.FRONT;
+		}
+
+		BACK() {
+			return this.handle.BACK;
+		}
+
+		FRONT_AND_BACK() {
+			return this.handle.FRONT_AND_BACK;
+		}
+
+		CULL_FACE() {
+			return this.handle.CULL_FACE;
+		}
+
+		BLEND() {
+			return this.handle.BLEND;
+		}
+
+		DITHER() {
+			return this.handle.DITHER;
+		}
+
+		STENCIL_TEST() {
+			return this.handle.STENCIL_TEST;
+		}
+
+		DEPTH_TEST() {
+			return this.handle.DEPTH_TEST;
+		}
+
+		SCISSOR_TEST() {
+			return this.handle.SCISSOR_TEST;
+		}
+
+		POLYGON_OFFSET_FILL() {
+			return this.handle.POLYGON_OFFSET_FILL;
+		}
+
+		SAMPLE_ALPHA_TO_COVERAGE() {
+			return this.handle.SAMPLE_ALPHA_TO_COVERAGE;
+		}
+
+		SAMPLE_COVERAGE() {
+			return this.handle.SAMPLE_COVERAGE;
+		}
+
+		NO_ERROR() {
+			return this.handle.NO_ERROR;
+		}
+
+		INVALID_ENUM() {
+			return this.handle.INVALID_ENUM;
+		}
+
+		INVALID_VALUE() {
+			return this.handle.INVALID_VALUE;
+		}
+
+		INVALID_OPERATION() {
+			return this.handle.INVALID_OPERATION;
+		}
+
+		OUT_OF_MEMORY() {
+			return this.handle.OUT_OF_MEMORY;
+		}
+
+		CW() {
+			return this.handle.CW;
+		}
+
+		CCW() {
+			return this.handle.CCW;
+		}
+
+		LINE_WIDTH() {
+			return this.handle.LINE_WIDTH;
+		}
+
+		ALIASED_POINT_SIZE_RANGE() {
+			return this.handle.ALIASED_POINT_SIZE_RANGE;
+		}
+
+		ALIASED_LINE_WIDTH_RANGE() {
+			return this.handle.ALIASED_LINE_WIDTH_RANGE;
+		}
+
+		CULL_FACE_MODE() {
+			return this.handle.CULL_FACE_MODE;
+		}
+
+		FRONT_FACE() {
+			return this.handle.FRONT_FACE;
+		}
+
+		DEPTH_RANGE() {
+			return this.handle.DEPTH_RANGE;
+		}
+
+		DEPTH_WRITEMASK() {
+			return this.handle.DEPTH_WRITEMASK;
+		}
+
+		DEPTH_CLEAR_VALUE() {
+			return this.handle.DEPTH_CLEAR_VALUE;
+		}
+
+		DEPTH_FUNC() {
+			return this.handle.DEPTH_FUNC;
+		}
+
+		STENCIL_CLEAR_VALUE() {
+			return this.handle.STENCIL_CLEAR_VALUE;
+		}
+
+		STENCIL_FUNC() {
+			return this.handle.STENCIL_FUNC;
+		}
+
+		STENCIL_FAIL() {
+			return this.handle.STENCIL_FAIL;
+		}
+
+		STENCIL_PASS_DEPTH_FAIL() {
+			return this.handle.STENCIL_PASS_DEPTH_FAIL;
+		}
+
+		STENCIL_PASS_DEPTH_PASS() {
+			return this.handle.STENCIL_PASS_DEPTH_PASS;
+		}
+
+		STENCIL_REF() {
+			return this.handle.STENCIL_REF;
+		}
+
+		STENCIL_VALUE_MASK() {
+			return this.handle.STENCIL_VALUE_MASK;
+		}
+
+		STENCIL_WRITEMASK() {
+			return this.handle.STENCIL_WRITEMASK;
+		}
+
+		STENCIL_BACK_FUNC() {
+			return this.handle.STENCIL_BACK_FUNC;
+		}
+
+		STENCIL_BACK_FAIL() {
+			return this.handle.STENCIL_BACK_FAIL;
+		}
+
+		STENCIL_BACK_PASS_DEPTH_FAIL() {
+			return this.handle.STENCIL_BACK_PASS_DEPTH_FAIL;
+		}
+
+		STENCIL_BACK_PASS_DEPTH_PASS() {
+			return this.handle.STENCIL_BACK_PASS_DEPTH_PASS;
+		}
+
+		STENCIL_BACK_REF() {
+			return this.handle.STENCIL_BACK_REF;
+		}
+
+		STENCIL_BACK_VALUE_MASK() {
+			return this.handle.STENCIL_BACK_VALUE_MASK;
+		}
+
+		STENCIL_BACK_WRITEMASK() {
+			return this.handle.STENCIL_BACK_WRITEMASK;
+		}
+
+		VIEWPORT() {
+			return this.handle.VIEWPORT;
+		}
+
+		SCISSOR_BOX() {
+			return this.handle.SCISSOR_BOX;
+		}
+
+		COLOR_CLEAR_VALUE() {
+			return this.handle.COLOR_CLEAR_VALUE;
+		}
+
+		COLOR_WRITEMASK() {
+			return this.handle.COLOR_WRITEMASK;
+		}
+
+		UNPACK_ALIGNMENT() {
+			return this.handle.UNPACK_ALIGNMENT;
+		}
+
+		PACK_ALIGNMENT() {
+			return this.handle.PACK_ALIGNMENT;
+		}
+
+		MAX_TEXTURE_SIZE() {
+			return this.handle.MAX_TEXTURE_SIZE;
+		}
+
+		MAX_VIEWPORT_DIMS() {
+			return this.handle.MAX_VIEWPORT_DIMS;
+		}
+
+		SUBPIXEL_BITS() {
+			return this.handle.SUBPIXEL_BITS;
+		}
+
+		RED_BITS() {
+			return this.handle.RED_BITS;
+		}
+
+		GREEN_BITS() {
+			return this.handle.GREEN_BITS;
+		}
+
+		BLUE_BITS() {
+			return this.handle.BLUE_BITS;
+		}
+
+		ALPHA_BITS() {
+			return this.handle.ALPHA_BITS;
+		}
+
+		DEPTH_BITS() {
+			return this.handle.DEPTH_BITS;
+		}
+
+		STENCIL_BITS() {
+			return this.handle.STENCIL_BITS;
+		}
+
+		POLYGON_OFFSET_UNITS() {
+			return this.handle.POLYGON_OFFSET_UNITS;
+		}
+
+		POLYGON_OFFSET_FACTOR() {
+			return this.handle.POLYGON_OFFSET_FACTOR;
+		}
+
+		TEXTURE_BINDING_2D() {
+			return this.handle.TEXTURE_BINDING_2D;
+		}
+
+		SAMPLE_BUFFERS() {
+			return this.handle.SAMPLE_BUFFERS;
+		}
+
+		SAMPLES() {
+			return this.handle.SAMPLES;
+		}
+
+		SAMPLE_COVERAGE_VALUE() {
+			return this.handle.SAMPLE_COVERAGE_VALUE;
+		}
+
+		SAMPLE_COVERAGE_INVERT() {
+			return this.handle.SAMPLE_COVERAGE_INVERT;
+		}
+
+		COMPRESSED_TEXTURE_FORMATS() {
+			return this.handle.COMPRESSED_TEXTURE_FORMATS;
+		}
+
+		DONT_CARE() {
+			return this.handle.DONT_CARE;
+		}
+
+		FASTEST() {
+			return this.handle.FASTEST;
+		}
+
+		NICEST() {
+			return this.handle.NICEST;
+		}
+
+		GENERATE_MIPMAP_HINT() {
+			return this.handle.GENERATE_MIPMAP_HINT;
+		}
+
+		BYTE() {
+			return this.handle.BYTE;
+		}
+
+		UNSIGNED_BYTE() {
+			return this.handle.UNSIGNED_BYTE;
+		}
+
+		SHORT() {
+			return this.handle.SHORT;
+		}
+
+		UNSIGNED_SHORT() {
+			return this.handle.UNSIGNED_SHORT;
+		}
+
+		INT() {
+			return this.handle.INT;
+		}
+
+		UNSIGNED_INT() {
+			return this.handle.UNSIGNED_INT;
+		}
+
+		FLOAT() {
+			return this.handle.FLOAT;
+		}
+
+		DEPTH_COMPONENT() {
+			return this.handle.DEPTH_COMPONENT;
+		}
+
+		ALPHA() {
+			return this.handle.ALPHA;
+		}
+
+		RGB() {
+			return this.handle.RGB;
+		}
+
+		RGBA() {
+			return this.handle.RGBA;
+		}
+
+		LUMINANCE() {
+			return this.handle.LUMINANCE;
+		}
+
+		LUMINANCE_ALPHA() {
+			return this.handle.LUMINANCE_ALPHA;
+		}
+
+		UNSIGNED_SHORT_4_4_4_4() {
+			return this.handle.UNSIGNED_SHORT_4_4_4_4;
+		}
+
+		UNSIGNED_SHORT_5_5_5_1() {
+			return this.handle.UNSIGNED_SHORT_5_5_5_1;
+		}
+
+		UNSIGNED_SHORT_5_6_5() {
+			return this.handle.UNSIGNED_SHORT_5_6_5;
+		}
+
+		FRAGMENT_SHADER() {
+			return this.handle.FRAGMENT_SHADER;
+		}
+
+		VERTEX_SHADER() {
+			return this.handle.VERTEX_SHADER;
+		}
+
+		MAX_VERTEX_ATTRIBS() {
+			return this.handle.MAX_VERTEX_ATTRIBS;
+		}
+
+		MAX_VERTEX_UNIFORM_VECTORS() {
+			return this.handle.MAX_VERTEX_UNIFORM_VECTORS;
+		}
+
+		MAX_VARYING_VECTORS() {
+			return this.handle.MAX_VARYING_VECTORS;
+		}
+
+		MAX_COMBINED_TEXTURE_IMAGE_UNITS() {
+			return this.handle.MAX_COMBINED_TEXTURE_IMAGE_UNITS;
+		}
+
+		MAX_VERTEX_TEXTURE_IMAGE_UNITS() {
+			return this.handle.MAX_VERTEX_TEXTURE_IMAGE_UNITS;
+		}
+
+		MAX_TEXTURE_IMAGE_UNITS() {
+			return this.handle.MAX_TEXTURE_IMAGE_UNITS;
+		}
+
+		MAX_FRAGMENT_UNIFORM_VECTORS() {
+			return this.handle.MAX_FRAGMENT_UNIFORM_VECTORS;
+		}
+
+		SHADER_TYPE() {
+			return this.handle.SHADER_TYPE;
+		}
+
+		DELETE_STATUS() {
+			return this.handle.DELETE_STATUS;
+		}
+
+		LINK_STATUS() {
+			return this.handle.LINK_STATUS;
+		}
+
+		VALIDATE_STATUS() {
+			return this.handle.VALIDATE_STATUS;
+		}
+
+		ATTACHED_SHADERS() {
+			return this.handle.ATTACHED_SHADERS;
+		}
+
+		ACTIVE_UNIFORMS() {
+			return this.handle.ACTIVE_UNIFORMS;
+		}
+
+		ACTIVE_ATTRIBUTES() {
+			return this.handle.ACTIVE_ATTRIBUTES;
+		}
+
+		SHADING_LANGUAGE_VERSION() {
+			return this.handle.SHADING_LANGUAGE_VERSION;
+		}
+
+		CURRENT_PROGRAM() {
+			return this.handle.CURRENT_PROGRAM;
+		}
+
+		NEVER() {
+			return this.handle.NEVER;
+		}
+
+		LESS() {
+			return this.handle.LESS;
+		}
+
+		EQUAL() {
+			return this.handle.EQUAL;
+		}
+
+		LEQUAL() {
+			return this.handle.LEQUAL;
+		}
+
+		GREATER() {
+			return this.handle.GREATER;
+		}
+
+		NOTEQUAL() {
+			return this.handle.NOTEQUAL;
+		}
+
+		GEQUAL() {
+			return this.handle.GEQUAL;
+		}
+
+		ALWAYS() {
+			return this.handle.ALWAYS;
+		}
+
+		KEEP() {
+			return this.handle.KEEP;
+		}
+
+		REPLACE() {
+			return this.handle.REPLACE;
+		}
+
+		INCR() {
+			return this.handle.INCR;
+		}
+
+		DECR() {
+			return this.handle.DECR;
+		}
+
+		INVERT() {
+			return this.handle.INVERT;
+		}
+
+		INCR_WRAP() {
+			return this.handle.INCR_WRAP;
+		}
+
+		DECR_WRAP() {
+			return this.handle.DECR_WRAP;
+		}
+
+		VENDOR() {
+			return this.handle.VENDOR;
+		}
+
+		RENDERER() {
+			return this.handle.RENDERER;
+		}
+
+		VERSION() {
+			return this.handle.VERSION;
+		}
+
+		NEAREST() {
+			return this.handle.NEAREST;
+		}
+
+		LINEAR() {
+			return this.handle.LINEAR;
+		}
+
+		NEAREST_MIPMAP_NEAREST() {
+			return this.handle.NEAREST_MIPMAP_NEAREST;
+		}
+
+		LINEAR_MIPMAP_NEAREST() {
+			return this.handle.LINEAR_MIPMAP_NEAREST;
+		}
+
+		NEAREST_MIPMAP_LINEAR() {
+			return this.handle.NEAREST_MIPMAP_LINEAR;
+		}
+
+		LINEAR_MIPMAP_LINEAR() {
+			return this.handle.LINEAR_MIPMAP_LINEAR;
+		}
+
+		TEXTURE_MAG_FILTER() {
+			return this.handle.TEXTURE_MAG_FILTER;
+		}
+
+		TEXTURE_MIN_FILTER() {
+			return this.handle.TEXTURE_MIN_FILTER;
+		}
+
+		TEXTURE_WRAP_S() {
+			return this.handle.TEXTURE_WRAP_S;
+		}
+
+		TEXTURE_WRAP_T() {
+			return this.handle.TEXTURE_WRAP_T;
+		}
+
+		TEXTURE_2D() {
+			return this.handle.TEXTURE_2D;
+		}
+
+		TEXTURE() {
+			return this.handle.TEXTURE;
+		}
+
+		TEXTURE_CUBE_MAP() {
+			return this.handle.TEXTURE_CUBE_MAP;
+		}
+
+		TEXTURE_BINDING_CUBE_MAP() {
+			return this.handle.TEXTURE_BINDING_CUBE_MAP;
+		}
+
+		TEXTURE_CUBE_MAP_POSITIVE_X() {
+			return this.handle.TEXTURE_CUBE_MAP_POSITIVE_X;
+		}
+
+		TEXTURE_CUBE_MAP_NEGATIVE_X() {
+			return this.handle.TEXTURE_CUBE_MAP_NEGATIVE_X;
+		}
+
+		TEXTURE_CUBE_MAP_POSITIVE_Y() {
+			return this.handle.TEXTURE_CUBE_MAP_POSITIVE_Y;
+		}
+
+		TEXTURE_CUBE_MAP_NEGATIVE_Y() {
+			return this.handle.TEXTURE_CUBE_MAP_NEGATIVE_Y;
+		}
+
+		TEXTURE_CUBE_MAP_POSITIVE_Z() {
+			return this.handle.TEXTURE_CUBE_MAP_POSITIVE_Z;
+		}
+
+		TEXTURE_CUBE_MAP_NEGATIVE_Z() {
+			return this.handle.TEXTURE_CUBE_MAP_NEGATIVE_Z;
+		}
+
+		MAX_CUBE_MAP_TEXTURE_SIZE() {
+			return this.handle.MAX_CUBE_MAP_TEXTURE_SIZE;
+		}
+
+		TEXTURE0() {
+			return this.handle.TEXTURE0;
+		}
+
+		TEXTURE1() {
+			return this.handle.TEXTURE1;
+		}
+
+		TEXTURE2() {
+			return this.handle.TEXTURE2;
+		}
+
+		TEXTURE3() {
+			return this.handle.TEXTURE3;
+		}
+
+		TEXTURE4() {
+			return this.handle.TEXTURE4;
+		}
+
+		TEXTURE5() {
+			return this.handle.TEXTURE5;
+		}
+
+		TEXTURE6() {
+			return this.handle.TEXTURE6;
+		}
+
+		TEXTURE7() {
+			return this.handle.TEXTURE7;
+		}
+
+		TEXTURE8() {
+			return this.handle.TEXTURE8;
+		}
+
+		TEXTURE9() {
+			return this.handle.TEXTURE9;
+		}
+
+		TEXTURE10() {
+			return this.handle.TEXTURE10;
+		}
+
+		TEXTURE11() {
+			return this.handle.TEXTURE11;
+		}
+
+		TEXTURE12() {
+			return this.handle.TEXTURE12;
+		}
+
+		TEXTURE13() {
+			return this.handle.TEXTURE13;
+		}
+
+		TEXTURE14() {
+			return this.handle.TEXTURE14;
+		}
+
+		TEXTURE15() {
+			return this.handle.TEXTURE15;
+		}
+
+		TEXTURE16() {
+			return this.handle.TEXTURE16;
+		}
+
+		TEXTURE17() {
+			return this.handle.TEXTURE17;
+		}
+
+		TEXTURE18() {
+			return this.handle.TEXTURE18;
+		}
+
+		TEXTURE19() {
+			return this.handle.TEXTURE19;
+		}
+
+		TEXTURE20() {
+			return this.handle.TEXTURE20;
+		}
+
+		TEXTURE21() {
+			return this.handle.TEXTURE21;
+		}
+
+		TEXTURE22() {
+			return this.handle.TEXTURE22;
+		}
+
+		TEXTURE23() {
+			return this.handle.TEXTURE23;
+		}
+
+		TEXTURE24() {
+			return this.handle.TEXTURE24;
+		}
+
+		TEXTURE25() {
+			return this.handle.TEXTURE25;
+		}
+
+		TEXTURE26() {
+			return this.handle.TEXTURE26;
+		}
+
+		TEXTURE27() {
+			return this.handle.TEXTURE27;
+		}
+
+		TEXTURE28() {
+			return this.handle.TEXTURE28;
+		}
+
+		TEXTURE29() {
+			return this.handle.TEXTURE29;
+		}
+
+		TEXTURE30() {
+			return this.handle.TEXTURE30;
+		}
+
+		TEXTURE31() {
+			return this.handle.TEXTURE31;
+		}
+
+		ACTIVE_TEXTURE() {
+			return this.handle.ACTIVE_TEXTURE;
+		}
+
+		REPEAT() {
+			return this.handle.REPEAT;
+		}
+
+		CLAMP_TO_EDGE() {
+			return this.handle.CLAMP_TO_EDGE;
+		}
+
+		MIRRORED_REPEAT() {
+			return this.handle.MIRRORED_REPEAT;
+		}
+
+		FLOAT_VEC2() {
+			return this.handle.FLOAT_VEC2;
+		}
+
+		FLOAT_VEC3() {
+			return this.handle.FLOAT_VEC3;
+		}
+
+		FLOAT_VEC4() {
+			return this.handle.FLOAT_VEC4;
+		}
+
+		INT_VEC2() {
+			return this.handle.INT_VEC2;
+		}
+
+		INT_VEC3() {
+			return this.handle.INT_VEC3;
+		}
+
+		INT_VEC4() {
+			return this.handle.INT_VEC4;
+		}
+
+		BOOL() {
+			return this.handle.BOOL;
+		}
+
+		BOOL_VEC2() {
+			return this.handle.BOOL_VEC2;
+		}
+
+		BOOL_VEC3() {
+			return this.handle.BOOL_VEC3;
+		}
+
+		BOOL_VEC4() {
+			return this.handle.BOOL_VEC4;
+		}
+
+		FLOAT_MAT2() {
+			return this.handle.FLOAT_MAT2;
+		}
+
+		FLOAT_MAT3() {
+			return this.handle.FLOAT_MAT3;
+		}
+
+		FLOAT_MAT4() {
+			return this.handle.FLOAT_MAT4;
+		}
+
+		SAMPLER_2D() {
+			return this.handle.SAMPLER_2D;
+		}
+
+		SAMPLER_CUBE() {
+			return this.handle.SAMPLER_CUBE;
+		}
+
+		VERTEX_ATTRIB_ARRAY_ENABLED() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_ENABLED;
+		}
+
+		VERTEX_ATTRIB_ARRAY_SIZE() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_SIZE;
+		}
+
+		VERTEX_ATTRIB_ARRAY_STRIDE() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_STRIDE;
+		}
+
+		VERTEX_ATTRIB_ARRAY_TYPE() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_TYPE;
+		}
+
+		VERTEX_ATTRIB_ARRAY_NORMALIZED() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_NORMALIZED;
+		}
+
+		VERTEX_ATTRIB_ARRAY_POINTER() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_POINTER;
+		}
+
+		VERTEX_ATTRIB_ARRAY_BUFFER_BINDING() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING;
+		}
+
+		IMPLEMENTATION_COLOR_READ_TYPE() {
+			return this.handle.IMPLEMENTATION_COLOR_READ_TYPE;
+		}
+
+		IMPLEMENTATION_COLOR_READ_FORMAT() {
+			return this.handle.IMPLEMENTATION_COLOR_READ_FORMAT;
+		}
+
+		COMPILE_STATUS() {
+			return this.handle.COMPILE_STATUS;
+		}
+
+		LOW_FLOAT() {
+			return this.handle.LOW_FLOAT;
+		}
+
+		MEDIUM_FLOAT() {
+			return this.handle.MEDIUM_FLOAT;
+		}
+
+		HIGH_FLOAT() {
+			return this.handle.HIGH_FLOAT;
+		}
+
+		LOW_INT() {
+			return this.handle.LOW_INT;
+		}
+
+		MEDIUM_INT() {
+			return this.handle.MEDIUM_INT;
+		}
+
+		HIGH_INT() {
+			return this.handle.HIGH_INT;
+		}
+
+		FRAMEBUFFER() {
+			return this.handle.FRAMEBUFFER;
+		}
+
+		RENDERBUFFER() {
+			return this.handle.RENDERBUFFER;
+		}
+
+		RGBA4() {
+			return this.handle.RGBA4;
+		}
+
+		RGB5_A1() {
+			return this.handle.RGB5_A1;
+		}
+
+		RGBA8() {
+			return this.handle.RGBA8;
+		}
+
+		RGB565() {
+			return this.handle.RGB565;
+		}
+
+		DEPTH_COMPONENT16() {
+			return this.handle.DEPTH_COMPONENT16;
+		}
+
+		STENCIL_INDEX8() {
+			return this.handle.STENCIL_INDEX8;
+		}
+
+		DEPTH_STENCIL() {
+			return this.handle.DEPTH_STENCIL;
+		}
+
+		RENDERBUFFER_WIDTH() {
+			return this.handle.RENDERBUFFER_WIDTH;
+		}
+
+		RENDERBUFFER_HEIGHT() {
+			return this.handle.RENDERBUFFER_HEIGHT;
+		}
+
+		RENDERBUFFER_INTERNAL_FORMAT() {
+			return this.handle.RENDERBUFFER_INTERNAL_FORMAT;
+		}
+
+		RENDERBUFFER_RED_SIZE() {
+			return this.handle.RENDERBUFFER_RED_SIZE;
+		}
+
+		RENDERBUFFER_GREEN_SIZE() {
+			return this.handle.RENDERBUFFER_GREEN_SIZE;
+		}
+
+		RENDERBUFFER_BLUE_SIZE() {
+			return this.handle.RENDERBUFFER_BLUE_SIZE;
+		}
+
+		RENDERBUFFER_ALPHA_SIZE() {
+			return this.handle.RENDERBUFFER_ALPHA_SIZE;
+		}
+
+		RENDERBUFFER_DEPTH_SIZE() {
+			return this.handle.RENDERBUFFER_DEPTH_SIZE;
+		}
+
+		RENDERBUFFER_STENCIL_SIZE() {
+			return this.handle.RENDERBUFFER_STENCIL_SIZE;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_OBJECT_NAME() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_OBJECT_NAME;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE;
+		}
+
+		COLOR_ATTACHMENT0() {
+			return this.handle.COLOR_ATTACHMENT0;
+		}
+
+		DEPTH_ATTACHMENT() {
+			return this.handle.DEPTH_ATTACHMENT;
+		}
+
+		STENCIL_ATTACHMENT() {
+			return this.handle.STENCIL_ATTACHMENT;
+		}
+
+		DEPTH_STENCIL_ATTACHMENT() {
+			return this.handle.DEPTH_STENCIL_ATTACHMENT;
+		}
+
+		NONE() {
+			return this.handle.NONE;
+		}
+
+		FRAMEBUFFER_COMPLETE() {
+			return this.handle.FRAMEBUFFER_COMPLETE;
+		}
+
+		FRAMEBUFFER_INCOMPLETE_ATTACHMENT() {
+			return this.handle.FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
+		}
+
+		FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT() {
+			return this.handle.FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT;
+		}
+
+		FRAMEBUFFER_INCOMPLETE_DIMENSIONS() {
+			return this.handle.FRAMEBUFFER_INCOMPLETE_DIMENSIONS;
+		}
+
+		FRAMEBUFFER_UNSUPPORTED() {
+			return this.handle.FRAMEBUFFER_UNSUPPORTED;
+		}
+
+		FRAMEBUFFER_BINDING() {
+			return this.handle.FRAMEBUFFER_BINDING;
+		}
+
+		RENDERBUFFER_BINDING() {
+			return this.handle.RENDERBUFFER_BINDING;
+		}
+
+		MAX_RENDERBUFFER_SIZE() {
+			return this.handle.MAX_RENDERBUFFER_SIZE;
+		}
+
+		INVALID_FRAMEBUFFER_OPERATION() {
+			return this.handle.INVALID_FRAMEBUFFER_OPERATION;
+		}
+
+		UNPACK_FLIP_Y_WEBGL() {
+			return this.handle.UNPACK_FLIP_Y_WEBGL;
+		}
+
+		UNPACK_PREMULTIPLY_ALPHA_WEBGL() {
+			return this.handle.UNPACK_PREMULTIPLY_ALPHA_WEBGL;
+		}
+
+		CONTEXT_LOST_WEBGL() {
+			return this.handle.CONTEXT_LOST_WEBGL;
+		}
+
+		UNPACK_COLORSPACE_CONVERSION_WEBGL() {
+			return this.handle.UNPACK_COLORSPACE_CONVERSION_WEBGL;
+		}
+
+		BROWSER_DEFAULT_WEBGL() {
+			return this.handle.BROWSER_DEFAULT_WEBGL;
+		}
+}
+
+class dom_C_WebGL2RenderingContextType extends dom_base {
+	constructor() {
+		super();
+		this.handle = null;
+	}
+
+		KindOfWebGL2RenderingContextType() {
+			
+		}
+
+		Prototype() {
+			return dom_wrap(dom.WebGL2RenderingContext, this.handle.prototype);
+		}
+
+		SetPrototype(value) {
+			this.handle.prototype = dom_unwrap(value);
+		}
+
+		READ_BUFFER() {
+			return this.handle.READ_BUFFER;
+		}
+
+		UNPACK_ROW_LENGTH() {
+			return this.handle.UNPACK_ROW_LENGTH;
+		}
+
+		UNPACK_SKIP_ROWS() {
+			return this.handle.UNPACK_SKIP_ROWS;
+		}
+
+		UNPACK_SKIP_PIXELS() {
+			return this.handle.UNPACK_SKIP_PIXELS;
+		}
+
+		PACK_ROW_LENGTH() {
+			return this.handle.PACK_ROW_LENGTH;
+		}
+
+		PACK_SKIP_ROWS() {
+			return this.handle.PACK_SKIP_ROWS;
+		}
+
+		PACK_SKIP_PIXELS() {
+			return this.handle.PACK_SKIP_PIXELS;
+		}
+
+		COLOR() {
+			return this.handle.COLOR;
+		}
+
+		DEPTH() {
+			return this.handle.DEPTH;
+		}
+
+		STENCIL() {
+			return this.handle.STENCIL;
+		}
+
+		RED() {
+			return this.handle.RED;
+		}
+
+		RGB8() {
+			return this.handle.RGB8;
+		}
+
+		RGB10_A2() {
+			return this.handle.RGB10_A2;
+		}
+
+		TEXTURE_BINDING_3D() {
+			return this.handle.TEXTURE_BINDING_3D;
+		}
+
+		UNPACK_SKIP_IMAGES() {
+			return this.handle.UNPACK_SKIP_IMAGES;
+		}
+
+		UNPACK_IMAGE_HEIGHT() {
+			return this.handle.UNPACK_IMAGE_HEIGHT;
+		}
+
+		TEXTURE_3D() {
+			return this.handle.TEXTURE_3D;
+		}
+
+		TEXTURE_WRAP_R() {
+			return this.handle.TEXTURE_WRAP_R;
+		}
+
+		MAX_3D_TEXTURE_SIZE() {
+			return this.handle.MAX_3D_TEXTURE_SIZE;
+		}
+
+		UNSIGNED_INT_2_10_10_10_REV() {
+			return this.handle.UNSIGNED_INT_2_10_10_10_REV;
+		}
+
+		MAX_ELEMENTS_VERTICES() {
+			return this.handle.MAX_ELEMENTS_VERTICES;
+		}
+
+		MAX_ELEMENTS_INDICES() {
+			return this.handle.MAX_ELEMENTS_INDICES;
+		}
+
+		TEXTURE_MIN_LOD() {
+			return this.handle.TEXTURE_MIN_LOD;
+		}
+
+		TEXTURE_MAX_LOD() {
+			return this.handle.TEXTURE_MAX_LOD;
+		}
+
+		TEXTURE_BASE_LEVEL() {
+			return this.handle.TEXTURE_BASE_LEVEL;
+		}
+
+		TEXTURE_MAX_LEVEL() {
+			return this.handle.TEXTURE_MAX_LEVEL;
+		}
+
+		MIN() {
+			return this.handle.MIN;
+		}
+
+		MAX() {
+			return this.handle.MAX;
+		}
+
+		DEPTH_COMPONENT24() {
+			return this.handle.DEPTH_COMPONENT24;
+		}
+
+		MAX_TEXTURE_LOD_BIAS() {
+			return this.handle.MAX_TEXTURE_LOD_BIAS;
+		}
+
+		TEXTURE_COMPARE_MODE() {
+			return this.handle.TEXTURE_COMPARE_MODE;
+		}
+
+		TEXTURE_COMPARE_FUNC() {
+			return this.handle.TEXTURE_COMPARE_FUNC;
+		}
+
+		CURRENT_QUERY() {
+			return this.handle.CURRENT_QUERY;
+		}
+
+		QUERY_RESULT() {
+			return this.handle.QUERY_RESULT;
+		}
+
+		QUERY_RESULT_AVAILABLE() {
+			return this.handle.QUERY_RESULT_AVAILABLE;
+		}
+
+		STREAM_READ() {
+			return this.handle.STREAM_READ;
+		}
+
+		STREAM_COPY() {
+			return this.handle.STREAM_COPY;
+		}
+
+		STATIC_READ() {
+			return this.handle.STATIC_READ;
+		}
+
+		STATIC_COPY() {
+			return this.handle.STATIC_COPY;
+		}
+
+		DYNAMIC_READ() {
+			return this.handle.DYNAMIC_READ;
+		}
+
+		DYNAMIC_COPY() {
+			return this.handle.DYNAMIC_COPY;
+		}
+
+		MAX_DRAW_BUFFERS() {
+			return this.handle.MAX_DRAW_BUFFERS;
+		}
+
+		DRAW_BUFFER0() {
+			return this.handle.DRAW_BUFFER0;
+		}
+
+		DRAW_BUFFER1() {
+			return this.handle.DRAW_BUFFER1;
+		}
+
+		DRAW_BUFFER2() {
+			return this.handle.DRAW_BUFFER2;
+		}
+
+		DRAW_BUFFER3() {
+			return this.handle.DRAW_BUFFER3;
+		}
+
+		DRAW_BUFFER4() {
+			return this.handle.DRAW_BUFFER4;
+		}
+
+		DRAW_BUFFER5() {
+			return this.handle.DRAW_BUFFER5;
+		}
+
+		DRAW_BUFFER6() {
+			return this.handle.DRAW_BUFFER6;
+		}
+
+		DRAW_BUFFER7() {
+			return this.handle.DRAW_BUFFER7;
+		}
+
+		DRAW_BUFFER8() {
+			return this.handle.DRAW_BUFFER8;
+		}
+
+		DRAW_BUFFER9() {
+			return this.handle.DRAW_BUFFER9;
+		}
+
+		DRAW_BUFFER10() {
+			return this.handle.DRAW_BUFFER10;
+		}
+
+		DRAW_BUFFER11() {
+			return this.handle.DRAW_BUFFER11;
+		}
+
+		DRAW_BUFFER12() {
+			return this.handle.DRAW_BUFFER12;
+		}
+
+		DRAW_BUFFER13() {
+			return this.handle.DRAW_BUFFER13;
+		}
+
+		DRAW_BUFFER14() {
+			return this.handle.DRAW_BUFFER14;
+		}
+
+		DRAW_BUFFER15() {
+			return this.handle.DRAW_BUFFER15;
+		}
+
+		MAX_FRAGMENT_UNIFORM_COMPONENTS() {
+			return this.handle.MAX_FRAGMENT_UNIFORM_COMPONENTS;
+		}
+
+		MAX_VERTEX_UNIFORM_COMPONENTS() {
+			return this.handle.MAX_VERTEX_UNIFORM_COMPONENTS;
+		}
+
+		SAMPLER_3D() {
+			return this.handle.SAMPLER_3D;
+		}
+
+		SAMPLER_2D_SHADOW() {
+			return this.handle.SAMPLER_2D_SHADOW;
+		}
+
+		FRAGMENT_SHADER_DERIVATIVE_HINT() {
+			return this.handle.FRAGMENT_SHADER_DERIVATIVE_HINT;
+		}
+
+		PIXEL_PACK_BUFFER() {
+			return this.handle.PIXEL_PACK_BUFFER;
+		}
+
+		PIXEL_UNPACK_BUFFER() {
+			return this.handle.PIXEL_UNPACK_BUFFER;
+		}
+
+		PIXEL_PACK_BUFFER_BINDING() {
+			return this.handle.PIXEL_PACK_BUFFER_BINDING;
+		}
+
+		PIXEL_UNPACK_BUFFER_BINDING() {
+			return this.handle.PIXEL_UNPACK_BUFFER_BINDING;
+		}
+
+		FLOAT_MAT2x3() {
+			return this.handle.FLOAT_MAT2x3;
+		}
+
+		FLOAT_MAT2x4() {
+			return this.handle.FLOAT_MAT2x4;
+		}
+
+		FLOAT_MAT3x2() {
+			return this.handle.FLOAT_MAT3x2;
+		}
+
+		FLOAT_MAT3x4() {
+			return this.handle.FLOAT_MAT3x4;
+		}
+
+		FLOAT_MAT4x2() {
+			return this.handle.FLOAT_MAT4x2;
+		}
+
+		FLOAT_MAT4x3() {
+			return this.handle.FLOAT_MAT4x3;
+		}
+
+		SRGB() {
+			return this.handle.SRGB;
+		}
+
+		SRGB8() {
+			return this.handle.SRGB8;
+		}
+
+		SRGB8_ALPHA8() {
+			return this.handle.SRGB8_ALPHA8;
+		}
+
+		COMPARE_REF_TO_TEXTURE() {
+			return this.handle.COMPARE_REF_TO_TEXTURE;
+		}
+
+		RGBA32F() {
+			return this.handle.RGBA32F;
+		}
+
+		RGB32F() {
+			return this.handle.RGB32F;
+		}
+
+		RGBA16F() {
+			return this.handle.RGBA16F;
+		}
+
+		RGB16F() {
+			return this.handle.RGB16F;
+		}
+
+		VERTEX_ATTRIB_ARRAY_INTEGER() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_INTEGER;
+		}
+
+		MAX_ARRAY_TEXTURE_LAYERS() {
+			return this.handle.MAX_ARRAY_TEXTURE_LAYERS;
+		}
+
+		MIN_PROGRAM_TEXEL_OFFSET() {
+			return this.handle.MIN_PROGRAM_TEXEL_OFFSET;
+		}
+
+		MAX_PROGRAM_TEXEL_OFFSET() {
+			return this.handle.MAX_PROGRAM_TEXEL_OFFSET;
+		}
+
+		MAX_VARYING_COMPONENTS() {
+			return this.handle.MAX_VARYING_COMPONENTS;
+		}
+
+		TEXTURE_2D_ARRAY() {
+			return this.handle.TEXTURE_2D_ARRAY;
+		}
+
+		TEXTURE_BINDING_2D_ARRAY() {
+			return this.handle.TEXTURE_BINDING_2D_ARRAY;
+		}
+
+		R11F_G11F_B10F() {
+			return this.handle.R11F_G11F_B10F;
+		}
+
+		UNSIGNED_INT_10F_11F_11F_REV() {
+			return this.handle.UNSIGNED_INT_10F_11F_11F_REV;
+		}
+
+		RGB9_E5() {
+			return this.handle.RGB9_E5;
+		}
+
+		UNSIGNED_INT_5_9_9_9_REV() {
+			return this.handle.UNSIGNED_INT_5_9_9_9_REV;
+		}
+
+		TRANSFORM_FEEDBACK_BUFFER_MODE() {
+			return this.handle.TRANSFORM_FEEDBACK_BUFFER_MODE;
+		}
+
+		MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS() {
+			return this.handle.MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS;
+		}
+
+		TRANSFORM_FEEDBACK_VARYINGS() {
+			return this.handle.TRANSFORM_FEEDBACK_VARYINGS;
+		}
+
+		TRANSFORM_FEEDBACK_BUFFER_START() {
+			return this.handle.TRANSFORM_FEEDBACK_BUFFER_START;
+		}
+
+		TRANSFORM_FEEDBACK_BUFFER_SIZE() {
+			return this.handle.TRANSFORM_FEEDBACK_BUFFER_SIZE;
+		}
+
+		TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN() {
+			return this.handle.TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN;
+		}
+
+		RASTERIZER_DISCARD() {
+			return this.handle.RASTERIZER_DISCARD;
+		}
+
+		MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS() {
+			return this.handle.MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS;
+		}
+
+		MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS() {
+			return this.handle.MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS;
+		}
+
+		INTERLEAVED_ATTRIBS() {
+			return this.handle.INTERLEAVED_ATTRIBS;
+		}
+
+		SEPARATE_ATTRIBS() {
+			return this.handle.SEPARATE_ATTRIBS;
+		}
+
+		TRANSFORM_FEEDBACK_BUFFER() {
+			return this.handle.TRANSFORM_FEEDBACK_BUFFER;
+		}
+
+		TRANSFORM_FEEDBACK_BUFFER_BINDING() {
+			return this.handle.TRANSFORM_FEEDBACK_BUFFER_BINDING;
+		}
+
+		RGBA32UI() {
+			return this.handle.RGBA32UI;
+		}
+
+		RGB32UI() {
+			return this.handle.RGB32UI;
+		}
+
+		RGBA16UI() {
+			return this.handle.RGBA16UI;
+		}
+
+		RGB16UI() {
+			return this.handle.RGB16UI;
+		}
+
+		RGBA8UI() {
+			return this.handle.RGBA8UI;
+		}
+
+		RGB8UI() {
+			return this.handle.RGB8UI;
+		}
+
+		RGBA32I() {
+			return this.handle.RGBA32I;
+		}
+
+		RGB32I() {
+			return this.handle.RGB32I;
+		}
+
+		RGBA16I() {
+			return this.handle.RGBA16I;
+		}
+
+		RGB16I() {
+			return this.handle.RGB16I;
+		}
+
+		RGBA8I() {
+			return this.handle.RGBA8I;
+		}
+
+		RGB8I() {
+			return this.handle.RGB8I;
+		}
+
+		RED_INTEGER() {
+			return this.handle.RED_INTEGER;
+		}
+
+		RGB_INTEGER() {
+			return this.handle.RGB_INTEGER;
+		}
+
+		RGBA_INTEGER() {
+			return this.handle.RGBA_INTEGER;
+		}
+
+		SAMPLER_2D_ARRAY() {
+			return this.handle.SAMPLER_2D_ARRAY;
+		}
+
+		SAMPLER_2D_ARRAY_SHADOW() {
+			return this.handle.SAMPLER_2D_ARRAY_SHADOW;
+		}
+
+		SAMPLER_CUBE_SHADOW() {
+			return this.handle.SAMPLER_CUBE_SHADOW;
+		}
+
+		UNSIGNED_INT_VEC2() {
+			return this.handle.UNSIGNED_INT_VEC2;
+		}
+
+		UNSIGNED_INT_VEC3() {
+			return this.handle.UNSIGNED_INT_VEC3;
+		}
+
+		UNSIGNED_INT_VEC4() {
+			return this.handle.UNSIGNED_INT_VEC4;
+		}
+
+		INT_SAMPLER_2D() {
+			return this.handle.INT_SAMPLER_2D;
+		}
+
+		INT_SAMPLER_3D() {
+			return this.handle.INT_SAMPLER_3D;
+		}
+
+		INT_SAMPLER_CUBE() {
+			return this.handle.INT_SAMPLER_CUBE;
+		}
+
+		INT_SAMPLER_2D_ARRAY() {
+			return this.handle.INT_SAMPLER_2D_ARRAY;
+		}
+
+		UNSIGNED_INT_SAMPLER_2D() {
+			return this.handle.UNSIGNED_INT_SAMPLER_2D;
+		}
+
+		UNSIGNED_INT_SAMPLER_3D() {
+			return this.handle.UNSIGNED_INT_SAMPLER_3D;
+		}
+
+		UNSIGNED_INT_SAMPLER_CUBE() {
+			return this.handle.UNSIGNED_INT_SAMPLER_CUBE;
+		}
+
+		UNSIGNED_INT_SAMPLER_2D_ARRAY() {
+			return this.handle.UNSIGNED_INT_SAMPLER_2D_ARRAY;
+		}
+
+		DEPTH_COMPONENT32F() {
+			return this.handle.DEPTH_COMPONENT32F;
+		}
+
+		DEPTH32F_STENCIL8() {
+			return this.handle.DEPTH32F_STENCIL8;
+		}
+
+		FLOAT_32_UNSIGNED_INT_24_8_REV() {
+			return this.handle.FLOAT_32_UNSIGNED_INT_24_8_REV;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_RED_SIZE() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_RED_SIZE;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_GREEN_SIZE() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_GREEN_SIZE;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_BLUE_SIZE() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_BLUE_SIZE;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_ALPHA_SIZE() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_ALPHA_SIZE;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE;
+		}
+
+		FRAMEBUFFER_DEFAULT() {
+			return this.handle.FRAMEBUFFER_DEFAULT;
+		}
+
+		UNSIGNED_INT_24_8() {
+			return this.handle.UNSIGNED_INT_24_8;
+		}
+
+		DEPTH24_STENCIL8() {
+			return this.handle.DEPTH24_STENCIL8;
+		}
+
+		UNSIGNED_NORMALIZED() {
+			return this.handle.UNSIGNED_NORMALIZED;
+		}
+
+		DRAW_FRAMEBUFFER_BINDING() {
+			return this.handle.DRAW_FRAMEBUFFER_BINDING;
+		}
+
+		READ_FRAMEBUFFER() {
+			return this.handle.READ_FRAMEBUFFER;
+		}
+
+		DRAW_FRAMEBUFFER() {
+			return this.handle.DRAW_FRAMEBUFFER;
+		}
+
+		READ_FRAMEBUFFER_BINDING() {
+			return this.handle.READ_FRAMEBUFFER_BINDING;
+		}
+
+		RENDERBUFFER_SAMPLES() {
+			return this.handle.RENDERBUFFER_SAMPLES;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_TEXTURE_LAYER() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_TEXTURE_LAYER;
+		}
+
+		MAX_COLOR_ATTACHMENTS() {
+			return this.handle.MAX_COLOR_ATTACHMENTS;
+		}
+
+		COLOR_ATTACHMENT1() {
+			return this.handle.COLOR_ATTACHMENT1;
+		}
+
+		COLOR_ATTACHMENT2() {
+			return this.handle.COLOR_ATTACHMENT2;
+		}
+
+		COLOR_ATTACHMENT3() {
+			return this.handle.COLOR_ATTACHMENT3;
+		}
+
+		COLOR_ATTACHMENT4() {
+			return this.handle.COLOR_ATTACHMENT4;
+		}
+
+		COLOR_ATTACHMENT5() {
+			return this.handle.COLOR_ATTACHMENT5;
+		}
+
+		COLOR_ATTACHMENT6() {
+			return this.handle.COLOR_ATTACHMENT6;
+		}
+
+		COLOR_ATTACHMENT7() {
+			return this.handle.COLOR_ATTACHMENT7;
+		}
+
+		COLOR_ATTACHMENT8() {
+			return this.handle.COLOR_ATTACHMENT8;
+		}
+
+		COLOR_ATTACHMENT9() {
+			return this.handle.COLOR_ATTACHMENT9;
+		}
+
+		COLOR_ATTACHMENT10() {
+			return this.handle.COLOR_ATTACHMENT10;
+		}
+
+		COLOR_ATTACHMENT11() {
+			return this.handle.COLOR_ATTACHMENT11;
+		}
+
+		COLOR_ATTACHMENT12() {
+			return this.handle.COLOR_ATTACHMENT12;
+		}
+
+		COLOR_ATTACHMENT13() {
+			return this.handle.COLOR_ATTACHMENT13;
+		}
+
+		COLOR_ATTACHMENT14() {
+			return this.handle.COLOR_ATTACHMENT14;
+		}
+
+		COLOR_ATTACHMENT15() {
+			return this.handle.COLOR_ATTACHMENT15;
+		}
+
+		FRAMEBUFFER_INCOMPLETE_MULTISAMPLE() {
+			return this.handle.FRAMEBUFFER_INCOMPLETE_MULTISAMPLE;
+		}
+
+		MAX_SAMPLES() {
+			return this.handle.MAX_SAMPLES;
+		}
+
+		HALF_FLOAT() {
+			return this.handle.HALF_FLOAT;
+		}
+
+		RG() {
+			return this.handle.RG;
+		}
+
+		RG_INTEGER() {
+			return this.handle.RG_INTEGER;
+		}
+
+		R8() {
+			return this.handle.R8;
+		}
+
+		RG8() {
+			return this.handle.RG8;
+		}
+
+		R16F() {
+			return this.handle.R16F;
+		}
+
+		R32F() {
+			return this.handle.R32F;
+		}
+
+		RG16F() {
+			return this.handle.RG16F;
+		}
+
+		RG32F() {
+			return this.handle.RG32F;
+		}
+
+		R8I() {
+			return this.handle.R8I;
+		}
+
+		R8UI() {
+			return this.handle.R8UI;
+		}
+
+		R16I() {
+			return this.handle.R16I;
+		}
+
+		R16UI() {
+			return this.handle.R16UI;
+		}
+
+		R32I() {
+			return this.handle.R32I;
+		}
+
+		R32UI() {
+			return this.handle.R32UI;
+		}
+
+		RG8I() {
+			return this.handle.RG8I;
+		}
+
+		RG8UI() {
+			return this.handle.RG8UI;
+		}
+
+		RG16I() {
+			return this.handle.RG16I;
+		}
+
+		RG16UI() {
+			return this.handle.RG16UI;
+		}
+
+		RG32I() {
+			return this.handle.RG32I;
+		}
+
+		RG32UI() {
+			return this.handle.RG32UI;
+		}
+
+		VERTEX_ARRAY_BINDING() {
+			return this.handle.VERTEX_ARRAY_BINDING;
+		}
+
+		R8_SNORM() {
+			return this.handle.R8_SNORM;
+		}
+
+		RG8_SNORM() {
+			return this.handle.RG8_SNORM;
+		}
+
+		RGB8_SNORM() {
+			return this.handle.RGB8_SNORM;
+		}
+
+		RGBA8_SNORM() {
+			return this.handle.RGBA8_SNORM;
+		}
+
+		SIGNED_NORMALIZED() {
+			return this.handle.SIGNED_NORMALIZED;
+		}
+
+		COPY_READ_BUFFER() {
+			return this.handle.COPY_READ_BUFFER;
+		}
+
+		COPY_WRITE_BUFFER() {
+			return this.handle.COPY_WRITE_BUFFER;
+		}
+
+		COPY_READ_BUFFER_BINDING() {
+			return this.handle.COPY_READ_BUFFER_BINDING;
+		}
+
+		COPY_WRITE_BUFFER_BINDING() {
+			return this.handle.COPY_WRITE_BUFFER_BINDING;
+		}
+
+		UNIFORM_BUFFER() {
+			return this.handle.UNIFORM_BUFFER;
+		}
+
+		UNIFORM_BUFFER_BINDING() {
+			return this.handle.UNIFORM_BUFFER_BINDING;
+		}
+
+		UNIFORM_BUFFER_START() {
+			return this.handle.UNIFORM_BUFFER_START;
+		}
+
+		UNIFORM_BUFFER_SIZE() {
+			return this.handle.UNIFORM_BUFFER_SIZE;
+		}
+
+		MAX_VERTEX_UNIFORM_BLOCKS() {
+			return this.handle.MAX_VERTEX_UNIFORM_BLOCKS;
+		}
+
+		MAX_FRAGMENT_UNIFORM_BLOCKS() {
+			return this.handle.MAX_FRAGMENT_UNIFORM_BLOCKS;
+		}
+
+		MAX_COMBINED_UNIFORM_BLOCKS() {
+			return this.handle.MAX_COMBINED_UNIFORM_BLOCKS;
+		}
+
+		MAX_UNIFORM_BUFFER_BINDINGS() {
+			return this.handle.MAX_UNIFORM_BUFFER_BINDINGS;
+		}
+
+		MAX_UNIFORM_BLOCK_SIZE() {
+			return this.handle.MAX_UNIFORM_BLOCK_SIZE;
+		}
+
+		MAX_COMBINED_VERTEX_UNIFORM_COMPONENTS() {
+			return this.handle.MAX_COMBINED_VERTEX_UNIFORM_COMPONENTS;
+		}
+
+		MAX_COMBINED_FRAGMENT_UNIFORM_COMPONENTS() {
+			return this.handle.MAX_COMBINED_FRAGMENT_UNIFORM_COMPONENTS;
+		}
+
+		UNIFORM_BUFFER_OFFSET_ALIGNMENT() {
+			return this.handle.UNIFORM_BUFFER_OFFSET_ALIGNMENT;
+		}
+
+		ACTIVE_UNIFORM_BLOCKS() {
+			return this.handle.ACTIVE_UNIFORM_BLOCKS;
+		}
+
+		UNIFORM_TYPE() {
+			return this.handle.UNIFORM_TYPE;
+		}
+
+		UNIFORM_SIZE() {
+			return this.handle.UNIFORM_SIZE;
+		}
+
+		UNIFORM_BLOCK_INDEX() {
+			return this.handle.UNIFORM_BLOCK_INDEX;
+		}
+
+		UNIFORM_OFFSET() {
+			return this.handle.UNIFORM_OFFSET;
+		}
+
+		UNIFORM_ARRAY_STRIDE() {
+			return this.handle.UNIFORM_ARRAY_STRIDE;
+		}
+
+		UNIFORM_MATRIX_STRIDE() {
+			return this.handle.UNIFORM_MATRIX_STRIDE;
+		}
+
+		UNIFORM_IS_ROW_MAJOR() {
+			return this.handle.UNIFORM_IS_ROW_MAJOR;
+		}
+
+		UNIFORM_BLOCK_BINDING() {
+			return this.handle.UNIFORM_BLOCK_BINDING;
+		}
+
+		UNIFORM_BLOCK_DATA_SIZE() {
+			return this.handle.UNIFORM_BLOCK_DATA_SIZE;
+		}
+
+		UNIFORM_BLOCK_ACTIVE_UNIFORMS() {
+			return this.handle.UNIFORM_BLOCK_ACTIVE_UNIFORMS;
+		}
+
+		UNIFORM_BLOCK_ACTIVE_UNIFORM_INDICES() {
+			return this.handle.UNIFORM_BLOCK_ACTIVE_UNIFORM_INDICES;
+		}
+
+		UNIFORM_BLOCK_REFERENCED_BY_VERTEX_SHADER() {
+			return this.handle.UNIFORM_BLOCK_REFERENCED_BY_VERTEX_SHADER;
+		}
+
+		UNIFORM_BLOCK_REFERENCED_BY_FRAGMENT_SHADER() {
+			return this.handle.UNIFORM_BLOCK_REFERENCED_BY_FRAGMENT_SHADER;
+		}
+
+		INVALID_INDEX() {
+			return this.handle.INVALID_INDEX;
+		}
+
+		MAX_VERTEX_OUTPUT_COMPONENTS() {
+			return this.handle.MAX_VERTEX_OUTPUT_COMPONENTS;
+		}
+
+		MAX_FRAGMENT_INPUT_COMPONENTS() {
+			return this.handle.MAX_FRAGMENT_INPUT_COMPONENTS;
+		}
+
+		MAX_SERVER_WAIT_TIMEOUT() {
+			return this.handle.MAX_SERVER_WAIT_TIMEOUT;
+		}
+
+		OBJECT_TYPE() {
+			return this.handle.OBJECT_TYPE;
+		}
+
+		SYNC_CONDITION() {
+			return this.handle.SYNC_CONDITION;
+		}
+
+		SYNC_STATUS() {
+			return this.handle.SYNC_STATUS;
+		}
+
+		SYNC_FLAGS() {
+			return this.handle.SYNC_FLAGS;
+		}
+
+		SYNC_FENCE() {
+			return this.handle.SYNC_FENCE;
+		}
+
+		SYNC_GPU_COMMANDS_COMPLETE() {
+			return this.handle.SYNC_GPU_COMMANDS_COMPLETE;
+		}
+
+		UNSIGNALED() {
+			return this.handle.UNSIGNALED;
+		}
+
+		SIGNALED() {
+			return this.handle.SIGNALED;
+		}
+
+		ALREADY_SIGNALED() {
+			return this.handle.ALREADY_SIGNALED;
+		}
+
+		TIMEOUT_EXPIRED() {
+			return this.handle.TIMEOUT_EXPIRED;
+		}
+
+		CONDITION_SATISFIED() {
+			return this.handle.CONDITION_SATISFIED;
+		}
+
+		WAIT_FAILED() {
+			return this.handle.WAIT_FAILED;
+		}
+
+		SYNC_FLUSH_COMMANDS_BIT() {
+			return this.handle.SYNC_FLUSH_COMMANDS_BIT;
+		}
+
+		VERTEX_ATTRIB_ARRAY_DIVISOR() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_DIVISOR;
+		}
+
+		ANY_SAMPLES_PASSED() {
+			return this.handle.ANY_SAMPLES_PASSED;
+		}
+
+		ANY_SAMPLES_PASSED_CONSERVATIVE() {
+			return this.handle.ANY_SAMPLES_PASSED_CONSERVATIVE;
+		}
+
+		SAMPLER_BINDING() {
+			return this.handle.SAMPLER_BINDING;
+		}
+
+		RGB10_A2UI() {
+			return this.handle.RGB10_A2UI;
+		}
+
+		INT_2_10_10_10_REV() {
+			return this.handle.INT_2_10_10_10_REV;
+		}
+
+		TRANSFORM_FEEDBACK() {
+			return this.handle.TRANSFORM_FEEDBACK;
+		}
+
+		TRANSFORM_FEEDBACK_PAUSED() {
+			return this.handle.TRANSFORM_FEEDBACK_PAUSED;
+		}
+
+		TRANSFORM_FEEDBACK_ACTIVE() {
+			return this.handle.TRANSFORM_FEEDBACK_ACTIVE;
+		}
+
+		TRANSFORM_FEEDBACK_BINDING() {
+			return this.handle.TRANSFORM_FEEDBACK_BINDING;
+		}
+
+		TEXTURE_IMMUTABLE_FORMAT() {
+			return this.handle.TEXTURE_IMMUTABLE_FORMAT;
+		}
+
+		MAX_ELEMENT_INDEX() {
+			return this.handle.MAX_ELEMENT_INDEX;
+		}
+
+		TEXTURE_IMMUTABLE_LEVELS() {
+			return this.handle.TEXTURE_IMMUTABLE_LEVELS;
+		}
+
+		TIMEOUT_IGNORED() {
+			return this.handle.TIMEOUT_IGNORED;
+		}
+
+		MAX_CLIENT_WAIT_TIMEOUT_WEBGL() {
+			return this.handle.MAX_CLIENT_WAIT_TIMEOUT_WEBGL;
+		}
+
+		DEPTH_BUFFER_BIT() {
+			return this.handle.DEPTH_BUFFER_BIT;
+		}
+
+		STENCIL_BUFFER_BIT() {
+			return this.handle.STENCIL_BUFFER_BIT;
+		}
+
+		COLOR_BUFFER_BIT() {
+			return this.handle.COLOR_BUFFER_BIT;
+		}
+
+		POINTS() {
+			return this.handle.POINTS;
+		}
+
+		LINES() {
+			return this.handle.LINES;
+		}
+
+		LINE_LOOP() {
+			return this.handle.LINE_LOOP;
+		}
+
+		LINE_STRIP() {
+			return this.handle.LINE_STRIP;
+		}
+
+		TRIANGLES() {
+			return this.handle.TRIANGLES;
+		}
+
+		TRIANGLE_STRIP() {
+			return this.handle.TRIANGLE_STRIP;
+		}
+
+		TRIANGLE_FAN() {
+			return this.handle.TRIANGLE_FAN;
+		}
+
+		ZERO() {
+			return this.handle.ZERO;
+		}
+
+		ONE() {
+			return this.handle.ONE;
+		}
+
+		SRC_COLOR() {
+			return this.handle.SRC_COLOR;
+		}
+
+		ONE_MINUS_SRC_COLOR() {
+			return this.handle.ONE_MINUS_SRC_COLOR;
+		}
+
+		SRC_ALPHA() {
+			return this.handle.SRC_ALPHA;
+		}
+
+		ONE_MINUS_SRC_ALPHA() {
+			return this.handle.ONE_MINUS_SRC_ALPHA;
+		}
+
+		DST_ALPHA() {
+			return this.handle.DST_ALPHA;
+		}
+
+		ONE_MINUS_DST_ALPHA() {
+			return this.handle.ONE_MINUS_DST_ALPHA;
+		}
+
+		DST_COLOR() {
+			return this.handle.DST_COLOR;
+		}
+
+		ONE_MINUS_DST_COLOR() {
+			return this.handle.ONE_MINUS_DST_COLOR;
+		}
+
+		SRC_ALPHA_SATURATE() {
+			return this.handle.SRC_ALPHA_SATURATE;
+		}
+
+		FUNC_ADD() {
+			return this.handle.FUNC_ADD;
+		}
+
+		BLEND_EQUATION() {
+			return this.handle.BLEND_EQUATION;
+		}
+
+		BLEND_EQUATION_RGB() {
+			return this.handle.BLEND_EQUATION_RGB;
+		}
+
+		BLEND_EQUATION_ALPHA() {
+			return this.handle.BLEND_EQUATION_ALPHA;
+		}
+
+		FUNC_SUBTRACT() {
+			return this.handle.FUNC_SUBTRACT;
+		}
+
+		FUNC_REVERSE_SUBTRACT() {
+			return this.handle.FUNC_REVERSE_SUBTRACT;
+		}
+
+		BLEND_DST_RGB() {
+			return this.handle.BLEND_DST_RGB;
+		}
+
+		BLEND_SRC_RGB() {
+			return this.handle.BLEND_SRC_RGB;
+		}
+
+		BLEND_DST_ALPHA() {
+			return this.handle.BLEND_DST_ALPHA;
+		}
+
+		BLEND_SRC_ALPHA() {
+			return this.handle.BLEND_SRC_ALPHA;
+		}
+
+		CONSTANT_COLOR() {
+			return this.handle.CONSTANT_COLOR;
+		}
+
+		ONE_MINUS_CONSTANT_COLOR() {
+			return this.handle.ONE_MINUS_CONSTANT_COLOR;
+		}
+
+		CONSTANT_ALPHA() {
+			return this.handle.CONSTANT_ALPHA;
+		}
+
+		ONE_MINUS_CONSTANT_ALPHA() {
+			return this.handle.ONE_MINUS_CONSTANT_ALPHA;
+		}
+
+		BLEND_COLOR() {
+			return this.handle.BLEND_COLOR;
+		}
+
+		ARRAY_BUFFER() {
+			return this.handle.ARRAY_BUFFER;
+		}
+
+		ELEMENT_ARRAY_BUFFER() {
+			return this.handle.ELEMENT_ARRAY_BUFFER;
+		}
+
+		ARRAY_BUFFER_BINDING() {
+			return this.handle.ARRAY_BUFFER_BINDING;
+		}
+
+		ELEMENT_ARRAY_BUFFER_BINDING() {
+			return this.handle.ELEMENT_ARRAY_BUFFER_BINDING;
+		}
+
+		STREAM_DRAW() {
+			return this.handle.STREAM_DRAW;
+		}
+
+		STATIC_DRAW() {
+			return this.handle.STATIC_DRAW;
+		}
+
+		DYNAMIC_DRAW() {
+			return this.handle.DYNAMIC_DRAW;
+		}
+
+		BUFFER_SIZE() {
+			return this.handle.BUFFER_SIZE;
+		}
+
+		BUFFER_USAGE() {
+			return this.handle.BUFFER_USAGE;
+		}
+
+		CURRENT_VERTEX_ATTRIB() {
+			return this.handle.CURRENT_VERTEX_ATTRIB;
+		}
+
+		FRONT() {
+			return this.handle.FRONT;
+		}
+
+		BACK() {
+			return this.handle.BACK;
+		}
+
+		FRONT_AND_BACK() {
+			return this.handle.FRONT_AND_BACK;
+		}
+
+		CULL_FACE() {
+			return this.handle.CULL_FACE;
+		}
+
+		BLEND() {
+			return this.handle.BLEND;
+		}
+
+		DITHER() {
+			return this.handle.DITHER;
+		}
+
+		STENCIL_TEST() {
+			return this.handle.STENCIL_TEST;
+		}
+
+		DEPTH_TEST() {
+			return this.handle.DEPTH_TEST;
+		}
+
+		SCISSOR_TEST() {
+			return this.handle.SCISSOR_TEST;
+		}
+
+		POLYGON_OFFSET_FILL() {
+			return this.handle.POLYGON_OFFSET_FILL;
+		}
+
+		SAMPLE_ALPHA_TO_COVERAGE() {
+			return this.handle.SAMPLE_ALPHA_TO_COVERAGE;
+		}
+
+		SAMPLE_COVERAGE() {
+			return this.handle.SAMPLE_COVERAGE;
+		}
+
+		NO_ERROR() {
+			return this.handle.NO_ERROR;
+		}
+
+		INVALID_ENUM() {
+			return this.handle.INVALID_ENUM;
+		}
+
+		INVALID_VALUE() {
+			return this.handle.INVALID_VALUE;
+		}
+
+		INVALID_OPERATION() {
+			return this.handle.INVALID_OPERATION;
+		}
+
+		OUT_OF_MEMORY() {
+			return this.handle.OUT_OF_MEMORY;
+		}
+
+		CW() {
+			return this.handle.CW;
+		}
+
+		CCW() {
+			return this.handle.CCW;
+		}
+
+		LINE_WIDTH() {
+			return this.handle.LINE_WIDTH;
+		}
+
+		ALIASED_POINT_SIZE_RANGE() {
+			return this.handle.ALIASED_POINT_SIZE_RANGE;
+		}
+
+		ALIASED_LINE_WIDTH_RANGE() {
+			return this.handle.ALIASED_LINE_WIDTH_RANGE;
+		}
+
+		CULL_FACE_MODE() {
+			return this.handle.CULL_FACE_MODE;
+		}
+
+		FRONT_FACE() {
+			return this.handle.FRONT_FACE;
+		}
+
+		DEPTH_RANGE() {
+			return this.handle.DEPTH_RANGE;
+		}
+
+		DEPTH_WRITEMASK() {
+			return this.handle.DEPTH_WRITEMASK;
+		}
+
+		DEPTH_CLEAR_VALUE() {
+			return this.handle.DEPTH_CLEAR_VALUE;
+		}
+
+		DEPTH_FUNC() {
+			return this.handle.DEPTH_FUNC;
+		}
+
+		STENCIL_CLEAR_VALUE() {
+			return this.handle.STENCIL_CLEAR_VALUE;
+		}
+
+		STENCIL_FUNC() {
+			return this.handle.STENCIL_FUNC;
+		}
+
+		STENCIL_FAIL() {
+			return this.handle.STENCIL_FAIL;
+		}
+
+		STENCIL_PASS_DEPTH_FAIL() {
+			return this.handle.STENCIL_PASS_DEPTH_FAIL;
+		}
+
+		STENCIL_PASS_DEPTH_PASS() {
+			return this.handle.STENCIL_PASS_DEPTH_PASS;
+		}
+
+		STENCIL_REF() {
+			return this.handle.STENCIL_REF;
+		}
+
+		STENCIL_VALUE_MASK() {
+			return this.handle.STENCIL_VALUE_MASK;
+		}
+
+		STENCIL_WRITEMASK() {
+			return this.handle.STENCIL_WRITEMASK;
+		}
+
+		STENCIL_BACK_FUNC() {
+			return this.handle.STENCIL_BACK_FUNC;
+		}
+
+		STENCIL_BACK_FAIL() {
+			return this.handle.STENCIL_BACK_FAIL;
+		}
+
+		STENCIL_BACK_PASS_DEPTH_FAIL() {
+			return this.handle.STENCIL_BACK_PASS_DEPTH_FAIL;
+		}
+
+		STENCIL_BACK_PASS_DEPTH_PASS() {
+			return this.handle.STENCIL_BACK_PASS_DEPTH_PASS;
+		}
+
+		STENCIL_BACK_REF() {
+			return this.handle.STENCIL_BACK_REF;
+		}
+
+		STENCIL_BACK_VALUE_MASK() {
+			return this.handle.STENCIL_BACK_VALUE_MASK;
+		}
+
+		STENCIL_BACK_WRITEMASK() {
+			return this.handle.STENCIL_BACK_WRITEMASK;
+		}
+
+		VIEWPORT() {
+			return this.handle.VIEWPORT;
+		}
+
+		SCISSOR_BOX() {
+			return this.handle.SCISSOR_BOX;
+		}
+
+		COLOR_CLEAR_VALUE() {
+			return this.handle.COLOR_CLEAR_VALUE;
+		}
+
+		COLOR_WRITEMASK() {
+			return this.handle.COLOR_WRITEMASK;
+		}
+
+		UNPACK_ALIGNMENT() {
+			return this.handle.UNPACK_ALIGNMENT;
+		}
+
+		PACK_ALIGNMENT() {
+			return this.handle.PACK_ALIGNMENT;
+		}
+
+		MAX_TEXTURE_SIZE() {
+			return this.handle.MAX_TEXTURE_SIZE;
+		}
+
+		MAX_VIEWPORT_DIMS() {
+			return this.handle.MAX_VIEWPORT_DIMS;
+		}
+
+		SUBPIXEL_BITS() {
+			return this.handle.SUBPIXEL_BITS;
+		}
+
+		RED_BITS() {
+			return this.handle.RED_BITS;
+		}
+
+		GREEN_BITS() {
+			return this.handle.GREEN_BITS;
+		}
+
+		BLUE_BITS() {
+			return this.handle.BLUE_BITS;
+		}
+
+		ALPHA_BITS() {
+			return this.handle.ALPHA_BITS;
+		}
+
+		DEPTH_BITS() {
+			return this.handle.DEPTH_BITS;
+		}
+
+		STENCIL_BITS() {
+			return this.handle.STENCIL_BITS;
+		}
+
+		POLYGON_OFFSET_UNITS() {
+			return this.handle.POLYGON_OFFSET_UNITS;
+		}
+
+		POLYGON_OFFSET_FACTOR() {
+			return this.handle.POLYGON_OFFSET_FACTOR;
+		}
+
+		TEXTURE_BINDING_2D() {
+			return this.handle.TEXTURE_BINDING_2D;
+		}
+
+		SAMPLE_BUFFERS() {
+			return this.handle.SAMPLE_BUFFERS;
+		}
+
+		SAMPLES() {
+			return this.handle.SAMPLES;
+		}
+
+		SAMPLE_COVERAGE_VALUE() {
+			return this.handle.SAMPLE_COVERAGE_VALUE;
+		}
+
+		SAMPLE_COVERAGE_INVERT() {
+			return this.handle.SAMPLE_COVERAGE_INVERT;
+		}
+
+		COMPRESSED_TEXTURE_FORMATS() {
+			return this.handle.COMPRESSED_TEXTURE_FORMATS;
+		}
+
+		DONT_CARE() {
+			return this.handle.DONT_CARE;
+		}
+
+		FASTEST() {
+			return this.handle.FASTEST;
+		}
+
+		NICEST() {
+			return this.handle.NICEST;
+		}
+
+		GENERATE_MIPMAP_HINT() {
+			return this.handle.GENERATE_MIPMAP_HINT;
+		}
+
+		BYTE() {
+			return this.handle.BYTE;
+		}
+
+		UNSIGNED_BYTE() {
+			return this.handle.UNSIGNED_BYTE;
+		}
+
+		SHORT() {
+			return this.handle.SHORT;
+		}
+
+		UNSIGNED_SHORT() {
+			return this.handle.UNSIGNED_SHORT;
+		}
+
+		INT() {
+			return this.handle.INT;
+		}
+
+		UNSIGNED_INT() {
+			return this.handle.UNSIGNED_INT;
+		}
+
+		FLOAT() {
+			return this.handle.FLOAT;
+		}
+
+		DEPTH_COMPONENT() {
+			return this.handle.DEPTH_COMPONENT;
+		}
+
+		ALPHA() {
+			return this.handle.ALPHA;
+		}
+
+		RGB() {
+			return this.handle.RGB;
+		}
+
+		RGBA() {
+			return this.handle.RGBA;
+		}
+
+		LUMINANCE() {
+			return this.handle.LUMINANCE;
+		}
+
+		LUMINANCE_ALPHA() {
+			return this.handle.LUMINANCE_ALPHA;
+		}
+
+		UNSIGNED_SHORT_4_4_4_4() {
+			return this.handle.UNSIGNED_SHORT_4_4_4_4;
+		}
+
+		UNSIGNED_SHORT_5_5_5_1() {
+			return this.handle.UNSIGNED_SHORT_5_5_5_1;
+		}
+
+		UNSIGNED_SHORT_5_6_5() {
+			return this.handle.UNSIGNED_SHORT_5_6_5;
+		}
+
+		FRAGMENT_SHADER() {
+			return this.handle.FRAGMENT_SHADER;
+		}
+
+		VERTEX_SHADER() {
+			return this.handle.VERTEX_SHADER;
+		}
+
+		MAX_VERTEX_ATTRIBS() {
+			return this.handle.MAX_VERTEX_ATTRIBS;
+		}
+
+		MAX_VERTEX_UNIFORM_VECTORS() {
+			return this.handle.MAX_VERTEX_UNIFORM_VECTORS;
+		}
+
+		MAX_VARYING_VECTORS() {
+			return this.handle.MAX_VARYING_VECTORS;
+		}
+
+		MAX_COMBINED_TEXTURE_IMAGE_UNITS() {
+			return this.handle.MAX_COMBINED_TEXTURE_IMAGE_UNITS;
+		}
+
+		MAX_VERTEX_TEXTURE_IMAGE_UNITS() {
+			return this.handle.MAX_VERTEX_TEXTURE_IMAGE_UNITS;
+		}
+
+		MAX_TEXTURE_IMAGE_UNITS() {
+			return this.handle.MAX_TEXTURE_IMAGE_UNITS;
+		}
+
+		MAX_FRAGMENT_UNIFORM_VECTORS() {
+			return this.handle.MAX_FRAGMENT_UNIFORM_VECTORS;
+		}
+
+		SHADER_TYPE() {
+			return this.handle.SHADER_TYPE;
+		}
+
+		DELETE_STATUS() {
+			return this.handle.DELETE_STATUS;
+		}
+
+		LINK_STATUS() {
+			return this.handle.LINK_STATUS;
+		}
+
+		VALIDATE_STATUS() {
+			return this.handle.VALIDATE_STATUS;
+		}
+
+		ATTACHED_SHADERS() {
+			return this.handle.ATTACHED_SHADERS;
+		}
+
+		ACTIVE_UNIFORMS() {
+			return this.handle.ACTIVE_UNIFORMS;
+		}
+
+		ACTIVE_ATTRIBUTES() {
+			return this.handle.ACTIVE_ATTRIBUTES;
+		}
+
+		SHADING_LANGUAGE_VERSION() {
+			return this.handle.SHADING_LANGUAGE_VERSION;
+		}
+
+		CURRENT_PROGRAM() {
+			return this.handle.CURRENT_PROGRAM;
+		}
+
+		NEVER() {
+			return this.handle.NEVER;
+		}
+
+		LESS() {
+			return this.handle.LESS;
+		}
+
+		EQUAL() {
+			return this.handle.EQUAL;
+		}
+
+		LEQUAL() {
+			return this.handle.LEQUAL;
+		}
+
+		GREATER() {
+			return this.handle.GREATER;
+		}
+
+		NOTEQUAL() {
+			return this.handle.NOTEQUAL;
+		}
+
+		GEQUAL() {
+			return this.handle.GEQUAL;
+		}
+
+		ALWAYS() {
+			return this.handle.ALWAYS;
+		}
+
+		KEEP() {
+			return this.handle.KEEP;
+		}
+
+		REPLACE() {
+			return this.handle.REPLACE;
+		}
+
+		INCR() {
+			return this.handle.INCR;
+		}
+
+		DECR() {
+			return this.handle.DECR;
+		}
+
+		INVERT() {
+			return this.handle.INVERT;
+		}
+
+		INCR_WRAP() {
+			return this.handle.INCR_WRAP;
+		}
+
+		DECR_WRAP() {
+			return this.handle.DECR_WRAP;
+		}
+
+		VENDOR() {
+			return this.handle.VENDOR;
+		}
+
+		RENDERER() {
+			return this.handle.RENDERER;
+		}
+
+		VERSION() {
+			return this.handle.VERSION;
+		}
+
+		NEAREST() {
+			return this.handle.NEAREST;
+		}
+
+		LINEAR() {
+			return this.handle.LINEAR;
+		}
+
+		NEAREST_MIPMAP_NEAREST() {
+			return this.handle.NEAREST_MIPMAP_NEAREST;
+		}
+
+		LINEAR_MIPMAP_NEAREST() {
+			return this.handle.LINEAR_MIPMAP_NEAREST;
+		}
+
+		NEAREST_MIPMAP_LINEAR() {
+			return this.handle.NEAREST_MIPMAP_LINEAR;
+		}
+
+		LINEAR_MIPMAP_LINEAR() {
+			return this.handle.LINEAR_MIPMAP_LINEAR;
+		}
+
+		TEXTURE_MAG_FILTER() {
+			return this.handle.TEXTURE_MAG_FILTER;
+		}
+
+		TEXTURE_MIN_FILTER() {
+			return this.handle.TEXTURE_MIN_FILTER;
+		}
+
+		TEXTURE_WRAP_S() {
+			return this.handle.TEXTURE_WRAP_S;
+		}
+
+		TEXTURE_WRAP_T() {
+			return this.handle.TEXTURE_WRAP_T;
+		}
+
+		TEXTURE_2D() {
+			return this.handle.TEXTURE_2D;
+		}
+
+		TEXTURE() {
+			return this.handle.TEXTURE;
+		}
+
+		TEXTURE_CUBE_MAP() {
+			return this.handle.TEXTURE_CUBE_MAP;
+		}
+
+		TEXTURE_BINDING_CUBE_MAP() {
+			return this.handle.TEXTURE_BINDING_CUBE_MAP;
+		}
+
+		TEXTURE_CUBE_MAP_POSITIVE_X() {
+			return this.handle.TEXTURE_CUBE_MAP_POSITIVE_X;
+		}
+
+		TEXTURE_CUBE_MAP_NEGATIVE_X() {
+			return this.handle.TEXTURE_CUBE_MAP_NEGATIVE_X;
+		}
+
+		TEXTURE_CUBE_MAP_POSITIVE_Y() {
+			return this.handle.TEXTURE_CUBE_MAP_POSITIVE_Y;
+		}
+
+		TEXTURE_CUBE_MAP_NEGATIVE_Y() {
+			return this.handle.TEXTURE_CUBE_MAP_NEGATIVE_Y;
+		}
+
+		TEXTURE_CUBE_MAP_POSITIVE_Z() {
+			return this.handle.TEXTURE_CUBE_MAP_POSITIVE_Z;
+		}
+
+		TEXTURE_CUBE_MAP_NEGATIVE_Z() {
+			return this.handle.TEXTURE_CUBE_MAP_NEGATIVE_Z;
+		}
+
+		MAX_CUBE_MAP_TEXTURE_SIZE() {
+			return this.handle.MAX_CUBE_MAP_TEXTURE_SIZE;
+		}
+
+		TEXTURE0() {
+			return this.handle.TEXTURE0;
+		}
+
+		TEXTURE1() {
+			return this.handle.TEXTURE1;
+		}
+
+		TEXTURE2() {
+			return this.handle.TEXTURE2;
+		}
+
+		TEXTURE3() {
+			return this.handle.TEXTURE3;
+		}
+
+		TEXTURE4() {
+			return this.handle.TEXTURE4;
+		}
+
+		TEXTURE5() {
+			return this.handle.TEXTURE5;
+		}
+
+		TEXTURE6() {
+			return this.handle.TEXTURE6;
+		}
+
+		TEXTURE7() {
+			return this.handle.TEXTURE7;
+		}
+
+		TEXTURE8() {
+			return this.handle.TEXTURE8;
+		}
+
+		TEXTURE9() {
+			return this.handle.TEXTURE9;
+		}
+
+		TEXTURE10() {
+			return this.handle.TEXTURE10;
+		}
+
+		TEXTURE11() {
+			return this.handle.TEXTURE11;
+		}
+
+		TEXTURE12() {
+			return this.handle.TEXTURE12;
+		}
+
+		TEXTURE13() {
+			return this.handle.TEXTURE13;
+		}
+
+		TEXTURE14() {
+			return this.handle.TEXTURE14;
+		}
+
+		TEXTURE15() {
+			return this.handle.TEXTURE15;
+		}
+
+		TEXTURE16() {
+			return this.handle.TEXTURE16;
+		}
+
+		TEXTURE17() {
+			return this.handle.TEXTURE17;
+		}
+
+		TEXTURE18() {
+			return this.handle.TEXTURE18;
+		}
+
+		TEXTURE19() {
+			return this.handle.TEXTURE19;
+		}
+
+		TEXTURE20() {
+			return this.handle.TEXTURE20;
+		}
+
+		TEXTURE21() {
+			return this.handle.TEXTURE21;
+		}
+
+		TEXTURE22() {
+			return this.handle.TEXTURE22;
+		}
+
+		TEXTURE23() {
+			return this.handle.TEXTURE23;
+		}
+
+		TEXTURE24() {
+			return this.handle.TEXTURE24;
+		}
+
+		TEXTURE25() {
+			return this.handle.TEXTURE25;
+		}
+
+		TEXTURE26() {
+			return this.handle.TEXTURE26;
+		}
+
+		TEXTURE27() {
+			return this.handle.TEXTURE27;
+		}
+
+		TEXTURE28() {
+			return this.handle.TEXTURE28;
+		}
+
+		TEXTURE29() {
+			return this.handle.TEXTURE29;
+		}
+
+		TEXTURE30() {
+			return this.handle.TEXTURE30;
+		}
+
+		TEXTURE31() {
+			return this.handle.TEXTURE31;
+		}
+
+		ACTIVE_TEXTURE() {
+			return this.handle.ACTIVE_TEXTURE;
+		}
+
+		REPEAT() {
+			return this.handle.REPEAT;
+		}
+
+		CLAMP_TO_EDGE() {
+			return this.handle.CLAMP_TO_EDGE;
+		}
+
+		MIRRORED_REPEAT() {
+			return this.handle.MIRRORED_REPEAT;
+		}
+
+		FLOAT_VEC2() {
+			return this.handle.FLOAT_VEC2;
+		}
+
+		FLOAT_VEC3() {
+			return this.handle.FLOAT_VEC3;
+		}
+
+		FLOAT_VEC4() {
+			return this.handle.FLOAT_VEC4;
+		}
+
+		INT_VEC2() {
+			return this.handle.INT_VEC2;
+		}
+
+		INT_VEC3() {
+			return this.handle.INT_VEC3;
+		}
+
+		INT_VEC4() {
+			return this.handle.INT_VEC4;
+		}
+
+		BOOL() {
+			return this.handle.BOOL;
+		}
+
+		BOOL_VEC2() {
+			return this.handle.BOOL_VEC2;
+		}
+
+		BOOL_VEC3() {
+			return this.handle.BOOL_VEC3;
+		}
+
+		BOOL_VEC4() {
+			return this.handle.BOOL_VEC4;
+		}
+
+		FLOAT_MAT2() {
+			return this.handle.FLOAT_MAT2;
+		}
+
+		FLOAT_MAT3() {
+			return this.handle.FLOAT_MAT3;
+		}
+
+		FLOAT_MAT4() {
+			return this.handle.FLOAT_MAT4;
+		}
+
+		SAMPLER_2D() {
+			return this.handle.SAMPLER_2D;
+		}
+
+		SAMPLER_CUBE() {
+			return this.handle.SAMPLER_CUBE;
+		}
+
+		VERTEX_ATTRIB_ARRAY_ENABLED() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_ENABLED;
+		}
+
+		VERTEX_ATTRIB_ARRAY_SIZE() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_SIZE;
+		}
+
+		VERTEX_ATTRIB_ARRAY_STRIDE() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_STRIDE;
+		}
+
+		VERTEX_ATTRIB_ARRAY_TYPE() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_TYPE;
+		}
+
+		VERTEX_ATTRIB_ARRAY_NORMALIZED() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_NORMALIZED;
+		}
+
+		VERTEX_ATTRIB_ARRAY_POINTER() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_POINTER;
+		}
+
+		VERTEX_ATTRIB_ARRAY_BUFFER_BINDING() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING;
+		}
+
+		IMPLEMENTATION_COLOR_READ_TYPE() {
+			return this.handle.IMPLEMENTATION_COLOR_READ_TYPE;
+		}
+
+		IMPLEMENTATION_COLOR_READ_FORMAT() {
+			return this.handle.IMPLEMENTATION_COLOR_READ_FORMAT;
+		}
+
+		COMPILE_STATUS() {
+			return this.handle.COMPILE_STATUS;
+		}
+
+		LOW_FLOAT() {
+			return this.handle.LOW_FLOAT;
+		}
+
+		MEDIUM_FLOAT() {
+			return this.handle.MEDIUM_FLOAT;
+		}
+
+		HIGH_FLOAT() {
+			return this.handle.HIGH_FLOAT;
+		}
+
+		LOW_INT() {
+			return this.handle.LOW_INT;
+		}
+
+		MEDIUM_INT() {
+			return this.handle.MEDIUM_INT;
+		}
+
+		HIGH_INT() {
+			return this.handle.HIGH_INT;
+		}
+
+		FRAMEBUFFER() {
+			return this.handle.FRAMEBUFFER;
+		}
+
+		RENDERBUFFER() {
+			return this.handle.RENDERBUFFER;
+		}
+
+		RGBA4() {
+			return this.handle.RGBA4;
+		}
+
+		RGB5_A1() {
+			return this.handle.RGB5_A1;
+		}
+
+		RGBA8() {
+			return this.handle.RGBA8;
+		}
+
+		RGB565() {
+			return this.handle.RGB565;
+		}
+
+		DEPTH_COMPONENT16() {
+			return this.handle.DEPTH_COMPONENT16;
+		}
+
+		STENCIL_INDEX8() {
+			return this.handle.STENCIL_INDEX8;
+		}
+
+		DEPTH_STENCIL() {
+			return this.handle.DEPTH_STENCIL;
+		}
+
+		RENDERBUFFER_WIDTH() {
+			return this.handle.RENDERBUFFER_WIDTH;
+		}
+
+		RENDERBUFFER_HEIGHT() {
+			return this.handle.RENDERBUFFER_HEIGHT;
+		}
+
+		RENDERBUFFER_INTERNAL_FORMAT() {
+			return this.handle.RENDERBUFFER_INTERNAL_FORMAT;
+		}
+
+		RENDERBUFFER_RED_SIZE() {
+			return this.handle.RENDERBUFFER_RED_SIZE;
+		}
+
+		RENDERBUFFER_GREEN_SIZE() {
+			return this.handle.RENDERBUFFER_GREEN_SIZE;
+		}
+
+		RENDERBUFFER_BLUE_SIZE() {
+			return this.handle.RENDERBUFFER_BLUE_SIZE;
+		}
+
+		RENDERBUFFER_ALPHA_SIZE() {
+			return this.handle.RENDERBUFFER_ALPHA_SIZE;
+		}
+
+		RENDERBUFFER_DEPTH_SIZE() {
+			return this.handle.RENDERBUFFER_DEPTH_SIZE;
+		}
+
+		RENDERBUFFER_STENCIL_SIZE() {
+			return this.handle.RENDERBUFFER_STENCIL_SIZE;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_OBJECT_NAME() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_OBJECT_NAME;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE;
+		}
+
+		COLOR_ATTACHMENT0() {
+			return this.handle.COLOR_ATTACHMENT0;
+		}
+
+		DEPTH_ATTACHMENT() {
+			return this.handle.DEPTH_ATTACHMENT;
+		}
+
+		STENCIL_ATTACHMENT() {
+			return this.handle.STENCIL_ATTACHMENT;
+		}
+
+		DEPTH_STENCIL_ATTACHMENT() {
+			return this.handle.DEPTH_STENCIL_ATTACHMENT;
+		}
+
+		NONE() {
+			return this.handle.NONE;
+		}
+
+		FRAMEBUFFER_COMPLETE() {
+			return this.handle.FRAMEBUFFER_COMPLETE;
+		}
+
+		FRAMEBUFFER_INCOMPLETE_ATTACHMENT() {
+			return this.handle.FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
+		}
+
+		FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT() {
+			return this.handle.FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT;
+		}
+
+		FRAMEBUFFER_INCOMPLETE_DIMENSIONS() {
+			return this.handle.FRAMEBUFFER_INCOMPLETE_DIMENSIONS;
+		}
+
+		FRAMEBUFFER_UNSUPPORTED() {
+			return this.handle.FRAMEBUFFER_UNSUPPORTED;
+		}
+
+		FRAMEBUFFER_BINDING() {
+			return this.handle.FRAMEBUFFER_BINDING;
+		}
+
+		RENDERBUFFER_BINDING() {
+			return this.handle.RENDERBUFFER_BINDING;
+		}
+
+		MAX_RENDERBUFFER_SIZE() {
+			return this.handle.MAX_RENDERBUFFER_SIZE;
+		}
+
+		INVALID_FRAMEBUFFER_OPERATION() {
+			return this.handle.INVALID_FRAMEBUFFER_OPERATION;
+		}
+
+		UNPACK_FLIP_Y_WEBGL() {
+			return this.handle.UNPACK_FLIP_Y_WEBGL;
+		}
+
+		UNPACK_PREMULTIPLY_ALPHA_WEBGL() {
+			return this.handle.UNPACK_PREMULTIPLY_ALPHA_WEBGL;
+		}
+
+		CONTEXT_LOST_WEBGL() {
+			return this.handle.CONTEXT_LOST_WEBGL;
+		}
+
+		UNPACK_COLORSPACE_CONVERSION_WEBGL() {
+			return this.handle.UNPACK_COLORSPACE_CONVERSION_WEBGL;
+		}
+
+		BROWSER_DEFAULT_WEBGL() {
+			return this.handle.BROWSER_DEFAULT_WEBGL;
+		}
+}
+
+class dom_C_WebGLContextEvent extends dom_C_Event {
+
+		KindOfWebGLContextEvent() {
+			
+		}
+
+		KindOfEvent() {
+			
+		}
+
+		AsEvent() {
+			return this;
+		}
+
+		StatusMessage() {
+			return this.handle.statusMessage;
+		}
+}
+
+class dom_C_WebGLRenderingContextOverloads extends dom_base {
+	constructor() {
+		super();
+		this.handle = null;
+	}
+
+		KindOfWebGLRenderingContextOverloads() {
+			
+		}
+
+		AsWebGLRenderingContext() {
+			return dom_is(this, "WebGLRenderingContext") ? this : null;
+		}
+
+		BufferData(p0, p1, p2) {
+			this.handle.bufferData(p0, p1, p2);
+		}
+
+		BufferDataFloat32(p0, p1, p2) {
+			this.handle.bufferData(p0, Float32Array.from(p1 || []), p2);
+		}
+
+		BufferDataUint16(p0, p1, p2) {
+			this.handle.bufferData(p0, Uint16Array.from(p1 || []), p2);
+		}
+
+		BufferDataUint32(p0, p1, p2) {
+			this.handle.bufferData(p0, Uint32Array.from(p1 || []), p2);
+		}
+
+		BufferDataUint8(p0, p1, p2) {
+			this.handle.bufferData(p0, Uint8Array.from(p1 || []), p2);
+		}
+
+		BufferDataInt32(p0, p1, p2) {
+			this.handle.bufferData(p0, Int32Array.from(p1 || []), p2);
+		}
+
+		BufferSubDataFloat32(p0, p1, p2) {
+			this.handle.bufferSubData(p0, p1, Float32Array.from(p2 || []));
+		}
+
+		BufferSubDataUint16(p0, p1, p2) {
+			this.handle.bufferSubData(p0, p1, Uint16Array.from(p2 || []));
+		}
+
+		BufferSubDataUint32(p0, p1, p2) {
+			this.handle.bufferSubData(p0, p1, Uint32Array.from(p2 || []));
+		}
+
+		BufferSubDataUint8(p0, p1, p2) {
+			this.handle.bufferSubData(p0, p1, Uint8Array.from(p2 || []));
+		}
+
+		BufferSubDataInt32(p0, p1, p2) {
+			this.handle.bufferSubData(p0, p1, Int32Array.from(p2 || []));
+		}
+
+		CompressedTexImage2DFloat32(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.compressedTexImage2D(p0, p1, p2, p3, p4, p5, Float32Array.from(p6 || []));
+		}
+
+		CompressedTexImage2DUint16(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.compressedTexImage2D(p0, p1, p2, p3, p4, p5, Uint16Array.from(p6 || []));
+		}
+
+		CompressedTexImage2DUint32(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.compressedTexImage2D(p0, p1, p2, p3, p4, p5, Uint32Array.from(p6 || []));
+		}
+
+		CompressedTexImage2DUint8(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.compressedTexImage2D(p0, p1, p2, p3, p4, p5, Uint8Array.from(p6 || []));
+		}
+
+		CompressedTexImage2DInt32(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.compressedTexImage2D(p0, p1, p2, p3, p4, p5, Int32Array.from(p6 || []));
+		}
+
+		CompressedTexSubImage2DFloat32(p0, p1, p2, p3, p4, p5, p6, p7) {
+			this.handle.compressedTexSubImage2D(p0, p1, p2, p3, p4, p5, p6, Float32Array.from(p7 || []));
+		}
+
+		CompressedTexSubImage2DUint16(p0, p1, p2, p3, p4, p5, p6, p7) {
+			this.handle.compressedTexSubImage2D(p0, p1, p2, p3, p4, p5, p6, Uint16Array.from(p7 || []));
+		}
+
+		CompressedTexSubImage2DUint32(p0, p1, p2, p3, p4, p5, p6, p7) {
+			this.handle.compressedTexSubImage2D(p0, p1, p2, p3, p4, p5, p6, Uint32Array.from(p7 || []));
+		}
+
+		CompressedTexSubImage2DUint8(p0, p1, p2, p3, p4, p5, p6, p7) {
+			this.handle.compressedTexSubImage2D(p0, p1, p2, p3, p4, p5, p6, Uint8Array.from(p7 || []));
+		}
+
+		CompressedTexSubImage2DInt32(p0, p1, p2, p3, p4, p5, p6, p7) {
+			this.handle.compressedTexSubImage2D(p0, p1, p2, p3, p4, p5, p6, Int32Array.from(p7 || []));
+		}
+
+		ReadPixelsFloat32(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.readPixels(p0, p1, p2, p3, p4, p5, Float32Array.from(p6 || []));
+		}
+
+		ReadPixelsUint16(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.readPixels(p0, p1, p2, p3, p4, p5, Uint16Array.from(p6 || []));
+		}
+
+		ReadPixelsUint32(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.readPixels(p0, p1, p2, p3, p4, p5, Uint32Array.from(p6 || []));
+		}
+
+		ReadPixelsUint8(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.readPixels(p0, p1, p2, p3, p4, p5, Uint8Array.from(p6 || []));
+		}
+
+		ReadPixelsInt32(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.readPixels(p0, p1, p2, p3, p4, p5, Int32Array.from(p6 || []));
+		}
+
+		TexImage2DFloat32(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Float32Array.from(p8 || []));
+		}
+
+		TexImage2DUint16(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Uint16Array.from(p8 || []));
+		}
+
+		TexImage2DUint32(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Uint32Array.from(p8 || []));
+		}
+
+		TexImage2DUint8(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Uint8Array.from(p8 || []));
+		}
+
+		TexImage2DInt32(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Int32Array.from(p8 || []));
+		}
+
+		TexImage2D(p0, p1, p2, p3, p4, p5) {
+			this.handle.texImage2D(p0, p1, p2, p3, p4, dom_unwrapAny(p5));
+		}
+
+		TexSubImage2DFloat32(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texSubImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Float32Array.from(p8 || []));
+		}
+
+		TexSubImage2DUint16(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texSubImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Uint16Array.from(p8 || []));
+		}
+
+		TexSubImage2DUint32(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texSubImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Uint32Array.from(p8 || []));
+		}
+
+		TexSubImage2DUint8(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texSubImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Uint8Array.from(p8 || []));
+		}
+
+		TexSubImage2DInt32(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texSubImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Int32Array.from(p8 || []));
+		}
+
+		TexSubImage2D(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.texSubImage2D(p0, p1, p2, p3, p4, p5, dom_unwrapAny(p6));
+		}
+
+		Uniform1fv(p0, p1) {
+			this.handle.uniform1fv(dom_unwrapAny(p0), Float32Array.from(p1 || []));
+		}
+
+		Uniform1iv(p0, p1) {
+			this.handle.uniform1iv(dom_unwrapAny(p0), Int32Array.from(p1 || []));
+		}
+
+		Uniform2fv(p0, p1) {
+			this.handle.uniform2fv(dom_unwrapAny(p0), Float32Array.from(p1 || []));
+		}
+
+		Uniform2iv(p0, p1) {
+			this.handle.uniform2iv(dom_unwrapAny(p0), Int32Array.from(p1 || []));
+		}
+
+		Uniform3fv(p0, p1) {
+			this.handle.uniform3fv(dom_unwrapAny(p0), Float32Array.from(p1 || []));
+		}
+
+		Uniform3iv(p0, p1) {
+			this.handle.uniform3iv(dom_unwrapAny(p0), Int32Array.from(p1 || []));
+		}
+
+		Uniform4fv(p0, p1) {
+			this.handle.uniform4fv(dom_unwrapAny(p0), Float32Array.from(p1 || []));
+		}
+
+		Uniform4iv(p0, p1) {
+			this.handle.uniform4iv(dom_unwrapAny(p0), Int32Array.from(p1 || []));
+		}
+
+		UniformMatrix2fv(p0, p1, p2) {
+			this.handle.uniformMatrix2fv(dom_unwrapAny(p0), p1, Float32Array.from(p2 || []));
+		}
+
+		UniformMatrix3fv(p0, p1, p2) {
+			this.handle.uniformMatrix3fv(dom_unwrapAny(p0), p1, Float32Array.from(p2 || []));
+		}
+
+		UniformMatrix4fv(p0, p1, p2) {
+			this.handle.uniformMatrix4fv(dom_unwrapAny(p0), p1, Float32Array.from(p2 || []));
+		}
+}
+
+class dom_C_WebGLRenderingContext extends dom_C_WebGLRenderingContextBase {
+
+		KindOfWebGLRenderingContext() {
+			
+		}
+
+		KindOfWebGLRenderingContextBase() {
+			
+		}
+
+		KindOfWebGLRenderingContextOverloads() {
+			
+		}
+
+		AsWebGLRenderingContextBase() {
+			return this;
+		}
+
+		AsWebGLRenderingContextOverloads() {
+			return this;
+		}
+
+		BufferData(p0, p1, p2) {
+			this.handle.bufferData(p0, p1, p2);
+		}
+
+		BufferDataFloat32(p0, p1, p2) {
+			this.handle.bufferData(p0, Float32Array.from(p1 || []), p2);
+		}
+
+		BufferDataUint16(p0, p1, p2) {
+			this.handle.bufferData(p0, Uint16Array.from(p1 || []), p2);
+		}
+
+		BufferDataUint32(p0, p1, p2) {
+			this.handle.bufferData(p0, Uint32Array.from(p1 || []), p2);
+		}
+
+		BufferDataUint8(p0, p1, p2) {
+			this.handle.bufferData(p0, Uint8Array.from(p1 || []), p2);
+		}
+
+		BufferDataInt32(p0, p1, p2) {
+			this.handle.bufferData(p0, Int32Array.from(p1 || []), p2);
+		}
+
+		BufferSubDataFloat32(p0, p1, p2) {
+			this.handle.bufferSubData(p0, p1, Float32Array.from(p2 || []));
+		}
+
+		BufferSubDataUint16(p0, p1, p2) {
+			this.handle.bufferSubData(p0, p1, Uint16Array.from(p2 || []));
+		}
+
+		BufferSubDataUint32(p0, p1, p2) {
+			this.handle.bufferSubData(p0, p1, Uint32Array.from(p2 || []));
+		}
+
+		BufferSubDataUint8(p0, p1, p2) {
+			this.handle.bufferSubData(p0, p1, Uint8Array.from(p2 || []));
+		}
+
+		BufferSubDataInt32(p0, p1, p2) {
+			this.handle.bufferSubData(p0, p1, Int32Array.from(p2 || []));
+		}
+
+		CompressedTexImage2DFloat32(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.compressedTexImage2D(p0, p1, p2, p3, p4, p5, Float32Array.from(p6 || []));
+		}
+
+		CompressedTexImage2DUint16(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.compressedTexImage2D(p0, p1, p2, p3, p4, p5, Uint16Array.from(p6 || []));
+		}
+
+		CompressedTexImage2DUint32(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.compressedTexImage2D(p0, p1, p2, p3, p4, p5, Uint32Array.from(p6 || []));
+		}
+
+		CompressedTexImage2DUint8(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.compressedTexImage2D(p0, p1, p2, p3, p4, p5, Uint8Array.from(p6 || []));
+		}
+
+		CompressedTexImage2DInt32(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.compressedTexImage2D(p0, p1, p2, p3, p4, p5, Int32Array.from(p6 || []));
+		}
+
+		CompressedTexSubImage2DFloat32(p0, p1, p2, p3, p4, p5, p6, p7) {
+			this.handle.compressedTexSubImage2D(p0, p1, p2, p3, p4, p5, p6, Float32Array.from(p7 || []));
+		}
+
+		CompressedTexSubImage2DUint16(p0, p1, p2, p3, p4, p5, p6, p7) {
+			this.handle.compressedTexSubImage2D(p0, p1, p2, p3, p4, p5, p6, Uint16Array.from(p7 || []));
+		}
+
+		CompressedTexSubImage2DUint32(p0, p1, p2, p3, p4, p5, p6, p7) {
+			this.handle.compressedTexSubImage2D(p0, p1, p2, p3, p4, p5, p6, Uint32Array.from(p7 || []));
+		}
+
+		CompressedTexSubImage2DUint8(p0, p1, p2, p3, p4, p5, p6, p7) {
+			this.handle.compressedTexSubImage2D(p0, p1, p2, p3, p4, p5, p6, Uint8Array.from(p7 || []));
+		}
+
+		CompressedTexSubImage2DInt32(p0, p1, p2, p3, p4, p5, p6, p7) {
+			this.handle.compressedTexSubImage2D(p0, p1, p2, p3, p4, p5, p6, Int32Array.from(p7 || []));
+		}
+
+		ReadPixelsFloat32(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.readPixels(p0, p1, p2, p3, p4, p5, Float32Array.from(p6 || []));
+		}
+
+		ReadPixelsUint16(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.readPixels(p0, p1, p2, p3, p4, p5, Uint16Array.from(p6 || []));
+		}
+
+		ReadPixelsUint32(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.readPixels(p0, p1, p2, p3, p4, p5, Uint32Array.from(p6 || []));
+		}
+
+		ReadPixelsUint8(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.readPixels(p0, p1, p2, p3, p4, p5, Uint8Array.from(p6 || []));
+		}
+
+		ReadPixelsInt32(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.readPixels(p0, p1, p2, p3, p4, p5, Int32Array.from(p6 || []));
+		}
+
+		TexImage2DFloat32(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Float32Array.from(p8 || []));
+		}
+
+		TexImage2DUint16(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Uint16Array.from(p8 || []));
+		}
+
+		TexImage2DUint32(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Uint32Array.from(p8 || []));
+		}
+
+		TexImage2DUint8(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Uint8Array.from(p8 || []));
+		}
+
+		TexImage2DInt32(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Int32Array.from(p8 || []));
+		}
+
+		TexImage2D(p0, p1, p2, p3, p4, p5) {
+			this.handle.texImage2D(p0, p1, p2, p3, p4, dom_unwrapAny(p5));
+		}
+
+		TexSubImage2DFloat32(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texSubImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Float32Array.from(p8 || []));
+		}
+
+		TexSubImage2DUint16(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texSubImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Uint16Array.from(p8 || []));
+		}
+
+		TexSubImage2DUint32(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texSubImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Uint32Array.from(p8 || []));
+		}
+
+		TexSubImage2DUint8(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texSubImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Uint8Array.from(p8 || []));
+		}
+
+		TexSubImage2DInt32(p0, p1, p2, p3, p4, p5, p6, p7, p8) {
+			this.handle.texSubImage2D(p0, p1, p2, p3, p4, p5, p6, p7, Int32Array.from(p8 || []));
+		}
+
+		TexSubImage2D(p0, p1, p2, p3, p4, p5, p6) {
+			this.handle.texSubImage2D(p0, p1, p2, p3, p4, p5, dom_unwrapAny(p6));
+		}
+
+		Uniform1fv(p0, p1) {
+			this.handle.uniform1fv(dom_unwrapAny(p0), Float32Array.from(p1 || []));
+		}
+
+		Uniform1iv(p0, p1) {
+			this.handle.uniform1iv(dom_unwrapAny(p0), Int32Array.from(p1 || []));
+		}
+
+		Uniform2fv(p0, p1) {
+			this.handle.uniform2fv(dom_unwrapAny(p0), Float32Array.from(p1 || []));
+		}
+
+		Uniform2iv(p0, p1) {
+			this.handle.uniform2iv(dom_unwrapAny(p0), Int32Array.from(p1 || []));
+		}
+
+		Uniform3fv(p0, p1) {
+			this.handle.uniform3fv(dom_unwrapAny(p0), Float32Array.from(p1 || []));
+		}
+
+		Uniform3iv(p0, p1) {
+			this.handle.uniform3iv(dom_unwrapAny(p0), Int32Array.from(p1 || []));
+		}
+
+		Uniform4fv(p0, p1) {
+			this.handle.uniform4fv(dom_unwrapAny(p0), Float32Array.from(p1 || []));
+		}
+
+		Uniform4iv(p0, p1) {
+			this.handle.uniform4iv(dom_unwrapAny(p0), Int32Array.from(p1 || []));
+		}
+
+		UniformMatrix2fv(p0, p1, p2) {
+			this.handle.uniformMatrix2fv(dom_unwrapAny(p0), p1, Float32Array.from(p2 || []));
+		}
+
+		UniformMatrix3fv(p0, p1, p2) {
+			this.handle.uniformMatrix3fv(dom_unwrapAny(p0), p1, Float32Array.from(p2 || []));
+		}
+
+		UniformMatrix4fv(p0, p1, p2) {
+			this.handle.uniformMatrix4fv(dom_unwrapAny(p0), p1, Float32Array.from(p2 || []));
+		}
+}
+
+class dom_C_WebGLRenderingContextType extends dom_base {
+	constructor() {
+		super();
+		this.handle = null;
+	}
+
+		KindOfWebGLRenderingContextType() {
+			
+		}
+
+		Prototype() {
+			return dom_wrap(dom.WebGLRenderingContext, this.handle.prototype);
+		}
+
+		SetPrototype(value) {
+			this.handle.prototype = dom_unwrap(value);
+		}
+
+		DEPTH_BUFFER_BIT() {
+			return this.handle.DEPTH_BUFFER_BIT;
+		}
+
+		STENCIL_BUFFER_BIT() {
+			return this.handle.STENCIL_BUFFER_BIT;
+		}
+
+		COLOR_BUFFER_BIT() {
+			return this.handle.COLOR_BUFFER_BIT;
+		}
+
+		POINTS() {
+			return this.handle.POINTS;
+		}
+
+		LINES() {
+			return this.handle.LINES;
+		}
+
+		LINE_LOOP() {
+			return this.handle.LINE_LOOP;
+		}
+
+		LINE_STRIP() {
+			return this.handle.LINE_STRIP;
+		}
+
+		TRIANGLES() {
+			return this.handle.TRIANGLES;
+		}
+
+		TRIANGLE_STRIP() {
+			return this.handle.TRIANGLE_STRIP;
+		}
+
+		TRIANGLE_FAN() {
+			return this.handle.TRIANGLE_FAN;
+		}
+
+		ZERO() {
+			return this.handle.ZERO;
+		}
+
+		ONE() {
+			return this.handle.ONE;
+		}
+
+		SRC_COLOR() {
+			return this.handle.SRC_COLOR;
+		}
+
+		ONE_MINUS_SRC_COLOR() {
+			return this.handle.ONE_MINUS_SRC_COLOR;
+		}
+
+		SRC_ALPHA() {
+			return this.handle.SRC_ALPHA;
+		}
+
+		ONE_MINUS_SRC_ALPHA() {
+			return this.handle.ONE_MINUS_SRC_ALPHA;
+		}
+
+		DST_ALPHA() {
+			return this.handle.DST_ALPHA;
+		}
+
+		ONE_MINUS_DST_ALPHA() {
+			return this.handle.ONE_MINUS_DST_ALPHA;
+		}
+
+		DST_COLOR() {
+			return this.handle.DST_COLOR;
+		}
+
+		ONE_MINUS_DST_COLOR() {
+			return this.handle.ONE_MINUS_DST_COLOR;
+		}
+
+		SRC_ALPHA_SATURATE() {
+			return this.handle.SRC_ALPHA_SATURATE;
+		}
+
+		FUNC_ADD() {
+			return this.handle.FUNC_ADD;
+		}
+
+		BLEND_EQUATION() {
+			return this.handle.BLEND_EQUATION;
+		}
+
+		BLEND_EQUATION_RGB() {
+			return this.handle.BLEND_EQUATION_RGB;
+		}
+
+		BLEND_EQUATION_ALPHA() {
+			return this.handle.BLEND_EQUATION_ALPHA;
+		}
+
+		FUNC_SUBTRACT() {
+			return this.handle.FUNC_SUBTRACT;
+		}
+
+		FUNC_REVERSE_SUBTRACT() {
+			return this.handle.FUNC_REVERSE_SUBTRACT;
+		}
+
+		BLEND_DST_RGB() {
+			return this.handle.BLEND_DST_RGB;
+		}
+
+		BLEND_SRC_RGB() {
+			return this.handle.BLEND_SRC_RGB;
+		}
+
+		BLEND_DST_ALPHA() {
+			return this.handle.BLEND_DST_ALPHA;
+		}
+
+		BLEND_SRC_ALPHA() {
+			return this.handle.BLEND_SRC_ALPHA;
+		}
+
+		CONSTANT_COLOR() {
+			return this.handle.CONSTANT_COLOR;
+		}
+
+		ONE_MINUS_CONSTANT_COLOR() {
+			return this.handle.ONE_MINUS_CONSTANT_COLOR;
+		}
+
+		CONSTANT_ALPHA() {
+			return this.handle.CONSTANT_ALPHA;
+		}
+
+		ONE_MINUS_CONSTANT_ALPHA() {
+			return this.handle.ONE_MINUS_CONSTANT_ALPHA;
+		}
+
+		BLEND_COLOR() {
+			return this.handle.BLEND_COLOR;
+		}
+
+		ARRAY_BUFFER() {
+			return this.handle.ARRAY_BUFFER;
+		}
+
+		ELEMENT_ARRAY_BUFFER() {
+			return this.handle.ELEMENT_ARRAY_BUFFER;
+		}
+
+		ARRAY_BUFFER_BINDING() {
+			return this.handle.ARRAY_BUFFER_BINDING;
+		}
+
+		ELEMENT_ARRAY_BUFFER_BINDING() {
+			return this.handle.ELEMENT_ARRAY_BUFFER_BINDING;
+		}
+
+		STREAM_DRAW() {
+			return this.handle.STREAM_DRAW;
+		}
+
+		STATIC_DRAW() {
+			return this.handle.STATIC_DRAW;
+		}
+
+		DYNAMIC_DRAW() {
+			return this.handle.DYNAMIC_DRAW;
+		}
+
+		BUFFER_SIZE() {
+			return this.handle.BUFFER_SIZE;
+		}
+
+		BUFFER_USAGE() {
+			return this.handle.BUFFER_USAGE;
+		}
+
+		CURRENT_VERTEX_ATTRIB() {
+			return this.handle.CURRENT_VERTEX_ATTRIB;
+		}
+
+		FRONT() {
+			return this.handle.FRONT;
+		}
+
+		BACK() {
+			return this.handle.BACK;
+		}
+
+		FRONT_AND_BACK() {
+			return this.handle.FRONT_AND_BACK;
+		}
+
+		CULL_FACE() {
+			return this.handle.CULL_FACE;
+		}
+
+		BLEND() {
+			return this.handle.BLEND;
+		}
+
+		DITHER() {
+			return this.handle.DITHER;
+		}
+
+		STENCIL_TEST() {
+			return this.handle.STENCIL_TEST;
+		}
+
+		DEPTH_TEST() {
+			return this.handle.DEPTH_TEST;
+		}
+
+		SCISSOR_TEST() {
+			return this.handle.SCISSOR_TEST;
+		}
+
+		POLYGON_OFFSET_FILL() {
+			return this.handle.POLYGON_OFFSET_FILL;
+		}
+
+		SAMPLE_ALPHA_TO_COVERAGE() {
+			return this.handle.SAMPLE_ALPHA_TO_COVERAGE;
+		}
+
+		SAMPLE_COVERAGE() {
+			return this.handle.SAMPLE_COVERAGE;
+		}
+
+		NO_ERROR() {
+			return this.handle.NO_ERROR;
+		}
+
+		INVALID_ENUM() {
+			return this.handle.INVALID_ENUM;
+		}
+
+		INVALID_VALUE() {
+			return this.handle.INVALID_VALUE;
+		}
+
+		INVALID_OPERATION() {
+			return this.handle.INVALID_OPERATION;
+		}
+
+		OUT_OF_MEMORY() {
+			return this.handle.OUT_OF_MEMORY;
+		}
+
+		CW() {
+			return this.handle.CW;
+		}
+
+		CCW() {
+			return this.handle.CCW;
+		}
+
+		LINE_WIDTH() {
+			return this.handle.LINE_WIDTH;
+		}
+
+		ALIASED_POINT_SIZE_RANGE() {
+			return this.handle.ALIASED_POINT_SIZE_RANGE;
+		}
+
+		ALIASED_LINE_WIDTH_RANGE() {
+			return this.handle.ALIASED_LINE_WIDTH_RANGE;
+		}
+
+		CULL_FACE_MODE() {
+			return this.handle.CULL_FACE_MODE;
+		}
+
+		FRONT_FACE() {
+			return this.handle.FRONT_FACE;
+		}
+
+		DEPTH_RANGE() {
+			return this.handle.DEPTH_RANGE;
+		}
+
+		DEPTH_WRITEMASK() {
+			return this.handle.DEPTH_WRITEMASK;
+		}
+
+		DEPTH_CLEAR_VALUE() {
+			return this.handle.DEPTH_CLEAR_VALUE;
+		}
+
+		DEPTH_FUNC() {
+			return this.handle.DEPTH_FUNC;
+		}
+
+		STENCIL_CLEAR_VALUE() {
+			return this.handle.STENCIL_CLEAR_VALUE;
+		}
+
+		STENCIL_FUNC() {
+			return this.handle.STENCIL_FUNC;
+		}
+
+		STENCIL_FAIL() {
+			return this.handle.STENCIL_FAIL;
+		}
+
+		STENCIL_PASS_DEPTH_FAIL() {
+			return this.handle.STENCIL_PASS_DEPTH_FAIL;
+		}
+
+		STENCIL_PASS_DEPTH_PASS() {
+			return this.handle.STENCIL_PASS_DEPTH_PASS;
+		}
+
+		STENCIL_REF() {
+			return this.handle.STENCIL_REF;
+		}
+
+		STENCIL_VALUE_MASK() {
+			return this.handle.STENCIL_VALUE_MASK;
+		}
+
+		STENCIL_WRITEMASK() {
+			return this.handle.STENCIL_WRITEMASK;
+		}
+
+		STENCIL_BACK_FUNC() {
+			return this.handle.STENCIL_BACK_FUNC;
+		}
+
+		STENCIL_BACK_FAIL() {
+			return this.handle.STENCIL_BACK_FAIL;
+		}
+
+		STENCIL_BACK_PASS_DEPTH_FAIL() {
+			return this.handle.STENCIL_BACK_PASS_DEPTH_FAIL;
+		}
+
+		STENCIL_BACK_PASS_DEPTH_PASS() {
+			return this.handle.STENCIL_BACK_PASS_DEPTH_PASS;
+		}
+
+		STENCIL_BACK_REF() {
+			return this.handle.STENCIL_BACK_REF;
+		}
+
+		STENCIL_BACK_VALUE_MASK() {
+			return this.handle.STENCIL_BACK_VALUE_MASK;
+		}
+
+		STENCIL_BACK_WRITEMASK() {
+			return this.handle.STENCIL_BACK_WRITEMASK;
+		}
+
+		VIEWPORT() {
+			return this.handle.VIEWPORT;
+		}
+
+		SCISSOR_BOX() {
+			return this.handle.SCISSOR_BOX;
+		}
+
+		COLOR_CLEAR_VALUE() {
+			return this.handle.COLOR_CLEAR_VALUE;
+		}
+
+		COLOR_WRITEMASK() {
+			return this.handle.COLOR_WRITEMASK;
+		}
+
+		UNPACK_ALIGNMENT() {
+			return this.handle.UNPACK_ALIGNMENT;
+		}
+
+		PACK_ALIGNMENT() {
+			return this.handle.PACK_ALIGNMENT;
+		}
+
+		MAX_TEXTURE_SIZE() {
+			return this.handle.MAX_TEXTURE_SIZE;
+		}
+
+		MAX_VIEWPORT_DIMS() {
+			return this.handle.MAX_VIEWPORT_DIMS;
+		}
+
+		SUBPIXEL_BITS() {
+			return this.handle.SUBPIXEL_BITS;
+		}
+
+		RED_BITS() {
+			return this.handle.RED_BITS;
+		}
+
+		GREEN_BITS() {
+			return this.handle.GREEN_BITS;
+		}
+
+		BLUE_BITS() {
+			return this.handle.BLUE_BITS;
+		}
+
+		ALPHA_BITS() {
+			return this.handle.ALPHA_BITS;
+		}
+
+		DEPTH_BITS() {
+			return this.handle.DEPTH_BITS;
+		}
+
+		STENCIL_BITS() {
+			return this.handle.STENCIL_BITS;
+		}
+
+		POLYGON_OFFSET_UNITS() {
+			return this.handle.POLYGON_OFFSET_UNITS;
+		}
+
+		POLYGON_OFFSET_FACTOR() {
+			return this.handle.POLYGON_OFFSET_FACTOR;
+		}
+
+		TEXTURE_BINDING_2D() {
+			return this.handle.TEXTURE_BINDING_2D;
+		}
+
+		SAMPLE_BUFFERS() {
+			return this.handle.SAMPLE_BUFFERS;
+		}
+
+		SAMPLES() {
+			return this.handle.SAMPLES;
+		}
+
+		SAMPLE_COVERAGE_VALUE() {
+			return this.handle.SAMPLE_COVERAGE_VALUE;
+		}
+
+		SAMPLE_COVERAGE_INVERT() {
+			return this.handle.SAMPLE_COVERAGE_INVERT;
+		}
+
+		COMPRESSED_TEXTURE_FORMATS() {
+			return this.handle.COMPRESSED_TEXTURE_FORMATS;
+		}
+
+		DONT_CARE() {
+			return this.handle.DONT_CARE;
+		}
+
+		FASTEST() {
+			return this.handle.FASTEST;
+		}
+
+		NICEST() {
+			return this.handle.NICEST;
+		}
+
+		GENERATE_MIPMAP_HINT() {
+			return this.handle.GENERATE_MIPMAP_HINT;
+		}
+
+		BYTE() {
+			return this.handle.BYTE;
+		}
+
+		UNSIGNED_BYTE() {
+			return this.handle.UNSIGNED_BYTE;
+		}
+
+		SHORT() {
+			return this.handle.SHORT;
+		}
+
+		UNSIGNED_SHORT() {
+			return this.handle.UNSIGNED_SHORT;
+		}
+
+		INT() {
+			return this.handle.INT;
+		}
+
+		UNSIGNED_INT() {
+			return this.handle.UNSIGNED_INT;
+		}
+
+		FLOAT() {
+			return this.handle.FLOAT;
+		}
+
+		DEPTH_COMPONENT() {
+			return this.handle.DEPTH_COMPONENT;
+		}
+
+		ALPHA() {
+			return this.handle.ALPHA;
+		}
+
+		RGB() {
+			return this.handle.RGB;
+		}
+
+		RGBA() {
+			return this.handle.RGBA;
+		}
+
+		LUMINANCE() {
+			return this.handle.LUMINANCE;
+		}
+
+		LUMINANCE_ALPHA() {
+			return this.handle.LUMINANCE_ALPHA;
+		}
+
+		UNSIGNED_SHORT_4_4_4_4() {
+			return this.handle.UNSIGNED_SHORT_4_4_4_4;
+		}
+
+		UNSIGNED_SHORT_5_5_5_1() {
+			return this.handle.UNSIGNED_SHORT_5_5_5_1;
+		}
+
+		UNSIGNED_SHORT_5_6_5() {
+			return this.handle.UNSIGNED_SHORT_5_6_5;
+		}
+
+		FRAGMENT_SHADER() {
+			return this.handle.FRAGMENT_SHADER;
+		}
+
+		VERTEX_SHADER() {
+			return this.handle.VERTEX_SHADER;
+		}
+
+		MAX_VERTEX_ATTRIBS() {
+			return this.handle.MAX_VERTEX_ATTRIBS;
+		}
+
+		MAX_VERTEX_UNIFORM_VECTORS() {
+			return this.handle.MAX_VERTEX_UNIFORM_VECTORS;
+		}
+
+		MAX_VARYING_VECTORS() {
+			return this.handle.MAX_VARYING_VECTORS;
+		}
+
+		MAX_COMBINED_TEXTURE_IMAGE_UNITS() {
+			return this.handle.MAX_COMBINED_TEXTURE_IMAGE_UNITS;
+		}
+
+		MAX_VERTEX_TEXTURE_IMAGE_UNITS() {
+			return this.handle.MAX_VERTEX_TEXTURE_IMAGE_UNITS;
+		}
+
+		MAX_TEXTURE_IMAGE_UNITS() {
+			return this.handle.MAX_TEXTURE_IMAGE_UNITS;
+		}
+
+		MAX_FRAGMENT_UNIFORM_VECTORS() {
+			return this.handle.MAX_FRAGMENT_UNIFORM_VECTORS;
+		}
+
+		SHADER_TYPE() {
+			return this.handle.SHADER_TYPE;
+		}
+
+		DELETE_STATUS() {
+			return this.handle.DELETE_STATUS;
+		}
+
+		LINK_STATUS() {
+			return this.handle.LINK_STATUS;
+		}
+
+		VALIDATE_STATUS() {
+			return this.handle.VALIDATE_STATUS;
+		}
+
+		ATTACHED_SHADERS() {
+			return this.handle.ATTACHED_SHADERS;
+		}
+
+		ACTIVE_UNIFORMS() {
+			return this.handle.ACTIVE_UNIFORMS;
+		}
+
+		ACTIVE_ATTRIBUTES() {
+			return this.handle.ACTIVE_ATTRIBUTES;
+		}
+
+		SHADING_LANGUAGE_VERSION() {
+			return this.handle.SHADING_LANGUAGE_VERSION;
+		}
+
+		CURRENT_PROGRAM() {
+			return this.handle.CURRENT_PROGRAM;
+		}
+
+		NEVER() {
+			return this.handle.NEVER;
+		}
+
+		LESS() {
+			return this.handle.LESS;
+		}
+
+		EQUAL() {
+			return this.handle.EQUAL;
+		}
+
+		LEQUAL() {
+			return this.handle.LEQUAL;
+		}
+
+		GREATER() {
+			return this.handle.GREATER;
+		}
+
+		NOTEQUAL() {
+			return this.handle.NOTEQUAL;
+		}
+
+		GEQUAL() {
+			return this.handle.GEQUAL;
+		}
+
+		ALWAYS() {
+			return this.handle.ALWAYS;
+		}
+
+		KEEP() {
+			return this.handle.KEEP;
+		}
+
+		REPLACE() {
+			return this.handle.REPLACE;
+		}
+
+		INCR() {
+			return this.handle.INCR;
+		}
+
+		DECR() {
+			return this.handle.DECR;
+		}
+
+		INVERT() {
+			return this.handle.INVERT;
+		}
+
+		INCR_WRAP() {
+			return this.handle.INCR_WRAP;
+		}
+
+		DECR_WRAP() {
+			return this.handle.DECR_WRAP;
+		}
+
+		VENDOR() {
+			return this.handle.VENDOR;
+		}
+
+		RENDERER() {
+			return this.handle.RENDERER;
+		}
+
+		VERSION() {
+			return this.handle.VERSION;
+		}
+
+		NEAREST() {
+			return this.handle.NEAREST;
+		}
+
+		LINEAR() {
+			return this.handle.LINEAR;
+		}
+
+		NEAREST_MIPMAP_NEAREST() {
+			return this.handle.NEAREST_MIPMAP_NEAREST;
+		}
+
+		LINEAR_MIPMAP_NEAREST() {
+			return this.handle.LINEAR_MIPMAP_NEAREST;
+		}
+
+		NEAREST_MIPMAP_LINEAR() {
+			return this.handle.NEAREST_MIPMAP_LINEAR;
+		}
+
+		LINEAR_MIPMAP_LINEAR() {
+			return this.handle.LINEAR_MIPMAP_LINEAR;
+		}
+
+		TEXTURE_MAG_FILTER() {
+			return this.handle.TEXTURE_MAG_FILTER;
+		}
+
+		TEXTURE_MIN_FILTER() {
+			return this.handle.TEXTURE_MIN_FILTER;
+		}
+
+		TEXTURE_WRAP_S() {
+			return this.handle.TEXTURE_WRAP_S;
+		}
+
+		TEXTURE_WRAP_T() {
+			return this.handle.TEXTURE_WRAP_T;
+		}
+
+		TEXTURE_2D() {
+			return this.handle.TEXTURE_2D;
+		}
+
+		TEXTURE() {
+			return this.handle.TEXTURE;
+		}
+
+		TEXTURE_CUBE_MAP() {
+			return this.handle.TEXTURE_CUBE_MAP;
+		}
+
+		TEXTURE_BINDING_CUBE_MAP() {
+			return this.handle.TEXTURE_BINDING_CUBE_MAP;
+		}
+
+		TEXTURE_CUBE_MAP_POSITIVE_X() {
+			return this.handle.TEXTURE_CUBE_MAP_POSITIVE_X;
+		}
+
+		TEXTURE_CUBE_MAP_NEGATIVE_X() {
+			return this.handle.TEXTURE_CUBE_MAP_NEGATIVE_X;
+		}
+
+		TEXTURE_CUBE_MAP_POSITIVE_Y() {
+			return this.handle.TEXTURE_CUBE_MAP_POSITIVE_Y;
+		}
+
+		TEXTURE_CUBE_MAP_NEGATIVE_Y() {
+			return this.handle.TEXTURE_CUBE_MAP_NEGATIVE_Y;
+		}
+
+		TEXTURE_CUBE_MAP_POSITIVE_Z() {
+			return this.handle.TEXTURE_CUBE_MAP_POSITIVE_Z;
+		}
+
+		TEXTURE_CUBE_MAP_NEGATIVE_Z() {
+			return this.handle.TEXTURE_CUBE_MAP_NEGATIVE_Z;
+		}
+
+		MAX_CUBE_MAP_TEXTURE_SIZE() {
+			return this.handle.MAX_CUBE_MAP_TEXTURE_SIZE;
+		}
+
+		TEXTURE0() {
+			return this.handle.TEXTURE0;
+		}
+
+		TEXTURE1() {
+			return this.handle.TEXTURE1;
+		}
+
+		TEXTURE2() {
+			return this.handle.TEXTURE2;
+		}
+
+		TEXTURE3() {
+			return this.handle.TEXTURE3;
+		}
+
+		TEXTURE4() {
+			return this.handle.TEXTURE4;
+		}
+
+		TEXTURE5() {
+			return this.handle.TEXTURE5;
+		}
+
+		TEXTURE6() {
+			return this.handle.TEXTURE6;
+		}
+
+		TEXTURE7() {
+			return this.handle.TEXTURE7;
+		}
+
+		TEXTURE8() {
+			return this.handle.TEXTURE8;
+		}
+
+		TEXTURE9() {
+			return this.handle.TEXTURE9;
+		}
+
+		TEXTURE10() {
+			return this.handle.TEXTURE10;
+		}
+
+		TEXTURE11() {
+			return this.handle.TEXTURE11;
+		}
+
+		TEXTURE12() {
+			return this.handle.TEXTURE12;
+		}
+
+		TEXTURE13() {
+			return this.handle.TEXTURE13;
+		}
+
+		TEXTURE14() {
+			return this.handle.TEXTURE14;
+		}
+
+		TEXTURE15() {
+			return this.handle.TEXTURE15;
+		}
+
+		TEXTURE16() {
+			return this.handle.TEXTURE16;
+		}
+
+		TEXTURE17() {
+			return this.handle.TEXTURE17;
+		}
+
+		TEXTURE18() {
+			return this.handle.TEXTURE18;
+		}
+
+		TEXTURE19() {
+			return this.handle.TEXTURE19;
+		}
+
+		TEXTURE20() {
+			return this.handle.TEXTURE20;
+		}
+
+		TEXTURE21() {
+			return this.handle.TEXTURE21;
+		}
+
+		TEXTURE22() {
+			return this.handle.TEXTURE22;
+		}
+
+		TEXTURE23() {
+			return this.handle.TEXTURE23;
+		}
+
+		TEXTURE24() {
+			return this.handle.TEXTURE24;
+		}
+
+		TEXTURE25() {
+			return this.handle.TEXTURE25;
+		}
+
+		TEXTURE26() {
+			return this.handle.TEXTURE26;
+		}
+
+		TEXTURE27() {
+			return this.handle.TEXTURE27;
+		}
+
+		TEXTURE28() {
+			return this.handle.TEXTURE28;
+		}
+
+		TEXTURE29() {
+			return this.handle.TEXTURE29;
+		}
+
+		TEXTURE30() {
+			return this.handle.TEXTURE30;
+		}
+
+		TEXTURE31() {
+			return this.handle.TEXTURE31;
+		}
+
+		ACTIVE_TEXTURE() {
+			return this.handle.ACTIVE_TEXTURE;
+		}
+
+		REPEAT() {
+			return this.handle.REPEAT;
+		}
+
+		CLAMP_TO_EDGE() {
+			return this.handle.CLAMP_TO_EDGE;
+		}
+
+		MIRRORED_REPEAT() {
+			return this.handle.MIRRORED_REPEAT;
+		}
+
+		FLOAT_VEC2() {
+			return this.handle.FLOAT_VEC2;
+		}
+
+		FLOAT_VEC3() {
+			return this.handle.FLOAT_VEC3;
+		}
+
+		FLOAT_VEC4() {
+			return this.handle.FLOAT_VEC4;
+		}
+
+		INT_VEC2() {
+			return this.handle.INT_VEC2;
+		}
+
+		INT_VEC3() {
+			return this.handle.INT_VEC3;
+		}
+
+		INT_VEC4() {
+			return this.handle.INT_VEC4;
+		}
+
+		BOOL() {
+			return this.handle.BOOL;
+		}
+
+		BOOL_VEC2() {
+			return this.handle.BOOL_VEC2;
+		}
+
+		BOOL_VEC3() {
+			return this.handle.BOOL_VEC3;
+		}
+
+		BOOL_VEC4() {
+			return this.handle.BOOL_VEC4;
+		}
+
+		FLOAT_MAT2() {
+			return this.handle.FLOAT_MAT2;
+		}
+
+		FLOAT_MAT3() {
+			return this.handle.FLOAT_MAT3;
+		}
+
+		FLOAT_MAT4() {
+			return this.handle.FLOAT_MAT4;
+		}
+
+		SAMPLER_2D() {
+			return this.handle.SAMPLER_2D;
+		}
+
+		SAMPLER_CUBE() {
+			return this.handle.SAMPLER_CUBE;
+		}
+
+		VERTEX_ATTRIB_ARRAY_ENABLED() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_ENABLED;
+		}
+
+		VERTEX_ATTRIB_ARRAY_SIZE() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_SIZE;
+		}
+
+		VERTEX_ATTRIB_ARRAY_STRIDE() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_STRIDE;
+		}
+
+		VERTEX_ATTRIB_ARRAY_TYPE() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_TYPE;
+		}
+
+		VERTEX_ATTRIB_ARRAY_NORMALIZED() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_NORMALIZED;
+		}
+
+		VERTEX_ATTRIB_ARRAY_POINTER() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_POINTER;
+		}
+
+		VERTEX_ATTRIB_ARRAY_BUFFER_BINDING() {
+			return this.handle.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING;
+		}
+
+		IMPLEMENTATION_COLOR_READ_TYPE() {
+			return this.handle.IMPLEMENTATION_COLOR_READ_TYPE;
+		}
+
+		IMPLEMENTATION_COLOR_READ_FORMAT() {
+			return this.handle.IMPLEMENTATION_COLOR_READ_FORMAT;
+		}
+
+		COMPILE_STATUS() {
+			return this.handle.COMPILE_STATUS;
+		}
+
+		LOW_FLOAT() {
+			return this.handle.LOW_FLOAT;
+		}
+
+		MEDIUM_FLOAT() {
+			return this.handle.MEDIUM_FLOAT;
+		}
+
+		HIGH_FLOAT() {
+			return this.handle.HIGH_FLOAT;
+		}
+
+		LOW_INT() {
+			return this.handle.LOW_INT;
+		}
+
+		MEDIUM_INT() {
+			return this.handle.MEDIUM_INT;
+		}
+
+		HIGH_INT() {
+			return this.handle.HIGH_INT;
+		}
+
+		FRAMEBUFFER() {
+			return this.handle.FRAMEBUFFER;
+		}
+
+		RENDERBUFFER() {
+			return this.handle.RENDERBUFFER;
+		}
+
+		RGBA4() {
+			return this.handle.RGBA4;
+		}
+
+		RGB5_A1() {
+			return this.handle.RGB5_A1;
+		}
+
+		RGBA8() {
+			return this.handle.RGBA8;
+		}
+
+		RGB565() {
+			return this.handle.RGB565;
+		}
+
+		DEPTH_COMPONENT16() {
+			return this.handle.DEPTH_COMPONENT16;
+		}
+
+		STENCIL_INDEX8() {
+			return this.handle.STENCIL_INDEX8;
+		}
+
+		DEPTH_STENCIL() {
+			return this.handle.DEPTH_STENCIL;
+		}
+
+		RENDERBUFFER_WIDTH() {
+			return this.handle.RENDERBUFFER_WIDTH;
+		}
+
+		RENDERBUFFER_HEIGHT() {
+			return this.handle.RENDERBUFFER_HEIGHT;
+		}
+
+		RENDERBUFFER_INTERNAL_FORMAT() {
+			return this.handle.RENDERBUFFER_INTERNAL_FORMAT;
+		}
+
+		RENDERBUFFER_RED_SIZE() {
+			return this.handle.RENDERBUFFER_RED_SIZE;
+		}
+
+		RENDERBUFFER_GREEN_SIZE() {
+			return this.handle.RENDERBUFFER_GREEN_SIZE;
+		}
+
+		RENDERBUFFER_BLUE_SIZE() {
+			return this.handle.RENDERBUFFER_BLUE_SIZE;
+		}
+
+		RENDERBUFFER_ALPHA_SIZE() {
+			return this.handle.RENDERBUFFER_ALPHA_SIZE;
+		}
+
+		RENDERBUFFER_DEPTH_SIZE() {
+			return this.handle.RENDERBUFFER_DEPTH_SIZE;
+		}
+
+		RENDERBUFFER_STENCIL_SIZE() {
+			return this.handle.RENDERBUFFER_STENCIL_SIZE;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_OBJECT_NAME() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_OBJECT_NAME;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL;
+		}
+
+		FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE() {
+			return this.handle.FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE;
+		}
+
+		COLOR_ATTACHMENT0() {
+			return this.handle.COLOR_ATTACHMENT0;
+		}
+
+		DEPTH_ATTACHMENT() {
+			return this.handle.DEPTH_ATTACHMENT;
+		}
+
+		STENCIL_ATTACHMENT() {
+			return this.handle.STENCIL_ATTACHMENT;
+		}
+
+		DEPTH_STENCIL_ATTACHMENT() {
+			return this.handle.DEPTH_STENCIL_ATTACHMENT;
+		}
+
+		NONE() {
+			return this.handle.NONE;
+		}
+
+		FRAMEBUFFER_COMPLETE() {
+			return this.handle.FRAMEBUFFER_COMPLETE;
+		}
+
+		FRAMEBUFFER_INCOMPLETE_ATTACHMENT() {
+			return this.handle.FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
+		}
+
+		FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT() {
+			return this.handle.FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT;
+		}
+
+		FRAMEBUFFER_INCOMPLETE_DIMENSIONS() {
+			return this.handle.FRAMEBUFFER_INCOMPLETE_DIMENSIONS;
+		}
+
+		FRAMEBUFFER_UNSUPPORTED() {
+			return this.handle.FRAMEBUFFER_UNSUPPORTED;
+		}
+
+		FRAMEBUFFER_BINDING() {
+			return this.handle.FRAMEBUFFER_BINDING;
+		}
+
+		RENDERBUFFER_BINDING() {
+			return this.handle.RENDERBUFFER_BINDING;
+		}
+
+		MAX_RENDERBUFFER_SIZE() {
+			return this.handle.MAX_RENDERBUFFER_SIZE;
+		}
+
+		INVALID_FRAMEBUFFER_OPERATION() {
+			return this.handle.INVALID_FRAMEBUFFER_OPERATION;
+		}
+
+		UNPACK_FLIP_Y_WEBGL() {
+			return this.handle.UNPACK_FLIP_Y_WEBGL;
+		}
+
+		UNPACK_PREMULTIPLY_ALPHA_WEBGL() {
+			return this.handle.UNPACK_PREMULTIPLY_ALPHA_WEBGL;
+		}
+
+		CONTEXT_LOST_WEBGL() {
+			return this.handle.CONTEXT_LOST_WEBGL;
+		}
+
+		UNPACK_COLORSPACE_CONVERSION_WEBGL() {
+			return this.handle.UNPACK_COLORSPACE_CONVERSION_WEBGL;
+		}
+
+		BROWSER_DEFAULT_WEBGL() {
+			return this.handle.BROWSER_DEFAULT_WEBGL;
 		}
 }
 
@@ -27249,7 +40722,7 @@ class dom_C_Window extends dom_C_EventTarget {
 		}
 
 		PostMessage(p0, p1, ...p2) {
-			this.handle.postMessage(dom_unwrapAny(p0), p1, ...p2.map((item) => Array.from(item || [], (item) => dom_unwrapAny(item))));
+			this.handle.postMessage(dom_unwrapAny(p0), p1, ...p2.map((item) => Array.from(item || [], (item) => Uint8Array.from(item || []))));
 		}
 
 		Print() {
@@ -28832,6 +42305,12 @@ const dom = {
 			this.Explicit = null;
 		}
 	},
+	ImageBitmapRenderingContextSettings: class {
+		constructor() {
+			this.Alpha = false;
+			this.Explicit = null;
+		}
+	},
 	ImageDataSettings: class {
 		constructor() {
 			this.ColorSpace = "";
@@ -28954,6 +42433,20 @@ const dom = {
 			this.Explicit = null;
 		}
 	},
+	WebGLContextAttributes: class {
+		constructor() {
+			this.Alpha = false;
+			this.Antialias = false;
+			this.Depth = false;
+			this.Desynchronized = false;
+			this.FailIfMajorPerformanceCaveat = false;
+			this.PowerPreference = "";
+			this.PremultipliedAlpha = false;
+			this.PreserveDrawingBuffer = false;
+			this.Stencil = false;
+			this.Explicit = null;
+		}
+	},
 	WorkletOptions: class {
 		constructor() {
 			this.Credentials = "";
@@ -29011,6 +42504,56 @@ const dom = {
 			this.Explicit = null;
 		}
 	},
+	EXT_blend_minmax: class {
+		constructor() {
+			this.MIN_EXT = 0;
+			this.MAX_EXT = 0;
+			this.Explicit = null;
+		}
+	},
+	EXT_color_buffer_half_float: class {
+		constructor() {
+			this.RGBA16F_EXT = 0;
+			this.RGB16F_EXT = 0;
+			this.FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE_EXT = 0;
+			this.UNSIGNED_NORMALIZED_EXT = 0;
+			this.Explicit = null;
+		}
+	},
+	EXT_sRGB: class {
+		constructor() {
+			this.SRGB_EXT = 0;
+			this.SRGB_ALPHA_EXT = 0;
+			this.SRGB8_ALPHA8_EXT = 0;
+			this.FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT = 0;
+			this.Explicit = null;
+		}
+	},
+	EXT_texture_compression_bptc: class {
+		constructor() {
+			this.COMPRESSED_RGBA_BPTC_UNORM_EXT = 0;
+			this.COMPRESSED_SRGB_ALPHA_BPTC_UNORM_EXT = 0;
+			this.COMPRESSED_RGB_BPTC_SIGNED_FLOAT_EXT = 0;
+			this.COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT_EXT = 0;
+			this.Explicit = null;
+		}
+	},
+	EXT_texture_compression_rgtc: class {
+		constructor() {
+			this.COMPRESSED_RED_RGTC1_EXT = 0;
+			this.COMPRESSED_SIGNED_RED_RGTC1_EXT = 0;
+			this.COMPRESSED_RED_GREEN_RGTC2_EXT = 0;
+			this.COMPRESSED_SIGNED_RED_GREEN_RGTC2_EXT = 0;
+			this.Explicit = null;
+		}
+	},
+	EXT_texture_filter_anisotropic: class {
+		constructor() {
+			this.TEXTURE_MAX_ANISOTROPY_EXT = 0;
+			this.MAX_TEXTURE_MAX_ANISOTROPY_EXT = 0;
+			this.Explicit = null;
+		}
+	},
 	Gamepad: class {
 		constructor() {
 			this.Axes = [];
@@ -29033,6 +42576,12 @@ const dom = {
 			this.Explicit = null;
 		}
 	},
+	KHR_parallel_shader_compile: class {
+		constructor() {
+			this.COMPLETION_STATUS_KHR = 0;
+			this.Explicit = null;
+		}
+	},
 	MediaError: class {
 		constructor() {
 			this.Code = 0;
@@ -29041,6 +42590,18 @@ const dom = {
 			this.MEDIA_ERR_NETWORK = 0;
 			this.MEDIA_ERR_DECODE = 0;
 			this.MEDIA_ERR_SRC_NOT_SUPPORTED = 0;
+			this.Explicit = null;
+		}
+	},
+	OES_standard_derivatives: class {
+		constructor() {
+			this.FRAGMENT_SHADER_DERIVATIVE_HINT_OES = 0;
+			this.Explicit = null;
+		}
+	},
+	OES_texture_half_float: class {
+		constructor() {
+			this.HALF_FLOAT_OES = 0;
 			this.Explicit = null;
 		}
 	},
@@ -29123,6 +42684,91 @@ const dom = {
 			this.Explicit = null;
 		}
 	},
+	WEBGL_color_buffer_float: class {
+		constructor() {
+			this.RGBA32F_EXT = 0;
+			this.FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE_EXT = 0;
+			this.UNSIGNED_NORMALIZED_EXT = 0;
+			this.Explicit = null;
+		}
+	},
+	WEBGL_compressed_texture_etc: class {
+		constructor() {
+			this.COMPRESSED_R11_EAC = 0;
+			this.COMPRESSED_SIGNED_R11_EAC = 0;
+			this.COMPRESSED_RG11_EAC = 0;
+			this.COMPRESSED_SIGNED_RG11_EAC = 0;
+			this.COMPRESSED_RGB8_ETC2 = 0;
+			this.COMPRESSED_SRGB8_ETC2 = 0;
+			this.COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2 = 0;
+			this.COMPRESSED_SRGB8_PUNCHTHROUGH_ALPHA1_ETC2 = 0;
+			this.COMPRESSED_RGBA8_ETC2_EAC = 0;
+			this.COMPRESSED_SRGB8_ALPHA8_ETC2_EAC = 0;
+			this.Explicit = null;
+		}
+	},
+	WEBGL_compressed_texture_etc1: class {
+		constructor() {
+			this.COMPRESSED_RGB_ETC1_WEBGL = 0;
+			this.Explicit = null;
+		}
+	},
+	WEBGL_compressed_texture_pvrtc: class {
+		constructor() {
+			this.COMPRESSED_RGB_PVRTC_4BPPV1_IMG = 0;
+			this.COMPRESSED_RGB_PVRTC_2BPPV1_IMG = 0;
+			this.COMPRESSED_RGBA_PVRTC_4BPPV1_IMG = 0;
+			this.COMPRESSED_RGBA_PVRTC_2BPPV1_IMG = 0;
+			this.Explicit = null;
+		}
+	},
+	WEBGL_compressed_texture_s3tc: class {
+		constructor() {
+			this.COMPRESSED_RGB_S3TC_DXT1_EXT = 0;
+			this.COMPRESSED_RGBA_S3TC_DXT1_EXT = 0;
+			this.COMPRESSED_RGBA_S3TC_DXT3_EXT = 0;
+			this.COMPRESSED_RGBA_S3TC_DXT5_EXT = 0;
+			this.Explicit = null;
+		}
+	},
+	WEBGL_compressed_texture_s3tc_srgb: class {
+		constructor() {
+			this.COMPRESSED_SRGB_S3TC_DXT1_EXT = 0;
+			this.COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT = 0;
+			this.COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT = 0;
+			this.COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT = 0;
+			this.Explicit = null;
+		}
+	},
+	WEBGL_debug_renderer_info: class {
+		constructor() {
+			this.UNMASKED_VENDOR_WEBGL = 0;
+			this.UNMASKED_RENDERER_WEBGL = 0;
+			this.Explicit = null;
+		}
+	},
+	WEBGL_depth_texture: class {
+		constructor() {
+			this.UNSIGNED_INT_24_8_WEBGL = 0;
+			this.Explicit = null;
+		}
+	},
+	WebGLActiveInfo: class {
+		constructor() {
+			this.Name = "";
+			this.Size = 0;
+			this.Type = 0;
+			this.Explicit = null;
+		}
+	},
+	WebGLShaderPrecisionFormat: class {
+		constructor() {
+			this.Precision = 0;
+			this.RangeMax = 0;
+			this.RangeMin = 0;
+			this.Explicit = null;
+		}
+	},
 	get AudioContextValue() {
 		return dom_wrap(dom.AudioContextType, dom_load().AudioContext);
 	},
@@ -29155,6 +42801,12 @@ const dom = {
 	},
 	get TouchEventValue() {
 		return dom_wrap(dom.TouchEventType, dom_load().TouchEvent);
+	},
+	get WebGL2RenderingContextValue() {
+		return dom_wrap(dom.WebGL2RenderingContextType, dom_load().WebGL2RenderingContext);
+	},
+	get WebGLRenderingContextValue() {
+		return dom_wrap(dom.WebGLRenderingContextType, dom_load().WebGLRenderingContext);
 	},
 	get WheelEventValue() {
 		return dom_wrap(dom.WheelEventType, dom_load().WheelEvent);
@@ -29192,6 +42844,7 @@ const dom = {
 		
 		return outcome.ok ? [dom_wrap(dom.Response, outcome.value), null] : [null, outcome.error];
 	},
+	ANGLE_instanced_arrays: dom_C_ANGLE_instanced_arrays,
 	ARIAMixin: dom_C_ARIAMixin,
 	EventTarget: dom_C_EventTarget,
 	AbortSignal: dom_C_AbortSignal,
@@ -29222,6 +42875,7 @@ const dom = {
 	BeforeUnloadEvent: dom_C_BeforeUnloadEvent,
 	BiquadFilterNode: dom_C_BiquadFilterNode,
 	Blob: dom_C_Blob,
+	BlobEvent: dom_C_BlobEvent,
 	Body: dom_C_Body,
 	ChildNode: dom_C_ChildNode,
 	NonDocumentTypeChildNode: dom_C_NonDocumentTypeChildNode,
@@ -29259,14 +42913,17 @@ const dom = {
 	ChannelSplitterNode: dom_C_ChannelSplitterNode,
 	Clipboard: dom_C_Clipboard,
 	ClipboardEvent: dom_C_ClipboardEvent,
+	CloseEvent: dom_C_CloseEvent,
 	Comment: dom_C_Comment,
 	UIEvent: dom_C_UIEvent,
 	CompositionEvent: dom_C_CompositionEvent,
 	ConstantSourceNode: dom_C_ConstantSourceNode,
+	ContentVisibilityAutoStateChangeEvent: dom_C_ContentVisibilityAutoStateChangeEvent,
 	ConvolverNode: dom_C_ConvolverNode,
 	CredentialsContainer: dom_C_CredentialsContainer,
 	Crypto: dom_C_Crypto,
 	CustomElementRegistry: dom_C_CustomElementRegistry,
+	CustomEvent: dom_C_CustomEvent,
 	CustomStateSet: dom_C_CustomStateSet,
 	DOMImplementation: dom_C_DOMImplementation,
 	DOMMatrixReadOnly: dom_C_DOMMatrixReadOnly,
@@ -29303,6 +42960,7 @@ const dom = {
 	External: dom_C_External,
 	FocusEvent: dom_C_FocusEvent,
 	FontFaceSet: dom_C_FontFaceSet,
+	FontFaceSetLoadEvent: dom_C_FontFaceSetLoadEvent,
 	FormData: dom_C_FormData,
 	FormDataEvent: dom_C_FormDataEvent,
 	GainNode: dom_C_GainNode,
@@ -29328,9 +42986,11 @@ const dom = {
 	Headers: dom_C_Headers,
 	History: dom_C_History,
 	IDBFactory: dom_C_IDBFactory,
+	IDBVersionChangeEvent: dom_C_IDBVersionChangeEvent,
 	IIRFilterNode: dom_C_IIRFilterNode,
 	IdleDeadline: dom_C_IdleDeadline,
 	ImageBitmap: dom_C_ImageBitmap,
+	ImageBitmapRenderingContext: dom_C_ImageBitmapRenderingContext,
 	ImageDataType: dom_C_ImageDataType,
 	InputEvent: dom_C_InputEvent,
 	KeyboardEvent: dom_C_KeyboardEvent,
@@ -29339,15 +42999,20 @@ const dom = {
 	Location: dom_C_Location,
 	LockManager: dom_C_LockManager,
 	MIDIAccess: dom_C_MIDIAccess,
+	MIDIConnectionEvent: dom_C_MIDIConnectionEvent,
+	MIDIMessageEvent: dom_C_MIDIMessageEvent,
+	MathMLElement: dom_C_MathMLElement,
 	MediaCapabilities: dom_C_MediaCapabilities,
 	MediaDevices: dom_C_MediaDevices,
 	MediaElementAudioSourceNode: dom_C_MediaElementAudioSourceNode,
 	MediaEncryptedEvent: dom_C_MediaEncryptedEvent,
+	MediaKeyMessageEvent: dom_C_MediaKeyMessageEvent,
 	MediaKeySession: dom_C_MediaKeySession,
 	MediaKeySessionType: dom_C_MediaKeySessionType,
 	MediaKeySystemAccess: dom_C_MediaKeySystemAccess,
 	MediaKeys: dom_C_MediaKeys,
 	MediaQueryList: dom_C_MediaQueryList,
+	MediaQueryListEvent: dom_C_MediaQueryListEvent,
 	MediaSession: dom_C_MediaSession,
 	MediaStream: dom_C_MediaStream,
 	MediaStreamAudioDestinationNode: dom_C_MediaStreamAudioDestinationNode,
@@ -29357,6 +43022,7 @@ const dom = {
 	MessageEvent: dom_C_MessageEvent,
 	MimeTypeArray: dom_C_MimeTypeArray,
 	MouseEventType: dom_C_MouseEventType,
+	MutationEvent: dom_C_MutationEvent,
 	NamedNodeMap: dom_C_NamedNodeMap,
 	NavigatorAutomationInformation: dom_C_NavigatorAutomationInformation,
 	NavigatorBadge: dom_C_NavigatorBadge,
@@ -29373,6 +43039,9 @@ const dom = {
 	NodeIterator: dom_C_NodeIterator,
 	NodeList: dom_C_NodeList,
 	NodeListOf: dom_C_NodeListOf,
+	OES_vertex_array_object: dom_C_OES_vertex_array_object,
+	OVR_multiview2: dom_C_OVR_multiview2,
+	OfflineAudioCompletionEvent: dom_C_OfflineAudioCompletionEvent,
 	OffscreenCanvas: dom_C_OffscreenCanvas,
 	OffscreenCanvasRenderingContext2D: dom_C_OffscreenCanvasRenderingContext2D,
 	OscillatorNode: dom_C_OscillatorNode,
@@ -29380,6 +43049,8 @@ const dom = {
 	PannerNode: dom_C_PannerNode,
 	Path2D: dom_C_Path2D,
 	Path2DType: dom_C_Path2DType,
+	PaymentRequestUpdateEvent: dom_C_PaymentRequestUpdateEvent,
+	PaymentMethodChangeEvent: dom_C_PaymentMethodChangeEvent,
 	Performance: dom_C_Performance,
 	PerformanceEntry: dom_C_PerformanceEntry,
 	PerformanceMark: dom_C_PerformanceMark,
@@ -29387,6 +43058,7 @@ const dom = {
 	PerformanceNavigation: dom_C_PerformanceNavigation,
 	PerformanceTiming: dom_C_PerformanceTiming,
 	Permissions: dom_C_Permissions,
+	PictureInPictureEvent: dom_C_PictureInPictureEvent,
 	PluginArray: dom_C_PluginArray,
 	PointerEvent: dom_C_PointerEvent,
 	PointerEventType: dom_C_PointerEventType,
@@ -29394,6 +43066,12 @@ const dom = {
 	ProcessingInstruction: dom_C_ProcessingInstruction,
 	ProgressEvent: dom_C_ProgressEvent,
 	PromiseRejectionEvent: dom_C_PromiseRejectionEvent,
+	RTCDTMFToneChangeEvent: dom_C_RTCDTMFToneChangeEvent,
+	RTCDataChannelEvent: dom_C_RTCDataChannelEvent,
+	RTCErrorEvent: dom_C_RTCErrorEvent,
+	RTCPeerConnectionIceErrorEvent: dom_C_RTCPeerConnectionIceErrorEvent,
+	RTCPeerConnectionIceEvent: dom_C_RTCPeerConnectionIceEvent,
+	RTCTrackEvent: dom_C_RTCTrackEvent,
 	Range: dom_C_Range,
 	ReadableStream: dom_C_ReadableStream,
 	RemotePlayback: dom_C_RemotePlayback,
@@ -29411,6 +43089,8 @@ const dom = {
 	ServiceWorkerContainer: dom_C_ServiceWorkerContainer,
 	ShadowRoot: dom_C_ShadowRoot,
 	SpeechSynthesis: dom_C_SpeechSynthesis,
+	SpeechSynthesisEvent: dom_C_SpeechSynthesisEvent,
+	SpeechSynthesisErrorEvent: dom_C_SpeechSynthesisErrorEvent,
 	StereoPannerNode: dom_C_StereoPannerNode,
 	Storage: dom_C_Storage,
 	StorageEvent: dom_C_StorageEvent,
@@ -29419,11 +43099,13 @@ const dom = {
 	StylePropertyMap: dom_C_StylePropertyMap,
 	StyleSheetList: dom_C_StyleSheetList,
 	SubmitEvent: dom_C_SubmitEvent,
+	TextEvent: dom_C_TextEvent,
 	TextTrack: dom_C_TextTrack,
 	TextTrackCue: dom_C_TextTrackCue,
 	TextTrackCueList: dom_C_TextTrackCueList,
 	TextTrackList: dom_C_TextTrackList,
 	TimeRanges: dom_C_TimeRanges,
+	ToggleEvent: dom_C_ToggleEvent,
 	TouchEvent: dom_C_TouchEvent,
 	TouchEventType: dom_C_TouchEventType,
 	TouchList: dom_C_TouchList,
@@ -29432,8 +43114,22 @@ const dom = {
 	TreeWalker: dom_C_TreeWalker,
 	ViewTransition: dom_C_ViewTransition,
 	VisualViewport: dom_C_VisualViewport,
+	WEBGL_compressed_texture_astc: dom_C_WEBGL_compressed_texture_astc,
+	WEBGL_debug_shaders: dom_C_WEBGL_debug_shaders,
+	WEBGL_draw_buffers: dom_C_WEBGL_draw_buffers,
+	WEBGL_lose_context: dom_C_WEBGL_lose_context,
+	WEBGL_multi_draw: dom_C_WEBGL_multi_draw,
 	WakeLock: dom_C_WakeLock,
 	WaveShaperNode: dom_C_WaveShaperNode,
+	WebGL2RenderingContextBase: dom_C_WebGL2RenderingContextBase,
+	WebGL2RenderingContextOverloads: dom_C_WebGL2RenderingContextOverloads,
+	WebGLRenderingContextBase: dom_C_WebGLRenderingContextBase,
+	WebGL2RenderingContext: dom_C_WebGL2RenderingContext,
+	WebGL2RenderingContextType: dom_C_WebGL2RenderingContextType,
+	WebGLContextEvent: dom_C_WebGLContextEvent,
+	WebGLRenderingContextOverloads: dom_C_WebGLRenderingContextOverloads,
+	WebGLRenderingContext: dom_C_WebGLRenderingContext,
+	WebGLRenderingContextType: dom_C_WebGLRenderingContextType,
 	WheelEvent: dom_C_WheelEvent,
 	WheelEventType: dom_C_WheelEventType,
 	WindowLocalStorage: dom_C_WindowLocalStorage,
@@ -29446,6 +43142,7 @@ const dom = {
 
 // the classes of the library by the name its objects carry, with the classes each is a kind of
 const dom_kinds = {
+	"ANGLE_instanced_arrays": {Class: () => dom.ANGLE_instanced_arrays, lineage: ["ANGLE_instanced_arrays"]},
 	"ARIAMixin": {Class: () => dom.ARIAMixin, lineage: ["ARIAMixin"]},
 	"AbortSignal": {Class: () => dom.AbortSignal, lineage: ["AbortSignal", "EventTarget"]},
 	"AbstractRange": {Class: () => dom.AbstractRange, lineage: ["AbstractRange"]},
@@ -29472,6 +43169,7 @@ const dom_kinds = {
 	"BeforeUnloadEvent": {Class: () => dom.BeforeUnloadEvent, lineage: ["BeforeUnloadEvent", "Event"]},
 	"BiquadFilterNode": {Class: () => dom.BiquadFilterNode, lineage: ["BiquadFilterNode", "AudioNode", "EventTarget"]},
 	"Blob": {Class: () => dom.Blob, lineage: ["Blob"]},
+	"BlobEvent": {Class: () => dom.BlobEvent, lineage: ["BlobEvent", "Event"]},
 	"Body": {Class: () => dom.Body, lineage: ["Body"]},
 	"CDATASection": {Class: () => dom.CDATASection, lineage: ["CDATASection", "Text", "CharacterData", "Slottable", "Node", "ChildNode", "NonDocumentTypeChildNode", "EventTarget"]},
 	"CSSRule": {Class: () => dom.CSSRule, lineage: ["CSSRule"]},
@@ -29505,13 +43203,16 @@ const dom_kinds = {
 	"ChildNode": {Class: () => dom.ChildNode, lineage: ["ChildNode", "Node", "EventTarget"]},
 	"Clipboard": {Class: () => dom.Clipboard, lineage: ["Clipboard", "EventTarget"]},
 	"ClipboardEvent": {Class: () => dom.ClipboardEvent, lineage: ["ClipboardEvent", "Event"]},
+	"CloseEvent": {Class: () => dom.CloseEvent, lineage: ["CloseEvent", "Event"]},
 	"Comment": {Class: () => dom.Comment, lineage: ["Comment", "CharacterData", "Node", "ChildNode", "NonDocumentTypeChildNode", "EventTarget"]},
 	"CompositionEvent": {Class: () => dom.CompositionEvent, lineage: ["CompositionEvent", "UIEvent", "Event"]},
 	"ConstantSourceNode": {Class: () => dom.ConstantSourceNode, lineage: ["ConstantSourceNode", "AudioScheduledSourceNode", "AudioNode", "EventTarget"]},
+	"ContentVisibilityAutoStateChangeEvent": {Class: () => dom.ContentVisibilityAutoStateChangeEvent, lineage: ["ContentVisibilityAutoStateChangeEvent", "Event"]},
 	"ConvolverNode": {Class: () => dom.ConvolverNode, lineage: ["ConvolverNode", "AudioNode", "EventTarget"]},
 	"CredentialsContainer": {Class: () => dom.CredentialsContainer, lineage: ["CredentialsContainer"]},
 	"Crypto": {Class: () => dom.Crypto, lineage: ["Crypto"]},
 	"CustomElementRegistry": {Class: () => dom.CustomElementRegistry, lineage: ["CustomElementRegistry"]},
+	"CustomEvent": {Class: () => dom.CustomEvent, lineage: ["CustomEvent", "Event"]},
 	"CustomStateSet": {Class: () => dom.CustomStateSet, lineage: ["CustomStateSet"]},
 	"DOMImplementation": {Class: () => dom.DOMImplementation, lineage: ["DOMImplementation"]},
 	"DOMMatrix": {Class: () => dom.DOMMatrix, lineage: ["DOMMatrix", "DOMMatrixReadOnly"]},
@@ -29544,6 +43245,7 @@ const dom_kinds = {
 	"External": {Class: () => dom.External, lineage: ["External"]},
 	"FocusEvent": {Class: () => dom.FocusEvent, lineage: ["FocusEvent", "UIEvent", "Event"]},
 	"FontFaceSet": {Class: () => dom.FontFaceSet, lineage: ["FontFaceSet", "EventTarget"]},
+	"FontFaceSetLoadEvent": {Class: () => dom.FontFaceSetLoadEvent, lineage: ["FontFaceSetLoadEvent", "Event"]},
 	"FontFaceSource": {Class: () => dom.FontFaceSource, lineage: ["FontFaceSource"]},
 	"FormData": {Class: () => dom.FormData, lineage: ["FormData"]},
 	"FormDataEvent": {Class: () => dom.FormDataEvent, lineage: ["FormDataEvent", "Event"]},
@@ -29571,9 +43273,11 @@ const dom_kinds = {
 	"Headers": {Class: () => dom.Headers, lineage: ["Headers"]},
 	"History": {Class: () => dom.History, lineage: ["History"]},
 	"IDBFactory": {Class: () => dom.IDBFactory, lineage: ["IDBFactory"]},
+	"IDBVersionChangeEvent": {Class: () => dom.IDBVersionChangeEvent, lineage: ["IDBVersionChangeEvent", "Event"]},
 	"IIRFilterNode": {Class: () => dom.IIRFilterNode, lineage: ["IIRFilterNode", "AudioNode", "EventTarget"]},
 	"IdleDeadline": {Class: () => dom.IdleDeadline, lineage: ["IdleDeadline"]},
 	"ImageBitmap": {Class: () => dom.ImageBitmap, lineage: ["ImageBitmap"]},
+	"ImageBitmapRenderingContext": {Class: () => dom.ImageBitmapRenderingContext, lineage: ["ImageBitmapRenderingContext"]},
 	"ImageDataType": {Class: () => dom.ImageDataType, lineage: ["ImageDataType"]},
 	"InputEvent": {Class: () => dom.InputEvent, lineage: ["InputEvent", "UIEvent", "Event"]},
 	"KeyboardEvent": {Class: () => dom.KeyboardEvent, lineage: ["KeyboardEvent", "UIEvent", "Event"]},
@@ -29582,15 +43286,20 @@ const dom_kinds = {
 	"Location": {Class: () => dom.Location, lineage: ["Location"]},
 	"LockManager": {Class: () => dom.LockManager, lineage: ["LockManager"]},
 	"MIDIAccess": {Class: () => dom.MIDIAccess, lineage: ["MIDIAccess", "EventTarget"]},
+	"MIDIConnectionEvent": {Class: () => dom.MIDIConnectionEvent, lineage: ["MIDIConnectionEvent", "Event"]},
+	"MIDIMessageEvent": {Class: () => dom.MIDIMessageEvent, lineage: ["MIDIMessageEvent", "Event"]},
+	"MathMLElement": {Class: () => dom.MathMLElement, lineage: ["MathMLElement", "Element", "ElementCSSInlineStyle", "GlobalEventHandlers", "HTMLOrSVGElement", "Node", "ARIAMixin", "Animatable", "ChildNode", "NonDocumentTypeChildNode", "ParentNode", "Slottable", "EventTarget"]},
 	"MediaCapabilities": {Class: () => dom.MediaCapabilities, lineage: ["MediaCapabilities"]},
 	"MediaDevices": {Class: () => dom.MediaDevices, lineage: ["MediaDevices", "EventTarget"]},
 	"MediaElementAudioSourceNode": {Class: () => dom.MediaElementAudioSourceNode, lineage: ["MediaElementAudioSourceNode", "AudioNode", "EventTarget"]},
 	"MediaEncryptedEvent": {Class: () => dom.MediaEncryptedEvent, lineage: ["MediaEncryptedEvent", "Event"]},
+	"MediaKeyMessageEvent": {Class: () => dom.MediaKeyMessageEvent, lineage: ["MediaKeyMessageEvent", "Event"]},
 	"MediaKeySession": {Class: () => dom.MediaKeySession, lineage: ["MediaKeySession", "EventTarget"]},
 	"MediaKeySessionType": {Class: () => dom.MediaKeySessionType, lineage: ["MediaKeySessionType"]},
 	"MediaKeySystemAccess": {Class: () => dom.MediaKeySystemAccess, lineage: ["MediaKeySystemAccess"]},
 	"MediaKeys": {Class: () => dom.MediaKeys, lineage: ["MediaKeys"]},
 	"MediaQueryList": {Class: () => dom.MediaQueryList, lineage: ["MediaQueryList", "EventTarget"]},
+	"MediaQueryListEvent": {Class: () => dom.MediaQueryListEvent, lineage: ["MediaQueryListEvent", "Event"]},
 	"MediaSession": {Class: () => dom.MediaSession, lineage: ["MediaSession"]},
 	"MediaStream": {Class: () => dom.MediaStream, lineage: ["MediaStream", "EventTarget"]},
 	"MediaStreamAudioDestinationNode": {Class: () => dom.MediaStreamAudioDestinationNode, lineage: ["MediaStreamAudioDestinationNode", "AudioNode", "EventTarget"]},
@@ -29601,6 +43310,7 @@ const dom_kinds = {
 	"MimeTypeArray": {Class: () => dom.MimeTypeArray, lineage: ["MimeTypeArray"]},
 	"MouseEvent": {Class: () => dom.MouseEvent, lineage: ["MouseEvent", "UIEvent", "Event"]},
 	"MouseEventType": {Class: () => dom.MouseEventType, lineage: ["MouseEventType"]},
+	"MutationEvent": {Class: () => dom.MutationEvent, lineage: ["MutationEvent", "Event"]},
 	"NamedNodeMap": {Class: () => dom.NamedNodeMap, lineage: ["NamedNodeMap"]},
 	"Navigator": {Class: () => dom.Navigator, lineage: ["Navigator", "NavigatorAutomationInformation", "NavigatorBadge", "NavigatorConcurrentHardware", "NavigatorContentUtils", "NavigatorCookies", "NavigatorID", "NavigatorLanguage", "NavigatorLocks", "NavigatorOnLine", "NavigatorPlugins", "NavigatorStorage"]},
 	"NavigatorAutomationInformation": {Class: () => dom.NavigatorAutomationInformation, lineage: ["NavigatorAutomationInformation"]},
@@ -29620,6 +43330,9 @@ const dom_kinds = {
 	"NodeListOf": {Class: () => dom.NodeListOf, lineage: ["NodeListOf", "NodeList"]},
 	"NonDocumentTypeChildNode": {Class: () => dom.NonDocumentTypeChildNode, lineage: ["NonDocumentTypeChildNode"]},
 	"NonElementParentNode": {Class: () => dom.NonElementParentNode, lineage: ["NonElementParentNode"]},
+	"OES_vertex_array_object": {Class: () => dom.OES_vertex_array_object, lineage: ["OES_vertex_array_object"]},
+	"OVR_multiview2": {Class: () => dom.OVR_multiview2, lineage: ["OVR_multiview2"]},
+	"OfflineAudioCompletionEvent": {Class: () => dom.OfflineAudioCompletionEvent, lineage: ["OfflineAudioCompletionEvent", "Event"]},
 	"OffscreenCanvas": {Class: () => dom.OffscreenCanvas, lineage: ["OffscreenCanvas", "EventTarget"]},
 	"OffscreenCanvasRenderingContext2D": {Class: () => dom.OffscreenCanvasRenderingContext2D, lineage: ["OffscreenCanvasRenderingContext2D", "CanvasCompositing", "CanvasDrawImage", "CanvasDrawPath", "CanvasFillStrokeStyles", "CanvasFilters", "CanvasImageData", "CanvasImageSmoothing", "CanvasPath", "CanvasPathDrawingStyles", "CanvasRect", "CanvasShadowStyles", "CanvasState", "CanvasText", "CanvasTextDrawingStyles", "CanvasTransform"]},
 	"OscillatorNode": {Class: () => dom.OscillatorNode, lineage: ["OscillatorNode", "AudioScheduledSourceNode", "AudioNode", "EventTarget"]},
@@ -29628,6 +43341,8 @@ const dom_kinds = {
 	"ParentNode": {Class: () => dom.ParentNode, lineage: ["ParentNode", "Node", "EventTarget"]},
 	"Path2D": {Class: () => dom.Path2D, lineage: ["Path2D", "CanvasPath"]},
 	"Path2DType": {Class: () => dom.Path2DType, lineage: ["Path2DType"]},
+	"PaymentMethodChangeEvent": {Class: () => dom.PaymentMethodChangeEvent, lineage: ["PaymentMethodChangeEvent", "PaymentRequestUpdateEvent", "Event"]},
+	"PaymentRequestUpdateEvent": {Class: () => dom.PaymentRequestUpdateEvent, lineage: ["PaymentRequestUpdateEvent", "Event"]},
 	"Performance": {Class: () => dom.Performance, lineage: ["Performance", "EventTarget"]},
 	"PerformanceEntry": {Class: () => dom.PerformanceEntry, lineage: ["PerformanceEntry"]},
 	"PerformanceMark": {Class: () => dom.PerformanceMark, lineage: ["PerformanceMark", "PerformanceEntry"]},
@@ -29635,6 +43350,7 @@ const dom_kinds = {
 	"PerformanceNavigation": {Class: () => dom.PerformanceNavigation, lineage: ["PerformanceNavigation"]},
 	"PerformanceTiming": {Class: () => dom.PerformanceTiming, lineage: ["PerformanceTiming"]},
 	"Permissions": {Class: () => dom.Permissions, lineage: ["Permissions"]},
+	"PictureInPictureEvent": {Class: () => dom.PictureInPictureEvent, lineage: ["PictureInPictureEvent", "Event"]},
 	"PluginArray": {Class: () => dom.PluginArray, lineage: ["PluginArray"]},
 	"PointerEvent": {Class: () => dom.PointerEvent, lineage: ["PointerEvent", "MouseEvent", "UIEvent", "Event"]},
 	"PointerEventType": {Class: () => dom.PointerEventType, lineage: ["PointerEventType"]},
@@ -29642,6 +43358,12 @@ const dom_kinds = {
 	"ProcessingInstruction": {Class: () => dom.ProcessingInstruction, lineage: ["ProcessingInstruction", "CharacterData", "LinkStyle", "Node", "ChildNode", "NonDocumentTypeChildNode", "EventTarget"]},
 	"ProgressEvent": {Class: () => dom.ProgressEvent, lineage: ["ProgressEvent", "Event"]},
 	"PromiseRejectionEvent": {Class: () => dom.PromiseRejectionEvent, lineage: ["PromiseRejectionEvent", "Event"]},
+	"RTCDTMFToneChangeEvent": {Class: () => dom.RTCDTMFToneChangeEvent, lineage: ["RTCDTMFToneChangeEvent", "Event"]},
+	"RTCDataChannelEvent": {Class: () => dom.RTCDataChannelEvent, lineage: ["RTCDataChannelEvent", "Event"]},
+	"RTCErrorEvent": {Class: () => dom.RTCErrorEvent, lineage: ["RTCErrorEvent", "Event"]},
+	"RTCPeerConnectionIceErrorEvent": {Class: () => dom.RTCPeerConnectionIceErrorEvent, lineage: ["RTCPeerConnectionIceErrorEvent", "Event"]},
+	"RTCPeerConnectionIceEvent": {Class: () => dom.RTCPeerConnectionIceEvent, lineage: ["RTCPeerConnectionIceEvent", "Event"]},
+	"RTCTrackEvent": {Class: () => dom.RTCTrackEvent, lineage: ["RTCTrackEvent", "Event"]},
 	"Range": {Class: () => dom.Range, lineage: ["Range", "AbstractRange"]},
 	"ReadableStream": {Class: () => dom.ReadableStream, lineage: ["ReadableStream"]},
 	"RemotePlayback": {Class: () => dom.RemotePlayback, lineage: ["RemotePlayback", "EventTarget"]},
@@ -29659,6 +43381,8 @@ const dom_kinds = {
 	"ShadowRoot": {Class: () => dom.ShadowRoot, lineage: ["ShadowRoot", "DocumentFragment", "DocumentOrShadowRoot", "Node", "NonElementParentNode", "ParentNode", "EventTarget"]},
 	"Slottable": {Class: () => dom.Slottable, lineage: ["Slottable"]},
 	"SpeechSynthesis": {Class: () => dom.SpeechSynthesis, lineage: ["SpeechSynthesis", "EventTarget"]},
+	"SpeechSynthesisErrorEvent": {Class: () => dom.SpeechSynthesisErrorEvent, lineage: ["SpeechSynthesisErrorEvent", "SpeechSynthesisEvent", "Event"]},
+	"SpeechSynthesisEvent": {Class: () => dom.SpeechSynthesisEvent, lineage: ["SpeechSynthesisEvent", "Event"]},
 	"StereoPannerNode": {Class: () => dom.StereoPannerNode, lineage: ["StereoPannerNode", "AudioNode", "EventTarget"]},
 	"Storage": {Class: () => dom.Storage, lineage: ["Storage"]},
 	"StorageEvent": {Class: () => dom.StorageEvent, lineage: ["StorageEvent", "Event"]},
@@ -29669,11 +43393,13 @@ const dom_kinds = {
 	"StyleSheetList": {Class: () => dom.StyleSheetList, lineage: ["StyleSheetList"]},
 	"SubmitEvent": {Class: () => dom.SubmitEvent, lineage: ["SubmitEvent", "Event"]},
 	"Text": {Class: () => dom.Text, lineage: ["Text", "CharacterData", "Slottable", "Node", "ChildNode", "NonDocumentTypeChildNode", "EventTarget"]},
+	"TextEvent": {Class: () => dom.TextEvent, lineage: ["TextEvent", "UIEvent", "Event"]},
 	"TextTrack": {Class: () => dom.TextTrack, lineage: ["TextTrack", "EventTarget"]},
 	"TextTrackCue": {Class: () => dom.TextTrackCue, lineage: ["TextTrackCue", "EventTarget"]},
 	"TextTrackCueList": {Class: () => dom.TextTrackCueList, lineage: ["TextTrackCueList"]},
 	"TextTrackList": {Class: () => dom.TextTrackList, lineage: ["TextTrackList", "EventTarget"]},
 	"TimeRanges": {Class: () => dom.TimeRanges, lineage: ["TimeRanges"]},
+	"ToggleEvent": {Class: () => dom.ToggleEvent, lineage: ["ToggleEvent", "Event"]},
 	"TouchEvent": {Class: () => dom.TouchEvent, lineage: ["TouchEvent", "UIEvent", "Event"]},
 	"TouchEventType": {Class: () => dom.TouchEventType, lineage: ["TouchEventType"]},
 	"TouchList": {Class: () => dom.TouchList, lineage: ["TouchList"]},
@@ -29683,8 +43409,22 @@ const dom_kinds = {
 	"UIEvent": {Class: () => dom.UIEvent, lineage: ["UIEvent", "Event"]},
 	"ViewTransition": {Class: () => dom.ViewTransition, lineage: ["ViewTransition"]},
 	"VisualViewport": {Class: () => dom.VisualViewport, lineage: ["VisualViewport", "EventTarget"]},
+	"WEBGL_compressed_texture_astc": {Class: () => dom.WEBGL_compressed_texture_astc, lineage: ["WEBGL_compressed_texture_astc"]},
+	"WEBGL_debug_shaders": {Class: () => dom.WEBGL_debug_shaders, lineage: ["WEBGL_debug_shaders"]},
+	"WEBGL_draw_buffers": {Class: () => dom.WEBGL_draw_buffers, lineage: ["WEBGL_draw_buffers"]},
+	"WEBGL_lose_context": {Class: () => dom.WEBGL_lose_context, lineage: ["WEBGL_lose_context"]},
+	"WEBGL_multi_draw": {Class: () => dom.WEBGL_multi_draw, lineage: ["WEBGL_multi_draw"]},
 	"WakeLock": {Class: () => dom.WakeLock, lineage: ["WakeLock"]},
 	"WaveShaperNode": {Class: () => dom.WaveShaperNode, lineage: ["WaveShaperNode", "AudioNode", "EventTarget"]},
+	"WebGL2RenderingContext": {Class: () => dom.WebGL2RenderingContext, lineage: ["WebGL2RenderingContext", "WebGL2RenderingContextBase", "WebGL2RenderingContextOverloads", "WebGLRenderingContextBase"]},
+	"WebGL2RenderingContextType": {Class: () => dom.WebGL2RenderingContextType, lineage: ["WebGL2RenderingContextType"]},
+	"WebGL2RenderingContextBase": {Class: () => dom.WebGL2RenderingContextBase, lineage: ["WebGL2RenderingContextBase"]},
+	"WebGL2RenderingContextOverloads": {Class: () => dom.WebGL2RenderingContextOverloads, lineage: ["WebGL2RenderingContextOverloads"]},
+	"WebGLContextEvent": {Class: () => dom.WebGLContextEvent, lineage: ["WebGLContextEvent", "Event"]},
+	"WebGLRenderingContext": {Class: () => dom.WebGLRenderingContext, lineage: ["WebGLRenderingContext", "WebGLRenderingContextBase", "WebGLRenderingContextOverloads"]},
+	"WebGLRenderingContextType": {Class: () => dom.WebGLRenderingContextType, lineage: ["WebGLRenderingContextType"]},
+	"WebGLRenderingContextBase": {Class: () => dom.WebGLRenderingContextBase, lineage: ["WebGLRenderingContextBase"]},
+	"WebGLRenderingContextOverloads": {Class: () => dom.WebGLRenderingContextOverloads, lineage: ["WebGLRenderingContextOverloads"]},
 	"WheelEvent": {Class: () => dom.WheelEvent, lineage: ["WheelEvent", "MouseEvent", "UIEvent", "Event"]},
 	"WheelEventType": {Class: () => dom.WheelEventType, lineage: ["WheelEventType"]},
 	"Window": {Class: () => dom.Window, lineage: ["Window", "EventTarget", "AnimationFrameProvider", "GlobalEventHandlers", "WindowEventHandlers", "WindowLocalStorage", "WindowOrWorkerGlobalScope", "WindowSessionStorage"]},
