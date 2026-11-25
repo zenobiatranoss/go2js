@@ -14,7 +14,7 @@ generated and compiles, but no program was run against the library.
 | semver | not read: re-exports through `import x = require` |
 | lodash | not read: `/// <reference path>` |
 
-Known gaps: `Partial<...>` and other mapped types become `any`; a `Promise` as a
+Known gaps: other mapped types (`Pick`, `keyof`-based) become `any`; `Partial`, `Readonly`, `Required` and `Omit` are read as the type itself; a `Promise` as a
 parameter, property or callback result is not supported; pointers to bound structs
 are not supported (value structs only).
 

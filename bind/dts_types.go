@@ -377,6 +377,13 @@ func (p *dtsParser) namedType() Type {
 		}
 
 		return Type{Kind: Promise, Elem: &Type{Kind: Void}}
+	case "Partial", "Readonly", "Required", "NonNullable", "Awaited", "Omit":
+		// an options struct leaves out what is zero, so these are the type itself
+		if len(arguments) >= 1 {
+			return arguments[0]
+		}
+
+		return Type{Kind: Any}
 	case "Record":
 		if len(arguments) == 2 && arguments[0].Kind == String {
 			return Type{Kind: Map, Elem: &arguments[1]}

@@ -140,3 +140,20 @@ declare class Canvas {
 		t.Errorf("a typed array or a list of numbers is %+v", f.Params[0].Type)
 	}
 }
+
+func TestPartialAndReadonlyAreTheStructThatTheyWrap(t *testing.T) {
+	module, _ := ParseDeclarations(`
+interface Options { size: number; name: string }
+declare function make(o: Partial<Options>, p: Readonly<Options>, q: Omit<Options, "name">): void;
+`)
+
+	if len(module.Structs) != 1 || module.Structs[0].Name != "Options" {
+		t.Fatalf("structs: %+v", module.Structs)
+	}
+
+	for i, p := range module.Functions[0].Params {
+		if p.Type.Kind != Struct || p.Type.Name != "Options" {
+			t.Errorf("parameter %d is %+v", i, p.Type)
+		}
+	}
+}
