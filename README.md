@@ -386,7 +386,7 @@ A binding of the browser ships with the tool (`go2js -with dom -o game.html main
 keyboard, mouse and touch events, images, audio, WebGL), so a game or an app that draws is Go from the first line.
 Tried so far: three.js, Matter.js, dayjs, nanoid in Node, and in Chromium a canvas loop with keyboard events and a WebGL triangle drawn from Go;
 the declarations of uuid, axios, zod, Howler, p5 and Chart.js are read but programs on them were not run.
-See [docs/bind.md](docs/bind.md).
+See [docs/bind.md](docs/bind.md), [docs/compat.md](docs/compat.md) and the Go-only game in [examples/browser-game](examples/browser-game).
 
 ### Third-party libraries that were tried
 

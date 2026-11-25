@@ -767,3 +767,22 @@ func main() {
 		t.Errorf("a binding that is not there was not told: %v", err)
 	}
 }
+
+func TestTheBrowserGameExampleCompiles(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "breakout.html")
+
+	var stdout, stderr bytes.Buffer
+
+	if err := run([]string{"-with", "dom", "-o", output, filepath.Join("..", "..", "examples", "browser-game", "main.go")}, &stdout, &stderr); err != nil {
+		t.Fatalf("%v\n%s", err, stderr.String())
+	}
+
+	data, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(string(data), "RequestAnimationFrame") {
+		t.Error("the page does not run a frame loop")
+	}
+}

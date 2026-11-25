@@ -8,6 +8,10 @@ cd "$(dirname "$0")/.."
 
 for main in examples/*/main.go; do
 	dir="${main%/main.go}"
+	# a page for the browser needs "-with dom" and has no main.js to keep
+	if grep -q '^	"dom"' "$main"; then
+		continue
+	fi
 	if bin/go2js -o "$dir/main.js" "$dir" 2> "${dir%/}/.refresherr"; then
 		echo "refreshed $dir/main.js"
 	else

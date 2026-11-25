@@ -8,6 +8,7 @@ the tool does not do yet are as much a part of a release as the things it does.
 
 ## Unreleased
 
+- A browser game written only in Go (`examples/browser-game`, Breakout on canvas, compiled with `go2js -with dom`), run in headless Chromium with key presses; `docs/compat.md` lists what bind was tried on.
 - `go2js bind`: write Go declarations and the JavaScript behind them for an npm library, from the TypeScript declarations it ships (or a JSON description), so Go programs can call it with types: functions, constants, enums, classes with their kinds, properties, statics, callbacks, optional parameters, namespaces, and promises that a goroutine waits for (`//go2js:async` in a stub). See docs/bind.md.
 - `go2js bind`: options objects. An interface of plain data, or an object type written in a signature, is a Go struct (`three.WebGLRendererParameters{Antialias: true}`); fields left at zero are left out of the object the library gets, and `Explicit` names the zero values to send.
 - `go2js bind`: an overload told apart by a string (`getContext("webgl")`) is a method for each string, a typed array or a list of numbers is the typed array, and a function that takes bytes (`BufferSource`) has a variant for each array (`BufferDataFloat32`). The browser binding has WebGL.
