@@ -243,3 +243,86 @@ func TestWhatTheBrowserHasIsBoundWithoutLoadingIt(t *testing.T) {
 		t.Fatalf("got\n%s\nwant\n%s\n--- stub\n%s", got, want, out.Stub)
 	}
 }
+
+const clientLibrary = `"use strict";
+
+class Client {
+	get(url) { return Promise.resolve({ status: 200, data: "got " + url }); }
+	fail() { return Promise.reject(new Error("down")); }
+	each(items, work) { return Promise.all(items.map((i) => work(i))).then((all) => all.length); }
+}
+
+module.exports = { Client };
+`
+
+const clientTypes = `export interface Reply<T = any> { status: number; data: T }
+type ReplyOf<R> = R extends string ? Reply<string> : R;
+export class Client {
+	get<T = any, R = string>(url: string): Promise<ReplyOf<R>>;
+	fail(): Promise<void>;
+	each(items: string[], work: (item: string) => Promise<void> | void): Promise<number>;
+}
+`
+
+const clientApp = `package main
+
+import (
+	"fmt"
+
+	"npm/client"
+)
+
+func main() {
+	c := client.NewClient()
+	r, err := c.Get("/a")
+	fmt.Println(r.Status, r.Data, err)
+	fmt.Println(c.Fail())
+	n, err := c.Each([]string{"x", "y"}, func(item string) { fmt.Println("item", item) })
+	fmt.Println(n, err)
+}
+`
+
+func TestAMethodThatWaitsIsCalledInAGoroutineAndAPromiseIsItsValue(t *testing.T) {
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("node is not installed")
+	}
+
+	root := t.TempDir()
+
+	writeTree(t, root, map[string]string{
+		"app/go.mod":                           "module example.com/app\n\ngo 1.22\n",
+		"app/main.go":                          clientApp,
+		"app/node_modules/client/index.js":     clientLibrary,
+		"app/node_modules/client/index.d.ts":   clientTypes,
+		"app/node_modules/client/package.json": `{"name":"client","main":"index.js","types":"index.d.ts"}`,
+	})
+
+	module, _ := bind.ParseDeclarations(clientTypes)
+	module.Name = "client"
+	module.Import = "npm/client"
+
+	out, err := bind.Generate(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stubs := filepath.Join(root, "stubs")
+
+	writeTree(t, stubs, map[string]string{"client.stub": out.Stub, "client.js": out.Shim})
+
+	if _, err := compiler.LoadStubs(stubs); err != nil {
+		t.Fatalf("%v\n%s", err, out.Stub)
+	}
+
+	if err := compiler.LoadShims([]string{filepath.Join(stubs, "client.js")}); err != nil {
+		t.Fatal(err)
+	}
+
+	defer javascript.SetShimSource("")
+
+	want := "200 got /a <nil>\ndown\nitem x\nitem y\n2 <nil>\n"
+
+	if got := runModule(t, filepath.Join(root, "app")); got != want {
+		t.Fatalf("got\n%s\nwant\n%s\n--- stub\n%s", got, want, out.Stub)
+	}
+}

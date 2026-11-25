@@ -8,6 +8,9 @@ the tool does not do yet are as much a part of a release as the things it does.
 
 ## Unreleased
 
+- `go2js bind`: a promise given to a function or answered by a callback is its value in Go (`T | Promise<T>` is `T`); a generic with a default (`R = Reply<T>`) is the default; `A extends B ? C : D` is `C`; `interface X extends Omit<Base, "k">` has what Base has; a string or bytes is `any`.
+- A method of a bound library that waits for a promise (`client.Get(...)` returning a value and an error) is now called from the goroutine like a function is; before, only the functions waited and the method gave back an empty value.
+- Run on real programs: uuid, zod, and axios against a local server (a typed response, an error for a failed request).
 - `go2js bind`: `Partial<T>`, `Readonly<T>`, `Required<T>`, `Omit<T, K>`, `NonNullable<T>` and `Awaited<T>` are read as `T` (they were `any`), so an options struct wrapped in one stays a struct.
 - A browser game written only in Go (`examples/browser-game`, Breakout on canvas, compiled with `go2js -with dom`), run in headless Chromium with key presses; `docs/compat.md` lists what bind was tried on.
 - `go2js bind`: write Go declarations and the JavaScript behind them for an npm library, from the TypeScript declarations it ships (or a JSON description), so Go programs can call it with types: functions, constants, enums, classes with their kinds, properties, statics, callbacks, optional parameters, namespaces, and promises that a goroutine waits for (`//go2js:async` in a stub). See docs/bind.md.

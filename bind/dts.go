@@ -285,6 +285,17 @@ func (p *dtsParser) typeParameters() map[string]bool {
 					p.bound[t.text] = Type{Kind: String}
 				}
 
+				// <R = Response<T>> is a Response wherever R stands: Go cannot say which R it wants
+				if p.is("=") && p.peekAt(1).kind == tokName && p.at > 0 {
+					switch p.peekAt(1).text {
+					case "any", "unknown", "object", "never", "string", "number", "boolean", "void", "undefined", "null":
+					default:
+						if after := p.peekAt(2); after.kind == tokPunct && (after.text == "<" || after.text == ">" || after.text == ",") {
+							p.bound[t.text] = Type{Kind: Class, Name: p.peekAt(1).text}
+						}
+					}
+				}
+
 				// <T extends string> is a string wherever T stands
 				if p.is("extends") {
 					limit, after := p.peekAt(1), p.peekAt(2)
@@ -581,6 +592,14 @@ func (p *dtsParser) classDecl(isClass bool) {
 
 			if p.is("<") {
 				p.next()
+
+				if wrapperType[parent] {
+					// extends Omit<Base, "k"> has what Base has
+					if t := p.parseType(); t.Kind == Class || t.Kind == Struct {
+						parent = t.Name
+					}
+				}
+
 				p.skipBalanced("<", ">")
 			}
 
@@ -972,3 +991,7 @@ func (p *dtsParser) namespaceDecl() {
 	p.module.Constants = append(p.module.Constants[:constantsBefore], found...)
 	p.namespaces = append(p.namespaces, ns)
 }
+
+// wrapperType are the types of TypeScript that make a type out of another and
+// leave what a program needs of it as it is.
+var wrapperType = map[string]bool{"Partial": true, "Readonly": true, "Required": true, "Omit": true, "Pick": true}

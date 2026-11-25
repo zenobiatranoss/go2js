@@ -10,12 +10,13 @@ generated and compiles, but no program was run against the library.
 | three.js | works through an import map |
 | Matter.js | works |
 | dayjs, nanoid | work |
-| uuid, axios, zod, Howler, p5, Chart.js | declarations only |
+| uuid (v4, v5, validate), zod (string, number, parse), axios (typed response, failed request, against a local server) | work, run in Node |
+| Howler, p5, Chart.js | declarations only |
 | semver | not read: re-exports through `import x = require` |
 | lodash | not read: `/// <reference path>` |
 
-Known gaps: other mapped types (`Pick`, `keyof`-based) become `any`; `Partial`, `Readonly`, `Required` and `Omit` are read as the type itself; a `Promise` as a
-parameter, property or callback result is not supported; pointers to bound structs
+Known gaps: other mapped types (`Pick`, `keyof`-based) become `any`; `Partial`, `Readonly`, `Required` and `Omit` are read as the type itself; a `Promise` held in a
+property is left out (a parameter or a callback result is its value); pointers to bound structs
 are not supported (value structs only).
 
 Platforms: the tests run on Linux here. macOS and Windows run them in CI

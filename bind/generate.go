@@ -558,6 +558,11 @@ func (g *generator) class(c ClassDecl) string {
 	for _, property := range c.Properties {
 		goType, ok := g.goType(property.Type)
 
+		if property.Type.Kind == Promise {
+			// reading a promise from a property would give Go the promise as if it were the value
+			ok = false
+		}
+
 		if !validName(property.Name) {
 			g.skip(c.Name+"."+property.Name, "its name cannot be written in JavaScript")
 
@@ -714,6 +719,14 @@ func (g *generator) goType(t Type) (string, bool) {
 		return "map[string]" + elem, true
 	case Typed:
 		return "[]" + typedElement(t.Name), true
+	case Promise:
+		// where a promise is given (a parameter) or answered (a callback), Go
+		// passes what it comes to: the JavaScript side takes either
+		if t.Elem == nil {
+			return "", true
+		}
+
+		return g.goType(*t.Elem)
 	case Func:
 		var params []string
 
@@ -729,8 +742,15 @@ func (g *generator) goType(t Type) (string, bool) {
 
 		result := ""
 
-		if t.Result != nil && t.Result.Kind != Void {
-			text, ok := g.goType(*t.Result)
+		answer := t.Result
+
+		for answer != nil && answer.Kind == Promise {
+			// a callback that answers with a promise answers with what it comes to
+			answer = answer.Elem
+		}
+
+		if answer != nil && answer.Kind != Void {
+			text, ok := g.goType(*answer)
 
 			if !ok || text == "" {
 				return "", false

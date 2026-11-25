@@ -10,6 +10,23 @@ import (
 func (p *dtsParser) parseType() Type {
 	t := p.unionType()
 
+	// A extends B ? C : D is C: the type a program gets when it names no other
+	// type for the parameters is the one that fits the default of the library
+	if p.is("extends") {
+		p.next()
+		p.unionType()
+
+		if p.accept("?") {
+			chosen := p.parseType()
+
+			if p.accept(":") {
+				p.parseType()
+			}
+
+			return chosen
+		}
+	}
+
 	return t
 }
 
@@ -39,12 +56,39 @@ func (p *dtsParser) unionType() Type {
 		kept = append(kept, m)
 	}
 
+	// T | Promise<T> is a T: Go gives the value and JavaScript takes either
+	if len(kept) > 1 {
+		var plain []Type
+
+		for _, m := range kept {
+			if m.Kind != Promise {
+				plain = append(plain, m)
+			}
+		}
+
+		if len(plain) > 0 {
+			kept = plain
+		}
+	}
+
 	if len(kept) == 1 {
 		return kept[0]
 	}
 
 	if len(kept) == 0 {
 		return Type{Kind: Void}
+	}
+
+	// a string or bytes is either, which only any can say
+	hasString, hasTyped := false, false
+
+	for _, m := range kept {
+		hasString = hasString || m.Kind == String
+		hasTyped = hasTyped || m.Kind == Typed
+	}
+
+	if hasString && hasTyped {
+		return Type{Kind: Any}
 	}
 
 	// a typed array or anything else that is a list of numbers is the typed array: Float32Array | Iterable<number>

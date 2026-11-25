@@ -1360,6 +1360,10 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 						programMethod = true
 						e.write("(yield* ")
 					}
+				} else if selection := e.selectionOf(selector); selection != nil && e.waitingStub(selection.Obj()) {
+					// a method of a bound library that waits for a promise is a generator in its shim
+					programMethod = true
+					e.write("(yield* ")
 				}
 
 				if err := e.emitExpr(selector.X); err != nil {

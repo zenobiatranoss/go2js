@@ -1,6 +1,9 @@
 package bind
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestPruneKeepsWhatTheRootsReach(t *testing.T) {
 	module, _ := ParseDeclarations(`
@@ -155,5 +158,58 @@ declare function make(o: Partial<Options>, p: Readonly<Options>, q: Omit<Options
 		if p.Type.Kind != Struct || p.Type.Name != "Options" {
 			t.Errorf("parameter %d is %+v", i, p.Type)
 		}
+	}
+}
+
+func TestAPromiseIsItsValueWhereGoGivesOrAnswers(t *testing.T) {
+	module, _ := ParseDeclarations(`
+declare function load(url: string | Promise<string>, done: (n: number) => Promise<void>, pick: () => Promise<number>): void;
+declare class Box { ready: Promise<number>; size: number }
+`)
+
+	module.Name, module.Package = "lib", "lib"
+	out, err := Generate(module)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	text := out.Stub
+	t.Log(out.Skipped)
+
+	for _, want := range []string{"func Load(url string, done func(n float64), pick func() float64)", "Size"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("no %q in:\n%s", want, text)
+		}
+	}
+
+	if strings.Contains(text, "Ready") {
+		t.Errorf("a property that is a promise is written:\n%s", text)
+	}
+}
+
+func TestAGenericThatHasADefaultIsTheDefault(t *testing.T) {
+	module, _ := ParseDeclarations(`
+interface Reply<T = any> { status: number; data: T }
+declare function get<T = any, R = Reply<T>>(url: string): Promise<R>;
+`)
+
+	f := module.Functions[0]
+
+	if f.Result == nil || f.Result.Kind != Promise || f.Result.Elem.Kind != Struct || f.Result.Elem.Name != "Reply" {
+		t.Fatalf("result: %+v", f.Result)
+	}
+}
+
+func TestAMethodGenericWithADefault(t *testing.T) {
+	module, _ := ParseDeclarations(`
+interface Reply<T = any> { status: number; data: T }
+declare class Http { get<T = any, R = Reply<T>, D = any>(url: string, config?: D): Promise<R> }
+`)
+
+	f := module.Classes[0].Methods[0]
+
+	if f.Result == nil || f.Result.Elem == nil || f.Result.Elem.Kind != Struct {
+		t.Fatalf("result: %+v", f.Result)
 	}
 }
