@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-var reference = regexp.MustCompile(`(?m)(?:^\s*(?:export|import)\b[^;'"]*?\bfrom\s*|^\s*import\s*|///\s*<reference\s+path\s*=\s*)["'](\.[^"']*)["']`)
+var reference = regexp.MustCompile(`(?m)(?:^\s*(?:export|import)\b[^;'"]*?\bfrom\s*|^\s*import\s*(?:\w+\s*=\s*require\(\s*)?|///\s*<reference\s+path\s*=\s*)["'](\.[^"']*)["']`)
 
 // FindDeclarations finds the declaration files of an npm package that is
 // installed under dir: the file its package.json names as its types, or the
@@ -142,4 +142,61 @@ func collect(roots []string) []string {
 	}
 
 	return order
+}
+
+var (
+	importRequire = regexp.MustCompile(`(?m)^[ \t]*import\s+(\w+)\s*=\s*require\(\s*["'](\.[^"']*)["']\s*\)\s*;?[ \t]*\n?`)
+	exportEquals  = regexp.MustCompile(`(?m)^[ \t]*export\s*=\s*(\w+)\s*;?`)
+	exportAsSpace = regexp.MustCompile(`(?m)^[ \t]*export\s+as\s+namespace\s+\w+\s*;?[ \t]*\n?`)
+)
+
+// Flatten makes one set of declarations out of a package whose files are each
+// a module of one thing, as semver's are: every file says `export = parse`
+// and the index brings them together with `import semverParse = require(...)`.
+// The files after the first are written as plain declarations, and the names
+// the index gave to what it imported are the names the files gave.
+func Flatten(files []string, sources []string) []string {
+	if len(files) < 2 || len(files) != len(sources) {
+		return sources
+	}
+
+	named := map[string]string{} // a file's path to what it exports
+
+	for i, file := range files {
+		if match := exportEquals.FindStringSubmatch(sources[i]); match != nil {
+			named[filepath.Clean(file)] = match[1]
+		}
+	}
+
+	out := make([]string, len(sources))
+
+	for i, source := range sources {
+		renames := map[string]string{}
+
+		source = importRequire.ReplaceAllStringFunc(source, func(text string) string {
+			match := importRequire.FindStringSubmatch(text)
+			target := declarationFile(strings.TrimSuffix(filepath.Join(filepath.Dir(files[i]), filepath.FromSlash(match[2])), ".js"))
+
+			if exported, ok := named[filepath.Clean(target)]; ok && target != "" {
+				renames[match[1]] = exported
+			}
+
+			return "\n"
+		})
+
+		for alias, exported := range renames {
+			if alias != exported {
+				source = regexp.MustCompile(`\b`+regexp.QuoteMeta(alias)+`\b`).ReplaceAllString(source, exported)
+			}
+		}
+
+		if i > 0 {
+			source = exportEquals.ReplaceAllString(source, "")
+			source = exportAsSpace.ReplaceAllString(source, "")
+		}
+
+		out[i] = source
+	}
+
+	return out
 }

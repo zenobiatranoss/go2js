@@ -421,7 +421,7 @@ func (p *dtsParser) namedType() Type {
 		}
 
 		return Type{Kind: Promise, Elem: &Type{Kind: Void}}
-	case "Partial", "Readonly", "Required", "NonNullable", "Awaited", "Omit":
+	case "Partial", "Readonly", "Required", "NonNullable", "Awaited", "Omit", "Pick":
 		// an options struct leaves out what is zero, so these are the type itself
 		if len(arguments) >= 1 {
 			return arguments[0]
@@ -653,6 +653,8 @@ func (p *dtsParser) placeNamespaces() {
 
 		p.module.Constants = append(p.module.Constants, Constant{Name: ns.name, Type: Type{Kind: Class, Name: class.decl.Name}})
 	}
+
+	p.exportedObject()
 
 	if p.exportEquals != "" {
 		var kept []Function
@@ -908,5 +910,52 @@ func (p *dtsParser) resolveTypeof() {
 		for j := range p.module.Functions[i].Params {
 			fix(&p.module.Functions[i].Params[j].Type)
 		}
+	}
+}
+
+// exportedObject makes the module of a library whose export is a value of an
+// interface (declare const _: LoDashStatic; export = _) what that value is: the
+// methods of the interface are the functions of the module and its properties
+// are the module's values.
+func (p *dtsParser) exportedObject() {
+	if p.exportEquals == "" {
+		return
+	}
+
+	for i, c := range p.module.Constants {
+		if c.Name != p.exportEquals || c.Type.Kind != Class {
+			continue
+		}
+
+		class, ok := p.classes[c.Type.Name]
+
+		if !ok || class.isClass {
+			return
+		}
+
+		for _, method := range class.decl.Methods {
+			p.module.Functions = appendOnce(p.module.Functions, method)
+		}
+
+		for _, property := range class.decl.Properties {
+			p.module.Constants = append(p.module.Constants, Constant{Name: property.Name, Type: property.Type})
+		}
+
+		p.module.Constants = append(p.module.Constants[:i], p.module.Constants[i+1:]...)
+
+		delete(p.classes, c.Type.Name)
+
+		var order []string
+
+		for _, name := range p.order {
+			if name != c.Type.Name {
+				order = append(order, name)
+			}
+		}
+
+		p.order = order
+		p.exportEquals = ""
+
+		return
 	}
 }

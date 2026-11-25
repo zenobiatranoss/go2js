@@ -12,10 +12,10 @@ generated and compiles, but no program was run against the library.
 | dayjs, nanoid | work |
 | uuid (v4, v5, validate), zod (string, number, parse), axios (typed response, failed request, against a local server) | work, run in Node |
 | Howler, p5, Chart.js | declarations only |
-| semver | not read: re-exports through `import x = require` |
-| lodash | not read: `/// <reference path>` |
+| semver (41 functions, `SemVer` class) | works, run in Node: valid, gt, satisfies, parse, coerce, diff, clean |
+| lodash (295 functions) | works, run in Node: chunk, uniq, sum, map, camelCase; its types are mostly `any` (see below) |
 
-Known gaps: other mapped types (`Pick`, `keyof`-based) become `any`; `Partial`, `Readonly`, `Required` and `Omit` are read as the type itself; a `Promise` held in a
+Known gaps: mapped types written with `keyof` or `in` become `any`; `Partial`, `Readonly`, `Required`, `Omit` and `Pick` are read as the type itself; generic collections (lodash) are `[]any`, and a whole number that JavaScript hands back inside an `any` is an `int` in Go (`v.(int)`, not `v.(float64)`); a `Promise` held in a
 property is left out (a parameter or a callback result is its value); pointers to bound structs
 are not supported (value structs only).
 

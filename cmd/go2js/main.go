@@ -518,7 +518,7 @@ func runBind(args []string, stdout io.Writer) error {
 			sources = append(sources, string(data))
 		}
 
-		parsed, notes := bind.ParseDeclarations(sources...)
+		parsed, notes := bind.ParseDeclarations(bind.Flatten(files, sources)...)
 		module = parsed
 		module.Name = fs.Arg(0)
 

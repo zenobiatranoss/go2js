@@ -8,6 +8,7 @@ the tool does not do yet are as much a part of a release as the things it does.
 
 ## Unreleased
 
+- `go2js bind`: libraries whose declarations are a file for each function (`import x = require("./f")`, as semver's are) are read as one module, and a library that is an object described by an interface that other files add to (`declare module "../index" { interface LoDashStatic { ... } }`, as lodash's are) has that interface's methods as its functions. `Pick<T, K>` is `T`. Run on real programs: semver and lodash.
 - `go2js bind`: a promise given to a function or answered by a callback is its value in Go (`T | Promise<T>` is `T`); a generic with a default (`R = Reply<T>`) is the default; `A extends B ? C : D` is `C`; `interface X extends Omit<Base, "k">` has what Base has; a string or bytes is `any`.
 - A method of a bound library that waits for a promise (`client.Get(...)` returning a value and an error) is now called from the goroutine like a function is; before, only the functions waited and the method gave back an empty value.
 - Run on real programs: uuid, zod, and axios against a local server (a typed response, an error for a failed request).

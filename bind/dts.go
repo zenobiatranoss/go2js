@@ -946,7 +946,10 @@ func (p *dtsParser) namespaceDecl() {
 		p.next()
 
 		if p.accept("{") {
-			p.skipBalanced("{", "}")
+			// what the block declares is added to what the library has: an
+			// interface of the same name gets its members
+			p.statements(true)
+			p.accept("}")
 		}
 
 		return
