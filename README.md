@@ -9,11 +9,11 @@ Go directory, it checks the code the way the Go toolchain does, and out comes
 the JavaScript program the code stands for — a program you can run with `node`,
 load in a browser, or hand functions over to from plain JavaScript.
 
-So the short version is: **write Go, ship JavaScript, sleep easy.**
+So the short version is: **write Go, get JavaScript, and check the result against Go.**
 
-> **This is an experimental first release (`v0.1.0`).** It works, and it tests
-> itself harder than most software you'll meet — but it is young and it has real
-> rough edges. Read [Honest limitations](#honest-limitations) before you lean on
+> **This is an experimental first release (`v0.1.0`).** It works and it has a large
+> test suite that runs programs as Go and as JavaScript and compares them — but it
+> is young, written mostly by one person, and it has real rough edges. Read [Honest limitations](#honest-limitations) before you lean on
 > it for anything that matters, and expect the shape of the generated output to
 > move between releases. Treat it as something to try, to file bugs against, and
 > to prove out — not yet as something to bet a launch on.
@@ -72,9 +72,9 @@ browser. There are approaches: WASM (heavy, awkward), hand-ported translations
 (forever out of date), and then there's this — a transpiler that:
 
 - **Checks your code like Go does.** The checker is written to behave the way
-  the Go toolchain behaves, so if it wouldn't compile in Go, it doesn't compile
-  here either. You get real errors about real Go semantics, not a half-hearted
-  "best effort".
+  the Go toolchain behaves, so code that Go rejects is rejected here with a
+  real error about real Go semantics. It is a re-implementation, so a case where
+  the two disagree is a bug worth reporting.
 - **Writes real, readable JavaScript.** Not a giant virtual machine. A program
   you can read, debug with a sourcemap, and run in an ES2022 runtime. You can
   even minify the output.
@@ -687,10 +687,10 @@ to keep in sync.
 ## FAQ
 
 **Is this production-ready for anything?**
-It's honest with you (read the limitations above) and it tests itself harder
-than most — every integration test runs your code twice and compares. Use it
-for real work, but test *your* program the same way: compile a program, run
-both sides, compare.
+Not yet for anything that matters. It is young and mostly one person's work,
+and GopherJS is far more mature. Its integration tests run each program twice
+(as Go and as JavaScript) and compare, which is how you should check *your*
+program too before relying on it: compile it, run both sides, compare.
 
 **Does it run in the browser or just Node?**
 It emits ES2022 JavaScript — load the ESM or IIFE output in a browser that
