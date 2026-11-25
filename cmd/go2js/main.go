@@ -1,13 +1,17 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"github.com/zenobiatranoss/go2js/bind"
+	"github.com/zenobiatranoss/go2js/bindings"
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/zenobiatranoss/go2js/compiler"
@@ -83,7 +87,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 	fs.BoolVar(&strict, "strict", true, "emit strict mode")
 	fs.IntVar(&stack, "stack", 0, "stack size in megabytes the program runs on under Node, 0 for Node's own")
 
-	var stubs, shims repeatedFlag
+	var stubs, shims, with, importMap repeatedFlag
+
+	fs.Var(&importMap, "importmap", "with -html -module esm: NAME=URL, where a page finds a library the program imports (repeatable); one that is not named is found on https://esm.sh")
+
+	fs.Var(&with, "with", "a binding that go2js ships (dom: the browser's document, canvas, events and WebGL), for the program to use (repeatable)")
 
 	fs.Var(&stubs, "stubs", "declarations of a library that is not translated from source: a directory of .stub files, or one file (repeatable)")
 	fs.Var(&shims, "shim", "JavaScript that stands behind such a library, written into the program (repeatable)")
@@ -97,6 +105,25 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 	if len(args) > 0 && args[0] == "serve" {
 		return startServe(args[1:], stdout)
+	}
+
+	for _, name := range with {
+		dir, err := os.MkdirTemp("", "go2js-binding-")
+
+		if err != nil {
+			return err
+		}
+
+		defer os.RemoveAll(dir)
+
+		shim, err := bindings.Install(name, dir)
+
+		if err != nil {
+			return err
+		}
+
+		stubs = append(stubs, dir)
+		shims = append(shims, shim)
 	}
 
 	for _, location := range stubs {
@@ -125,8 +152,24 @@ func run(args []string, stdout, stderr io.Writer) error {
 		page = true
 	}
 
+	// a page runs a program as one script, unless the program is asked to be a module,
+	// which a library that is an ES module needs
+	asModule := false
+
 	if page {
-		module = "iife"
+		explicit := false
+
+		fs.Visit(func(f *flag.Flag) {
+			if f.Name == "module" {
+				explicit = true
+			}
+		})
+
+		if explicit && module == "esm" {
+			asModule = true
+		} else {
+			module = "iife"
+		}
 	}
 
 	options := compiler.DefaultOptions().
@@ -174,7 +217,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	}
 
 	if page {
-		result = htmlPage(result)
+		result = htmlPage(result, asModule, importMap)
 	}
 
 	if output == "" {
@@ -277,11 +320,81 @@ func (e *testFailure) Error() string {
 
 // htmlPage wraps a program compiled for a page into the page that runs it, so a
 // program that draws, such as a game, opens by double clicking one file.
-func htmlPage(script string) string {
+func htmlPage(script string, asModule bool, importMap []string) string {
 	script = strings.ReplaceAll(script, "</script", "<\\/script")
 
-	return "<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>go2js</title>\n" +
-		"<style>html,body{margin:0;background:#111;color:#ddd;font-family:monospace}</style>\n</head>\n<body>\n<script>\n" + script + "\n</script>\n</body>\n</html>\n"
+	head := "<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>go2js</title>\n" +
+		"<style>html,body{margin:0;background:#111;color:#ddd;font-family:monospace}</style>\n"
+
+	tag := "<script>\n"
+
+	if asModule {
+		head += pageImportMap(script, importMap)
+		tag = "<script type=\"module\">\n"
+	}
+
+	return head + "</head>\n<body>\n" + tag + script + "\n</script>\n</body>\n</html>\n"
+}
+
+var bareImport = regexp.MustCompile(`(?m)^\s*(?:import|export)\b[^"'\n;]*?(?:\bfrom\s*)?["']([^"'./][^"']*)["']`)
+
+// pageImportMap says where the page finds each library the program imports by its
+// name, as a browser does not know npm: what -importmap names, and the rest on esm.sh,
+// which serves any package of npm as an ES module.
+func pageImportMap(script string, given []string) string {
+	urls := map[string]string{}
+
+	for _, entry := range given {
+		if name, url, ok := strings.Cut(entry, "="); ok {
+			urls[name] = url
+		}
+	}
+
+	var names []string
+	seen := map[string]bool{}
+
+	for _, match := range bareImport.FindAllStringSubmatch(script, -1) {
+		name := match[1]
+
+		if seen[name] || strings.HasPrefix(name, "http:") || strings.HasPrefix(name, "https:") {
+			continue
+		}
+
+		seen[name] = true
+
+		names = append(names, name)
+
+		if _, ok := urls[name]; !ok {
+			urls[name] = "https://esm.sh/" + name
+		}
+	}
+
+	if len(names) == 0 {
+		return ""
+	}
+
+	sort.Strings(names)
+
+	var out strings.Builder
+
+	out.WriteString("<script type=\"importmap\">\n{\"imports\": {\n")
+
+	for i, name := range names {
+		nameJSON, _ := json.Marshal(name)
+		urlJSON, _ := json.Marshal(urls[name])
+
+		comma := ","
+
+		if i == len(names)-1 {
+			comma = ""
+		}
+
+		fmt.Fprintf(&out, "  %s: %s%s\n", nameJSON, urlJSON, comma)
+	}
+
+	out.WriteString("}}\n</script>\n")
+
+	return out.String()
 }
 
 // repeatedFlag is a flag that may be given more than once.
@@ -346,7 +459,9 @@ func runStubgen(args []string, stdout io.Writer) error {
 func runBind(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("bind", flag.ContinueOnError)
 
-	var out, dir, name, importPath, dts, format string
+	var out, dir, name, importPath, dts, format, only string
+	var global bool
+	var depth int
 
 	fs.StringVar(&out, "o", "stubs", "the directory the declarations and the shim are written to")
 	fs.StringVar(&dir, "dir", ".", "the project the npm package is installed in")
@@ -354,6 +469,9 @@ func runBind(args []string, stdout io.Writer) error {
 	fs.StringVar(&importPath, "import", "", "the import path a Go program uses (npm/<package> by default)")
 	fs.StringVar(&dts, "dts", "", "declaration files (.d.ts), separated by commas, instead of looking for the package's own")
 
+	fs.BoolVar(&global, "global", false, "the declarations are of what is already there, such as the browser's document, so nothing is loaded")
+	fs.StringVar(&only, "only", "", "keep only these names (functions, values, classes) and what they reach, separated by commas")
+	fs.IntVar(&depth, "depth", 0, "with -only: how far from the names to follow what they mention, 0 for no limit")
 	fs.StringVar(&format, "module", "commonjs", "how the library is loaded: commonjs (require) or esm (import, for a program compiled with -module esm)")
 
 	if err := fs.Parse(args); err != nil {
@@ -410,6 +528,13 @@ func runBind(args []string, stdout io.Writer) error {
 	}
 
 	module.ESM = format == "esm"
+	module.Global = global
+
+	if only != "" {
+		if missing := bind.Prune(module, strings.Split(only, ","), depth); len(missing) > 0 {
+			return fmt.Errorf("go2js bind: -only names %s, which the declarations do not have", strings.Join(missing, ", "))
+		}
+	}
 
 	if name != "" {
 		module.Package = name

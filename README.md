@@ -381,7 +381,12 @@ A stub file may also start with `//go2js:import <path>` to say which import path
 `go2js bind three` reads the TypeScript declarations an npm package ships and writes Go declarations and the
 JavaScript behind them, so a Go program can call the library with types: classes and their kinds, methods,
 properties, callbacks, optional parameters, namespaces. A Go program that does vector math, builds a scene
-and adds a mesh runs against the real three.js. See [docs/bind.md](docs/bind.md).
+and adds a mesh runs against the real three.js, and a Matter.js physics world steps from Go.
+A binding of the browser ships with the tool (`go2js -with dom -o game.html main.go`: document, 2D canvas,
+keyboard, mouse and touch events, images, audio), so a game or an app that draws is Go from the first line.
+Tried so far: three.js, Matter.js, dayjs, nanoid in Node, and a canvas loop with keyboard events in Chromium;
+the declarations of uuid, axios, zod, Howler, p5 and Chart.js are read but programs on them were not run.
+See [docs/bind.md](docs/bind.md).
 
 ### Third-party libraries that were tried
 

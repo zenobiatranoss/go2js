@@ -148,6 +148,76 @@ Tried on the real packages: three.js, Matter.js (a falling box lands where it sh
 axios, Howler, p5, Chart.js, zod and others. Packages whose types are spread over files that re-export each
 other with `import x = require(...)` (semver) or `/// <reference>` (lodash) are not read yet.
 
+## The browser
+
+go2js ships a binding of the browser, so a program that draws or plays needs nothing else:
+
+```go
+package main
+
+import "dom"
+
+func main() {
+	doc := dom.DocumentValue
+	canvas := doc.CreateElement("canvas").AsHTMLCanvasElement()
+	canvas.SetWidth(400)
+	canvas.SetHeight(300)
+	doc.Body().AppendChild(canvas)
+
+	ctx := canvas.GetContext("2d")
+	x := 0.0
+
+	var frame func(t float64)
+	frame = func(t float64) {
+		ctx.ClearRect(0, 0, 400, 300)
+		ctx.SetFillStyle("tomato")
+		ctx.FillRect(x, 100, 40, 40)
+		x += 2
+		dom.RequestAnimationFrame(frame)
+	}
+
+	dom.RequestAnimationFrame(frame)
+
+	dom.WindowValue.OnKeydown(func(e *dom.KeyboardEvent) { println("key", e.Key()) })
+}
+```
+
+```sh
+go2js -with dom -o game.html main.go
+```
+
+- It covers the document, the 2D canvas, images and audio elements, keyboard, mouse, touch, wheel and
+  pointer events, `localStorage`, `performance`, `navigator`, `location` and `AudioContext`.
+- An event is a method named after it: `OnKeydown(func(e *dom.KeyboardEvent) {...})` is
+  `addEventListener("keydown", ...)`, and the event comes as the class it is.
+- A callback (`requestAnimationFrame`) is a Go function.
+- `AsHTMLCanvasElement()` is how an element is told as the element it is; it gives nil for another.
+- Not there yet: WebGL (`getContext("webgl")` gives a different kind of object than the 2D one has), and
+  the arguments that are typed arrays or buffers of the browser's.
+- It is cut from TypeScript's `lib.dom.d.ts` by `scripts/gen-bindings.sh`, so a cut of another size is made
+  the same way as any other library:
+
+```sh
+go2js bind -global -dts node_modules/typescript/lib/lib.dom.d.ts -name dom \
+    -only document,window,HTMLCanvasElement,CanvasRenderingContext2D -depth 2
+```
+
+`-global` says what is declared is already there, so nothing is loaded. `-only` keeps the names and what they
+reach, `-depth` says how far from the names to follow (0 for no limit): a large library is cut to what a
+program uses.
+
+## A page that uses a library from npm
+
+A library bound with `-module esm` is imported by the program, and a page finds it by an import map. `-html`
+writes the map, and a library that is not named is found on esm.sh:
+
+```sh
+go2js bind -module esm three
+go2js -stubs stubs -shim stubs/three.js -module esm -importmap three=/three.module.js -o index.html .
+```
+
+(Pass `-module esm` with `-html` so the page is a module; without it the page is one script, as before.)
+
 ## Promises
 
 A function that gives a `Promise<T>` is a Go function that waits for it and gives `(T, error)`

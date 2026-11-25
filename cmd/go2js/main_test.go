@@ -702,3 +702,66 @@ func TestRunReportsTheVersion(t *testing.T) {
 		}
 	}
 }
+
+func TestAPageForAModuleFindsItsLibrariesByAnImportMap(t *testing.T) {
+	script := "import * as three_namespace from \"three\";\nimport { x } from \"./local.js\";\nimport \"side-effect\";\nconsole.log(1);\n"
+
+	page := htmlPage(script, true, []string{"three=/three.module.js"})
+
+	for _, want := range []string{`<script type="importmap">`, `"three": "/three.module.js"`, `"side-effect": "https://esm.sh/side-effect"`, `<script type="module">`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the page lacks %s:\n%s", want, page)
+		}
+	}
+
+	if strings.Contains(page, "local.js\":") {
+		t.Errorf("a file of the program is in the map:\n%s", page)
+	}
+
+	if plain := htmlPage("console.log(1);", false, nil); strings.Contains(plain, "importmap") || strings.Contains(plain, "type=\"module\"") {
+		t.Errorf("a script that is not a module has a map:\n%s", plain)
+	}
+}
+
+func TestAProgramUsesTheBindingOfTheBrowserThatIsShipped(t *testing.T) {
+	dir := t.TempDir()
+	input := filepath.Join(dir, "main.go")
+	output := filepath.Join(dir, "main.html")
+
+	source := `package main
+
+import "dom"
+
+func main() {
+	canvas := dom.DocumentValue.CreateElement("canvas").AsHTMLCanvasElement()
+	canvas.SetWidth(10)
+	dom.RequestAnimationFrame(func(t float64) {})
+	dom.WindowValue.OnKeydown(func(e *dom.KeyboardEvent) { println(e.Key()) })
+}
+`
+
+	if err := os.WriteFile(input, []byte(source), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+
+	if err := run([]string{"-with", "dom", "-o", output, input}, &stdout, &stderr); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{"<script>", "OnKeydown", "AsHTMLCanvasElement"} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("the page lacks %s", want)
+		}
+	}
+
+	if err := run([]string{"-with", "nothing", "-o", output, input}, &stdout, &stderr); err == nil || !strings.Contains(err.Error(), "no binding named") {
+		t.Errorf("a binding that is not there was not told: %v", err)
+	}
+}
