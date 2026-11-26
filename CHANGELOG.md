@@ -8,6 +8,7 @@ the tool does not do yet are as much a part of a release as the things it does.
 
 ## [Unreleased]
 
+- `encoding/json` reads a `time.Time` field (from an RFC 3339 text, in a struct, a pointer, a map or a slice) as Go does, refuses a text that is no time and a value that is no text with Go's words, and a `null` read into a pointer leaves it nil. Writing one already worked; the README said it did not.
 ## [v0.3.0] — typed calls into npm libraries, and the browser
 
 Still an experimental release: see [docs/limitations.md](docs/limitations.md) and the table of what `go2js bind` was tried on in [docs/compat.md](docs/compat.md).

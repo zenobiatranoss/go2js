@@ -5302,6 +5302,8 @@ function go2jsJSONZeroValue(descriptor) {
         return go2jsNilBytes();
     case "num":
         return "";
+    case "time":
+        return go2jsTimeZero();
     default:
         return null;
     }
@@ -5334,6 +5336,11 @@ function go2jsJSONStore(value, target, descriptor, text, path) {
 
     switch (descriptor.kind) {
     case "ptr":
+        // a null is no pointer at all
+        if (value === null) {
+            return null;
+        }
+
         // the value behind the pointer is built in place, which for a map and
         // for a plain value is what the thing behind it already knows how to
         // take, and for a struct and a slice is done below
@@ -5403,6 +5410,30 @@ function go2jsJSONStore(value, target, descriptor, text, path) {
         }
 
         return go2jsStringToBytes(go2jsJSONWritten(value));
+
+    case "time": {
+        // a time is read from the RFC 3339 text it was written as; a text that
+        // is not one is refused with what the parser says, and the read goes on
+        if (value === null || value === undefined) {
+            return go2jsTimeZero();
+        }
+
+        if (typeof value !== "string") {
+            go2jsJSONSaveError(go2jsJSONError("Time.UnmarshalJSON: input is not a JSON string"));
+
+            return go2jsTimeZero();
+        }
+
+        const parsed = go2jsTimeParse("2006-01-02T15:04:05Z07:00", value);
+
+        if (parsed[1] !== null && parsed[1] !== undefined) {
+            go2jsJSONSaveError(parsed[1]);
+
+            return go2jsTimeZero();
+        }
+
+        return parsed[0];
+    }
 
     case "num": {
         // A number is held as the digits it was written with, because a number

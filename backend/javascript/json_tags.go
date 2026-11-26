@@ -683,6 +683,11 @@ func jsonDestinationTypeSeen(t gotypes.Type, seen map[gotypes.Type]bool) string 
 					return `{"kind":"num"}`
 				}
 			}
+
+			// a time.Time is written as an RFC 3339 text, so it is read from one
+			if pkg.Path() == "time" && obj.Name() == "Time" {
+				return `{"kind":"time","go":"time.Time"}`
+			}
 		}
 
 		underlying = named.Underlying()

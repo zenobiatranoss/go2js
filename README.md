@@ -601,8 +601,6 @@ short version:
   reply on a terminal sees the reply when the line is finished, as usual, but
   one that mixes `fmt.Scan` with its own reads of `os.Stdin` should read through
   one of them.
-- **`encoding/json` does not read or write a `time.Time` field** yet; keep dates as strings
-  and parse them with `time.Parse`.
 - **`unsafe` is mostly not there.** A conversion to or from `unsafe.Pointer`,
   `reflect.StringHeader` and friends is refused with a compile error; only
   `unsafe.Sizeof`, `Offsetof` and `Alignof` work, because they are constants.
