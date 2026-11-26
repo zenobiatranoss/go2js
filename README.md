@@ -2,7 +2,7 @@
   <img src="go2jslog.png" alt="go2js" width="220">
 </p>
 
-# go2js
+# GonvertJS or go2js
 
 A Go-to-JavaScript transpiler, written in Go. You point it at a Go file or a
 Go directory, it checks the code the way the Go toolchain does, and out comes
