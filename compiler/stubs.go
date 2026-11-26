@@ -8,8 +8,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/zenobiatranoss/go2js/backend/javascript"
-	"github.com/zenobiatranoss/go2js/types"
+	"github.com/zenobiatranoss/GonvertJS/backend/javascript"
+	"github.com/zenobiatranoss/GonvertJS/types"
 )
 
 // LoadStubs makes the libraries that a directory (or one file) of stub files

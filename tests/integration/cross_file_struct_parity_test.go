@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zenobiatranoss/go2js/compiler"
+	"github.com/zenobiatranoss/GonvertJS/compiler"
 )
 
 // TestStructDeclaredInAnotherFileKeepsItsMethods guards the class behind a

@@ -13,7 +13,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/zenobiatranoss/go2js/types"
+	"github.com/zenobiatranoss/GonvertJS/types"
 )
 
 // Stub is what GenerateStub writes for a library: the declarations of its API,

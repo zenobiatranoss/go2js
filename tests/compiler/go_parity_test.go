@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/zenobiatranoss/go2js/compiler"
+	"github.com/zenobiatranoss/GonvertJS/compiler"
 )
 
 // Each program below was run with Go itself, and what it printed is what the

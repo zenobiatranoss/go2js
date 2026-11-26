@@ -2,7 +2,7 @@ package javascript
 
 import (
 	"fmt"
-	go2jstypes "github.com/zenobiatranoss/go2js/types"
+	go2jstypes "github.com/zenobiatranoss/GonvertJS/types"
 	"go/ast"
 	"go/constant"
 	"go/token"

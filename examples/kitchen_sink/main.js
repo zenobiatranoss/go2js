@@ -18406,7 +18406,7 @@ function* main() {
         go2jsPrintln(go2jsTyped(rect.W, "float64"), go2jsTyped(ptr.W, "float64"), go2jsTyped((go2jsDeref(ptr)).H, "float64"));
         let nilPtr = null;
         go2jsPrintln(go2jsIsNil(nilPtr));
-        let values = go2jsSliceTyped("[]*github.com/zenobiatranoss/go2js/examples/kitchen_sink.Rect", [go2jsNew(Object.assign(new Rect(), {W: 1, H: 1})), go2jsNew(Object.assign(new Rect(), {W: 2, H: 2}))]);
+        let values = go2jsSliceTyped("[]*github.com/zenobiatranoss/GonvertJS/examples/kitchen_sink.Rect", [go2jsNew(Object.assign(new Rect(), {W: 1, H: 1})), go2jsNew(Object.assign(new Rect(), {W: 2, H: 2}))]);
         go2jsPrintln(go2jsTyped((yield* go2jsIndex(values, 0).Area()), "float64"), go2jsTyped((yield* go2jsIndex(values, 1).Area()), "float64"));
         let anon = {X: 1, Y: 2, Tag: "anon"};
         go2jsPrintln(anon.X, anon.Y, anon.Tag);
@@ -18599,7 +18599,7 @@ let         [rect2, ok] = go2jsAssertOK(shape, "Rect");
         go2jsSortStrings(strs);
         go2jsPrintln(go2jsTyped(strs, "[]string", "", "slice"));
         go2jsPrintln(go2jsSortSearchInts(nums, 9), go2jsSortIsSortedInterface(nums, "IntSlice"));
-        let people = go2jsSliceTyped("[]github.com/zenobiatranoss/go2js/examples/kitchen_sink.Person", [Object.assign(new Person(), {Name: "Cara", Age: 30}), Object.assign(new Person(), {Name: "Ana", Age: 25}), Object.assign(new Person(), {Name: "Bob", Age: 35})]);
+        let people = go2jsSliceTyped("[]github.com/zenobiatranoss/GonvertJS/examples/kitchen_sink.Person", [Object.assign(new Person(), {Name: "Cara", Age: 30}), Object.assign(new Person(), {Name: "Ana", Age: 25}), Object.assign(new Person(), {Name: "Bob", Age: 35})]);
         go2jsSortSlice(go2jsNilInterface(people, "[]main.Person", "slice"), function*(i, j) {
             return go2jsIndex(people, i).Age < go2jsIndex(people, j).Age;
         }

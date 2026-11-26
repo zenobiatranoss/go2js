@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zenobiatranoss/go2js/compiler"
+	"github.com/zenobiatranoss/GonvertJS/compiler"
 )
 
 // runParityTestInDir compares a program that is spread over several files,

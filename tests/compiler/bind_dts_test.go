@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/zenobiatranoss/go2js/backend/javascript"
-	"github.com/zenobiatranoss/go2js/bind"
-	"github.com/zenobiatranoss/go2js/compiler"
+	"github.com/zenobiatranoss/GonvertJS/backend/javascript"
+	"github.com/zenobiatranoss/GonvertJS/bind"
+	"github.com/zenobiatranoss/GonvertJS/compiler"
 )
 
 // The declarations of the library in gadgetLibrary, as its authors would write

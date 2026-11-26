@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zenobiatranoss/go2js/compiler"
+	"github.com/zenobiatranoss/GonvertJS/compiler"
 )
 
 type realWorldCase struct {

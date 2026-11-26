@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/zenobiatranoss/go2js/backend/javascript"
-	"github.com/zenobiatranoss/go2js/types"
+	"github.com/zenobiatranoss/GonvertJS/backend/javascript"
+	"github.com/zenobiatranoss/GonvertJS/types"
 )
 
 type Compiler struct {

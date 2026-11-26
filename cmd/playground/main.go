@@ -18,7 +18,7 @@ import (
 	"strings"
 	"syscall/js"
 
-	"github.com/zenobiatranoss/go2js/compiler"
+	"github.com/zenobiatranoss/GonvertJS/compiler"
 )
 
 // result is what a call to compile hands back: the JavaScript a Go program was

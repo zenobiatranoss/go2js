@@ -7,7 +7,7 @@ import (
 	"go/types"
 	"testing"
 
-	typesresult "github.com/zenobiatranoss/go2js/types"
+	typesresult "github.com/zenobiatranoss/GonvertJS/types"
 )
 
 func TestContextUsesFileSet(t *testing.T) {

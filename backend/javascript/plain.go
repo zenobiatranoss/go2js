@@ -5,8 +5,8 @@ import (
 	"go/types"
 	"os"
 
-	semantic "github.com/zenobiatranoss/go2js/compiler/semantic"
-	gotypes "github.com/zenobiatranoss/go2js/types"
+	semantic "github.com/zenobiatranoss/GonvertJS/compiler/semantic"
+	gotypes "github.com/zenobiatranoss/GonvertJS/types"
 )
 
 // Every Go function is written as a generator, so that it can wait on a channel

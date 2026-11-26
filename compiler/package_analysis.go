@@ -1,8 +1,8 @@
 package compiler
 
 import (
-	semantic "github.com/zenobiatranoss/go2js/compiler/semantic"
-	gotypes "github.com/zenobiatranoss/go2js/types"
+	semantic "github.com/zenobiatranoss/GonvertJS/compiler/semantic"
+	gotypes "github.com/zenobiatranoss/GonvertJS/types"
 )
 
 type PackageAnalysis struct {

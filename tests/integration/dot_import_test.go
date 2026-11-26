@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zenobiatranoss/go2js/compiler"
+	"github.com/zenobiatranoss/GonvertJS/compiler"
 )
 
 func TestLocalDotImport(t *testing.T) {

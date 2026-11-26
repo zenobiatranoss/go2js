@@ -4,7 +4,7 @@ import (
 	"go/ast"
 	gotypes "go/types"
 
-	go2jstypes "github.com/zenobiatranoss/go2js/types"
+	go2jstypes "github.com/zenobiatranoss/GonvertJS/types"
 )
 
 type functionInfo struct {

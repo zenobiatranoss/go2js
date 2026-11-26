@@ -128,7 +128,7 @@ go install ./cmd/go2js
 Or, if you don't want to build it yourself:
 
 ```sh
-go run github.com/zenobiatranoss/go2js/cmd/go2js@latest file.go
+go run github.com/zenobiatranoss/GonvertJS/cmd/go2js@latest file.go
 ```
 
 ## Quick start
@@ -484,7 +484,7 @@ go run ./tools/stdlib-gaps [-package the/package]
 You don't have to use the CLI. The compiler is a normal Go package:
 
 ```go
-import "github.com/zenobiatranoss/go2js/compiler"
+import "github.com/zenobiatranoss/GonvertJS/compiler"
 
 options := compiler.DefaultOptions().
 	WithTarget("es2022").

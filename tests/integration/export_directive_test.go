@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zenobiatranoss/go2js/compiler"
+	"github.com/zenobiatranoss/GonvertJS/compiler"
 )
 
 // TestExportDirectiveESM is what a program hands over to an ES module it is

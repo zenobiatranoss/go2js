@@ -6,7 +6,7 @@ import (
 	"go/scanner"
 	gotypes "go/types"
 
-	"github.com/zenobiatranoss/go2js/backend/javascript"
+	"github.com/zenobiatranoss/GonvertJS/backend/javascript"
 )
 
 type DiagnosticSeverity string

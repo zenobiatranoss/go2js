@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zenobiatranoss/go2js/compiler"
+	"github.com/zenobiatranoss/GonvertJS/compiler"
 )
 
 const preemptProgram = `package main

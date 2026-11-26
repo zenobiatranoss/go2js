@@ -5,8 +5,8 @@ import (
 	gotypes "go/types"
 	"strings"
 
-	"github.com/zenobiatranoss/go2js/backend/javascript"
-	"github.com/zenobiatranoss/go2js/types"
+	"github.com/zenobiatranoss/GonvertJS/backend/javascript"
+	"github.com/zenobiatranoss/GonvertJS/types"
 )
 
 // go2jsDirective is the marker a directive is written under. A directive is a

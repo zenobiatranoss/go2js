@@ -8,6 +8,7 @@ the tool does not do yet are as much a part of a release as the things it does.
 
 ## Unreleased
 
+- The repository is GonvertJS: the module path is `github.com/zenobiatranoss/GonvertJS`; the command, the `//go2js:` directives and the file names are unchanged.
 - `go2js bind`: libraries whose declarations are a file for each function (`import x = require("./f")`, as semver's are) are read as one module, and a library that is an object described by an interface that other files add to (`declare module "../index" { interface LoDashStatic { ... } }`, as lodash's are) has that interface's methods as its functions. `Pick<T, K>` is `T`. Run on real programs: semver and lodash.
 - `go2js bind`: a promise given to a function or answered by a callback is its value in Go (`T | Promise<T>` is `T`); a generic with a default (`R = Reply<T>`) is the default; `A extends B ? C : D` is `C`; `interface X extends Omit<Base, "k">` has what Base has; a string or bytes is `any`.
 - A method of a bound library that waits for a promise (`client.Get(...)` returning a value and an error) is now called from the goroutine like a function is; before, only the functions waited and the method gave back an empty value.
@@ -112,5 +113,5 @@ function. The rule that governs code governs releases too: a tag names a version
 whose full test suite is green. The mechanics are in
 [docs/release-process.md](docs/release-process.md).
 
-[Unreleased]: https://github.com/zenobiatranoss/go2js/compare/v0.1.0...HEAD
-[v0.1.0]: https://github.com/zenobiatranoss/go2js/releases/tag/v0.1.0
+[Unreleased]: https://github.com/zenobiatranoss/GonvertJS/compare/v0.1.0...HEAD
+[v0.1.0]: https://github.com/zenobiatranoss/GonvertJS/releases/tag/v0.1.0

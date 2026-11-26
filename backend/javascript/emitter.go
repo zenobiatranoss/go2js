@@ -11,8 +11,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/zenobiatranoss/go2js/compiler/semantic"
-	gotypes "github.com/zenobiatranoss/go2js/types"
+	"github.com/zenobiatranoss/GonvertJS/compiler/semantic"
+	gotypes "github.com/zenobiatranoss/GonvertJS/types"
 )
 
 type emitter struct {

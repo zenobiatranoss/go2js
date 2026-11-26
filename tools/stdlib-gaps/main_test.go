@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/zenobiatranoss/go2js/backend/javascript"
+	"github.com/zenobiatranoss/GonvertJS/backend/javascript"
 )
 
 // TestExportDataLoadable pins the heart of the report: the installed Go's

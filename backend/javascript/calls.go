@@ -4,7 +4,7 @@ import (
 	"go/ast"
 	gotypesstd "go/types"
 
-	go2jstypes "github.com/zenobiatranoss/go2js/types"
+	go2jstypes "github.com/zenobiatranoss/GonvertJS/types"
 )
 
 // A Go function is written as a generator, so a call to one is a delegation:

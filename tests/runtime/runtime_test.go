@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/zenobiatranoss/go2js/runtime"
+	"github.com/zenobiatranoss/GonvertJS/runtime"
 )
 
 func TestAppendAndCopy(t *testing.T) {

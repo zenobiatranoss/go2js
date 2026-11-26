@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/zenobiatranoss/go2js/compiler"
+	"github.com/zenobiatranoss/GonvertJS/compiler"
 )
 
 const deepProgram = `package main

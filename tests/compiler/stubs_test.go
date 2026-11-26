@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zenobiatranoss/go2js/backend/javascript"
-	"github.com/zenobiatranoss/go2js/compiler"
+	"github.com/zenobiatranoss/GonvertJS/backend/javascript"
+	"github.com/zenobiatranoss/GonvertJS/compiler"
 )
 
 func writeTree(t *testing.T, root string, files map[string]string) {

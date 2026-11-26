@@ -5,7 +5,7 @@ import (
 	"go/token"
 	"go/types"
 
-	typesresult "github.com/zenobiatranoss/go2js/types"
+	typesresult "github.com/zenobiatranoss/GonvertJS/types"
 )
 
 type Context struct {

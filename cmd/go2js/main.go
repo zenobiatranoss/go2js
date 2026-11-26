@@ -5,8 +5,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/zenobiatranoss/go2js/bind"
-	"github.com/zenobiatranoss/go2js/bindings"
+	"github.com/zenobiatranoss/GonvertJS/bind"
+	"github.com/zenobiatranoss/GonvertJS/bindings"
 	"io"
 	"os"
 	"path/filepath"
@@ -14,7 +14,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/zenobiatranoss/go2js/compiler"
+	"github.com/zenobiatranoss/GonvertJS/compiler"
 )
 
 func main() {

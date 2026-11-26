@@ -14,7 +14,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/zenobiatranoss/go2js/backend/javascript"
+	"github.com/zenobiatranoss/GonvertJS/backend/javascript"
 )
 
 // identPath maps the registry identifiers that are not themselves import paths

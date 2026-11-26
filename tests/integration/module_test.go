@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zenobiatranoss/go2js/backend/javascript"
+	"github.com/zenobiatranoss/GonvertJS/backend/javascript"
 )
 
 func TestESMModule(t *testing.T) {

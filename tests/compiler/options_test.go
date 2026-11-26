@@ -3,7 +3,7 @@ package compiler_test
 import (
 	"testing"
 
-	"github.com/zenobiatranoss/go2js/compiler"
+	"github.com/zenobiatranoss/GonvertJS/compiler"
 )
 
 func TestDefaultOptions(t *testing.T) {

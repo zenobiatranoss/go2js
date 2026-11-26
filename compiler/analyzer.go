@@ -2,9 +2,9 @@ package compiler
 
 import (
 	"fmt"
-	semantic "github.com/zenobiatranoss/go2js/compiler/semantic"
+	semantic "github.com/zenobiatranoss/GonvertJS/compiler/semantic"
 
-	"github.com/zenobiatranoss/go2js/types"
+	"github.com/zenobiatranoss/GonvertJS/types"
 )
 
 type Analysis struct {

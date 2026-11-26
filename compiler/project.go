@@ -13,9 +13,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/zenobiatranoss/go2js/backend/javascript"
-	"github.com/zenobiatranoss/go2js/compiler/semantic"
-	gotypes "github.com/zenobiatranoss/go2js/types"
+	"github.com/zenobiatranoss/GonvertJS/backend/javascript"
+	"github.com/zenobiatranoss/GonvertJS/compiler/semantic"
+	gotypes "github.com/zenobiatranoss/GonvertJS/types"
 )
 
 type projectPackage struct {

@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zenobiatranoss/go2js/compiler"
+	"github.com/zenobiatranoss/GonvertJS/compiler"
 )
 
 // A client call waits for its answer, which it does in a process of its own so
