@@ -21,3 +21,4 @@ out.js
 
 tools/jsmin/*.o
 tools/jsmin/go2js-min
+.idea/
