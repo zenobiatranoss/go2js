@@ -11,7 +11,7 @@ load in a browser, or hand functions over to from plain JavaScript.
 
 So the short version is: **write Go, get JavaScript, and check the result against Go.**
 
-> **This is an experimental first release (`v0.1.0`).** It works and it has a large
+> **This is an experimental release (`v0.3.0`).** It works and it has a large
 > test suite that runs programs as Go and as JavaScript and compares them — but it
 > is young, written mostly by one person, and it has real rough edges. Read [Honest limitations](#honest-limitations) before you lean on
 > it for anything that matters, and expect the shape of the generated output to
@@ -241,7 +241,7 @@ go2js main.go -module iife -o bundle.js
 go2js version
 ```
 
-Prints the version this build is, such as `v0.1.0`. The same answer is there as
+Prints the version this build is, such as `v0.3.0`. The same answer is there as
 `-version` or `--version`.
 
 ### Running tests

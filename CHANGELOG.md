@@ -6,7 +6,11 @@ built in the open, faithful where it can be and honest where it cannot. Read
 [docs/limitations.md](docs/limitations.md) alongside any entry here — the things
 the tool does not do yet are as much a part of a release as the things it does.
 
-## Unreleased
+## [Unreleased]
+
+## [v0.3.0] — typed calls into npm libraries, and the browser
+
+Still an experimental release: see [docs/limitations.md](docs/limitations.md) and the table of what `go2js bind` was tried on in [docs/compat.md](docs/compat.md).
 
 - The repository is GonvertJS: the module path is `github.com/zenobiatranoss/GonvertJS`; the command, the `//go2js:` directives and the file names are unchanged.
 - `go2js bind`: libraries whose declarations are a file for each function (`import x = require("./f")`, as semver's are) are read as one module, and a library that is an object described by an interface that other files add to (`declare module "../index" { interface LoDashStatic { ... } }`, as lodash's are) has that interface's methods as its functions. `Pick<T, K>` is `T`. Run on real programs: semver and lodash.
@@ -27,8 +31,6 @@ the tool does not do yet are as much a part of a release as the things it does.
 - `go2js bind -module esm`: a library that is an ES module is imported with `import`, and the program is compiled with `-module esm`.
 - A call of a function whose only parameter is variadic, given no arguments, no longer writes a stray comma (`f(, [])`) when the function comes from a stub.
 - The flags of `os.OpenFile` are written as the numbers the file shim reads, whatever machine compiled the program (on macOS appending overwrote the file).
-
-## [Unreleased]
 
 - **Measured against Go's own conformance tests: 101 of 138 (73.2%).**
   `tests/goroot/corpus/run.py` compiles and runs every top-level `// run`
@@ -113,5 +115,6 @@ function. The rule that governs code governs releases too: a tag names a version
 whose full test suite is green. The mechanics are in
 [docs/release-process.md](docs/release-process.md).
 
-[Unreleased]: https://github.com/zenobiatranoss/GonvertJS/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/zenobiatranoss/GonvertJS/compare/v0.3.0...HEAD
+[v0.3.0]: https://github.com/zenobiatranoss/GonvertJS/releases/tag/v0.3.0
 [v0.1.0]: https://github.com/zenobiatranoss/GonvertJS/releases/tag/v0.1.0
