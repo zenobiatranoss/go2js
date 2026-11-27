@@ -9,6 +9,13 @@ the tool does not do yet are as much a part of a release as the things it does.
 ## [Unreleased]
 
 - `encoding/json` reads a `time.Time` field (from an RFC 3339 text, in a struct, a pointer, a map or a slice) as Go does, refuses a text that is no time and a value that is no text with Go's words, and a `null` read into a pointer leaves it nil. Writing one already worked; the README said it did not.
+- **`init()` now runs** when a program is compiled as a single file or a plain package (it ran only inside a module). Every `init` runs in declaration order after the package variables are set and before `main`, however many there are.
+- `reflect`: `Indirect` on a pointer to a struct, ordering comparisons of `reflect.Kind` (`k < reflect.Array`), a nil slice/map field is valid and settable, and a field whose type is a struct written in place is described with its own fields. With these, `github.com/BurntSushi/toml` decodes a struct with a map of structs, a slice and a nested struct, with the same output as Go.
+- A `sync.Mutex`/`RWMutex` embedded in an unnamed struct variable is locked through its field; promoted fields and methods work through unnamed structs.
+- A local named like a package-level type or function (`item := item{}`) no longer fails with "before initialization", including in `select` cases.
+- A map or slice stored into an `any` through a map element, slice element or field keeps its type for `%T`/`%v`.
+- A trailing `args...` handed to `fmt.Print*/Sprint*/Fprint*/Errorf`, `log` and `errors.Join` is spread instead of printed as one slice.
+- Not yet: `reflect.Append` is missing.
 ## [v0.3.0] — typed calls into npm libraries, and the browser
 
 Still an experimental release: see [docs/limitations.md](docs/limitations.md) and the table of what `go2js bind` was tried on in [docs/compat.md](docs/compat.md).

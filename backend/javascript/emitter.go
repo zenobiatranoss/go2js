@@ -2040,7 +2040,7 @@ func (e *emitter) emitStmt(stmt ast.Stmt) error {
 					return err
 				}
 				e.write(", ")
-				if err := e.emitInterfaceValue(s.Rhs[0], e.valueKindTarget(s.Lhs[0])); err != nil {
+				if err := e.emitInterfaceValue(s.Rhs[0], e.interfaceStoreTarget(s.Lhs[0])); err != nil {
 					return err
 				}
 				e.write(");")
@@ -3559,8 +3559,22 @@ func (e *emitter) shadowsPackageVariable(name string) bool {
 		e.packageVariables = map[string]bool{}
 
 		for _, object := range e.analysis.Defs {
-			if variable, ok := object.(*gotypesstd.Var); ok && !variable.IsField() && variable.Pkg() != nil && variable.Parent() == variable.Pkg().Scope() {
-				e.packageVariables[variable.Name()] = true
+			if object == nil || object.Pkg() == nil || object.Parent() != object.Pkg().Scope() {
+				continue
+			}
+
+			switch value := object.(type) {
+			case *gotypesstd.Var:
+				if !value.IsField() {
+					e.packageVariables[value.Name()] = true
+				}
+			case *gotypesstd.TypeName, *gotypesstd.Func:
+				// a variable that takes the name of a type or a function of
+				// the package, as in `item := <-items` where item is also a
+				// type, would meet itself in the value it is declared with
+				// (`new item()`), since JavaScript has the name in scope
+				// before the declaration is done
+				e.packageVariables[object.Name()] = true
 			}
 		}
 	}
@@ -4445,6 +4459,20 @@ func (e *emitter) isSliceElementStore(s *ast.AssignStmt) bool {
 // its value rather than a reference to it, a struct or an array, which is what a
 // value written to it has to be a copy for. A target of any other type gives nil,
 // as the types that need nothing done to what is written to them always did.
+// interfaceStoreTarget is what a value stored where Go keeps an interface is
+// stored as: the type of the place when it is the empty interface, so that a map
+// or a slice put into it carries its own type with it, and otherwise what the
+// place keeps by value, which is a struct or an array.
+func (e *emitter) interfaceStoreTarget(target ast.Expr) gotypesstd.Type {
+	if e.analysis != nil {
+		if t := e.analyzedType(target); t != nil && isEmptyInterfaceType(t) {
+			return t
+		}
+	}
+
+	return e.valueKindTarget(target)
+}
+
 func (e *emitter) valueKindTarget(target ast.Expr) gotypesstd.Type {
 	if e.analysis == nil {
 		return nil

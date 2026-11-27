@@ -3,6 +3,7 @@ package javascript
 import (
 	"fmt"
 	"go/ast"
+	"go/token"
 	"sort"
 	"strconv"
 	"strings"
@@ -68,8 +69,66 @@ var reflectTypes = map[string]string{
 	"MapIter":     "go2jsReflectMapIter",
 }
 
+// emitReflectKindOrder writes a question about the order of two reflect.Kind
+// values, which are numbers in Go and whose order is the order of the kinds
+// there: Int comes before Uint64, and a Map comes after both. The runtime holds
+// a kind as its name, so each side is turned into its place in that order.
+func (e *emitter) emitReflectKindOrder(x *ast.BinaryExpr) (bool, error) {
+	switch x.Op {
+	case token.LSS, token.LEQ, token.GTR, token.GEQ:
+	default:
+		return false, nil
+	}
+
+	t := e.analyzedType(x.X)
+
+	if t == nil {
+		return false, nil
+	}
+
+	named, ok := gotypesstd.Unalias(t).(*gotypesstd.Named)
+
+	if !ok || named.Obj() == nil || named.Obj().Pkg() == nil || named.Obj().Pkg().Path() != "reflect" || named.Obj().Name() != "Kind" {
+		return false, nil
+	}
+
+	e.needsRuntime = true
+	e.write("(go2jsReflectKindOrder(")
+
+	if err := e.emitExpr(x.X); err != nil {
+		return true, err
+	}
+
+	e.write(") " + x.Op.String() + " go2jsReflectKindOrder(")
+
+	if err := e.emitExpr(x.Y); err != nil {
+		return true, err
+	}
+
+	e.write("))")
+
+	return true, nil
+}
+
 func reflectRuntimeSource() string {
-	return `// go2jsReflectMakeSlice builds a slice of a length and a capacity, the way
+	return `// go2jsReflectKindOrder is the place a kind has among the kinds of Go, which is
+// what comparing two of them asks about: reflect.Int <= k && k <= reflect.Uint64
+// is how a program asks whether a kind is one of the integers.
+const go2jsReflectKindPlaces = {
+	"invalid": 0, "bool": 1, "int": 2, "int8": 3, "int16": 4, "int32": 5, "int64": 6,
+	"uint": 7, "uint8": 8, "uint16": 9, "uint32": 10, "uint64": 11, "uintptr": 12,
+	"float32": 13, "float64": 14, "complex64": 15, "complex128": 16, "array": 17,
+	"chan": 18, "func": 19, "interface": 20, "map": 21, "ptr": 22, "slice": 23,
+	"string": 24, "struct": 25, "unsafePointer": 26
+};
+
+function go2jsReflectKindOrder(kind) {
+	const place = go2jsReflectKindPlaces[kind];
+
+	return place === undefined ? 0 : place;
+}
+
+// go2jsReflectMakeSlice builds a slice of a length and a capacity, the way
 // reflect.MakeSlice does. The elements start at the zero value of the element
 // type, and the length decides how many of them there are, so a capacity past
 // the length leaves room that the slice reports but the length does not reach.
@@ -532,8 +591,20 @@ function go2jsReflectFieldTypeOf(described) {
 		return null;
 	}
 
-	const declared = go2jsReflectDeclaredType(described.Type);
 	const kind = typeof described.Kind === "string" && described.Kind !== "" ? described.Kind : "";
+
+	// A struct written out in place has no name to look its fields up by, so the
+	// field carried them along.
+	if (kind === "struct" && Array.isArray(described.Fields)) {
+		const anonymous = go2jsReflectType("struct", "", null, null, []);
+
+		Object.defineProperty(anonymous, "fields", {value: described.Fields, writable: true, configurable: true, enumerable: true});
+		Object.defineProperty(anonymous, "literal", {value: described.Type, writable: true, configurable: true, enumerable: false});
+
+		return anonymous;
+	}
+
+	const declared = go2jsReflectDeclaredType(described.Type);
 
 	if (declared !== null) {
 		// The kind recorded beside the type is the one the program said, and it
@@ -1150,7 +1221,15 @@ function go2jsReflectValueIsValid(receiver) {
 		return receiver !== null && receiver !== undefined;
 	}
 
-	return receiver.v !== null && receiver.v !== undefined;
+	if (receiver.v !== null && receiver.v !== undefined) {
+		return true;
+	}
+
+	// A nil slice, map, pointer or interface held in a field is still a value of
+	// its type, however much the zero of it reads as nothing. Only a box that
+	// names no type, or the invalid one, is the zero Value.
+	return receiver.v === null && receiver.t !== null && receiver.t !== undefined &&
+		receiver.t.kind !== "invalid" && typeof receiver.get === "function";
 }
 
 function go2jsReflectValueCanSet(receiver) {
@@ -2606,6 +2685,14 @@ function go2jsReflectTypeString(receiver) {
 	}
 
 	if (receiver.__go2js_reflectType === true) {
+		if (receiver.name === "" && typeof receiver.literal === "string") {
+			const text = receiver.literal;
+
+			return text.startsWith("struct{") && text !== "struct{}" && text.endsWith("}")
+				? "struct { " + text.slice(7, -1) + " }"
+				: text.replace("struct{}", "struct {}");
+		}
+
 		if (receiver.name !== "") {
 			// A named type is named after the package it was declared in, which
 			// the registry knows and the descriptor does not carry.
@@ -3373,7 +3460,7 @@ func (e *emitter) emitReflectCall(call *ast.CallExpr) (bool, error) {
 
 		return true, nil
 
-	case "MakeMap", "MakeMapWithSize", "MakeMapWithSize2", "Indirect":
+	case "MakeMap", "MakeMapWithSize", "MakeMapWithSize2":
 		// A size, where there is one, is a hint that says nothing about what the
 		// map will hold, so it is not passed on.
 		if len(call.Args) == 0 || len(call.Args) > 2 {

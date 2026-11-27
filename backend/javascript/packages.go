@@ -659,7 +659,7 @@ func (e *emitter) emitSyncMethodCall(call *ast.CallExpr, selector *ast.SelectorE
 		return true, err
 	}
 
-	for _, embedded := range e.embeddedPath(selector) {
+	for _, embedded := range e.embeddedPathFor(selector, true) {
 		e.write(".")
 		e.write(embedded)
 	}

@@ -122,7 +122,7 @@ func (e *emitter) emitInterfaceValue(expr ast.Expr, target gotypes.Type) error {
 	// map is given a name of its own on the way in and prints as the empty
 	// literal rather than as <nil>. A type that is already boxed below keeps its
 	// own name, and only an alias such as any is left to answer for itself.
-	if isInterfaceLikeType(target) && !isInterfaceGoType(target) && e.analysis != nil {
+	if isInterfaceLikeType(target) && (!isInterfaceGoType(target) || isEmptyInterfaceType(target)) && e.analysis != nil {
 		if info, ok := e.analysis.Types[expr]; ok && info.Type != nil && isSliceOrMapType(info.Type) {
 			if name, ok := e.goTypeNameOfExpr(expr); ok {
 				if shape := goTypeUnderlyingShape(info.Type); shape != "" {
@@ -916,6 +916,19 @@ func (e *emitter) emitFmtPrintArguments(call *ast.CallExpr) error {
 			e.write(", ")
 		}
 
+		// a trailing ... hands the slice over as the operands it holds
+		if call.Ellipsis.IsValid() && i == len(call.Args)-1 {
+			e.write("...go2jsToArray(")
+
+			if err := e.emitExpr(arg); err != nil {
+				return err
+			}
+
+			e.write(")")
+
+			continue
+		}
+
 		// Go spreads a multi-value call used as the sole argument of a
 		// variadic call, so the values must be forwarded individually.
 		spread := len(call.Args) == 1 && e.isVariadicCall(call) && e.isMultiValueCall(arg)
@@ -991,4 +1004,17 @@ func (e *emitter) declaresInSource(fn *gotypes.Func) bool {
 	}
 
 	return false
+}
+
+// isEmptyInterfaceType reports whether a type is the interface with no methods,
+// written as interface{} or as any, which holds a value of any type and so has
+// to be told the type of what goes into it.
+func isEmptyInterfaceType(t gotypes.Type) bool {
+	if t == nil {
+		return false
+	}
+
+	iface, ok := gotypes.Unalias(t).Underlying().(*gotypes.Interface)
+
+	return ok && iface.NumMethods() == 0 && iface.NumEmbeddeds() == 0
 }

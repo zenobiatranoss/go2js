@@ -626,6 +626,10 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 			return nil
 		}
 
+		if handled, err := e.emitReflectKindOrder(x); handled {
+			return err
+		}
+
 		if handled, err := e.emitInterfaceComparison(x); handled {
 			return err
 		}
@@ -1673,6 +1677,11 @@ func (e *emitter) emitExpr(expr ast.Expr) error {
 
 		if err := e.emitExpr(x.X); err != nil {
 			return err
+		}
+
+		for _, embedded := range e.anonymousFieldPath(x) {
+			e.write(".")
+			e.write(embedded)
 		}
 
 		e.write(".")

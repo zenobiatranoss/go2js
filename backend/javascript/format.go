@@ -93,6 +93,19 @@ func (e *emitter) emitErrorfCall(call *ast.CallExpr) error {
 	for i, arg := range call.Args[1:] {
 		e.write(", ")
 
+		// a trailing ... hands the slice over as the operands it holds
+		if call.Ellipsis.IsValid() && i == len(call.Args)-2 {
+			e.write("...go2jsToArray(")
+
+			if err := e.emitExpr(arg); err != nil {
+				return err
+			}
+
+			e.write(")")
+
+			continue
+		}
+
 		// A value with a String or Error method of its own is told by that
 		// method here, as Sprintf does, so the text reads as it does in Go.
 		verb, known := formatVerbForArg(verbs, i+1)

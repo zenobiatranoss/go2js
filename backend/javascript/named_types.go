@@ -886,6 +886,7 @@ type structFieldDescriptor struct {
 	Anonymous bool
 	Type      string
 	Kind      string
+	Fields    string
 }
 
 // structFieldDescriptors describes the fields a struct type carries in the
@@ -935,10 +936,51 @@ func structFieldDescriptors(t gotypesstd.Type, declared *ast.StructType) []struc
 			Anonymous: anonymous[name],
 			Type:      field.Type().String(),
 			Kind:      kind,
+			Fields:    anonymousStructFields(field.Type()),
 		})
 	}
 
 	return descriptors
+}
+
+// anonymousStructFields describes the fields of a field whose type is a struct
+// written out in place (Owner struct{ Name string }), which has no name to look
+// them up by, so reflect is handed them along with the field.
+func anonymousStructFields(t gotypesstd.Type) string {
+	structure, ok := gotypesstd.Unalias(t).(*gotypesstd.Struct)
+	if !ok {
+		return ""
+	}
+
+	descriptors := make([]structFieldDescriptor, 0, structure.NumFields())
+
+	for index := range structure.NumFields() {
+		field := structure.Field(index)
+
+		pkgPath := ""
+		if !field.Exported() {
+			pkgPath = "main"
+		}
+
+		kind, err := reflectKindName(field.Type())
+		if err != nil {
+			kind = ""
+		} else {
+			kind = strings.Trim(kind, `"`)
+		}
+
+		descriptors = append(descriptors, structFieldDescriptor{
+			Name:      field.Name(),
+			Tag:       strconv.Quote(structure.Tag(index)),
+			PkgPath:   pkgPath,
+			Anonymous: field.Embedded(),
+			Type:      field.Type().String(),
+			Kind:      kind,
+			Fields:    anonymousStructFields(field.Type()),
+		})
+	}
+
+	return quoteFieldDescriptors(descriptors)
 }
 
 // declaredFieldTags reads the tags the program wrote on the fields of a struct,
@@ -995,7 +1037,7 @@ func quoteFieldDescriptors(descriptors []structFieldDescriptor) string {
 			", PkgPath: "+strconv.Quote(descriptor.PkgPath)+
 			", Anonymous: "+strconv.FormatBool(descriptor.Anonymous)+
 			", Type: "+strconv.Quote(descriptor.Type)+
-			", Kind: "+strconv.Quote(descriptor.Kind)+"}")
+			", Kind: "+strconv.Quote(descriptor.Kind)+nestedFieldsText(descriptor.Fields)+"}")
 	}
 
 	return "[" + strings.Join(parts, ", ") + "]"
@@ -1302,4 +1344,12 @@ func (e *emitter) emitScalarNamedMethodExpr(selector *ast.SelectorExpr) (bool, e
 	e.write("(receiver, ...args); }")
 
 	return true, nil
+}
+
+func nestedFieldsText(fields string) string {
+	if fields == "" {
+		return ""
+	}
+
+	return ", Fields: " + fields
 }

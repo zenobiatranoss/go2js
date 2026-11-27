@@ -78,7 +78,27 @@ func (c *Compiler) compileParsed(parsed *ParsedFile) (string, error) {
 		}}
 	}
 
-	return c.wrapExportsWithSources(runDeferredInits(output), sources, exports), nil
+	pkg := NewPackage(parsed.File.Name.Name)
+	pkg.Add(parsed)
+
+	return c.wrapExportsWithSources(runInitFunctions(pkg, runDeferredInits(output)), sources, exports), nil
+}
+
+// runInitFunctions makes the init functions of a program run before main, in
+// the order they are declared, each under a name of its own since a program may
+// declare any number of them and a function name can be declared only once.
+func runInitFunctions(pkg *Package, code string) string {
+	if !strings.Contains(code, "return yield* main();") {
+		return code
+	}
+
+	code, calls := renameInitFunctions(pkg, code)
+
+	if calls == "" {
+		return code
+	}
+
+	return strings.Replace(code, "return yield* main();", calls+"return yield* main();", 1)
 }
 
 // runDeferredInits makes the assignments that were held back while a package
@@ -171,7 +191,7 @@ func (c *Compiler) CompilePackage(pkg *Package) (string, error) {
 		sources = packageSourceMapSources(pkg)
 	}
 
-	return c.wrapExportsWithSources(runDeferredInits(code), sources, exports), nil
+	return c.wrapExportsWithSources(runInitFunctions(pkg, runDeferredInits(code)), sources, exports), nil
 }
 
 func (c *Compiler) CompileDirectory(dir string) (string, error) {
