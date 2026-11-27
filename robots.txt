@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://zenobiatranoss.github.io/GonvertJS/sitemap.xml

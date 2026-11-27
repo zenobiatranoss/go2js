@@ -39,7 +39,7 @@ jobs:
         run: |
           rm -rf pages
           mkdir -p pages/playground
-          cp index.html go2jslog.png pages/
+          cp index.html go2jslog.png robots.txt sitemap.xml pages/
           cp google* pages/ 2>/dev/null || true
           cp sxayjuanm*.html pages/ 2>/dev/null || true
           cp -R playground/. pages/playground/
