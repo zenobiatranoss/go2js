@@ -1,0 +1,238 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GonvertJS</title>
+    <meta name="description" content="GonvertJS is a Go-to-JavaScript transpiler.">
+
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23171717'/%3E%3Ctext x='11' y='27' font-family='Arial' font-size='20' font-weight='bold' fill='%2300add8'%3EGo%3C/text%3E%3Cpath d='M18 35 H45 M39 29 L45 35 L39 41' stroke='%23ffffff' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Crect x='35' y='43' width='19' height='15' rx='3' fill='%23f0db4f'/%3E%3Ctext x='38' y='54' font-family='Arial' font-size='11' font-weight='bold' fill='%23323330'%3EJS%3C/text%3E%3C/svg%3E">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #fafafa;
+            color: #171717;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+
+        main {
+            width: 100%;
+            max-width: 620px;
+            text-align: center;
+            padding: 40px 24px;
+        }
+
+        .logo {
+            width: 120px;
+            height: 120px;
+            object-fit: contain;
+            margin-bottom: 18px;
+            border-radius: 22px;
+        }
+
+        h1 {
+            font-size: 48px;
+            letter-spacing: -2px;
+            font-weight: 700;
+        }
+
+        .subtitle {
+            margin-top: 14px;
+            color: #737373;
+            font-size: 16px;
+        }
+
+        .description {
+            max-width: 470px;
+            margin: 38px auto 0;
+            color: #525252;
+            font-size: 15px;
+            line-height: 1.8;
+        }
+
+        .conversion {
+            margin-top: 36px;
+            padding: 24px 10px;
+        }
+
+        .flow {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 30px;
+        }
+
+        .language {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+
+        .go-symbol {
+            color: #00add8;
+            font-size: 42px;
+            font-weight: 700;
+            letter-spacing: -2px;
+        }
+
+        .go-label {
+            font-size: 12px;
+            color: #737373;
+            margin-top: 7px;
+        }
+
+        .js-symbol {
+            background: #f0db4f;
+            color: #323330;
+            font-size: 28px;
+            font-weight: 700;
+            padding: 8px 10px;
+            border-radius: 5px;
+        }
+
+        .js-label {
+            font-size: 12px;
+            color: #737373;
+            margin-top: 7px;
+        }
+
+        .arrow {
+            display: flex;
+            align-items: center;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .arrow-line {
+            display: flex;
+            align-items: center;
+            color: #a3a3a3;
+            font-size: 26px;
+            animation: pulse 1.8s ease-in-out infinite;
+        }
+
+        .arrow-text {
+            font-size: 10px;
+            color: #a3a3a3;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 0.45;
+                transform: translateX(-2px);
+            }
+            50% {
+                opacity: 1;
+                transform: translateX(3px);
+            }
+        }
+
+        .repo-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 9px;
+            margin-top: 30px;
+            padding: 11px 22px;
+            border: 1px solid #e5e5e5;
+            border-radius: 8px;
+            color: #171717;
+            text-decoration: none;
+            font-size: 14px;
+            transition: 0.2s;
+        }
+
+        .repo-link:hover {
+            background: #171717;
+            color: white;
+            border-color: #171717;
+        }
+
+        .github-icon {
+            width: 16px;
+            height: 16px;
+            flex-shrink: 0;
+            display: block;
+        }
+
+        footer {
+            margin-top: 55px;
+            font-size: 12px;
+            color: #a3a3a3;
+        }
+
+        @media (max-width: 480px) {
+            h1 {
+                font-size: 40px;
+            }
+
+            .logo {
+                width: 105px;
+                height: 105px;
+            }
+
+            .flow {
+                gap: 22px;
+            }
+
+            .conversion {
+                padding: 22px 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <img src="go2jslog.png" alt="GonvertJS logo" class="logo">
+
+        <h1>GonvertJS</h1>
+
+        <p class="subtitle">A Go-to-JavaScript transpiler.</p>
+
+        <p class="description">
+            GonvertJS translates Go code into JavaScript,
+            bringing Go's syntax and programming approach
+            into the JavaScript environment.
+        </p>
+
+        <section class="conversion">
+            <div class="flow">
+                <div class="language go">
+                    <div class="go-symbol">Go</div>
+                    <div class="go-label">Golang</div>
+                </div>
+
+                <div class="arrow">
+                    <div class="arrow-line">⟶</div>
+                    <div class="arrow-text">transpile</div>
+                </div>
+
+                <div class="language js">
+                    <div class="js-symbol">JS</div>
+                    <div class="js-label">JavaScript</div>
+                </div>
+            </div>
+        </section>
+
+        <a class="repo-link" href="https://github.com/zenobiatranoss/go2js" target="_blank" rel="noopener noreferrer">
+            <svg class="github-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path fill-rule="evenodd" clip-rule="evenodd" d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.2 11.38.6.1.8-.26.8-.58v-2.05c-3.34.73-4.04-1.42-4.04-1.42-.55-1.39-1.33-1.76-1.33-1.76-1.09-.75.08-.73.08-.73 1.2.08 1.83 1.23 1.83 1.23 1.07 1.83 2.8 1.3 3.48.99.11-.77.42-1.3.76-1.6-2.67-.3-5.47-1.34-5.47-5.95 0-1.32.47-2.39 1.24-3.23-.12-.31-.54-1.56.12-3.26 0 0 1.01-.32 3.3 1.23a11.48 11.48 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.7.24 2.95.12 3.26.77.84 1.23 1.91 1.23 3.23 0 4.62-2.8 5.65-5.48 5.95.43.37.81 1.1.81 2.22v3.29c0 .32.2.69.81.58C20.57 21.8 24 17.3 24 12 24 5.37 18.63 0 12 0Z"/>
+            </svg>
+            View Repository
+        </a>
+
+        <footer>Open source software.</footer>
+    </main>
+</body>
+</html>
