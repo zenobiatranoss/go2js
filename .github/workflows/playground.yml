@@ -34,9 +34,16 @@ jobs:
           echo "WASI_SDK_PATH=$PWD/wasi-sdk-25.0-x86_64-linux" >> "$GITHUB_ENV"
       - name: build the compiler as WebAssembly
         run: ./scripts/playground.sh
+      - name: assemble both pages
+        # gonvertjs at / and gonvertjs-playground at /playground/
+        run: |
+          rm -rf pages
+          mkdir -p pages/playground
+          cp index.html go2jslog.png pages/
+          cp -R playground/. pages/playground/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: playground
+          path: pages
       - id: deploy
         uses: actions/deploy-pages@v4

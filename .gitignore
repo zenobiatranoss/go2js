@@ -6,6 +6,7 @@
 !.idea/vcs.xml
 
 # build artifacts
+/pages/
 /bin/
 /playground/playground.wasm
 /playground/go2js-min.wasm

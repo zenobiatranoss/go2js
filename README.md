@@ -28,7 +28,7 @@ If you want the short version, [jump to the quick start](#quick-start).
 - [Requirements](#requirements)
 - [Build & install](#build--install)
 - [Quick start](#quick-start)
-- [Playground](#playground)
+- [Websites: gonvertjs and gonvertjs-playground](#websites-gonvertjs-and-gonvertjs-playground)
 - [The command line](#the-command-line)
   - [Compiling](#compiling)
   - [Version](#version)
@@ -171,11 +171,28 @@ See [the command line](#the-command-line) for the full set of options, and
 [handing functions over](#handing-functions-over-to-javascript) for how to call
 into the compiled program from JavaScript.
 
-## Playground
+## Websites: gonvertjs and gonvertjs-playground
 
-There is a playground you can open and use right now:
+There are two pages in this repository, and they are not the same thing.
 
-**https://zenobiatranoss.github.io/go2js/**
+### gonvertjs
+
+The main site is [`index.html`](index.html). It is the front door for
+**gonvertjs**: what the project is, the Go-to-JavaScript flow, and a link to the
+playground and the repository. It is published at:
+
+**https://zenobiatranoss.github.io/GonvertJS/**
+
+Locally, serve the repository root with any static server
+(`python3 -m http.server 8130`, then `http://localhost:8130/`).
+[`site/index.html`](site/index.html) is an older standalone copy of that landing page.
+
+### gonvertjs-playground
+
+The playground is a separate page under [`playground/`](playground), named
+**gonvertjs-playground** in its title and header. It is available at:
+
+**https://zenobiatranoss.github.io/GonvertJS/playground/**
 
 Type Go into it, watch it become JavaScript, and run it — all in the page. The
 compiler itself is Go, compiled to WebAssembly, so the translation happens in
@@ -187,7 +204,7 @@ its programs use the builtin `println` and `print` rather than the standard
 library. There is no package set in a browser, and no terminal, so the demo
 cannot compile `import "fmt"` (or any package) and cannot run programs that read
 input, spawn processes, or otherwise reach for the machine. For whole Go
-programs and packages, use the command line tool. The playground is a small,
+programs and packages, use the command line tool. gonvertjs-playground is a small,
 honest window onto the compiler, not the whole workshop.
 
 To run it yourself, serve the [`playground/`](playground) directory:
@@ -195,7 +212,7 @@ To run it yourself, serve the [`playground/`](playground) directory:
 ```sh
 ./scripts/playground.sh           # builds playground/playground.wasm
 cd playground && python3 -m http.server 8130
-# then open http://localhost:8130/
+# then open http://localhost:8130/ — the page is titled gonvertjs-playground
 ```
 
 ## The command line
@@ -289,7 +306,7 @@ go2js -shrink -module commonjs -o app.js main.go
 
 `-shrink` finds the tool through `GO2JS_MIN`, next to the `go2js` binary, or on the `PATH`. It can also be run by hand: `go2js-min -k -s -o app.min.js app.js`. Names that the runtime builds or compares as text are kept as they are, and a name keeps the `go2js` (or `__go2js_`) it starts with, because the runtime tells its own frames and fields apart by that. The lines of the script are no longer the lines the emitter wrote, so the Go places in a trace of a shrunk program are not exact. Every program of the official `// run` tests that passes also runs the same once shrunk.
 
-The playground uses the same code: `tools/jsmin/wa.cpp` builds it as a 68 KB WebAssembly module (`scripts/playground.sh` with `WASI_SDK_PATH` set), and the page shrinks the JavaScript it shows and runs with the "Shrink the JavaScript" box ticked.
+gonvertjs-playground uses the same code: `tools/jsmin/wa.cpp` builds it as a 68 KB WebAssembly module (`scripts/playground.sh` with `WASI_SDK_PATH` set), and the page shrinks the JavaScript it shows and runs with the "Shrink the JavaScript" box ticked.
 
 ## Readable output (go2js-min)
 
@@ -301,7 +318,7 @@ go2js -readable -module commonjs -o out/main.js main.go
 
 writes `out/main.js`, which holds the program and nothing else, and `out/main.runtime.js`, which holds the runtime and is imported by the first (`-module esm` joins them with `import` and `export` instead). `node out/main.js` runs it like the single file. The program is indented and broken into lines, its temporary names read as names (`received2` for what was `$go2js_received_2`), and the parentheses the emitter put around every `yield*` are gone. The Go places a trace names are carried along, so a panic in the split program still points at `main.go:8`.
 
-By hand: `go2js-min -p` writes any script readable, `-u` writes only the program of a generated script, and `-S -o main.js` splits it. The playground shows the program this way and runs the whole script behind it. Every program of the official `// run` tests that passes also runs the same split and indented, and `lodash` and `acorn` behave the same once written by `-p`.
+By hand: `go2js-min -p` writes any script readable, `-u` writes only the program of a generated script, and `-S -o main.js` splits it. gonvertjs-playground shows the program this way and runs the whole script behind it. Every program of the official `// run` tests that passes also runs the same split and indented, and `lodash` and `acorn` behave the same once written by `-p`.
 
 ## Handing functions over to JavaScript
 
@@ -660,8 +677,10 @@ That matters to anyone reading this, human or AI:
 
 ```
 cmd/go2js/          the command line tool
-cmd/playground/     the compiler built as WebAssembly for the browser playground
-playground/         the playground page (built by scripts/playground.sh)
+index.html          the gonvertjs main site (landing page)
+site/index.html     standalone copy of the gonvertjs main site
+cmd/playground/     the compiler built as WebAssembly for gonvertjs-playground
+playground/         the gonvertjs-playground page (built by scripts/playground.sh)
 compiler/           the compiler as a library: options, parsing, checking, emitting
 backend/javascript/ the runtime: the JavaScript that generated programs run against
                     (runtime.go, stdlib_packages.go, and friends hold that JS)
