@@ -40,7 +40,8 @@ jobs:
           rm -rf pages
           mkdir -p pages/playground
           cp index.html go2jslog.png pages/
-          find . -maxdepth 1 -type f -name 'google*' -exec cp {} pages/ \;
+          cp google* pages/ 2>/dev/null || true
+          cp sxayjuanm*.html pages/ 2>/dev/null || true
           cp -R playground/. pages/playground/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
