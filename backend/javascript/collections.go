@@ -961,6 +961,12 @@ function go2jsStructCopy(value) {
 		return value;
 	}
 
+	// The storage reflect.New allocated is what a pointer points at, so a copy of
+	// a Value holding it points at the same storage rather than at a second one.
+	if (value.__go2js_reflectNew === true) {
+		return value;
+	}
+
 	// A value of a type of Go that stands for the value behind a pointer is one
 	// value and not a record of fields to write out: Go shares what such a type
 	// holds when the type is copied and says the type is not to be copied at all,

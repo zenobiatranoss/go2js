@@ -177,15 +177,22 @@ There are two pages in this repository, and they are not the same thing.
 
 ### gonvertjs
 
-The main site is [`index.html`](index.html). It is the front door for
-**gonvertjs**: what the project is, the Go-to-JavaScript flow, and a link to the
-playground and the repository. It is published at:
+The main site is generated from the files of this repository by
+[`tools/sitegen`](tools/sitegen) (standard library only): the landing page, the
+guide (this README), every document in [`docs/`](docs), the examples with their
+output, a comparison with GopherJS and WebAssembly, and an install page. Because
+the documents are the pages, the site cannot drift from them. It is published at:
 
 **https://zenobiatranoss.github.io/GonvertJS/**
 
-Locally, serve the repository root with any static server
-(`python3 -m http.server 8130`, then `http://localhost:8130/`).
-[`site/index.html`](site/index.html) is an older standalone copy of that landing page.
+To build and look at it locally:
+
+```
+go run ./tools/sitegen -out pages
+python3 -m http.server 8130 -d pages     # then http://localhost:8130/
+```
+
+The stylesheet, script and the demo shown on the home page live in [`site/`](site).
 
 ### gonvertjs-playground
 

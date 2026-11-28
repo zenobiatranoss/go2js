@@ -27,6 +27,10 @@ var reflectFuncs = map[string]string{
 	"ArrayOf":          "go2jsReflectArrayOf",
 	"SliceOf":          "go2jsReflectSliceOf",
 	"MapOf":            "go2jsReflectMapOf",
+	"Append":           "go2jsReflectAppend",
+	"AppendSlice":      "go2jsReflectAppendSlice",
+	"Copy":             "go2jsReflectCopy",
+	"Swapper":          "go2jsReflectSwapper",
 }
 
 var reflectConstants = map[string]string{
@@ -147,6 +151,68 @@ function go2jsReflectMakeSlice(type, length, capacity) {
 	}
 
 	return go2jsReflectValue(go2jsReflectKeepCap(items, capacity), type);
+}
+
+// go2jsReflectAppend gives back a slice with the values added to its end, as
+// reflect.Append does. The slice it was given is left as it was, since the
+// result is what the program stores back.
+function go2jsReflectAppend(slice, ...values) {
+	const current = go2jsReflectRead(slice);
+	const items = current === null || current === undefined ? [] : Array.from(current);
+
+	for (const value of values) {
+		items.push(go2jsReflectUnwrap(go2jsReflectRead(value)));
+	}
+
+	const type = slice !== null && slice !== undefined ? slice.t : null;
+
+	if (current instanceof Uint8Array) {
+		return go2jsReflectValue(new Uint8Array(items), type);
+	}
+
+	return go2jsReflectValue(items, type);
+}
+
+// go2jsReflectAppendSlice is Append for every element of a second slice.
+function go2jsReflectAppendSlice(slice, tail) {
+	const more = go2jsReflectRead(tail);
+
+	return go2jsReflectAppend(slice, ...(more === null || more === undefined ? [] : Array.from(more)));
+}
+
+// go2jsReflectSwapper answers a function that swaps two elements of the slice,
+// which is what sort.Slice is built on.
+function go2jsReflectSwapper(slice) {
+	const items = go2jsReflectRead(go2jsReflectValueOf(slice));
+
+	return function*(i, j) {
+		if (items === null || items === undefined || i < 0 || j < 0 || i >= items.length || j >= items.length) {
+			go2jsPanic("reflect: slice index out of range");
+		}
+
+		const held = items[i];
+		items[i] = items[j];
+		items[j] = held;
+	};
+}
+
+// go2jsReflectCopy copies as many elements as both slices have room for and
+// answers how many that was.
+function go2jsReflectCopy(destination, source) {
+	const to = go2jsReflectRead(destination);
+	const from = go2jsReflectRead(source);
+
+	if (to === null || to === undefined || from === null || from === undefined) {
+		return 0;
+	}
+
+	const count = Math.min(to.length, from.length);
+
+	for (let i = 0; i < count; i++) {
+		to[i] = from[i];
+	}
+
+	return count;
 }
 
 // go2jsReflectKeepCap records the capacity a slice was made with. A slice is a
@@ -1229,7 +1295,7 @@ function go2jsReflectValueIsValid(receiver) {
 	// its type, however much the zero of it reads as nothing. Only a box that
 	// names no type, or the invalid one, is the zero Value.
 	return receiver.v === null && receiver.t !== null && receiver.t !== undefined &&
-		receiver.t.kind !== "invalid" && typeof receiver.get === "function";
+		receiver.t.kind !== "invalid";
 }
 
 function go2jsReflectValueCanSet(receiver) {
@@ -1582,7 +1648,7 @@ function go2jsReflectTypeNumField(receiver) {
 // path reflect reports for it, which for a field of a struct is the position
 // itself and for one reached through an embedded struct is the path down to it.
 function go2jsReflectFieldWithIndex(field, index) {
-	const described = typeof field === "string" ? {Name: field} : field;
+	const described = typeof field === "string" ? {Name: field} : (field === undefined || field === null ? {Name: ""} : field);
 	const described2 = Object.assign({}, described, {Index: index});
 
 	return go2jsReflectStructField(described2);
@@ -1802,6 +1868,23 @@ function go2jsReflectFuncParts(type) {
 		ins: Array.isArray(type.ins) ? type.ins : [],
 		outs: Array.isArray(type.outs) ? type.outs : []
 	};
+}
+
+// go2jsReflectTypeBits is the width in bits of a numeric type, which a decoder
+// asks before it decides whether a number fits.
+function go2jsReflectTypeBits(receiver) {
+	const kind = go2jsReflectTypeKindOf(receiver);
+	const widths = {
+		int: 64, int8: 8, int16: 16, int32: 32, int64: 64,
+		uint: 64, uint8: 8, uint16: 16, uint32: 32, uint64: 64, uintptr: 64,
+		float32: 32, float64: 64, complex64: 64, complex128: 128,
+	};
+
+	if (widths[kind] === undefined) {
+		go2jsPanic("reflect: Bits of non-arithmetic Type " + go2jsReflectTypeString(receiver));
+	}
+
+	return widths[kind];
 }
 
 function go2jsReflectTypeNumIn(receiver) {
@@ -2144,7 +2227,7 @@ function go2jsReflectInvoke(owner, name, receiver, ...rest) {
 // the type of a field is what a program keys its decoding on. A bare name is
 // taken to be a field that says only the name.
 function go2jsReflectStructField(field) {
-	const described = typeof field === "string" ? {Name: field} : field;
+	const described = typeof field === "string" ? {Name: field} : (field === undefined || field === null ? {Name: ""} : field);
 
 	return {
 		__go2js_reflectStructField: true,
@@ -2281,6 +2364,7 @@ const go2jsReflectTypeMethods = {
 	AssignableTo: go2jsReflectTypeAssignableTo,
 	ConvertibleTo: go2jsReflectTypeConvertibleTo,
 	NumIn: go2jsReflectTypeNumIn,
+	Bits: go2jsReflectTypeBits,
 	In: go2jsReflectTypeIn,
 	NumOut: go2jsReflectTypeNumOut,
 	Out: go2jsReflectTypeOut,
@@ -2342,6 +2426,12 @@ function go2jsReflectElem(type) {
 function go2jsReflectValueElem(receiver) {
 	if (!go2jsReflectValueBox(receiver)) {
 		return go2jsReflectValue(receiver, go2jsReflectElem(go2jsReflectTypeOf(receiver)));
+	}
+
+	// A Value copied before something was Set through it still reads the slot it
+	// came from, so what it holds is asked of the slot, not of the copy.
+	if (typeof receiver.get === "function" && !go2jsReflectIsNewBox(receiver.v)) {
+		receiver = Object.assign({}, receiver, {v: receiver.get()});
 	}
 
 	// A value produced by New points at fresh storage, so Elem yields that
@@ -2419,7 +2509,19 @@ function go2jsReflectValueSet(receiver, value) {
 		throw new TypeError("reflect: Set using unaddressable value");
 	}
 
-	const next = go2jsReflectUnwrap(value);
+	let next = go2jsReflectUnwrap(value);
+
+	// A pointer made by New goes into a pointer slot as the pointer the program
+	// holds: a struct stands for a pointer to itself, and any other pointer is a
+	// cell that reads and writes the storage.
+	if (go2jsReflectIsNewBox(next)) {
+		const elementType = go2jsReflectElem(value.t);
+		const box = next;
+
+		next = box.target !== null && typeof box.target === "object" && elementType.kind === "struct" ?
+			box.target :
+			go2jsPtr(() => box.target, (stored) => { box.target = stored; }, "*" + go2jsReflectTypeString(elementType));
+	}
 
 	if (typeof receiver.set === "function" && typeof receiver.get === "function") {
 		receiver.set(next);
@@ -2444,7 +2546,22 @@ function go2jsReflectValueSet(receiver, value) {
 }
 
 function go2jsReflectValueInterface(receiver) {
-	const value = go2jsReflectUnwrap(go2jsReflectRead(receiver));
+	const raw = go2jsReflectRead(receiver);
+
+	// A pointer made by New is handed back as the pointer a program holds: the
+	// struct itself for a pointer to a struct, and a cell that reads and writes
+	// the storage for a pointer to anything else.
+	if (go2jsReflectIsNewBox(raw)) {
+		const elementType = go2jsReflectElem(receiver.t);
+
+		if (raw.target !== null && typeof raw.target === "object" && elementType.kind === "struct") {
+			return go2jsNew(raw.target);
+		}
+
+		return go2jsPtr(() => raw.target, (next) => { raw.target = next; }, "*" + go2jsReflectTypeString(elementType));
+	}
+
+	const value = go2jsReflectUnwrap(raw);
 
 	if (value !== null && typeof value === "object" && value.__go2js_callable === true && typeof value.__go2js_callable_value === "function") {
 		const call = value.__go2js_callable_value;

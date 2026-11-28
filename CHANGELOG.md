@@ -8,6 +8,9 @@ the tool does not do yet are as much a part of a release as the things it does.
 
 ## [Unreleased]
 
+- Website: a full site generated from the repository by `tools/sitegen` (home, guide, docs, examples with output, comparison, install), published beside the playground.
+- `reflect`: `Append`, `AppendSlice`, `Copy`, `Swapper`, `Type.Bits`; a pointer made by `New` can be stored into a pointer field and read back.
+
 - `encoding/json` reads a `time.Time` field (from an RFC 3339 text, in a struct, a pointer, a map or a slice) as Go does, refuses a text that is no time and a value that is no text with Go's words, and a `null` read into a pointer leaves it nil. Writing one already worked; the README said it did not.
 - **`init()` now runs** when a program is compiled as a single file or a plain package (it ran only inside a module). Every `init` runs in declaration order after the package variables are set and before `main`, however many there are.
 - `reflect`: `Indirect` on a pointer to a struct, ordering comparisons of `reflect.Kind` (`k < reflect.Array`), a nil slice/map field is valid and settable, and a field whose type is a struct written in place is described with its own fields. With these, `github.com/BurntSushi/toml` decodes a struct with a map of structs, a slice and a nested struct, with the same output as Go.
