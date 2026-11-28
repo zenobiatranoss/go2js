@@ -1322,7 +1322,8 @@ function go2jsReflectValueMapIndex(receiver, key) {
 		}
 	}
 
-	return go2jsReflectValue(null, element !== null ? element : go2jsReflectType("invalid", "", null, null, []));
+	// A key the map has no entry for answers the zero Value, which is not valid.
+	return go2jsReflectValue(null, go2jsReflectType("invalid", "", null, null, []));
 }
 
 // go2jsReflectValueMapKeys lists the keys a map holds, which is every key it
@@ -1870,6 +1871,21 @@ function go2jsReflectFuncParts(type) {
 	};
 }
 
+// go2jsReflectTypePkgPath is the import path of the package a named type is
+// declared in, and nothing for a type that has no name of its own.
+function go2jsReflectTypePkgPath(receiver) {
+	const name = go2jsReflectTypeName(receiver);
+
+	if (typeof name !== "string" || name === "") {
+		return "";
+	}
+
+	const full = go2jsReflectTypeString(receiver);
+	const cut = full.lastIndexOf(".");
+
+	return cut > 0 && !full.startsWith("*") && !full.startsWith("[") && !full.startsWith("map[") ? full.slice(0, cut) : "";
+}
+
 // go2jsReflectTypeBits is the width in bits of a numeric type, which a decoder
 // asks before it decides whether a number fits.
 function go2jsReflectTypeBits(receiver) {
@@ -2365,6 +2381,7 @@ const go2jsReflectTypeMethods = {
 	ConvertibleTo: go2jsReflectTypeConvertibleTo,
 	NumIn: go2jsReflectTypeNumIn,
 	Bits: go2jsReflectTypeBits,
+	PkgPath: go2jsReflectTypePkgPath,
 	In: go2jsReflectTypeIn,
 	NumOut: go2jsReflectTypeNumOut,
 	Out: go2jsReflectTypeOut,
@@ -2444,6 +2461,12 @@ function go2jsReflectValueElem(receiver) {
 
 	if (receiver.t === null || receiver.t === undefined) {
 		return go2jsReflectValue(receiver.v, go2jsReflectElem(go2jsReflectTypeOf(receiver.v)));
+	}
+
+	// Elem of a nil pointer or a nil interface is the zero Value, which has no
+	// kind to be read: a program tells a nil pointer by asking for it.
+	if ((receiver.t.kind === "ptr" || receiver.t.kind === "interface") && (receiver.v === null || receiver.v === undefined)) {
+		return go2jsReflectValue(null, go2jsReflectType("invalid", "", null, null, []));
 	}
 
 	if (receiver.t.kind === "interface") {

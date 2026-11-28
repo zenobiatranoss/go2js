@@ -8,6 +8,8 @@ the tool does not do yet are as much a part of a release as the things it does.
 
 ## [Unreleased]
 
+- `github.com/mitchellh/mapstructure` decodes a struct with a map, slice, nested struct and pointer field, and reports the same errors as Go. For it: `reflect` `MapIndex` of a missing key and `Elem` of a nil pointer are the invalid Value, an interface value put into another interface is not wrapped twice, and `Type.PkgPath`.
+
 - Website: a full site generated from the repository by `tools/sitegen` (home, guide, docs, examples with output, comparison, install), published beside the playground.
 - `reflect`: `Append`, `AppendSlice`, `Copy`, `Swapper`, `Type.Bits`; a pointer made by `New` can be stored into a pointer field and read back.
 

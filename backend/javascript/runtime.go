@@ -7665,6 +7665,13 @@ function go2jsInterface(value, typeName, displayName, uncomparable) {
 	// same type, and a value compared against a plain one of another type would
 	// never be equal.
 	if (go2jsIsInterfaceTypeName(typeName)) {
+		// Putting an interface value into another interface keeps the value it
+		// holds and its type; wrapping it again would hand out the wrapper as
+		// though it were the value.
+		if (value !== null && typeof value === "object" && value.__go2js_interface === true) {
+			return value;
+		}
+
 		const named = go2jsGoTypeName(value);
 
 		if (named !== "" && !go2jsIsInterfaceTypeName(named)) {
